@@ -52,6 +52,9 @@ INT WINAPI wWinMain(
     // コンソールの初期化
     initializeConsole();
 
+    // ログの初期化
+    Logger::instance().initialize();
+
     // サイズ調整
     DWORD dw_style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
     DWORD dw_ex_style = WS_EX_APPWINDOW;
@@ -104,6 +107,9 @@ INT WINAPI wWinMain(
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&window));
         result = window.run();
     }
+
+    // ログの終了処理
+    Logger::instance().finalize();
 
     return result;
 }

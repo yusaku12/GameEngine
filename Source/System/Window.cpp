@@ -4,6 +4,7 @@
 Window::Window(HWND hwnd)
     : m_hwnd(hwnd)
 {
+    LOG_INFO("Window created");
 }
 
 Window::~Window()

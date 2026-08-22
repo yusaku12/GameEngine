@@ -4,13 +4,15 @@
     <ClInclude Include="Source\Pch.h" />
     <ClInclude Include="Source\System\Window.h" />
     <ClInclude Include="Source\System\TimeManager.h" />
-    <ClInclude Include="Source\Math\SimpleMath.h" />
+    <ClInclude Include="Source\System\Math\SimpleMath.h" />
+    <ClInclude Include="Source\System\Logger.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\Main.cpp" />
     <ClCompile Include="Source\Pch.cpp" />
     <ClCompile Include="Source\System\Window.cpp" />
     <ClCompile Include="Source\System\TimeManager.cpp" />
-    <ClCompile Include="Source\Math\SimpleMath.cpp" />
+    <ClCompile Include="Source\System\Math\SimpleMath.cpp" />
+    <ClCompile Include="Source\System\Logger.cpp" />
   </ItemGroup>
 </Project>
