@@ -2,9 +2,15 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClInclude Include="Source\Pch.h" />
+    <ClInclude Include="Source\System\Window.h" />
+    <ClInclude Include="Source\System\TimeManager.h" />
+    <ClInclude Include="Source\Math\SimpleMath.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\Main.cpp" />
     <ClCompile Include="Source\Pch.cpp" />
+    <ClCompile Include="Source\System\Window.cpp" />
+    <ClCompile Include="Source\System\TimeManager.cpp" />
+    <ClCompile Include="Source\Math\SimpleMath.cpp" />
   </ItemGroup>
 </Project>
