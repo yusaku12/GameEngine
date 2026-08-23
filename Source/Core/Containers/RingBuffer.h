@@ -222,18 +222,51 @@ namespace Engine
             return m_data[indexOf(index)];
         }
 
+        /**
+         * @brief 先頭の要素を取得する
+         * @return T& 先頭の要素
+         */
         T& front() { GE_ASSERT(m_size > 0); return m_data[m_head]; }
         const T& front() const { GE_ASSERT(m_size > 0); return m_data[m_head]; }
+
+        /**
+         * @brief 末尾の要素を取得する
+         * @return T& 末尾の要素
+         */
         T& back() { GE_ASSERT(m_size > 0); return m_data[indexOf(m_size - 1)]; }
         const T& back() const { GE_ASSERT(m_size > 0); return m_data[indexOf(m_size - 1)]; }
 
+        /**
+         * @brief 要素数を取得する
+         * @return size_t 要素数
+         */
         size_t size() const { return m_size; }
+
+        /**
+         * @brief 容量を取得する
+         * @return size_t 容量
+         */
         size_t capacity() const { return m_capacity; }
+
+        /**
+         * @brief 空かどうかを取得する
+         * @return bool 空ならtrue
+         */
         bool isEmpty() const { return m_size == 0; }
+
+        /**
+         * @brief 満杯かどうかを取得する
+         * @return bool 満杯ならtrue
+         */
         bool isFull() const { return m_size == m_capacity; }
 
     private:
 
+        /**
+         * @brief 内部配列のインデックスを取得する
+         * @param offset 先頭からのオフセット
+         * @return size_t 内部配列のインデックス
+         */
         size_t indexOf(size_t offset) const { return (m_head + offset) % m_capacity; }
 
         T* m_data = nullptr;              //!< 要素の格納先

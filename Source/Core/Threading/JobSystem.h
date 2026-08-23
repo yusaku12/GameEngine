@@ -140,8 +140,23 @@ namespace Engine
 
         GE_DISABLE_COPY_AND_MOVE(JobSystem);
 
+        /**
+         * @brief ワーカースレッドのループ処理
+         * @param index スレッド番号
+         */
         void workerLoop(uint32_t index);
+
+        /**
+         * @brief ジョブを1つ取り出す
+         * @param outJob 取り出したジョブ
+         * @return bool ジョブがあればtrue
+         */
         bool tryPopJob(Job& outJob);
+
+        /**
+         * @brief ジョブを実行する
+         * @param job 実行するジョブ
+         */
         void executeJob(Job& job);
 
         std::vector<std::thread> m_workers;             //!< ワーカースレッド

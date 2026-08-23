@@ -100,14 +100,4 @@ namespace Engine
     {
         return !(left == right);
     }
-
-    //! エンジンのメモリシステムを使うstd::vector
-    template <class T>
-    using EngineVector = std::vector<T, StlAllocator<T>>;
-
-    //! エンジンのメモリシステムを使うstd::string
-    using EngineString = std::basic_string<char, std::char_traits<char>, StlAllocator<char>>;
-
-    //! エンジンのメモリシステムを使うstd::wstring
-    using EngineWString = std::basic_string<wchar_t, std::char_traits<wchar_t>, StlAllocator<wchar_t>>;
 } // namespace Engine

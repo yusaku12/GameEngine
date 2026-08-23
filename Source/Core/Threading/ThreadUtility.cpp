@@ -1,6 +1,5 @@
 ﻿#include "Pch.h"
 
-#include "Core\Containers\String.h"
 #include "Core\Threading\ThreadUtility.h"
 
 namespace Engine

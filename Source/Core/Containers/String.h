@@ -82,6 +82,10 @@ namespace Engine
          */
         void append(const char* text, size_t size);
 
+        /**
+         * @brief 文字列を末尾へ追加する
+         * @param text 追加する文字列
+         */
         void append(std::string_view text) { append(text.data(), text.size()); }
         void append(const String& text) { append(text.c_str(), text.size()); }
         void append(char character) { append(&character, 1); }
@@ -115,8 +119,25 @@ namespace Engine
          */
         size_t find(char character, size_t offset = 0) const;
 
+        /**
+         * @brief 文字列が指定の文字列で始まるかを判定する
+         * @param text 判定する文字列
+         * @return bool 始まる場合はtrue
+         */
         bool startsWith(std::string_view text) const;
+
+        /**
+         * @brief 文字列が指定の文字列で終わるかを判定する
+         * @param text 判定する文字列
+         * @return bool 終わる場合はtrue
+         */
         bool endsWith(std::string_view text) const;
+
+        /**
+         * @brief 文字列が指定の文字列を含むかを判定する
+         * @param text 判定する文字列
+         * @return bool 含む場合はtrue
+         */
         bool contains(std::string_view text) const { return find(text) != NPOS; }
 
         /**
@@ -137,24 +158,70 @@ namespace Engine
          */
         String toLower() const;
 
+        /**
+         * @brief 文字列を反転した文字列を返す
+         * @return String 反転後の文字列
+         */
         const char* c_str() const { return m_data; }
+
+        /**
+         * @brief 文字列の先頭のポインタを返す
+         * @return char* 文字列の先頭のポインタ
+         */
         char* data() { return m_data; }
         const char* data() const { return m_data; }
 
+        /**
+         * @brief 文字数を返す
+         * @return size_t 文字数
+         */
         size_t size() const { return m_size; }
+
+        /**
+         * @brief 文字数を返す（終端文字を除く）
+         * @return size_t 文字数
+         */
         size_t length() const { return m_size; }
+
+        /**
+         * @brief 確保済みの容量を返す（終端文字を除く）
+         * @return size_t 確保済みの容量
+         */
         size_t capacity() const { return m_capacity; }
+
+        /**
+         * @brief 文字列が空かを判定する
+         * @return bool 空の場合はtrue
+         */
         bool isEmpty() const { return m_size == 0; }
 
+        /**
+         * @brief 文字列のインデックスでアクセスする
+         * @param index インデックス
+         * @return char& 文字への参照
+         */
         char& operator[](size_t index) { GE_ASSERT(index < m_size); return m_data[index]; }
         const char& operator[](size_t index) const { GE_ASSERT(index < m_size); return m_data[index]; }
 
+        /**
+         * @brief std::string_viewに変換する
+         * @return std::string_view 変換後の文字列
+         */
         std::string_view view() const { return std::string_view(m_data, m_size); }
         operator std::string_view() const { return view(); }
 
+        /**
+         * @brief 文字列の先頭と末尾のイテレータを返す
+         * @return char* 文字列の先頭と末尾のイテレータ
+         */
         char* begin() { return m_data; }
-        char* end() { return m_data + m_size; }
         const char* begin() const { return m_data; }
+
+        /**
+         * @brief 文字列の末尾のイテレータを返す
+         * @return char* 文字列の末尾のイテレータ
+         */
+        char* end() { return m_data + m_size; }
         const char* end() const { return m_data + m_size; }
 
         bool operator==(const String& other) const { return view() == other.view(); }
@@ -180,7 +247,14 @@ namespace Engine
          */
         bool isInline() const { return m_data == m_inline; }
 
+        /**
+         * @brief 内部バッファを使用するように設定する
+         */
         void assign(const char* text, size_t size);
+
+        /**
+         * @brief ヒープから確保したメモリを解放する
+         */
         void releaseStorage();
 
         char* m_data;                        //!< 文字列の格納先（内部バッファかヒープを指す）

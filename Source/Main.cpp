@@ -60,9 +60,6 @@ namespace Engine
 
         JobSystem::instance().initialize();
 
-        LOG_INFO("[Engine] 基盤機能の初期化が完了しました (リフレクション登録型 {} 件)",
-            TypeRegistry::instance().getTypeCount());
-
         return true;
     }
 

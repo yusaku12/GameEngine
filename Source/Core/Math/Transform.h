@@ -122,13 +122,46 @@ namespace Engine
          */
         Vector3 up() const { return Vector3::Transform(Vector3::Up, m_rotation); }
 
+        /**
+         * @brief 位置を取得する
+         * @return Vector3 位置
+         */
         const Vector3& getPosition() const { return m_position; }
+
+        /**
+         * @brief 回転を取得する
+         * @return Quaternion 回転
+         */
         const Quaternion& getRotation() const { return m_rotation; }
+
+        /**
+         * @brief 拡大縮小を取得する
+         * @return Vector3 拡大縮小
+         */
         const Vector3& getScale() const { return m_scale; }
 
+        /**
+         * @brief 位置を設定する
+         * @param position 位置
+         */
         void setPosition(const Vector3& position) { m_position = position; }
+
+        /**
+         * @brief 回転を設定する
+         * @param rotation 回転
+         */
         void setRotation(const Quaternion& rotation) { m_rotation = rotation; }
+
+        /**
+         * @brief 拡大縮小を設定する
+         * @param scale 拡大縮小
+         */
         void setScale(const Vector3& scale) { m_scale = scale; }
+
+        /**
+         * @brief 拡大縮小を設定する（均一スケール）
+         * @param scale 均一スケール
+         */
         void setScale(float scale) { m_scale = Vector3(scale, scale, scale); }
 
     private:

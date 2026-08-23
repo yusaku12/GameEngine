@@ -1,240 +1,63 @@
-﻿﻿<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Source">
-      <UniqueIdentifier>{2b1a1a01-0001-4000-8000-000000000001}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source\Core">
-      <UniqueIdentifier>{2b1a1a01-0001-4000-8000-000000000002}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source\Core\Containers">
-      <UniqueIdentifier>{2b1a1a01-0001-4000-8000-000000000003}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source\Core\Logging">
-      <UniqueIdentifier>{2b1a1a01-0001-4000-8000-000000000004}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source\Core\Math">
-      <UniqueIdentifier>{2b1a1a01-0001-4000-8000-000000000005}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source\Core\Memory">
-      <UniqueIdentifier>{2b1a1a01-0001-4000-8000-000000000006}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source\Core\Reflection">
-      <UniqueIdentifier>{2b1a1a01-0001-4000-8000-000000000007}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source\Core\Threading">
-      <UniqueIdentifier>{2b1a1a01-0001-4000-8000-000000000008}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source\System">
-      <UniqueIdentifier>{2b1a1a01-0001-4000-8000-000000000009}</UniqueIdentifier>
-    </Filter>
+    <ClCompile Include="Source\Main.cpp" />
+    <ClCompile Include="Source\Core\Logging\Assert.cpp" />
+    <ClCompile Include="Source\Core\Logging\Logger.cpp" />
+    <ClCompile Include="Source\Core\Math\Random.cpp" />
+    <ClCompile Include="Source\Core\Math\SimpleMath.cpp" />
+    <ClCompile Include="Source\Core\Math\Transform.cpp" />
+    <ClCompile Include="Source\Core\Memory\FreeListAllocator.cpp" />
+    <ClCompile Include="Source\Core\Memory\LinearAllocator.cpp" />
+    <ClCompile Include="Source\Core\Memory\MemoryApi.cpp" />
+    <ClCompile Include="Source\Core\Memory\MemoryManager.cpp" />
+    <ClCompile Include="Source\Core\Memory\MemoryTracker.cpp" />
+    <ClCompile Include="Source\Core\Memory\PoolAllocator.cpp" />
+    <ClCompile Include="Source\Core\Memory\StackAllocator.cpp" />
+    <ClCompile Include="Source\Core\Threading\JobSystem.cpp" />
+    <ClCompile Include="Source\Core\Threading\ThreadUtility.cpp" />
+    <ClCompile Include="Source\Pch.cpp" />
+    <ClCompile Include="Source\System\TimeManager.cpp" />
+    <ClCompile Include="Source\System\Window.cpp" />
+    <ClCompile Include="Source\Core\Containers\String.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Source\Pch.h">
-      <Filter>Source</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Core.h">
-      <Filter>Source\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\CoreDefines.h">
-      <Filter>Source\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Containers\Array.h">
-      <Filter>Source\Core\Containers</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Containers\Containers.h">
-      <Filter>Source\Core\Containers</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Containers\Hash.h">
-      <Filter>Source\Core\Containers</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Containers\HashMap.h">
-      <Filter>Source\Core\Containers</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Containers\HashSet.h">
-      <Filter>Source\Core\Containers</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Containers\RingBuffer.h">
-      <Filter>Source\Core\Containers</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Containers\StaticArray.h">
-      <Filter>Source\Core\Containers</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Containers\String.h">
-      <Filter>Source\Core\Containers</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Logging\Assert.h">
-      <Filter>Source\Core\Logging</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Logging\Logger.h">
-      <Filter>Source\Core\Logging</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Logging\Logging.h">
-      <Filter>Source\Core\Logging</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Math\Easing.h">
-      <Filter>Source\Core\Math</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Math\Geometry.h">
-      <Filter>Source\Core\Math</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Math\Math.h">
-      <Filter>Source\Core\Math</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Math\MathFunction.h">
-      <Filter>Source\Core\Math</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Math\MathTypes.h">
-      <Filter>Source\Core\Math</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Math\Random.h">
-      <Filter>Source\Core\Math</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Math\SimpleMath.h">
-      <Filter>Source\Core\Math</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Math\Transform.h">
-      <Filter>Source\Core\Math</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Memory\FreeListAllocator.h">
-      <Filter>Source\Core\Memory</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Memory\IAllocator.h">
-      <Filter>Source\Core\Memory</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Memory\LinearAllocator.h">
-      <Filter>Source\Core\Memory</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Memory\Memory.h">
-      <Filter>Source\Core\Memory</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Memory\MemoryApi.h">
-      <Filter>Source\Core\Memory</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Memory\MemoryManager.h">
-      <Filter>Source\Core\Memory</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Memory\MemoryTracker.h">
-      <Filter>Source\Core\Memory</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Memory\MemoryTypes.h">
-      <Filter>Source\Core\Memory</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Memory\MemoryUtility.h">
-      <Filter>Source\Core\Memory</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Memory\PoolAllocator.h">
-      <Filter>Source\Core\Memory</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Memory\StackAllocator.h">
-      <Filter>Source\Core\Memory</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Memory\StlAllocator.h">
-      <Filter>Source\Core\Memory</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Reflection\Any.h">
-      <Filter>Source\Core\Reflection</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Reflection\Reflection.h">
-      <Filter>Source\Core\Reflection</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Reflection\ReflectionMacros.h">
-      <Filter>Source\Core\Reflection</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Reflection\Type.h">
-      <Filter>Source\Core\Reflection</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Reflection\TypeId.h">
-      <Filter>Source\Core\Reflection</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Reflection\TypeRegistry.h">
-      <Filter>Source\Core\Reflection</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Threading\ConcurrentQueue.h">
-      <Filter>Source\Core\Threading</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Threading\JobSystem.h">
-      <Filter>Source\Core\Threading</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Threading\SpinLock.h">
-      <Filter>Source\Core\Threading</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Threading\Threading.h">
-      <Filter>Source\Core\Threading</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Threading\ThreadUtility.h">
-      <Filter>Source\Core\Threading</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\System\TimeManager.h">
-      <Filter>Source\System</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\System\Window.h">
-      <Filter>Source\System</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="Source\Main.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Pch.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Containers\String.cpp">
-      <Filter>Source\Core\Containers</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Logging\Assert.cpp">
-      <Filter>Source\Core\Logging</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Logging\Logger.cpp">
-      <Filter>Source\Core\Logging</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Math\Random.cpp">
-      <Filter>Source\Core\Math</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Math\SimpleMath.cpp">
-      <Filter>Source\Core\Math</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Math\Transform.cpp">
-      <Filter>Source\Core\Math</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Memory\FreeListAllocator.cpp">
-      <Filter>Source\Core\Memory</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Memory\LinearAllocator.cpp">
-      <Filter>Source\Core\Memory</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Memory\MemoryApi.cpp">
-      <Filter>Source\Core\Memory</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Memory\MemoryManager.cpp">
-      <Filter>Source\Core\Memory</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Memory\MemoryTracker.cpp">
-      <Filter>Source\Core\Memory</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Memory\PoolAllocator.cpp">
-      <Filter>Source\Core\Memory</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Memory\StackAllocator.cpp">
-      <Filter>Source\Core\Memory</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Reflection\Type.cpp">
-      <Filter>Source\Core\Reflection</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Reflection\TypeRegistry.cpp">
-      <Filter>Source\Core\Reflection</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Threading\JobSystem.cpp">
-      <Filter>Source\Core\Threading</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\Threading\ThreadUtility.cpp">
-      <Filter>Source\Core\Threading</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\System\TimeManager.cpp">
-      <Filter>Source\System</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\System\Window.cpp">
-      <Filter>Source\System</Filter>
-    </ClCompile>
+    <ClInclude Include="Source\Pch.h" />
+    <ClInclude Include="Source\Core\Core.h" />
+    <ClInclude Include="Source\Core\CoreDefines.h" />
+    <ClInclude Include="Source\Core\Containers\Containers.h" />
+    <ClInclude Include="Source\Core\Containers\RingBuffer.h" />
+    <ClInclude Include="Source\Core\Logging\Assert.h" />
+    <ClInclude Include="Source\Core\Logging\Logger.h" />
+    <ClInclude Include="Source\Core\Logging\Logging.h" />
+    <ClInclude Include="Source\Core\Math\Easing.h" />
+    <ClInclude Include="Source\Core\Math\Geometry.h" />
+    <ClInclude Include="Source\Core\Math\Math.h" />
+    <ClInclude Include="Source\Core\Math\MathFunction.h" />
+    <ClInclude Include="Source\Core\Math\MathTypes.h" />
+    <ClInclude Include="Source\Core\Math\Random.h" />
+    <ClInclude Include="Source\Core\Math\SimpleMath.h" />
+    <ClInclude Include="Source\Core\Math\Transform.h" />
+    <ClInclude Include="Source\Core\Memory\FreeListAllocator.h" />
+    <ClInclude Include="Source\Core\Memory\IAllocator.h" />
+    <ClInclude Include="Source\Core\Memory\LinearAllocator.h" />
+    <ClInclude Include="Source\Core\Memory\Memory.h" />
+    <ClInclude Include="Source\Core\Memory\MemoryApi.h" />
+    <ClInclude Include="Source\Core\Memory\MemoryManager.h" />
+    <ClInclude Include="Source\Core\Memory\MemoryTracker.h" />
+    <ClInclude Include="Source\Core\Memory\MemoryTypes.h" />
+    <ClInclude Include="Source\Core\Memory\MemoryUtility.h" />
+    <ClInclude Include="Source\Core\Memory\PoolAllocator.h" />
+    <ClInclude Include="Source\Core\Memory\StackAllocator.h" />
+    <ClInclude Include="Source\Core\Memory\StlAllocator.h" />
+    <ClInclude Include="Source\Core\Threading\ConcurrentQueue.h" />
+    <ClInclude Include="Source\Core\Threading\JobSystem.h" />
+    <ClInclude Include="Source\Core\Threading\SpinLock.h" />
+    <ClInclude Include="Source\Core\Threading\Threading.h" />
+    <ClInclude Include="Source\Core\Threading\ThreadUtility.h" />
+    <ClInclude Include="Source\System\TimeManager.h" />
+    <ClInclude Include="Source\System\Window.h" />
+    <ClInclude Include="Source\Core\Containers\String.h" />
+    <ClInclude Include="Source\Core\Containers\Hash.h" />
   </ItemGroup>
 </Project>

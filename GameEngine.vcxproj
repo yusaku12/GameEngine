@@ -19,17 +19,13 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\Core\Containers\Hash.h" />
+    <ClInclude Include="Source\Core\Containers\String.h" />
     <ClInclude Include="Source\Pch.h" />
     <ClInclude Include="Source\Core\Core.h" />
     <ClInclude Include="Source\Core\CoreDefines.h" />
-    <ClInclude Include="Source\Core\Containers\Array.h" />
     <ClInclude Include="Source\Core\Containers\Containers.h" />
-    <ClInclude Include="Source\Core\Containers\Hash.h" />
-    <ClInclude Include="Source\Core\Containers\HashMap.h" />
-    <ClInclude Include="Source\Core\Containers\HashSet.h" />
     <ClInclude Include="Source\Core\Containers\RingBuffer.h" />
-    <ClInclude Include="Source\Core\Containers\StaticArray.h" />
-    <ClInclude Include="Source\Core\Containers\String.h" />
     <ClInclude Include="Source\Core\Logging\Assert.h" />
     <ClInclude Include="Source\Core\Logging\Logger.h" />
     <ClInclude Include="Source\Core\Logging\Logging.h" />
@@ -53,12 +49,6 @@
     <ClInclude Include="Source\Core\Memory\PoolAllocator.h" />
     <ClInclude Include="Source\Core\Memory\StackAllocator.h" />
     <ClInclude Include="Source\Core\Memory\StlAllocator.h" />
-    <ClInclude Include="Source\Core\Reflection\Any.h" />
-    <ClInclude Include="Source\Core\Reflection\Reflection.h" />
-    <ClInclude Include="Source\Core\Reflection\ReflectionMacros.h" />
-    <ClInclude Include="Source\Core\Reflection\Type.h" />
-    <ClInclude Include="Source\Core\Reflection\TypeId.h" />
-    <ClInclude Include="Source\Core\Reflection\TypeRegistry.h" />
     <ClInclude Include="Source\Core\Threading\ConcurrentQueue.h" />
     <ClInclude Include="Source\Core\Threading\JobSystem.h" />
     <ClInclude Include="Source\Core\Threading\SpinLock.h" />
@@ -68,8 +58,8 @@
     <ClInclude Include="Source\System\Window.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Source\Main.cpp" />
     <ClCompile Include="Source\Core\Containers\String.cpp" />
+    <ClCompile Include="Source\Main.cpp" />
     <ClCompile Include="Source\Core\Logging\Assert.cpp" />
     <ClCompile Include="Source\Core\Logging\Logger.cpp" />
     <ClCompile Include="Source\Core\Math\Random.cpp" />
@@ -82,8 +72,6 @@
     <ClCompile Include="Source\Core\Memory\MemoryTracker.cpp" />
     <ClCompile Include="Source\Core\Memory\PoolAllocator.cpp" />
     <ClCompile Include="Source\Core\Memory\StackAllocator.cpp" />
-    <ClCompile Include="Source\Core\Reflection\Type.cpp" />
-    <ClCompile Include="Source\Core\Reflection\TypeRegistry.cpp" />
     <ClCompile Include="Source\Core\Threading\JobSystem.cpp" />
     <ClCompile Include="Source\Core\Threading\ThreadUtility.cpp" />
     <ClCompile Include="Source\Pch.cpp">
