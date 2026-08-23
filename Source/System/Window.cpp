@@ -1,10 +1,18 @@
 ﻿#include "Pch.h"
-#include "Window.h"
+
+#include "System\TimeManager.h"
+#include "System\Window.h"
+
+namespace Engine
+{
+
+//! タイトルバーを更新する間隔（秒）
+static constexpr float TITLE_BAR_INTERVAL = 0.5f;
 
 Window::Window(HWND hwnd)
     : m_hwnd(hwnd)
 {
-    LOG_INFO("Window created");
+    TimeManager::instance().initialize();
 }
 
 Window::~Window()
@@ -22,21 +30,27 @@ void Window::render()
 int Window::run()
 {
     MSG msg = {};
+
     while (WM_QUIT != msg.message)
     {
-        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+        if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
         {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
         else
         {
+            // フレームの開始処理
+            TimeManager::instance().update();
+            MemoryManager::instance().beginFrame();
+
             // 更新、描画
             update();
             render();
             updateTitleBar();
         }
     }
+
     return static_cast<int>(msg.wParam);
 }
 
@@ -59,9 +73,7 @@ LRESULT Window::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam
         break;
 
     case WM_MOUSEWHEEL:
-    {
-    }
-    break;
+        break;
 
     case WM_DESTROY:
         PostQuitMessage(0);
@@ -79,18 +91,28 @@ LRESULT Window::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam
 
 void Window::updateTitleBar()
 {
-    //RECT rc{};
-    //GetClientRect(m_hwnd, &rc);
+    TimeManager& time = TimeManager::instance();
 
-    //const int width = rc.right - rc.left;
-    //const int height = rc.bottom - rc.top;
+    m_titleTimer += time.getUnscaledDeltaTime();
+    if (m_titleTimer < TITLE_BAR_INTERVAL)
+        return;
 
-    //wchar_t text[256];
-    //swprintf_s(text,
-    //    L"DX12 | %dx%d | FPS: %.1f",
-    //    width,
-    //    height,
-    //    static_cast<float>(TimeManager::Instance().getFPS()));
+    m_titleTimer = 0.0f;
 
-    //SetWindowTextW(m_hwnd, text);
+    RECT rect{};
+    GetClientRect(m_hwnd, &rect);
+
+    const MemoryStats memory = MemoryManager::instance().getStats();
+
+    const String title = String::format(
+        "GameEngine | {}x{} | FPS {:.1f} | Mem {:.1f} / {:.0f} MiB",
+        rect.right - rect.left,
+        rect.bottom - rect.top,
+        time.getFrameRate(),
+        static_cast<double>(memory.used) / static_cast<double>(MEMORY_MIB),
+        static_cast<double>(memory.capacity) / static_cast<double>(MEMORY_MIB));
+
+    SetWindowTextW(m_hwnd, title.toWide().c_str());
 }
+
+} // namespace Engine

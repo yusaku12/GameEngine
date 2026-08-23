@@ -1,23 +1,31 @@
-﻿#pragma once
+#pragma once
+
+#include "Core\Core.h"
+
+namespace Engine
+{
 
 /**
- * @brief クラスの概要
- * windowクラスは、ウィンドウの作成、更新、描画、およびメッセージ処理を行うためのクラス
- * エンジン起動時一度しか生成しない物もここで初期化する
+ * @brief ウィンドウクラス
+ * ウィンドウの作成、更新、描画、およびメッセージ処理を行う
+ * エンジン起動時に一度しか生成しない物もここで初期化する
  */
 class Window
 {
 public:
 
     /**
-      * @brief コンストラクタ
-      */
+     * @brief コンストラクタ
+     * @param hwnd ウィンドウハンドル
+     */
     explicit Window(HWND hwnd);
 
     /**
      * @brief デストラクタ
      */
     ~Window();
+
+    GE_DISABLE_COPY_AND_MOVE(Window);
 
     /**
      * @brief ウィンドウの更新
@@ -30,7 +38,8 @@ public:
     void render();
 
     /**
-     * @brief ウィンドウのメッセージ処理
+     * @brief メインループを実行する
+     * @return int 終了コード
      */
     int run();
 
@@ -51,5 +60,8 @@ private:
      */
     void updateTitleBar();
 
-    const HWND m_hwnd; //!< ウィンドウハンドル
+    const HWND m_hwnd;               //!< ウィンドウハンドル
+    float      m_titleTimer = 0.0f;  //!< タイトルバーを更新するまでの経過時間
 };
+
+} // namespace Engine
