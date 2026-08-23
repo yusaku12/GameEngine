@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // リフレクション機能の集約ヘッダ
 

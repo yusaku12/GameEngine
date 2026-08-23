@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // ログ機能の集約ヘッダ
 

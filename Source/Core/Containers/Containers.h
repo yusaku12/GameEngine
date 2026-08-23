@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // コンテナ機能の集約ヘッダ
 
@@ -14,12 +14,10 @@
 
 namespace Engine
 {
+    //! 連続したメモリへの参照
+    template <class T>
+    using Span = std::span<T>;
 
-//! 連続したメモリへの参照
-template <class T>
-using Span = std::span<T>;
-
-//! 文字列への参照
-using StringView = std::string_view;
-
+    //! 文字列への参照
+    using StringView = std::string_view;
 } // namespace Engine

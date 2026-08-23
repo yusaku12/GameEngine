@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // Windowsヘッダが定義するマクロは標準ライブラリと衝突するため取り除く
 #ifdef ERROR

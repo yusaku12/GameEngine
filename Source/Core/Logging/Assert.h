@@ -1,44 +1,40 @@
-#pragma once
-
-#include <string>
+﻿#pragma once
 
 #include "Core\CoreDefines.h"
 #include "Core\Logging\Logger.h"
 
 namespace Engine
 {
+    /**
+     * @brief アサート失敗時の処理
+     * ログへ出力し、デバッガが接続されていれば中断する
+     * @param expression 失敗した条件式
+     * @param message 補足メッセージ
+     * @param loc 呼び出し元のソース位置
+     * @return bool 常にfalse（マクロの短絡評価で使用する）
+     */
+    bool assertFailed(const char* expression, std::string_view message, spdlog::source_loc loc);
 
-/**
- * @brief アサート失敗時の処理
- * ログへ出力し、デバッガが接続されていれば中断する
- * @param expression 失敗した条件式
- * @param message 補足メッセージ
- * @param loc 呼び出し元のソース位置
- * @return bool 常にfalse（マクロの短絡評価で使用する）
- */
-bool assertFailed(const char* expression, std::string_view message, spdlog::source_loc loc);
+    /**
+     * @brief フォーマット付きのアサート失敗処理
+     * @param expression 失敗した条件式
+     * @param loc 呼び出し元のソース位置
+     * @param format フォーマット文字列
+     * @param args フォーマット引数
+     * @return bool 常にfalse（マクロの短絡評価で使用する）
+     */
+    template <class... Args>
+    bool assertFailedFormat(const char* expression, spdlog::source_loc loc, spdlog::format_string_t<Args...> format, Args&&... args)
+    {
+        return assertFailed(expression, spdlog::fmt_lib::format(format, std::forward<Args>(args)...), loc);
+    }
 
-/**
- * @brief フォーマット付きのアサート失敗処理
- * @param expression 失敗した条件式
- * @param loc 呼び出し元のソース位置
- * @param format フォーマット文字列
- * @param args フォーマット引数
- * @return bool 常にfalse（マクロの短絡評価で使用する）
- */
-template <class... Args>
-bool assertFailedFormat(const char* expression, spdlog::source_loc loc, spdlog::format_string_t<Args...> format, Args&&... args)
-{
-    return assertFailed(expression, spdlog::fmt_lib::format(format, std::forward<Args>(args)...), loc);
-}
-
-/**
- * @brief 復帰不能なエラーとしてプロセスを終了する
- * @param message エラー内容
- * @param loc 呼び出し元のソース位置
- */
-[[noreturn]] void fatalError(std::string_view message, spdlog::source_loc loc);
-
+    /**
+     * @brief 復帰不能なエラーとしてプロセスを終了する
+     * @param message エラー内容
+     * @param loc 呼び出し元のソース位置
+     */
+    [[noreturn]] void fatalError(std::string_view message, spdlog::source_loc loc);
 } // namespace Engine
 
 #if GE_ASSERT_ENABLED

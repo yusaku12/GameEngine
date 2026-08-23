@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // 数学機能の集約ヘッダ
 

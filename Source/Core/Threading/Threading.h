@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // スレッド機能の集約ヘッダ
 
