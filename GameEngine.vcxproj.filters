@@ -59,5 +59,14 @@
     <ClInclude Include="Source\System\Window.h" />
     <ClInclude Include="Source\Core\Containers\String.h" />
     <ClInclude Include="Source\Core\Containers\Hash.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Device.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\SwapChain.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Descriptor.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Fence.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Queue.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Command.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Resource.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Pipeline.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Shader.h" />
   </ItemGroup>
 </Project>

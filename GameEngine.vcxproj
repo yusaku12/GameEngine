@@ -21,6 +21,15 @@
   <ItemGroup>
     <ClInclude Include="Source\Core\Containers\Hash.h" />
     <ClInclude Include="Source\Core\Containers\String.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Command.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Descriptor.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Device.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Fence.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Pipeline.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Queue.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Resource.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Shader.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\SwapChain.h" />
     <ClInclude Include="Source\Pch.h" />
     <ClInclude Include="Source\Core\Core.h" />
     <ClInclude Include="Source\Core\CoreDefines.h" />
@@ -166,7 +175,7 @@
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>.\Source;.\Library\spdlog\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -176,6 +185,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>d3d12.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>\Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -187,7 +198,7 @@
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>.\Source;.\Library\spdlog\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -197,6 +208,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>d3d12.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>\Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

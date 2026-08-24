@@ -13,7 +13,10 @@
 #include <string>
 #include <utility>
 #include <vector>
-
+#include <d3d12.h>
+#include <d3dx12.h>
+#include <dxgi1_6.h>
+#include <wrl/client.h>
 #include <DirectXCollision.h>
 #include <DirectXMath.h>
 #include <DirectXPackedVector.h>
