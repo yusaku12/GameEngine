@@ -4,11 +4,6 @@
 
 namespace Engine
 {
-    InputManager::~InputManager()
-    {
-        stopAllGamepadVibration();
-    }
-
     void InputManager::update()
     {
         if (!m_windowFocused)

@@ -57,6 +57,8 @@ namespace Engine
          */
         void updateTitleBar();
 
+        static constexpr float TITLE_BAR_INTERVAL = 0.5f; //!< タイトルバーを更新する間隔（秒）
+
         const HWND m_hwnd;               //!< ウィンドウハンドル
         float      m_titleTimer = 0.0f;  //!< タイトルバーを更新するまでの経過時間
     };

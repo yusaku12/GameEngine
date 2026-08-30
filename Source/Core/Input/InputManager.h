@@ -79,11 +79,6 @@ namespace Engine
         }
 
         /*
-          * @brief デストラクタ
-          */
-        ~InputManager();
-
-        /*
           * @brief 入力状態を更新
           */
         void update();

@@ -4,9 +4,6 @@
 
 namespace Engine
 {
-    //! タイトルバーを更新する間隔（秒）
-    static constexpr float TITLE_BAR_INTERVAL = 0.5f;
-
     Window::Window(HWND hwnd)
         : m_hwnd(hwnd)
     {
@@ -15,10 +12,19 @@ namespace Engine
 
     Window::~Window()
     {
+        InputManager::instance().stopAllGamepadVibration();
     }
 
     void Window::update()
     {
+        // フレームの開始処理
+        TimeManager::instance().update();
+
+        // メモリのフレームヒープを切り替える
+        MemoryManager::instance().beginFrame();
+
+        // 入力状態を更新する
+        InputManager::instance().update();
     }
 
     void Window::render()
@@ -38,10 +44,6 @@ namespace Engine
             }
             else
             {
-                // フレームの開始処理
-                TimeManager::instance().update();
-                MemoryManager::instance().beginFrame();
-
                 // 更新、描画
                 update();
                 render();
@@ -71,6 +73,7 @@ namespace Engine
             break;
 
         case WM_MOUSEWHEEL:
+            InputManager::instance().addMouseWheel(GET_WHEEL_DELTA_WPARAM(wparam));
             break;
 
         case WM_DESTROY:
@@ -78,6 +81,7 @@ namespace Engine
             break;
 
         case WM_ACTIVATE:
+            InputManager::instance().setWindowFocused(wparam != WA_INACTIVE);
             break;
 
         default:
