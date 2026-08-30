@@ -1,7 +1,5 @@
 ﻿#include "Pch.h"
 
-#include "System\TimeManager.h"
-
 namespace Engine
 {
     //! フレームレートを平均する区間の長さ（秒）

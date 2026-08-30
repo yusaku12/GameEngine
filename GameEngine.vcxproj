@@ -21,6 +21,7 @@
   <ItemGroup>
     <ClInclude Include="Source\Core\Containers\Hash.h" />
     <ClInclude Include="Source\Core\Containers\String.h" />
+    <ClInclude Include="Source\Core\Input\InputManager.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Command.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Descriptor.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Device.h" />
@@ -63,11 +64,12 @@
     <ClInclude Include="Source\Core\Threading\SpinLock.h" />
     <ClInclude Include="Source\Core\Threading\Threading.h" />
     <ClInclude Include="Source\Core\Threading\ThreadUtility.h" />
-    <ClInclude Include="Source\System\TimeManager.h" />
-    <ClInclude Include="Source\System\Window.h" />
+    <ClInclude Include="Source\Core\System\TimeManager.h" />
+    <ClInclude Include="Source\Core\System\Window.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\Core\Containers\String.cpp" />
+    <ClCompile Include="Source\Core\Input\InputManager.cpp" />
     <ClCompile Include="Source\Main.cpp" />
     <ClCompile Include="Source\Core\Logging\Assert.cpp" />
     <ClCompile Include="Source\Core\Logging\Logger.cpp" />
@@ -87,8 +89,8 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="Source\System\TimeManager.cpp" />
-    <ClCompile Include="Source\System\Window.cpp" />
+    <ClCompile Include="Source\Core\System\TimeManager.cpp" />
+    <ClCompile Include="Source\Core\System\Window.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

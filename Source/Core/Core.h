@@ -9,3 +9,5 @@
 #include "Core\Containers\Containers.h"
 #include "Core\Math\Math.h"
 #include "Core\Threading\Threading.h"
+#include "Core\System\TimeManager.h"
+#include "Core\Input\InputManager.h"

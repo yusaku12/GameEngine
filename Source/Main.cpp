@@ -1,7 +1,5 @@
 ﻿#include "Pch.h"
-
-#include "System\TimeManager.h"
-#include "System\Window.h"
+#include "Core\System\Window.h"
 
 namespace Engine
 {
