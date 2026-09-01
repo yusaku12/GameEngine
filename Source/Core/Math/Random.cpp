@@ -1,5 +1,4 @@
 ﻿#include "Pch.h"
-
 #include "Core\Math\MathFunction.h"
 #include "Core\Math\Random.h"
 

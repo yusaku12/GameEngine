@@ -55,7 +55,6 @@ namespace Engine
          * @brief 前フレームからの経過時間を取得する（タイムスケール適用後、float）
          * @return float 経過時間（秒）
          */
-        [[nodiscard]]
         float deltaTime() const noexcept { return static_cast<float>(m_deltaTime); }
 
         /**

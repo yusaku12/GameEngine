@@ -1,5 +1,4 @@
 ﻿#include "Pch.h"
-
 #include "Core\Memory\MemoryTracker.h"
 #include "Core\Memory\MemoryUtility.h"
 

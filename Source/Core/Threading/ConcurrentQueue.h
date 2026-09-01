@@ -1,7 +1,6 @@
 ﻿#pragma once
 
 #include <deque>
-
 #include "Core\CoreDefines.h"
 
 namespace Engine

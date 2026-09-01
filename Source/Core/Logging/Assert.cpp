@@ -1,5 +1,4 @@
 ﻿#include "Pch.h"
-
 #include "Core\Logging\Assert.h"
 
 namespace Engine

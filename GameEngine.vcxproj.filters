@@ -27,9 +27,8 @@
     <ClCompile Include="Source\Core\Threading\JobSystem.cpp" />
     <ClCompile Include="Source\Core\Threading\ThreadUtility.cpp" />
     <ClCompile Include="Source\Pch.cpp" />
-    <ClCompile Include="Source\Core\System\HighResolutionTimer.cpp" />
-    <ClCompile Include="Source\Core\System\TimeManager.cpp" />
-    <ClCompile Include="Source\Core\System\TimeSystemTest.cpp" />
+    <ClCompile Include="Source\Core\Time\HighResolutionTimer.cpp" />
+    <ClCompile Include="Source\Core\Time\TimeManager.cpp" />
     <ClCompile Include="Source\Core\System\Window.cpp" />
     <ClCompile Include="Source\Core\Containers\String.cpp" />
     <ClCompile Include="Source\Core\Input\InputManager.cpp" />
@@ -68,9 +67,8 @@
     <ClInclude Include="Source\Core\Threading\SpinLock.h" />
     <ClInclude Include="Source\Core\Threading\Threading.h" />
     <ClInclude Include="Source\Core\Threading\ThreadUtility.h" />
-    <ClInclude Include="Source\Core\System\HighResolutionTimer.h" />
-    <ClInclude Include="Source\Core\System\TimeManager.h" />
-    <ClInclude Include="Source\Core\System\TimeSystemTest.h" />
+    <ClInclude Include="Source\Core\Time\HighResolutionTimer.h" />
+    <ClInclude Include="Source\Core\Time\TimeManager.h" />
     <ClInclude Include="Source\Core\System\Window.h" />
     <ClInclude Include="Source\Core\Containers\String.h" />
     <ClInclude Include="Source\Core\Containers\Hash.h" />

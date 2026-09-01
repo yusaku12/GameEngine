@@ -1,15 +1,4 @@
 ﻿#pragma once
-
-#include <atomic>
-#include <condition_variable>
-#include <cstdint>
-#include <deque>
-#include <functional>
-#include <memory>
-#include <mutex>
-#include <thread>
-#include <vector>
-
 #include "Core\CoreDefines.h"
 #include "Core\Threading\ThreadUtility.h"
 

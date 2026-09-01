@@ -1,7 +1,6 @@
 ﻿#pragma once
 
 #include <shared_mutex>
-
 #include "Core\CoreDefines.h"
 
 namespace Engine

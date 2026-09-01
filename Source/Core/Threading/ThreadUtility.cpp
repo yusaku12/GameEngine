@@ -1,5 +1,4 @@
 ﻿#include "Pch.h"
-
 #include "Core\Threading\ThreadUtility.h"
 
 namespace Engine

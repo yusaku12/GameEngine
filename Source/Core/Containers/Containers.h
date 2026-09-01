@@ -1,9 +1,7 @@
 ﻿#pragma once
 
 // コンテナ機能の集約ヘッダ
-
 #include <span>
-
 #include "Core\Containers\RingBuffer.h"
 #include "Core\Containers\String.h"
 

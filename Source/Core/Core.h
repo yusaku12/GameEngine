@@ -9,6 +9,6 @@
 #include "Core\Containers\Containers.h"
 #include "Core\Math\Math.h"
 #include "Core\Threading\Threading.h"
-#include "Core\System\HighResolutionTimer.h"
-#include "Core\System\TimeManager.h"
+#include "Core\Time\HighResolutionTimer.h"
+#include "Core\Time\TimeManager.h"
 #include "Core\Input\InputManager.h"

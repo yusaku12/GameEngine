@@ -2,7 +2,6 @@
 
 #include <spdlog/fmt/fmt.h>
 #include <spdlog/logger.h>
-
 #include "Core\CoreDefines.h"
 
 namespace Engine
