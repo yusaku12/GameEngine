@@ -5,6 +5,55 @@
 namespace Engine
 {
     /**
+     * @brief スレッドの役割
+     * Main / Render / Worker / Background を識別する。
+     */
+    enum class ThreadRole
+    {
+        Main,
+        Render,
+        Worker,
+        Background,
+    };
+
+    /**
+     * @brief 現在のスレッドに紐づくローカルなコンテキスト
+     * Job / Logging / Scratch Memory の情報を保持する
+     */
+    struct ThreadContext
+    {
+        uint32_t threadId = 0;     //!< 現在のスレッドID
+        std::string name;          //!< スレッド名
+        uint32_t jobCount = 0;     //!< このスレッドで処理したジョブ数
+        uint32_t affinityIndex = 0; //!< 固定したCPUコア番号
+        ThreadRole role = ThreadRole::Main; //!< 現在の役割
+    };
+
+    /**
+     * @brief 現在のスレッドのコンテキストを取得する
+     * @return ThreadContext& 現在のスレッドに紐づくコンテキスト
+     */
+    ThreadContext& getCurrentThreadContext();
+
+    /**
+     * @brief 現在のスレッドの役割を設定する
+     * @param role 役割
+     */
+    void setCurrentThreadRole(ThreadRole role);
+
+    /**
+     * @brief 現在のスレッドがMain Threadかを取得する
+     * @return bool Main Threadならtrue
+     */
+    bool isMainThread();
+
+    /**
+     * @brief 現在のスレッドがRender Threadかを取得する
+     * @return bool Render Threadならtrue
+     */
+    bool isRenderThread();
+
+    /**
      * @brief 現在のスレッドに名前を付ける（デバッガに表示される）
      * @param name スレッド名
      */

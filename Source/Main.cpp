@@ -47,6 +47,7 @@ namespace Engine
     static bool initializeCore()
     {
         initializeConsole();
+        setCurrentThreadRole(ThreadRole::Main);
 
         if (!Logger::instance().initialize())
             return false;
@@ -134,9 +135,11 @@ namespace Engine
 
         int result = 0;
         {
+            setCurrentThreadRole(ThreadRole::Render);
             DX12Renderer renderer;
             if (!renderer.initialize(hwnd, SCREEN_WIDTH, SCREEN_HEIGHT))
             {
+                setCurrentThreadRole(ThreadRole::Main);
                 DestroyWindow(hwnd);
                 finalizeCore();
                 return -1;
@@ -146,6 +149,7 @@ namespace Engine
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&window));
             result = window.run();
             renderer.finalize();
+            setCurrentThreadRole(ThreadRole::Main);
         }
 
         finalizeCore();

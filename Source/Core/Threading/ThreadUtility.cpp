@@ -25,10 +25,36 @@ namespace Engine
         return function;
     }
 
+    ThreadContext& getCurrentThreadContext()
+    {
+        static thread_local ThreadContext context;
+        context.threadId = getCurrentThreadId();
+        return context;
+    }
+
+    void setCurrentThreadRole(ThreadRole role)
+    {
+        ThreadContext& context = getCurrentThreadContext();
+        context.role = role;
+    }
+
+    bool isMainThread()
+    {
+        return getCurrentThreadContext().role == ThreadRole::Main;
+    }
+
+    bool isRenderThread()
+    {
+        return getCurrentThreadContext().role == ThreadRole::Render;
+    }
+
     void setCurrentThreadName(const char* name)
     {
         if (name == nullptr)
             return;
+
+        ThreadContext& context = getCurrentThreadContext();
+        context.name = name;
 
         SetThreadDescriptionFunction function = resolveSetThreadDescription();
         if (function == nullptr)
