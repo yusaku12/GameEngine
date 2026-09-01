@@ -2,6 +2,8 @@
 
 namespace Engine
 {
+    class DX12Renderer;
+
     /**
      * @brief ウィンドウクラス
      * ウィンドウの作成、更新、描画、およびメッセージ処理を行う
@@ -15,7 +17,7 @@ namespace Engine
          * @brief コンストラクタ
          * @param hwnd ウィンドウハンドル
          */
-        explicit Window(HWND hwnd);
+        Window(HWND hwnd, DX12Renderer& renderer);
 
         /**
          * @brief デストラクタ
@@ -60,6 +62,7 @@ namespace Engine
         static constexpr float TITLE_BAR_INTERVAL = 0.5f; //!< タイトルバーを更新する間隔（秒）
 
         const HWND m_hwnd;               //!< ウィンドウハンドル
+        DX12Renderer& m_renderer;        //!< 描画処理
         float      m_titleTimer = 0.0f;  //!< タイトルバーを更新するまでの経過時間
     };
 } // namespace Engine

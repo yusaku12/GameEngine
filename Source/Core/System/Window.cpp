@@ -1,11 +1,13 @@
 ﻿#include "Pch.h"
 
 #include "Window.h"
+#include "Graphics\DirectX12\Renderer.h"
 
 namespace Engine
 {
-    Window::Window(HWND hwnd)
+    Window::Window(HWND hwnd, DX12Renderer& renderer)
         : m_hwnd(hwnd)
+        , m_renderer(renderer)
     {
         TimeManager::instance().initialize();
     }
@@ -29,6 +31,8 @@ namespace Engine
 
     void Window::render()
     {
+        if (!m_renderer.render())
+            LOG_ERROR("[Window] 描画に失敗しました");
     }
 
     int Window::run()
@@ -69,6 +73,10 @@ namespace Engine
         case WM_SIZE:
             if (wparam != SIZE_MINIMIZED)
             {
+                const std::uint32_t width = LOWORD(lparam);
+                const std::uint32_t height = HIWORD(lparam);
+                if (!m_renderer.resize(width, height))
+                    LOG_ERROR("[Window] 描画領域のリサイズに失敗しました");
             }
             break;
 

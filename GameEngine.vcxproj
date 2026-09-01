@@ -29,6 +29,7 @@
     <ClInclude Include="Source\Graphics\DirectX12\Pipeline.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Queue.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Resource.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\Renderer.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Shader.h" />
     <ClInclude Include="Source\Graphics\DirectX12\SwapChain.h" />
     <ClInclude Include="Source\Pch.h" />
@@ -68,6 +69,16 @@
     <ClInclude Include="Source\Core\System\Window.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Source\Graphics\DirectX12\Command.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\Descriptor.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\Device.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\Fence.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\Pipeline.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\Queue.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\Resource.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\Renderer.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\Shader.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\SwapChain.cpp" />
     <ClCompile Include="Source\Core\Containers\String.cpp" />
     <ClCompile Include="Source\Core\Input\InputManager.cpp" />
     <ClCompile Include="Source\Main.cpp" />
@@ -187,7 +198,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>\Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
@@ -210,7 +221,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>\Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>

@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Core\System\Window.h"
+#include "Graphics\DirectX12\Renderer.h"
 
 namespace Engine
 {
@@ -133,9 +134,18 @@ namespace Engine
 
         int result = 0;
         {
-            Window window(hwnd);
+            DX12Renderer renderer;
+            if (!renderer.initialize(hwnd, SCREEN_WIDTH, SCREEN_HEIGHT))
+            {
+                DestroyWindow(hwnd);
+                finalizeCore();
+                return -1;
+            }
+
+            Window window(hwnd, renderer);
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&window));
             result = window.run();
+            renderer.finalize();
         }
 
         finalizeCore();
