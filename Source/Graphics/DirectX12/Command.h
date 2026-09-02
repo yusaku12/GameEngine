@@ -1,7 +1,5 @@
 ﻿#pragma once
 
-#include <d3d12.h>
-
 #include "Core\CoreDefines.h"
 #include "Graphics\DirectX12\Queue.h"
 
@@ -68,25 +66,25 @@ namespace Engine
          * @brief 現在の Command List 状態を取得する
          * @return Command List 状態
          */
-        [[nodiscard]] DX12CommandListState getState() const noexcept { return m_state; }
+        DX12CommandListState getState() const noexcept { return m_state; }
 
         /**
          * @brief Allocator を再利用可能にする Fence 値を取得する
          * @return 最後に提出した Fence 値。未提出時は 0
          */
-        [[nodiscard]] std::uint64_t getLastSubmittedFenceValue() const noexcept { return m_lastSubmittedFenceValue; }
+        std::uint64_t getLastSubmittedFenceValue() const noexcept { return m_lastSubmittedFenceValue; }
 
         /**
          * @brief 実行可能な Close 済み Command List を取得する
          * @return 非所有の Command List 参照。記録中または未初期化時は nullptr
          */
-        [[nodiscard]] ID3D12CommandList* getForExecution() const noexcept;
+        ID3D12CommandList* getForExecution() const noexcept;
 
         /**
          * @brief 記録中の Graphics Command List を取得する
          * @return 非所有の Graphics Command List 参照。Close 済みまたは未初期化時は nullptr
          */
-        [[nodiscard]] ID3D12GraphicsCommandList* getForRecording() const noexcept;
+        ID3D12GraphicsCommandList* getForRecording() const noexcept;
 
     private:
 

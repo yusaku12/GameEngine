@@ -1,5 +1,4 @@
 ﻿#include "Pch.h"
-
 #include "Window.h"
 #include "Graphics\DirectX12\Renderer.h"
 

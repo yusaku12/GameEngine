@@ -56,6 +56,10 @@ namespace Engine
          */
         void* getBaseMemory() const { return m_base; }
 
+        /**
+         * @brief アライメント調整後の先頭を取得する
+         * @return void* メモリ先頭
+         */
         const MemoryStats& getStats() const override { return m_stats; }
         const char* getName() const override { return m_name; }
 

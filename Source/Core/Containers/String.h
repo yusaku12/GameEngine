@@ -263,6 +263,12 @@ namespace Engine
         char   m_inline[INLINE_CAPACITY + 1]; //!< 短い文字列用の内部バッファ
     };
 
+    /**
+     * @brief Stringとstd::string_viewの連結演算子
+     * @param left 左辺のString
+     * @param right 右辺のstd::string_view
+     * @return String 連結した文字列
+     */
     inline String operator+(const String& left, std::string_view right)
     {
         String result(left);
@@ -270,6 +276,12 @@ namespace Engine
         return result;
     }
 
+    /**
+     * @brief Stringとconst char*の連結演算子
+     * @param left 左辺のString
+     * @param right 右辺のconst char*
+     * @return String 連結した文字列
+     */
     inline String operator+(const String& left, const char* right)
     {
         String result(left);
@@ -277,6 +289,9 @@ namespace Engine
         return result;
     }
 
+    /**
+     * @brief Stringのハッシュ関数
+     */
     template <>
     struct Hash<String>
     {

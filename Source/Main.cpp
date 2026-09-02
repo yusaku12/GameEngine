@@ -46,18 +46,25 @@ namespace Engine
      */
     static bool initializeCore()
     {
+        // コンソールの初期化
         initializeConsole();
+
+        // メインスレッドの役割を設定
         setCurrentThreadRole(ThreadRole::Main);
 
+        // ロガーの初期化
         if (!Logger::instance().initialize())
             return false;
 
+        // メモリマネージャの初期化
         if (!MemoryManager::instance().initialize())
         {
+            // ロガーの終了処理を行うことで、初期化に失敗した原因をログに出力する
             Logger::instance().finalize();
             return false;
         }
 
+        // ジョブシステムの初期化
         JobSystem::instance().initialize();
 
         return true;
@@ -68,11 +75,13 @@ namespace Engine
      */
     static void finalizeCore()
     {
+        // ジョブシステムの終了処理を行うことで、ジョブの完了待ち中に発生したエラーをログに出力する
         JobSystem::instance().finalize();
 
         // Windowの破棄後に呼び出すことで、未解放のメモリをリークとして検出する
         MemoryManager::instance().finalize();
 
+        // ロガーの終了処理を行うことで、未書き出しのログを出力する
         Logger::instance().finalize();
     }
 
@@ -135,10 +144,14 @@ namespace Engine
 
         int result = 0;
         {
+            // 描画スレッドの役割を設定
             setCurrentThreadRole(ThreadRole::Render);
+
+            // DirectX 12 レンダラーの初期化
             DX12Renderer renderer;
             if (!renderer.initialize(hwnd, SCREEN_WIDTH, SCREEN_HEIGHT))
             {
+                // 描画スレッドの役割をメインスレッドに戻す
                 setCurrentThreadRole(ThreadRole::Main);
                 DestroyWindow(hwnd);
                 finalizeCore();
@@ -149,6 +162,8 @@ namespace Engine
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&window));
             result = window.run();
             renderer.finalize();
+
+            // 描画スレッドの役割をメインスレッドに戻す
             setCurrentThreadRole(ThreadRole::Main);
         }
 

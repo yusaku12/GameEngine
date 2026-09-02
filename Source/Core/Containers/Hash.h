@@ -129,12 +129,18 @@ namespace Engine
         }
     };
 
+    /*
+    * @brief std::string_viewのハッシュ関数オブジェクト
+    */
     template <>
     struct Hash<std::string_view>
     {
         uint64_t operator()(std::string_view value) const { return hashString(value.data(), value.size()); }
     };
 
+    /*
+    * @brief const char*のハッシュ関数オブジェクト
+    */
     template <>
     struct Hash<const char*>
     {

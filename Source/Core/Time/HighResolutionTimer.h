@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 namespace Engine
 {
@@ -26,21 +26,18 @@ namespace Engine
          * @brief リセット後の経過時間を秒単位で取得する
          * @return double 経過時間（秒、高精度）
          */
-        [[nodiscard]]
         double getElapsedSeconds() const;
 
         /**
          * @brief リセット後の経過時間をティック数で取得する
          * @return uint64_t 経過時間（ティック数）
          */
-        [[nodiscard]]
         uint64_t getElapsedTicks() const;
 
         /**
          * @brief タイマーの周波数（1秒あたりのティック数）を取得する
          * @return uint64_t 周波数
          */
-        [[nodiscard]]
         uint64_t getFrequency() const { return m_frequency; }
 
     private:
@@ -48,5 +45,4 @@ namespace Engine
         uint64_t m_frequency = 0;      //!< タイマーの周波数（ティック/秒）
         int64_t  m_startCounter = 0;   //!< リセット時のカウンタ値
     };
-
 } // namespace Engine

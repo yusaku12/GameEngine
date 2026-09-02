@@ -1,8 +1,5 @@
 ﻿#pragma once
 
-#include <d3d12.h>
-#include <dxgi1_6.h>
-
 #include "Core\CoreDefines.h"
 #include "Graphics\DirectX12\Descriptor.h"
 #include "Graphics\DirectX12\Resource.h"
@@ -105,8 +102,24 @@ namespace Engine
 
     private:
 
+        /**
+         * @brief Back Buffer Resource と RTV を作成する
+         * @param device RTV を作成するデバイス
+         * @return 作成に成功した場合は true
+         */
         bool createBackBuffers(ID3D12Device& device);
+
+        /**
+         * @brief Back Buffer Resource と RTV を解放する
+         */
         void releaseBackBuffers();
+
+        /**
+         * @brief GPU の完了を確認する
+         * @param completionFence Direct Queue の Fence
+         * @param lastSubmittedFenceValue 確認する Fence 値
+         * @return GPU 完了確認に成功した場合は true
+         */
         bool waitForGpu(const DX12Fence& completionFence, std::uint64_t lastSubmittedFenceValue) const;
 
         Microsoft::WRL::ComPtr<IDXGISwapChain4> m_swapChain; //!< DXGI SwapChain

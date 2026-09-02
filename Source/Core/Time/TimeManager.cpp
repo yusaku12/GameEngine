@@ -158,5 +158,4 @@ namespace Engine
             m_fpsFrameCount = 0;
         }
     }
-
 } // namespace Engine

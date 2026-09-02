@@ -1,4 +1,4 @@
-#include "Pch.h"
+﻿#include "Pch.h"
 #include "HighResolutionTimer.h"
 
 namespace Engine
@@ -60,5 +60,4 @@ namespace Engine
         const int64_t elapsed = counter.QuadPart - m_startCounter;
         return static_cast<uint64_t>(elapsed);
     }
-
 } // namespace Engine

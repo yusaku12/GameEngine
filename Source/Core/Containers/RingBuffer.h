@@ -210,12 +210,16 @@ namespace Engine
             m_size = 0;
         }
 
+        /**
+         * @brief インデックス指定で要素を取得する
+         * @param index 先頭からのインデックス
+         * @return T& 取得した要素
+         */
         T& operator[](size_t index)
         {
             GE_ASSERT(index < m_size);
             return m_data[indexOf(index)];
         }
-
         const T& operator[](size_t index) const
         {
             GE_ASSERT(index < m_size);

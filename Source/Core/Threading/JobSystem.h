@@ -184,12 +184,18 @@ namespace Engine
 
     private:
 
+        /**
+         * @brief 継続処理の共有状態
+         */
         struct State
         {
-            Function function;
-            mutable std::mutex mutex;
+            Function function; //!< 実行する関数
+            mutable std::mutex mutex; //!< 関数の排他制御
         };
 
+        /**
+         * @brief 共有状態を確保する
+         */
         void ensureState()
         {
             if (m_state == nullptr)

@@ -1,4 +1,4 @@
-#include "Pch.h"
+﻿#include "Pch.h"
 #include "Graphics\DirectX12\Device.h"
 
 namespace Engine
@@ -16,8 +16,8 @@ namespace Engine
             factoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
         }
 
-		if (config.enableDxgiDebug)
-			enableDxgiDebug();
+        if (config.enableDxgiDebug)
+            enableDxgiDebug();
 
         HRESULT result = CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(&m_factory));
         if (FAILED(result))
@@ -42,11 +42,11 @@ namespace Engine
         m_device.Reset();
         m_adapter.Reset();
         m_factory.Reset();
-		if (m_dxgiDebug != nullptr)
-		{
-			m_dxgiDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_ALL);
-			m_dxgiDebug.Reset();
-		}
+        if (m_dxgiDebug != nullptr)
+        {
+            m_dxgiDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_ALL);
+            m_dxgiDebug.Reset();
+        }
 
         m_capabilities = {};
     }

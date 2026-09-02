@@ -89,12 +89,20 @@ namespace Engine
         MemoryTag   m_tag = MemoryTag::CONTAINER;      //!< 用途タグ
     };
 
+    /**
+     * @brief 別要素型のアロケータ同士の比較
+     * @return bool 同じ確保元のアロケータを持つ場合はtrue
+     */
     template <class T, class U>
     inline bool operator==(const StlAllocator<T>& left, const StlAllocator<U>& right) noexcept
     {
         return left.getAllocator() == right.getAllocator();
     }
 
+    /**
+     * @brief 別要素型のアロケータ同士の比較
+     * @return bool 同じ確保元のアロケータを持たない場合はtrue
+     */
     template <class T, class U>
     inline bool operator!=(const StlAllocator<T>& left, const StlAllocator<U>& right) noexcept
     {

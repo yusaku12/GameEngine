@@ -51,6 +51,10 @@ namespace Engine
          */
         size_t getRemaining() const { return m_capacity - m_offset; }
 
+        /**
+         * @brief 使用状況を取得する
+         * @return const MemoryStats& 使用状況
+         */
         const MemoryStats& getStats() const override { return m_stats; }
         const char* getName() const override { return m_name; }
 
