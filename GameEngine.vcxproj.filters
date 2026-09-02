@@ -83,5 +83,15 @@
     <ClInclude Include="Source\Graphics\DirectX12\Pipeline.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Shader.h" />
     <ClInclude Include="Source\Core\Input\InputManager.h" />
+    <ClInclude Include="Source\Editor\ImGui\EditorUi.h" />
+    <ClInclude Include="Source\Editor\ImGui\ImGuiSystem.h" />
+    <ClCompile Include="Source\Editor\ImGui\EditorUi.cpp" />
+    <ClCompile Include="Source\Editor\ImGui\ImGuiSystem.cpp" />
+    <ClCompile Include="Library\imgui\imgui.cpp" />
+    <ClCompile Include="Library\imgui\imgui_draw.cpp" />
+    <ClCompile Include="Library\imgui\imgui_tables.cpp" />
+    <ClCompile Include="Library\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="Library\imgui\backends\imgui_impl_dx12.cpp" />
+    <ClCompile Include="Library\imgui\backends\imgui_impl_win32.cpp" />
   </ItemGroup>
 </Project>

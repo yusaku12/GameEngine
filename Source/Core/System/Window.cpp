@@ -59,6 +59,9 @@ namespace Engine
 
     LRESULT Window::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     {
+        if (m_renderer.processImGuiMessage(hwnd, msg, wparam, lparam))
+            return 0;
+
         switch (msg)
         {
         case WM_PAINT:

@@ -71,6 +71,13 @@ namespace Engine
             }
         }
 
+        m_imguiSystem = std::make_unique<ImGuiSystem>();
+        if (!m_imguiSystem->initialize(*m_device.get(), *m_directQueue.get(), hwnd))
+        {
+            finalize();
+            return false;
+        }
+
         const DX12ShaderConfig vertexShaderConfig{
             .sourcePath = "Assets/Shaders/ColorTriangle.hlsl",
             .entryPoint = "vsMain",
@@ -120,6 +127,12 @@ namespace Engine
 
     bool DX12Renderer::finalize()
     {
+        if (m_imguiSystem != nullptr)
+        {
+            m_imguiSystem->finalize();
+            m_imguiSystem.reset();
+        }
+
         if (!m_swapChain.finalize(m_directFence, m_lastSubmittedFenceValue))
             return false;
 
@@ -145,6 +158,10 @@ namespace Engine
 
     bool DX12Renderer::render()
     {
+        if (m_imguiSystem == nullptr || !m_imguiSystem->isInitialized())
+            return false;
+
+        m_imguiSystem->beginFrame();
         const std::uint32_t frameIndex = m_swapChain.getCurrentBackBufferIndex();
         if (frameIndex >= FRAME_COUNT)
         {
@@ -182,6 +199,8 @@ namespace Engine
         nativeCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         nativeCommandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
         nativeCommandList->DrawInstanced(static_cast<UINT>(TRIANGLE_VERTICES.size()), 1, 0, 0);
+
+        m_imguiSystem->render(*nativeCommandList);
 
         if (!backBuffer->transition(commandList, D3D12_RESOURCE_STATE_PRESENT) || !commandList.close())
             return false;
@@ -226,5 +245,10 @@ namespace Engine
         m_renderWidth = width;
         m_renderHeight = height;
         return true;
+    }
+
+    bool DX12Renderer::processImGuiMessage(const HWND hwnd, const UINT message, const WPARAM wparam, const LPARAM lparam)
+    {
+        return m_imguiSystem != nullptr && m_imguiSystem->processMessage(hwnd, message, wparam, lparam);
     }
 } // namespace Engine

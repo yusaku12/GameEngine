@@ -2,6 +2,7 @@
 
 #include "Core\CoreDefines.h"
 #include "Graphics\DirectX12\Command.h"
+#include "Editor\ImGui\ImGuiSystem.h"
 #include "Graphics\DirectX12\Device.h"
 #include "Graphics\DirectX12\Fence.h"
 #include "Graphics\DirectX12\Pipeline.h"
@@ -55,6 +56,12 @@ namespace Engine
          */
         bool resize(std::uint32_t width, std::uint32_t height);
 
+        /**
+         * @brief Win32メッセージをImGuiへ転送する
+         * @return ImGuiがメッセージを処理した場合はtrue
+         */
+        bool processImGuiMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
+
     private:
 
         static constexpr std::uint32_t FRAME_COUNT = 2; //!< Frame In Flight 数
@@ -69,6 +76,7 @@ namespace Engine
         DX12UploadBuffer m_vertexBuffer; //!< 頂点データを保持する Upload Buffer
         D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView{}; //!< 頂点 Buffer View
         std::array<DX12CommandList, FRAME_COUNT> m_commandLists; //!< Frame ごとの Command List
+        std::unique_ptr<ImGuiSystem> m_imguiSystem; //!< Editor UI のライフサイクル
         std::array<std::uint64_t, FRAME_COUNT> m_frameFenceValues{}; //!< Frame ごとの提出 Fence 値
         std::uint64_t m_lastSubmittedFenceValue = 0; //!< 直近に提出した Fence 値
         std::uint32_t m_renderWidth = 0; //!< 現在の描画領域の幅
