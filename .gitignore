@@ -4,3 +4,4 @@ x64/
 Data/
 imgui.ini
 *.vcxproj.user
+Generated/FlatBuffers/

@@ -19,6 +19,9 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Generated\FlatBuffers\Common_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\Model_generated.h" />
+    <ClInclude Include="Source\Assets\Model\Serialization\ModelSerializer.h" />
     <ClInclude Include="Source\Assets\Model\Import\AssimpModelImporter.h" />
     <ClInclude Include="Source\Assets\Model\Resource\AnimationResource.h" />
     <ClInclude Include="Source\Assets\Model\Resource\MaterialResource.h" />
@@ -26,6 +29,9 @@
     <ClInclude Include="Source\Assets\Model\Resource\ModelNode.h" />
     <ClInclude Include="Source\Assets\Model\Resource\ModelResource.h" />
     <ClInclude Include="Source\Assets\Model\Resource\SkeletonResource.h" />
+    <ClInclude Include="Source\Core\Serialization\FlatBufferReader.h" />
+    <ClInclude Include="Source\Core\Serialization\FlatBufferWriter.h" />
+    <ClInclude Include="Source\Core\Serialization\SerializationVersions.h" />
     <ClInclude Include="Source\Core\Containers\Hash.h" />
     <ClInclude Include="Source\Core\Containers\String.h" />
     <ClInclude Include="Source\Core\Input\InputManager.h" />
@@ -79,6 +85,9 @@
     <ClInclude Include="Source\Editor\ImGui\ImGuiSystem.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Source\Assets\Model\Serialization\ModelSerializer.cpp" />
+    <ClCompile Include="Source\Core\Serialization\FlatBufferReader.cpp" />
+    <ClCompile Include="Source\Core\Serialization\FlatBufferWriter.cpp" />
     <ClCompile Include="Source\Assets\Model\Import\AssimpModelImporter.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Command.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Descriptor.cpp" />
@@ -136,6 +145,12 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Schemas\FlatBuffers\Common.fbs" />
+    <None Include="Schemas\FlatBuffers\Model.fbs" />
+    <None Include="Tools\FlatBuffers\build_schema.bat" />
+    <None Include="Tools\FlatBuffers\build_schema.ps1" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -222,7 +237,7 @@
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>.\Source;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+        <AdditionalIncludeDirectories>.\Source;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -248,7 +263,7 @@
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>.\Source;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -265,6 +280,11 @@
       <Command>copy /Y "$(USERPROFILE)\.nuget\packages\assimp_native.redist\4.0.1\build\native\bin\x64\v141\Release\assimp-vc140-mt.dll" "$(TargetDir)assimp-vc140-mt.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
+  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile"
+          Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1"
+          Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
+  </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

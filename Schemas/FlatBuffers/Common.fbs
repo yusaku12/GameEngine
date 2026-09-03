@@ -1,0 +1,25 @@
+namespace Engine.Serialization;
+
+struct Vec2 {
+    x:float;
+    y:float;
+}
+
+struct Vec3 {
+    x:float;
+    y:float;
+    z:float;
+}
+
+struct Vec4 {
+    x:float;
+    y:float;
+    z:float;
+    w:float;
+}
+
+table FileHeader {
+    schema_version:uint;
+    asset_version:uint;
+    flags:uint;
+}

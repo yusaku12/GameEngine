@@ -1,0 +1,119 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+table ModelVertex {
+    position:Vec3;
+    normal:Vec3;
+    tangent:Vec3;
+    bitangent:Vec3;
+    tex_coord:Vec2;
+    color:Vec4;
+    bone_indices:[ushort];
+    bone_weights:Vec4;
+}
+
+table SubMesh {
+    index_start:uint;
+    index_count:uint;
+    material_index:uint;
+}
+
+table MaterialTexturePaths {
+    base_color:string;
+    normal:string;
+    metallic:string;
+    roughness:string;
+    metallic_roughness:string;
+    ambient_occlusion:string;
+    emissive:string;
+    opacity:string;
+}
+
+table Material {
+    name:string;
+    base_color:Vec4;
+    metallic:float;
+    roughness:float;
+    emissive:Vec3;
+    opacity:float;
+    textures:MaterialTexturePaths;
+}
+
+table Bounds {
+    box_center:Vec3;
+    box_extents:Vec3;
+    sphere_center:Vec3;
+    sphere_radius:float;
+}
+
+table Mesh {
+    name:string;
+    vertices:[ModelVertex];
+    indices:[uint];
+    sub_meshes:[SubMesh];
+    bounds:Bounds;
+}
+
+table Bone {
+    index:uint;
+    name:string;
+    parent_index:int;
+    inverse_bind_pose:[float];
+    local_bind_transform:[float];
+}
+
+table Skeleton {
+    bones:[Bone];
+}
+
+table ModelNode {
+    name:string;
+    parent_index:int;
+    local_transform:[float];
+    children:[uint];
+    mesh_indices:[uint];
+}
+
+table PositionKey {
+    value:Vec3;
+    time:float;
+}
+
+table RotationKey {
+    value:Vec4;
+    time:float;
+}
+
+table ScaleKey {
+    value:Vec3;
+    time:float;
+}
+
+table AnimationChannel {
+    node_name:string;
+    positions:[PositionKey];
+    rotations:[RotationKey];
+    scales:[ScaleKey];
+}
+
+table Animation {
+    name:string;
+    duration:float;
+    ticks_per_second:float;
+    channels:[AnimationChannel];
+}
+
+table ModelFile {
+    header:FileHeader;
+    meshes:[Mesh];
+    materials:[Material];
+    skeleton:Skeleton;
+    animations:[Animation];
+    nodes:[ModelNode];
+    bounds:Bounds;
+    source_path:string;
+}
+
+root_type ModelFile;
+file_identifier "MODL";

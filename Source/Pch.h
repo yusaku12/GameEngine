@@ -20,5 +20,6 @@
 #include <DirectXCollision.h>
 #include <DirectXMath.h>
 #include <DirectXPackedVector.h>
+#include <fstream>
 
 #include "Core\Core.h"
