@@ -45,6 +45,9 @@
     <ClInclude Include="Source\Graphics\DirectX12\Renderer.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Shader.h" />
     <ClInclude Include="Source\Graphics\DirectX12\SwapChain.h" />
+    <ClInclude Include="Source\Graphics\Texture\TextureTypes.h" />
+    <ClInclude Include="Source\Graphics\Texture\Texture.h" />
+    <ClInclude Include="Source\Graphics\Texture\TextureManager.h" />
     <ClInclude Include="Source\Pch.h" />
     <ClInclude Include="Source\Core\Core.h" />
     <ClInclude Include="Source\Core\CoreDefines.h" />
@@ -99,6 +102,8 @@
     <ClCompile Include="Source\Graphics\DirectX12\Renderer.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Shader.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\SwapChain.cpp" />
+    <ClCompile Include="Source\Graphics\Texture\Texture.cpp" />
+    <ClCompile Include="Source\Graphics\Texture\TextureManager.cpp" />
     <ClCompile Include="Source\Core\Containers\String.cpp" />
     <ClCompile Include="Source\Core\Input\InputManager.cpp" />
     <ClCompile Include="Source\Main.cpp" />
@@ -237,6 +242,7 @@
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
         <AdditionalIncludeDirectories>.\Source;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
@@ -247,8 +253,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>assimp-vc140-mt.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>\Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Debug;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\lib\x64\v141\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>assimp-vc140-mt.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Debug;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\lib\x64\v141\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(USERPROFILE)\.nuget\packages\assimp_native.redist\4.0.1\build\native\bin\x64\v141\Debug\assimp-vc140-mt.dll" "$(TargetDir)assimp-vc140-mt.dll"</Command>
@@ -261,6 +267,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>.\Source;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -273,8 +280,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>assimp-vc140-mt.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>\Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Release;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\lib\x64\v141\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>assimp-vc140-mt.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Release;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\lib\x64\v141\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(USERPROFILE)\.nuget\packages\assimp_native.redist\4.0.1\build\native\bin\x64\v141\Release\assimp-vc140-mt.dll" "$(TargetDir)assimp-vc140-mt.dll"</Command>
