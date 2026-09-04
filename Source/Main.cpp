@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Core\System\Window.h"
+#include "Core\GameObject\GameObjectManager.h"
 #include "Graphics\DirectX12\Renderer.h"
 
 namespace Engine
@@ -160,6 +161,18 @@ namespace Engine
 
             Window window(hwnd, renderer);
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&window));
+
+            GameObjectManager gameObjectManager;
+            const GameObjectHandle movingObject = gameObjectManager.Create("Mover");
+            auto* mover = gameObjectManager.Get(movingObject);
+            if (mover != nullptr)
+            {
+                mover->SetPosition(Vector3::Zero);
+                mover->SetVelocity(Vector3(1.0f, 0.0f, 0.0f));
+            }
+
+            gameObjectManager.Update(1.0f / 60.0f);
+
             result = window.run();
             renderer.finalize();
 

@@ -52,6 +52,11 @@
     <ClInclude Include="Source\Graphics\Texture\TextureTypes.h" />
     <ClInclude Include="Source\Graphics\Texture\Texture.h" />
     <ClInclude Include="Source\Graphics\Texture\TextureManager.h" />
+    <ClInclude Include="Source\Core\GameObject\Component.h" />
+    <ClInclude Include="Source\Core\GameObject\GameObject.h" />
+    <ClInclude Include="Source\Core\GameObject\GameObjectHandle.h" />
+    <ClInclude Include="Source\Core\GameObject\GameObjectManager.h" />
+    <ClInclude Include="Source\Core\ECS\ECSWorld.h" />
     <ClInclude Include="Source\Pch.h" />
     <ClInclude Include="Source\Core\Core.h" />
     <ClInclude Include="Source\Core\CoreDefines.h" />
@@ -111,6 +116,9 @@
     <ClCompile Include="Source\Graphics\DirectX12\SwapChain.cpp" />
     <ClCompile Include="Source\Graphics\Texture\Texture.cpp" />
     <ClCompile Include="Source\Graphics\Texture\TextureManager.cpp" />
+    <ClCompile Include="Source\Core\GameObject\GameObject.cpp" />
+    <ClCompile Include="Source\Core\GameObject\GameObjectManager.cpp" />
+    <ClCompile Include="Source\Core\ECS\ECSWorld.cpp" />
     <ClCompile Include="Source\Core\Containers\String.cpp" />
     <ClCompile Include="Source\Core\Input\InputManager.cpp" />
     <ClCompile Include="Source\Main.cpp" />
@@ -253,7 +261,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <AdditionalIncludeDirectories>.\Source;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -280,7 +288,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>.\Source;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
