@@ -43,7 +43,11 @@
     <ClInclude Include="Source\Graphics\DirectX12\Queue.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Resource.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Renderer.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\Shader.h" />
+    <ClInclude Include="Source\Graphics\Shader\Shader.h" />
+    <ClInclude Include="Source\Graphics\Shader\ShaderTypes.h" />
+    <ClInclude Include="Source\Graphics\Shader\ShaderCompiler.h" />
+    <ClInclude Include="Source\Graphics\Shader\ShaderFileWatcher.h" />
+    <ClInclude Include="Source\Graphics\Shader\ShaderManager.h" />
     <ClInclude Include="Source\Graphics\DirectX12\SwapChain.h" />
     <ClInclude Include="Source\Graphics\Texture\TextureTypes.h" />
     <ClInclude Include="Source\Graphics\Texture\Texture.h" />
@@ -100,7 +104,10 @@
     <ClCompile Include="Source\Graphics\DirectX12\Queue.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Resource.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Renderer.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\Shader.cpp" />
+    <ClCompile Include="Source\Graphics\Shader\Shader.cpp" />
+    <ClCompile Include="Source\Graphics\Shader\ShaderCompiler.cpp" />
+    <ClCompile Include="Source\Graphics\Shader\ShaderFileWatcher.cpp" />
+    <ClCompile Include="Source\Graphics\Shader\ShaderManager.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\SwapChain.cpp" />
     <ClCompile Include="Source\Graphics\Texture\Texture.cpp" />
     <ClCompile Include="Source\Graphics\Texture\TextureManager.cpp" />
@@ -156,6 +163,9 @@
     <None Include="Schemas\FlatBuffers\Model.fbs" />
     <None Include="Tools\FlatBuffers\build_schema.bat" />
     <None Include="Tools\FlatBuffers\build_schema.ps1" />
+    <None Include="Tools\Shaders\CompileShaders.bat" />
+    <None Include="Tools\Shaders\CompileShaders.ps1" />
+    <None Include="Tools\Shaders\CleanShaderCache.bat" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -243,7 +253,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-        <AdditionalIncludeDirectories>.\Source;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -287,10 +297,11 @@
       <Command>copy /Y "$(USERPROFILE)\.nuget\packages\assimp_native.redist\4.0.1\build\native\bin\x64\v141\Release\assimp-vc140-mt.dll" "$(TargetDir)assimp-vc140-mt.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
-  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile"
-          Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1"
-          Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h">
+  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
+  </Target>
+  <Target Name="CompileShaders" BeforeTargets="ClCompile" Condition="Exists('$(ProjectDir)Tools\DXC\dxc.exe')" Inputs="$(ProjectDir)Assets\Shaders\ColorTriangle.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1" Outputs="$(ProjectDir)Assets\Shaders\Compiled\ColorTriangle_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\ColorTriangle_psMain_ps.cso">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

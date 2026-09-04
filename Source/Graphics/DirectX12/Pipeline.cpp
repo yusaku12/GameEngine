@@ -1,7 +1,7 @@
 ﻿#include "Pch.h"
 #include "Graphics\DirectX12\Pipeline.h"
 #include "Graphics\DirectX12\Command.h"
-#include "Graphics\DirectX12\Shader.h"
+#include "Graphics\Shader\Shader.h"
 
 namespace Engine
 {

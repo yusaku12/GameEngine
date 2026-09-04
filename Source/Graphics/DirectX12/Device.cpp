@@ -157,6 +157,17 @@ namespace Engine
         }
 
         m_capabilities.resourceBindingTier = options.ResourceBindingTier;
+        struct ShaderModelFeature
+        {
+            UINT highestShaderModel;
+        } shaderModel{ 0x67 };
+        if (FAILED(m_device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shaderModel, sizeof(shaderModel))))
+        {
+            shaderModel.highestShaderModel = 0x60;
+            LOG_WARNING("[DX12] Shader Model 6.7 query failed; using 6.0");
+        }
+        m_capabilities.shaderModel = shaderModel.highestShaderModel;
+        LOG_INFO("[DX12] Highest supported Shader Model: 0x{:X}", m_capabilities.shaderModel);
         return true;
     }
 

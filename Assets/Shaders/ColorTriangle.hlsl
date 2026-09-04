@@ -1,3 +1,4 @@
+// Compiled by DXC with Shader Model 6.x and HLSL 2021.
 struct VertexInput
 {
     float3 position : POSITION;

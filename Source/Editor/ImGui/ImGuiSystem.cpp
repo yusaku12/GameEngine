@@ -104,7 +104,7 @@ namespace Engine
         m_initialized = false;
     }
 
-    void ImGuiSystem::beginFrame()
+    void ImGuiSystem::beginFrame(ShaderManager* shaderManager)
     {
         if (!m_initialized || m_context == nullptr)
             return;
@@ -113,7 +113,7 @@ namespace Engine
         ImGui_ImplDX12_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
-        m_editorUi->draw();
+        m_editorUi->draw(shaderManager);
         ImGui::Render();
     }
 

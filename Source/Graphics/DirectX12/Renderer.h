@@ -8,7 +8,7 @@
 #include "Graphics\DirectX12\Pipeline.h"
 #include "Graphics\DirectX12\Queue.h"
 #include "Graphics\DirectX12\Resource.h"
-#include "Graphics\DirectX12\Shader.h"
+#include "Graphics\Shader\ShaderManager.h"
 #include "Graphics\DirectX12\SwapChain.h"
 
 namespace Engine
@@ -70,8 +70,10 @@ namespace Engine
         DX12CommandQueue m_directQueue; //!< 描画コマンドキュー
         DX12Fence m_directFence; //!< 描画コマンドの完了 Fence
         DX12SwapChain m_swapChain; //!< 画面出力用 SwapChain
-        DX12Shader m_vertexShader; //!< 頂点 Shader
-        DX12Shader m_pixelShader; //!< Pixel Shader
+        ShaderManager m_shaderManager; //!< Shader のロード・キャッシュ・Hot Reload 管理
+        ShaderID m_vertexShaderID = 0; //!< 頂点 Shader ID
+        ShaderID m_pixelShaderID = 0; //!< Pixel Shader ID
+        bool m_psoRebuildPending = false; //!< Shader 更新に伴う Graphics PSO 再生成要求フラグ
         DX12GraphicsPipeline m_graphicsPipeline; //!< キャッシュ済み Graphics PSO
         DX12UploadBuffer m_vertexBuffer; //!< 頂点データを保持する Upload Buffer
         D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView{}; //!< 頂点 Buffer View

@@ -10,7 +10,7 @@
     <ClCompile Include="Source\Graphics\DirectX12\Queue.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Resource.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Renderer.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\Shader.cpp" />
+    <ClCompile Include="Source\Graphics\Shader\Shader.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\SwapChain.cpp" />
     <ClCompile Include="Source\Main.cpp" />
     <ClCompile Include="Source\Core\Logging\Assert.cpp" />
@@ -33,6 +33,14 @@
     <ClCompile Include="Source\Core\System\Window.cpp" />
     <ClCompile Include="Source\Core\Containers\String.cpp" />
     <ClCompile Include="Source\Core\Input\InputManager.cpp" />
+    <ClCompile Include="Source\Assets\Model\Serialization\ModelSerializer.cpp" />
+    <ClCompile Include="Source\Core\Serialization\FlatBufferReader.cpp" />
+    <ClCompile Include="Source\Core\Serialization\FlatBufferWriter.cpp" />
+    <ClCompile Include="Source\Graphics\Shader\ShaderCompiler.cpp" />
+    <ClCompile Include="Source\Graphics\Shader\ShaderFileWatcher.cpp" />
+    <ClCompile Include="Source\Graphics\Shader\ShaderManager.cpp" />
+    <ClCompile Include="Source\Graphics\Texture\Texture.cpp" />
+    <ClCompile Include="Source\Graphics\Texture\TextureManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Assets\Model\Import\AssimpModelImporter.h" />
@@ -89,7 +97,7 @@
     <ClInclude Include="Source\Graphics\DirectX12\Resource.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Renderer.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Pipeline.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\Shader.h" />
+    <ClInclude Include="Source\Graphics\Shader\Shader.h" />
     <ClInclude Include="Source\Core\Input\InputManager.h" />
     <ClInclude Include="Source\Editor\ImGui\EditorUi.h" />
     <ClInclude Include="Source\Editor\ImGui\ImGuiSystem.h" />
@@ -101,5 +109,27 @@
     <ClCompile Include="Library\imgui\imgui_widgets.cpp" />
     <ClCompile Include="Library\imgui\backends\imgui_impl_dx12.cpp" />
     <ClCompile Include="Library\imgui\backends\imgui_impl_win32.cpp" />
+    <ClInclude Include="Generated\FlatBuffers\Common_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\Model_generated.h" />
+    <ClInclude Include="Source\Assets\Model\Serialization\ModelSerializer.h" />
+    <ClInclude Include="Source\Core\Serialization\FlatBufferReader.h" />
+    <ClInclude Include="Source\Core\Serialization\FlatBufferWriter.h" />
+    <ClInclude Include="Source\Core\Serialization\SerializationVersions.h" />
+    <ClInclude Include="Source\Graphics\Shader\ShaderTypes.h" />
+    <ClInclude Include="Source\Graphics\Shader\ShaderCompiler.h" />
+    <ClInclude Include="Source\Graphics\Shader\ShaderFileWatcher.h" />
+    <ClInclude Include="Source\Graphics\Shader\ShaderManager.h" />
+    <ClInclude Include="Source\Graphics\Texture\TextureTypes.h" />
+    <ClInclude Include="Source\Graphics\Texture\Texture.h" />
+    <ClInclude Include="Source\Graphics\Texture\TextureManager.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Schemas\FlatBuffers\Common.fbs" />
+    <None Include="Schemas\FlatBuffers\Model.fbs" />
+    <None Include="Tools\FlatBuffers\build_schema.bat" />
+    <None Include="Tools\FlatBuffers\build_schema.ps1" />
+    <None Include="Tools\Shaders\CompileShaders.bat" />
+    <None Include="Tools\Shaders\CompileShaders.ps1" />
+    <None Include="Tools\Shaders\CleanShaderCache.bat" />
   </ItemGroup>
 </Project>

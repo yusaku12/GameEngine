@@ -21,5 +21,6 @@
 #include <DirectXMath.h>
 #include <DirectXPackedVector.h>
 #include <fstream>
+#include <queue>
 
 #include "Core\Core.h"

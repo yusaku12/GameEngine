@@ -21,6 +21,7 @@ namespace Engine
     struct DX12DeviceCapabilities
     {
         D3D12_RESOURCE_BINDING_TIER resourceBindingTier = D3D12_RESOURCE_BINDING_TIER_1; //!< Resource Binding Tier
+        std::uint32_t shaderModel = 0x60; //!< 最大対応 Shader Model (6.x encoded as 0x6x)
     };
 
     /**

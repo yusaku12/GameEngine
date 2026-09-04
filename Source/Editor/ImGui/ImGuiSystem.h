@@ -8,6 +8,7 @@ struct ImGui_ImplDX12_InitInfo;
 namespace Engine
 {
     class EditorUi;
+    class ShaderManager;
 
     /**
      * @brief Dear ImGuiのContextと公式Backendのライフサイクルを管理するクラス
@@ -38,8 +39,9 @@ namespace Engine
 
         /**
          * @brief ImGuiのフレームを開始し、Editor UIを生成する
+         * @param shaderManager ShaderManager オブジェクトのポインタ (省略可能)
          */
-        void beginFrame();
+        void beginFrame(ShaderManager* shaderManager = nullptr);
 
         /**
          * @brief 記録中のCommandListへImGuiを描画する

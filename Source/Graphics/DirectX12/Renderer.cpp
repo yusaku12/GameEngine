@@ -78,25 +78,58 @@ namespace Engine
             return false;
         }
 
-        const DX12ShaderConfig vertexShaderConfig{
-            .sourcePath = "Assets/Shaders/ColorTriangle.hlsl",
-            .entryPoint = "vsMain",
-            .targetProfile = "vs_5_1",
-        };
-        const DX12ShaderConfig pixelShaderConfig{
-            .sourcePath = "Assets/Shaders/ColorTriangle.hlsl",
-            .entryPoint = "psMain",
-            .targetProfile = "ps_5_1",
-        };
-        if (!m_vertexShader.compile(vertexShaderConfig) || !m_pixelShader.compile(pixelShaderConfig))
+        if (!m_shaderManager.initialize(
+            ShaderMode::Development,
+            "Assets/Shaders",
+            [this](ShaderID /*id*/) { m_psoRebuildPending = true; }))
         {
+            LOG_ERROR("[DX12] ShaderManager の初期化に失敗しました");
+            finalize();
+            return false;
+        }
+
+        const ShaderCompileDesc vertexShaderDesc{
+            .sourcePath = "Assets/Shaders/ColorTriangle.hlsl",
+            .outputPath = "Assets/Shaders/Compiled/ColorTriangle_vsMain_vs.cso",
+            .entryPoint = "vsMain",
+            .stage = ShaderStage::Vertex,
+            .shaderModel = ShaderModel::SM_6_0,
+            .languageVersion = HlslLanguageVersion::Hlsl2021,
+            .debug = true,
+            .optimize = false,
+        };
+        const ShaderCompileDesc pixelShaderDesc{
+            .sourcePath = "Assets/Shaders/ColorTriangle.hlsl",
+            .outputPath = "Assets/Shaders/Compiled/ColorTriangle_psMain_ps.cso",
+            .entryPoint = "psMain",
+            .stage = ShaderStage::Pixel,
+            .shaderModel = ShaderModel::SM_6_0,
+            .languageVersion = HlslLanguageVersion::Hlsl2021,
+            .debug = true,
+            .optimize = false,
+        };
+        m_vertexShaderID = m_shaderManager.registerShader(vertexShaderDesc);
+        m_pixelShaderID = m_shaderManager.registerShader(pixelShaderDesc);
+
+        if (!m_shaderManager.loadAll())
+        {
+            LOG_ERROR("[DX12] Shader CSO のロードに失敗しました");
+            finalize();
+            return false;
+        }
+
+        auto vs = m_shaderManager.get(m_vertexShaderID);
+        auto ps = m_shaderManager.get(m_pixelShaderID);
+        if (!vs || !ps || !vs->isCompiled() || !ps->isCompiled())
+        {
+            LOG_ERROR("[DX12] 有効な Vertex/Pixel Shader がロードされていません");
             finalize();
             return false;
         }
 
         const DX12GraphicsPipelineConfig pipelineConfig{
-            .vertexShader = &m_vertexShader,
-            .pixelShader = &m_pixelShader,
+            .vertexShader = vs.get(),
+            .pixelShader = ps.get(),
             .inputLayout = INPUT_LAYOUT,
             .renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM,
         };
@@ -140,8 +173,10 @@ namespace Engine
             return false;
 
         m_graphicsPipeline.finalize();
-        m_pixelShader.finalize();
-        m_vertexShader.finalize();
+        m_shaderManager.shutdown();
+        m_vertexShaderID = 0;
+        m_pixelShaderID = 0;
+        m_psoRebuildPending = false;
         for (DX12CommandList& commandList : m_commandLists)
             commandList.finalize();
 
@@ -161,7 +196,38 @@ namespace Engine
         if (m_imguiSystem == nullptr || !m_imguiSystem->isInitialized())
             return false;
 
-        m_imguiSystem->beginFrame();
+        m_shaderManager.processHotReload();
+
+        if (m_psoRebuildPending)
+        {
+            if (m_lastSubmittedFenceValue != 0)
+            {
+                m_directFence.waitOnCpu(m_lastSubmittedFenceValue);
+            }
+            auto vs = m_shaderManager.get(m_vertexShaderID);
+            auto ps = m_shaderManager.get(m_pixelShaderID);
+            if (vs && ps && vs->isCompiled() && ps->isCompiled())
+            {
+                m_graphicsPipeline.finalize();
+                const DX12GraphicsPipelineConfig pipelineConfig{
+                    .vertexShader = vs.get(),
+                    .pixelShader = ps.get(),
+                    .inputLayout = INPUT_LAYOUT,
+                    .renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM,
+                };
+                if (m_graphicsPipeline.initialize(*m_device.get(), pipelineConfig))
+                {
+                    LOG_INFO("[Renderer] Graphics Pipeline successfully rebuilt via Shader Hot Reload.");
+                }
+                else
+                {
+                    LOG_ERROR("[Renderer] Failed to rebuild Graphics Pipeline during Shader Hot Reload.");
+                }
+            }
+            m_psoRebuildPending = false;
+        }
+
+        m_imguiSystem->beginFrame(&m_shaderManager);
         const std::uint32_t frameIndex = m_swapChain.getCurrentBackBufferIndex();
         if (frameIndex >= FRAME_COUNT)
         {
