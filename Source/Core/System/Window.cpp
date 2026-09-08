@@ -21,9 +21,6 @@ namespace Engine
         // フレームの開始処理
         TimeManager::instance().update();
 
-        // メモリのフレームヒープを切り替える
-        MemoryManager::instance().beginFrame();
-
         // 入力状態を更新する
         InputManager::instance().update();
     }
@@ -114,15 +111,11 @@ namespace Engine
         RECT rect{};
         GetClientRect(m_hwnd, &rect);
 
-        const MemoryStats memory = MemoryManager::instance().getStats();
-
         const String title = String::format(
-            "GameEngine | {}x{} | FPS {:.1f} | Mem {:.1f} / {:.0f} MiB",
+            "GameEngine | {}x{} | FPS {:.1f}",
             rect.right - rect.left,
             rect.bottom - rect.top,
-            time.getFrameRate(),
-            static_cast<double>(memory.used) / static_cast<double>(MEMORY_MIB),
-            static_cast<double>(memory.capacity) / static_cast<double>(MEMORY_MIB));
+            time.getFrameRate());
 
         SetWindowTextW(m_hwnd, title.toWide().c_str());
     }

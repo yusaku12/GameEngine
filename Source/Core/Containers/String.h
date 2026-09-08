@@ -1,13 +1,12 @@
 ﻿#pragma once
 
 #include "Core\Containers\Hash.h"
-#include "Core\Memory\MemoryApi.h"
 
 namespace Engine
 {
     /**
      * @brief 文字列
-     * 短い文字列は内部バッファへ格納し、長い場合のみエンジンのヒープから確保する
+    * 短い文字列は内部バッファへ格納し、長い場合のみ標準ヒープから確保する
      */
     class String
     {

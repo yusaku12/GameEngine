@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <cstdint>
+
 #include "Core\Math\MathFunction.h"
 #include "Core\Math\MathTypes.h"
 
@@ -71,17 +73,23 @@ namespace Engine
          */
         Vector3 transformDirection(const Vector3& direction) const;
 
+        /** @brief 変更リビジョンを取得する */
+        [[nodiscard]] std::uint64_t revision() const noexcept { return m_revision; }
+
+        /** @brief 外部から変更されたTransformをDirtyにする */
+        void markDirty() noexcept { ++m_revision; }
+
         /**
          * @brief 位置を移動する
          * @param delta 移動量
          */
-        void translate(const Vector3& delta) { m_position += delta; }
+        void translate(const Vector3& delta) { m_position += delta; markDirty(); }
 
         /**
          * @brief 回転を加える
          * @param delta 加える回転
          */
-        void rotate(const Quaternion& delta) { m_rotation = Quaternion::Concatenate(m_rotation, delta); }
+        void rotate(const Quaternion& delta) { m_rotation = Quaternion::Concatenate(m_rotation, delta); markDirty(); }
 
         /**
          * @brief オイラー角で回転を設定する
@@ -144,30 +152,31 @@ namespace Engine
          * @brief 位置を設定する
          * @param position 位置
          */
-        void setPosition(const Vector3& position) { m_position = position; }
+        void setPosition(const Vector3& position) { m_position = position; markDirty(); }
 
         /**
          * @brief 回転を設定する
          * @param rotation 回転
          */
-        void setRotation(const Quaternion& rotation) { m_rotation = rotation; }
+        void setRotation(const Quaternion& rotation) { m_rotation = rotation; markDirty(); }
 
         /**
          * @brief 拡大縮小を設定する
          * @param scale 拡大縮小
          */
-        void setScale(const Vector3& scale) { m_scale = scale; }
+        void setScale(const Vector3& scale) { m_scale = scale; markDirty(); }
 
         /**
          * @brief 拡大縮小を設定する（均一スケール）
          * @param scale 均一スケール
          */
-        void setScale(float scale) { m_scale = Vector3(scale, scale, scale); }
+        void setScale(float scale) { m_scale = Vector3(scale, scale, scale); markDirty(); }
 
     private:
 
         Vector3    m_position = Vector3::Zero;         //!< 位置
         Quaternion m_rotation = Quaternion::Identity;  //!< 回転
         Vector3    m_scale = Vector3::One;             //!< 拡大縮小
+        std::uint64_t m_revision = 1;                  //!< 変更リビジョン
     };
 } // namespace Engine

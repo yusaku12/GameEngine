@@ -6,6 +6,21 @@
 
 namespace Engine
 {
+    EditorUi::EditorUi()
+    {
+        Scene* scene = m_sceneManager.createScene("EditorScene");
+        if (scene != nullptr)
+        {
+            GameObject* camera = scene->createGameObject("Main Camera");
+            GameObject* light = scene->createGameObject("Directional Light");
+            GameObject* triangle = scene->createGameObject("Triangle");
+            if (camera != nullptr)
+                m_selectedObject = camera;
+            if (light != nullptr && triangle != nullptr)
+                light->setParent(triangle, false);
+        }
+    }
+
     void EditorUi::draw(ShaderManager* shaderManager)
     {
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -70,15 +85,37 @@ namespace Engine
         }
         ImGui::TextUnformatted("シーン");
         ImGui::Separator();
-        constexpr const char* objects[] = { "Main Camera", "Directional Light", "Triangle" };
-        for (int index = 0; index < static_cast<int>(std::size(objects)); ++index)
+        Scene* scene = m_sceneManager.getActiveScene();
+        if (scene != nullptr)
         {
-            ImGui::PushID(index);
-            if (ImGui::Selectable(objects[index], m_selectedObject == index))
-                m_selectedObject = index;
-            ImGui::PopID();
+            for (const auto& object : scene->getGameObjects())
+            {
+                if (object->getParent() == nullptr)
+                    drawGameObjectNode(*object);
+            }
         }
         ImGui::End();
+    }
+
+    void EditorUi::drawGameObjectNode(GameObject& object)
+    {
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow;
+        if (m_selectedObject == &object)
+            flags |= ImGuiTreeNodeFlags_Selected;
+        if (object.getChildCount() == 0)
+            flags |= ImGuiTreeNodeFlags_Leaf;
+
+        ImGui::PushID(&object);
+        const bool open = ImGui::TreeNodeEx(object.getName().c_str(), flags);
+        if (ImGui::IsItemClicked())
+            m_selectedObject = &object;
+        if (open)
+        {
+            for (std::size_t index = 0; index < object.getChildCount(); ++index)
+                drawGameObjectNode(*object.getChild(index));
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
     }
 
     void EditorUi::drawSceneView()
@@ -91,7 +128,7 @@ namespace Engine
         ImGui::TextUnformatted("Scene View");
         ImGui::SameLine(ImGui::GetContentRegionAvail().x - 90.0f);
         ImGui::SetNextItemWidth(80.0f);
-        ImGui::Combo("##Gizmo", &m_selectedObject, "Move\0Rotate\0Scale\0");
+        ImGui::Combo("##Gizmo", &m_gizmoMode, "Move\0Rotate\0Scale\0");
         ImGui::Separator();
         const ImVec2 canvasSize = ImGui::GetContentRegionAvail();
         const ImVec2 canvasPosition = ImGui::GetCursorScreenPos();
@@ -135,23 +172,35 @@ namespace Engine
             ImGui::End();
             return;
         }
-        ImGui::Text("選択中: %s", m_selectedObject == 0 ? "Main Camera" : m_selectedObject == 1 ? "Directional Light" : "Triangle");
+        ImGui::Text("選択中: %s", m_selectedObject == nullptr ? "なし" : m_selectedObject->getName().c_str());
         ImGui::Separator();
-        if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+        if (m_selectedObject != nullptr && ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            static float position[3] = { 0.0f, 0.0f, 0.0f };
-            static float rotation[3] = { 0.0f, 0.0f, 0.0f };
-            static float scale[3] = { 1.0f, 1.0f, 1.0f };
-            ImGui::DragFloat3("位置", position, 0.1f);
-            ImGui::DragFloat3("回転", rotation, 1.0f);
-            ImGui::DragFloat3("スケール", scale, 0.01f);
+            Transform* transform = m_selectedObject->getTransform();
+            Vector3 position = transform->getPosition();
+            Vector3 rotation = transform->getEulerAngles();
+            Vector3 scale = transform->getScale();
+            float positionData[3] = { position.x, position.y, position.z };
+            float rotationData[3] = { rotation.x, rotation.y, rotation.z };
+            float scaleData[3] = { scale.x, scale.y, scale.z };
+            if (ImGui::DragFloat3("位置", positionData, 0.1f))
+                transform->setPosition(Vector3(positionData[0], positionData[1], positionData[2]));
+            if (ImGui::DragFloat3("回転", rotationData, 0.01f))
+                transform->setEulerAngles(rotationData[0], rotationData[1], rotationData[2]);
+            if (ImGui::DragFloat3("スケール", scaleData, 0.01f))
+                transform->setScale(Vector3(scaleData[0], scaleData[1], scaleData[2]));
         }
-        if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen))
+        if (m_selectedObject != nullptr && ImGui::CollapsingHeader("GameObject", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            static bool visible = true;
-            static float color[4] = { 0.25f, 0.65f, 1.0f, 1.0f };
-            ImGui::Checkbox("表示", &visible);
-            ImGui::ColorEdit4("カラー", color);
+            bool active = m_selectedObject->isActiveSelf();
+            if (ImGui::Checkbox("Active", &active))
+                m_selectedObject->setActive(active);
+            int tag = static_cast<int>(m_selectedObject->getTag());
+            if (ImGui::InputInt("Tag", &tag) && tag >= 0)
+                m_selectedObject->setTag(static_cast<TagID>(tag));
+            int layer = static_cast<int>(m_selectedObject->getLayer());
+            if (ImGui::InputInt("Layer", &layer) && layer >= 0 && layer < 32)
+                m_selectedObject->setLayer(static_cast<LayerID>(layer));
         }
         ImGui::End();
     }

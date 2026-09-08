@@ -1,6 +1,5 @@
 ﻿#include "Pch.h"
 #include "Core\System\Window.h"
-#include "Core\GameObject\GameObjectManager.h"
 #include "Graphics\DirectX12\Renderer.h"
 
 namespace Engine
@@ -57,14 +56,6 @@ namespace Engine
         if (!Logger::instance().initialize())
             return false;
 
-        // メモリマネージャの初期化
-        if (!MemoryManager::instance().initialize())
-        {
-            // ロガーの終了処理を行うことで、初期化に失敗した原因をログに出力する
-            Logger::instance().finalize();
-            return false;
-        }
-
         // ジョブシステムの初期化
         JobSystem::instance().initialize();
 
@@ -78,9 +69,6 @@ namespace Engine
     {
         // ジョブシステムの終了処理を行うことで、ジョブの完了待ち中に発生したエラーをログに出力する
         JobSystem::instance().finalize();
-
-        // Windowの破棄後に呼び出すことで、未解放のメモリをリークとして検出する
-        MemoryManager::instance().finalize();
 
         // ロガーの終了処理を行うことで、未書き出しのログを出力する
         Logger::instance().finalize();
@@ -161,18 +149,6 @@ namespace Engine
 
             Window window(hwnd, renderer);
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&window));
-
-            GameObjectManager gameObjectManager;
-            const GameObjectHandle movingObject = gameObjectManager.Create("Mover");
-            auto* mover = gameObjectManager.Get(movingObject);
-            if (mover != nullptr)
-            {
-                mover->SetPosition(Vector3::Zero);
-                mover->SetVelocity(Vector3(1.0f, 0.0f, 0.0f));
-            }
-
-            gameObjectManager.Update(1.0f / 60.0f);
-
             result = window.run();
             renderer.finalize();
 

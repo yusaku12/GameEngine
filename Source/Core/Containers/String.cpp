@@ -145,14 +145,11 @@ namespace Engine
         if (newCapacity < capacity)
             newCapacity = capacity;
 
-        memorySetSource(nullptr, 0, MemoryTag::CONTAINER);
-        void* memory = memoryAllocate(newCapacity + 1, alignof(char));
-        GE_ASSERT_MSG(memory != nullptr, "文字列の確保に失敗しました ({} 文字)", newCapacity);
+        char* newData = new (std::nothrow) char[newCapacity + 1];
+        GE_ASSERT_MSG(newData != nullptr, "文字列の確保に失敗しました ({} 文字)", newCapacity);
 
-        if (memory == nullptr)
+        if (newData == nullptr)
             return;
-
-        char* newData = static_cast<char*>(memory);
         std::memcpy(newData, m_data, m_size + 1);
 
         releaseStorage();
@@ -269,7 +266,7 @@ namespace Engine
     void String::releaseStorage()
     {
         if (!isInline())
-            memoryFree(m_data);
+            delete[] m_data;
 
         m_data = m_inline;
         m_capacity = INLINE_CAPACITY;

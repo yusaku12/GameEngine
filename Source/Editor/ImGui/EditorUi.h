@@ -1,5 +1,9 @@
 ﻿#pragma once
 
+#include <memory>
+
+#include "Core\Scene\SceneManager.h"
+
 namespace Engine
 {
     class ShaderManager;
@@ -11,6 +15,8 @@ namespace Engine
     class EditorUi
     {
     public:
+        EditorUi();
+
         /**
          * @brief Editorのメニューバー、DockSpace、標準Panelを描画する
          * @param shaderManager ShaderManager オブジェクトのポインタ (省略可能)
@@ -23,6 +29,7 @@ namespace Engine
          * @brief Editorのメニューバーを描画する
          */
         void drawHierarchy();
+        void drawGameObjectNode(GameObject& object);
 
         /**
          * @brief EditorのDockSpaceを描画する
@@ -64,6 +71,8 @@ namespace Engine
         bool m_showGrid = true;           //!< Gridの表示フラグ
         bool m_showShaderManager = true;  //!< Shader Managerパネルの表示フラグ
         bool m_playing = false;           //!< Playボタンの状態
-        int m_selectedObject = 0;         //!< 選択中のオブジェクトのID
+        int m_gizmoMode = 0;              //!< Scene Viewの操作モード
+        SceneManager m_sceneManager;
+        GameObject* m_selectedObject = nullptr;
     };
 } // namespace Engine

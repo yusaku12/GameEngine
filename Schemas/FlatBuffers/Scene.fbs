@@ -1,0 +1,42 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+table ObjectGUID {
+    high:ulong;
+    low:ulong;
+}
+
+table Quaternion {
+    x:float;
+    y:float;
+    z:float;
+    w:float;
+}
+
+table TransformData {
+    position:Vec3;
+    rotation:Quaternion;
+    scale:Vec3;
+}
+
+table SceneObject {
+    guid:ObjectGUID;
+    parent_guid:ObjectGUID;
+    name:string;
+    active:bool = true;
+    tag:uint;
+    layer:ubyte;
+    transform:TransformData;
+    component_types:[string];
+}
+
+table SceneFile {
+    header:FileHeader;
+    guid:ObjectGUID;
+    name:string;
+    objects:[SceneObject];
+}
+
+root_type SceneFile;
+file_identifier "SCNE";

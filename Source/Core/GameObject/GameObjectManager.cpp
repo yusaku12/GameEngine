@@ -1,253 +1,190 @@
 #include "Pch.h"
-
 #include "Core\GameObject\GameObjectManager.h"
 
 namespace Engine
 {
-    GameObjectManager::GameObjectManager()
+    GameObject* GameObjectManager::create(const std::string& name)
     {
-        m_world.AddSystem<TransformSystem>();
-        m_world.AddSystem<MovementSystem>();
+        return create(name, ObjectGUID::generate());
     }
 
-    GameObjectManager::~GameObjectManager()
+    GameObject* GameObjectManager::create(const std::string& name, const ObjectGUID guid)
     {
-        Clear();
+        if (!guid.isValid() || m_guidIndex.contains(guid))
+            return nullptr;
+
+        auto object = std::unique_ptr<GameObject>(new GameObject(*this, guid, name));
+        GameObject* result = object.get();
+        m_guidIndex.emplace(guid, result);
+        m_objects.push_back(std::move(object));
+        return result;
     }
 
-    GameObjectHandle GameObjectManager::Create(const std::string& name)
+    void GameObjectManager::destroy(GameObject* object) noexcept
     {
-        GameObjectHandle handle = AllocateHandle();
-        if (m_slots.size() <= handle.index)
-            m_slots.resize(static_cast<size_t>(handle.index) + 1);
-
-        const Entity entity = m_world.CreateEntity();
-        auto object = std::make_unique<GameObject>(name, &m_world, entity);
-        object->SetHandle(handle);
-        object->AddComponent<TransformComponent>(object->GetTransform());
-        m_slots[handle.index].object = std::move(object);
-        m_slots[handle.index].active = true;
-        return handle;
-    }
-
-    void GameObjectManager::Destroy(GameObjectHandle handle)
-    {
-        if (!IsValid(handle))
+        if (object == nullptr || object->m_manager != this)
             return;
-
-        m_destroyQueue.push_back(handle);
+        if (std::find(m_destroyQueue.begin(), m_destroyQueue.end(), object) == m_destroyQueue.end())
+            m_destroyQueue.push_back(object);
     }
 
-    GameObject* GameObjectManager::Get(GameObjectHandle handle) noexcept
+    bool GameObjectManager::transferTo(GameObject* object, GameObjectManager& destination) noexcept
     {
-        if (!IsValid(handle))
-            return nullptr;
-
-        const auto index = static_cast<size_t>(handle.index);
-        if (index >= m_slots.size() || !m_slots[index].object)
-            return nullptr;
-        return m_slots[index].object.get();
-    }
-
-    const GameObject* GameObjectManager::Get(GameObjectHandle handle) const noexcept
-    {
-        if (!IsValid(handle))
-            return nullptr;
-
-        const auto index = static_cast<size_t>(handle.index);
-        if (index >= m_slots.size() || !m_slots[index].object)
-            return nullptr;
-        return m_slots[index].object.get();
-    }
-
-    bool GameObjectManager::IsValid(GameObjectHandle handle) const noexcept
-    {
-        const auto index = static_cast<size_t>(handle.index);
-        if (index >= m_slots.size())
+        if (object == nullptr || object->m_manager != this || object->m_parent != nullptr
+            || &destination == this || object->m_destroyRequested)
             return false;
-        if (!m_slots[index].object)
-            return false;
-        return m_slots[index].object->GetHandle().generation == handle.generation;
-    }
 
-    void GameObjectManager::SetParent(GameObjectHandle child, GameObjectHandle parent)
-    {
-        if (!IsValid(child) || child == parent)
-            return;
-
-        auto* childObject = Get(child);
-        if (childObject == nullptr)
-            return;
-
-        if (IsValid(parent))
+        std::vector<GameObject*> subtree;
+        const auto collect = [&subtree](GameObject* current, const auto& collectSelf) -> void
         {
-            auto* parentObject = Get(parent);
-            if (parentObject == nullptr)
-                return;
+            subtree.push_back(current);
+            for (GameObject* child : current->m_children)
+                collectSelf(child, collectSelf);
+        };
+        collect(object, collect);
 
-            for (const GameObject* ancestor = parentObject; ancestor != nullptr; ancestor = ancestor->m_parent)
+        for (GameObject* current : subtree)
+        {
+            const auto found = std::find_if(m_objects.begin(), m_objects.end(),
+                [current](const std::unique_ptr<GameObject>& candidate) { return candidate.get() == current; });
+            if (found == m_objects.end() || destination.m_guidIndex.contains(current->m_guid))
+                return false;
+        }
+
+        for (GameObject* current : subtree)
+        {
+            m_guidIndex.erase(current->m_guid);
+            const auto found = std::find_if(m_objects.begin(), m_objects.end(),
+                [current](const std::unique_ptr<GameObject>& candidate) { return candidate.get() == current; });
+            std::unique_ptr<GameObject> ownership = std::move(*found);
+            m_objects.erase(found);
+            current->m_manager = &destination;
+            destination.m_guidIndex.emplace(current->m_guid, current);
+            destination.m_objects.push_back(std::move(ownership));
+        }
+        return true;
+    }
+
+    void GameObjectManager::update(const float deltaTime) noexcept
+    {
+        for (const auto& object : m_objects)
+            object->initializeLifecycle();
+        for (const auto& object : m_objects)
+            object->startLifecycle();
+        for (const auto& object : m_objects)
+            object->updateLifecycle(deltaTime);
+    }
+
+    void GameObjectManager::fixedUpdate(const float fixedDeltaTime) noexcept
+    {
+        for (const auto& object : m_objects)
+            object->fixedUpdateLifecycle(fixedDeltaTime);
+    }
+
+    void GameObjectManager::lateUpdate(const float deltaTime) noexcept
+    {
+        for (const auto& object : m_objects)
+            object->lateUpdateLifecycle(deltaTime);
+    }
+
+    void GameObjectManager::processDestroyQueue() noexcept
+    {
+        std::vector<GameObject*> pending = std::move(m_destroyQueue);
+        for (std::size_t index = 0; index < pending.size(); ++index)
+        {
+            GameObject* object = pending[index];
+            if (object == nullptr || object->m_manager != this)
+                continue;
+            for (GameObject* child : object->m_children)
             {
-                if (ancestor->GetHandle() == child)
-                    return;
+                if (std::find(pending.begin(), pending.end(), child) == pending.end())
+                    pending.push_back(child);
             }
         }
 
-        if (childObject->m_parent != nullptr && childObject->m_parentHandle.IsValid())
+        for (GameObject* object : pending)
         {
-            auto* oldParent = childObject->m_parent;
-            if (oldParent != nullptr)
-                oldParent->RemoveChild(child);
-        }
-
-        childObject->m_parent = nullptr;
-        childObject->m_parentHandle = {};
-
-        if (!IsValid(parent))
-        {
-            return;
-        }
-
-        auto* parentObject = Get(parent);
-        childObject->m_parent = parentObject;
-        childObject->m_parentHandle = parent;
-        parentObject->AddChild(child);
-    }
-
-    void GameObjectManager::Update(float deltaTime)
-    {
-        ProcessDestroyQueue();
-        SyncTransformsToWorld();
-        m_world.Update(deltaTime);
-        SyncTransformsFromWorld();
-
-        for (auto& slot : m_slots)
-        {
-            if (slot.object && slot.active && !slot.object->IsDestroyed())
-                slot.object->Update(deltaTime);
+            if (object == nullptr || object->m_manager != this)
+                continue;
+            object->shutdownLifecycle();
+            m_guidIndex.erase(object->m_guid);
+            const auto found = std::find_if(m_objects.begin(), m_objects.end(),
+                [object](const std::unique_ptr<GameObject>& candidate) { return candidate.get() == object; });
+            if (found != m_objects.end())
+                m_objects.erase(found);
         }
     }
 
-    void GameObjectManager::FixedUpdate(float fixedDeltaTime)
+    void GameObjectManager::clear() noexcept
     {
-        for (auto& slot : m_slots)
-        {
-            if (slot.object && slot.active && !slot.object->IsDestroyed())
-                slot.object->FixedUpdate(fixedDeltaTime);
-        }
-    }
-
-    void GameObjectManager::LateUpdate(float deltaTime)
-    {
-        for (auto& slot : m_slots)
-        {
-            if (slot.object && slot.active && !slot.object->IsDestroyed())
-                slot.object->LateUpdate(deltaTime);
-        }
-    }
-
-    void GameObjectManager::Clear()
-    {
-        m_world.Clear();
-        for (auto& slot : m_slots)
-        {
-            if (slot.object)
-                slot.object->Destroy();
-            slot.object.reset();
-            slot.active = false;
-        }
-
-        m_slots.clear();
+        for (const auto& object : m_objects)
+            object->shutdownLifecycle();
         m_destroyQueue.clear();
-        m_nextIndex = 0;
+        m_guidIndex.clear();
+        m_objects.clear();
     }
 
-    GameObjectHandle GameObjectManager::AllocateHandle() noexcept
+    GameObject* GameObjectManager::find(const std::string& name) noexcept
     {
-        std::uint32_t index = m_nextIndex;
-        if (m_slots.size() > index && m_slots[index].object)
+        const auto found = std::find_if(m_objects.begin(), m_objects.end(),
+            [&name](const std::unique_ptr<GameObject>& object) {
+                return object->getParent() == nullptr && object->getName() == name;
+            });
+        if (found != m_objects.end())
+            return found->get();
+        for (const auto& object : m_objects)
         {
-            index = static_cast<std::uint32_t>(m_slots.size());
-            while (index < m_slots.size() && m_slots[index].object != nullptr)
-                ++index;
-        }
-
-        while (m_slots.size() <= index)
-            m_slots.emplace_back();
-
-        GameObjectHandle handle{};
-        handle.index = index;
-        handle.generation = (m_slots[index].object == nullptr) ? 1u : (m_slots[index].object->GetHandle().generation + 1u);
-        m_nextIndex = index + 1;
-        return handle;
-    }
-
-    void GameObjectManager::ProcessDestroyQueue()
-    {
-        while (!m_destroyQueue.empty())
-        {
-            const GameObjectHandle handle = m_destroyQueue.front();
-            m_destroyQueue.pop_front();
-            if (!IsValid(handle))
-                continue;
-
-            const auto index = static_cast<size_t>(handle.index);
-            if (index < m_slots.size() && m_slots[index].object)
+            if (object->getParent() == nullptr)
             {
-                auto* object = m_slots[index].object.get();
-
-                if (object->m_parent != nullptr && object->m_parentHandle.IsValid())
-                    object->m_parent->RemoveChild(handle);
-
-                for (const GameObjectHandle& childHandle : object->m_children)
-                {
-                    if (!IsValid(childHandle))
-                        continue;
-
-                    auto* childObject = Get(childHandle);
-                    if (childObject != nullptr)
-                    {
-                        childObject->m_parent = nullptr;
-                        childObject->m_parentHandle = {};
-                    }
-                }
-
-                object->m_children.clear();
-                object->Destroy();
-                m_slots[index].object.reset();
-                m_slots[index].active = false;
+                if (GameObject* result = object->find(name))
+                    return result;
             }
         }
+        return nullptr;
     }
 
-    void GameObjectManager::SyncTransformsToWorld()
+    const GameObject* GameObjectManager::find(const std::string& name) const noexcept
     {
-        for (auto& slot : m_slots)
-        {
-            if (!slot.object || !slot.active || slot.object->IsDestroyed())
-                continue;
-
-            const auto entity = slot.object->m_entity;
-            if (!m_world.IsValid(entity))
-                continue;
-
-            if (m_world.HasComponent<TransformComponent>(entity))
-                m_world.GetComponent<TransformComponent>(entity).transform = slot.object->GetTransform();
-        }
+        return const_cast<GameObjectManager*>(this)->find(name);
     }
 
-    void GameObjectManager::SyncTransformsFromWorld()
+    GameObject* GameObjectManager::find(const ObjectGUID& guid) noexcept
     {
-        for (auto& slot : m_slots)
+        const auto found = m_guidIndex.find(guid);
+        return found == m_guidIndex.end() ? nullptr : found->second;
+    }
+
+    const GameObject* GameObjectManager::find(const ObjectGUID& guid) const noexcept
+    {
+        const auto found = m_guidIndex.find(guid);
+        return found == m_guidIndex.end() ? nullptr : found->second;
+    }
+
+    GameObject* GameObjectManager::findWithTag(const TagID tag) noexcept
+    {
+        const auto objects = findGameObjectsWithTag(tag);
+        return objects.empty() ? nullptr : objects.front();
+    }
+
+    std::vector<GameObject*> GameObjectManager::findGameObjectsWithTag(const TagID tag) noexcept
+    {
+        std::vector<GameObject*> result;
+        for (const auto& object : m_objects)
         {
-            if (!slot.object || !slot.active || slot.object->IsDestroyed())
-                continue;
-
-            const auto entity = slot.object->m_entity;
-            if (!m_world.IsValid(entity))
-                continue;
-
-            if (m_world.HasComponent<TransformComponent>(entity))
-                slot.object->m_transform = m_world.GetComponent<TransformComponent>(entity).transform;
+            if (object->getTag() == tag)
+                result.push_back(object.get());
         }
+        return result;
+    }
+
+    std::vector<GameObject*> GameObjectManager::findGameObjectsInLayer(const LayerID layer) noexcept
+    {
+        std::vector<GameObject*> result;
+        for (const auto& object : m_objects)
+        {
+            if (object->getLayer() == layer)
+                result.push_back(object.get());
+        }
+        return result;
     }
 } // namespace Engine

@@ -70,6 +70,7 @@ namespace Engine
     void Transform::setEulerAngles(float pitch, float yaw, float roll)
     {
         m_rotation = Quaternion::CreateFromYawPitchRoll(yaw, pitch, roll);
+        markDirty();
     }
 
     Vector3 Transform::getEulerAngles() const
@@ -84,5 +85,6 @@ namespace Engine
             return;
 
         m_rotation = Quaternion::LookRotation(direction, up);
+        markDirty();
     }
 } // namespace Engine

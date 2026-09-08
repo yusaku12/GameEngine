@@ -2,234 +2,165 @@
 
 #include <memory>
 #include <string>
-#include <type_traits>
-#include <vector>
+#include <typeindex>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
-#include "Core\GameObject\GameObjectHandle.h"
 #include "Core\GameObject\Component.h"
-#include "Core\ECS\ECSWorld.h"
+#include "Core\GameObject\ComponentRegistry.h"
 #include "Core\Math\Transform.h"
+#include "Core\Object\ObjectGUID.h"
+#include "Core\Scene\LayerManager.h"
+#include "Core\Scene\TagManager.h"
 
 namespace Engine
 {
     class GameObjectManager;
 
     /**
-     * @brief UnityライクなGameObjectの高レベル表現。
+     * @brief Componentを所有し、親子階層を形成するゲームオブジェクト。
+     *
+     * @note ECS Entityではありません。Scene/Managerから所有される通常のオブジェクトです。
+     * @thread_safety Main thread only.
      */
     class GameObject
     {
     public:
-        GameObject();
-        explicit GameObject(std::string name);
-        GameObject(std::string name, ECSWorld* world, Entity entity);
         ~GameObject();
 
-        GE_DISABLE_COPY(GameObject);
-        GameObject(GameObject&&) noexcept = default;
-        GameObject& operator=(GameObject&&) noexcept = default;
+        GameObject(const GameObject&) = delete;
+        GameObject& operator=(const GameObject&) = delete;
+        GameObject(GameObject&&) = delete;
+        GameObject& operator=(GameObject&&) = delete;
 
-        [[nodiscard]] const std::string& GetName() const noexcept { return m_name; }
-        void SetName(std::string name) noexcept { m_name = std::move(name); }
+        [[nodiscard]] const ObjectGUID& getGUID() const noexcept { return m_guid; }
+        [[nodiscard]] const std::string& getName() const noexcept { return m_name; }
+        void setName(std::string name) { m_name = std::move(name); }
+        [[nodiscard]] TagID getTag() const noexcept { return m_tag; }
+        void setTag(TagID tag) noexcept { m_tag = tag; }
+        [[nodiscard]] LayerID getLayer() const noexcept { return m_layer; }
+        void setLayer(LayerID layer) noexcept { m_layer = layer; }
 
-        [[nodiscard]] bool IsActive() const noexcept { return m_active; }
-        void SetActive(bool active) noexcept { m_active = active; }
+        [[nodiscard]] bool isActiveSelf() const noexcept { return m_activeSelf; }
+        [[nodiscard]] bool isActiveInHierarchy() const noexcept;
+        void setActive(bool active) noexcept;
 
-        [[nodiscard]] Transform& GetTransform() noexcept
-        {
-            if (m_world != nullptr && m_world->IsValid(m_entity) && m_world->HasComponent<TransformComponent>(m_entity))
-                return m_world->GetComponent<TransformComponent>(m_entity).transform;
-            return m_transform;
-        }
+        [[nodiscard]] Transform* getTransform() noexcept { return &m_transform; }
+        [[nodiscard]] const Transform* getTransform() const noexcept { return &m_transform; }
+        [[nodiscard]] const Transform& getWorldTransform() const noexcept;
+        [[nodiscard]] Vector3 getWorldPosition() const noexcept;
+        [[nodiscard]] Quaternion getWorldRotation() const noexcept;
+        [[nodiscard]] Vector3 getWorldScale() const noexcept;
+        [[nodiscard]] Matrix getWorldMatrix() const noexcept;
 
-        [[nodiscard]] const Transform& GetTransform() const noexcept
-        {
-            if (m_world != nullptr && m_world->IsValid(m_entity) && m_world->HasComponent<TransformComponent>(m_entity))
-                return m_world->GetComponent<TransformComponent>(m_entity).transform;
-            return m_transform;
-        }
+        [[nodiscard]] GameObject* getParent() const noexcept { return m_parent; }
+        bool setParent(GameObject* parent, bool worldPositionStays = true) noexcept;
+        [[nodiscard]] std::size_t getChildCount() const noexcept { return m_children.size(); }
+        [[nodiscard]] GameObject* getChild(std::size_t index) noexcept;
+        [[nodiscard]] const GameObject* getChild(std::size_t index) const noexcept;
+        [[nodiscard]] GameObject* find(const std::string& name) noexcept;
 
-        [[nodiscard]] Transform GetWorldTransform() const
-        {
-            const Transform& localTransform = GetTransform();
-            if (m_parent == nullptr)
-                return localTransform;
-            return localTransform.combine(m_parent->GetWorldTransform());
-        }
-
-        void SetPosition(const Vector3& position)
-        {
-            if (m_world != nullptr && m_world->IsValid(m_entity) && m_world->HasComponent<TransformComponent>(m_entity))
-            {
-                m_world->GetComponent<TransformComponent>(m_entity).transform.setPosition(position);
-                return;
-            }
-            m_transform.setPosition(position);
-        }
-
-        [[nodiscard]] Vector3 GetPosition() const
-        {
-            return GetTransform().getPosition();
-        }
-
-        [[nodiscard]] Vector3 GetWorldPosition() const
-        {
-            return GetWorldTransform().getPosition();
-        }
-
-        void Translate(const Vector3& delta)
-        {
-            if (m_world != nullptr && m_world->IsValid(m_entity) && m_world->HasComponent<TransformComponent>(m_entity))
-            {
-                m_world->GetComponent<TransformComponent>(m_entity).transform.translate(delta);
-                return;
-            }
-            m_transform.translate(delta);
-        }
-
-        void SetVelocity(const Vector3& velocity)
-        {
-            if (m_world != nullptr && m_world->IsValid(m_entity) && m_world->HasComponent<VelocityComponent>(m_entity))
-            {
-                m_world->GetComponent<VelocityComponent>(m_entity).velocity = velocity;
-                return;
-            }
-
-            if (m_world != nullptr && m_world->IsValid(m_entity))
-            {
-                auto& component = AddComponent<VelocityComponent>(velocity);
-                component.velocity = velocity;
-            }
-        }
-
-        [[nodiscard]] Vector3 GetVelocity() const
-        {
-            if (m_world != nullptr && m_world->IsValid(m_entity) && m_world->HasComponent<VelocityComponent>(m_entity))
-                return m_world->GetComponent<VelocityComponent>(m_entity).velocity;
-            return Vector3::Zero;
-        }
-
-        void SetRotation(const Quaternion& rotation)
-        {
-            if (m_world != nullptr && m_world->IsValid(m_entity) && m_world->HasComponent<TransformComponent>(m_entity))
-            {
-                m_world->GetComponent<TransformComponent>(m_entity).transform.setRotation(rotation);
-                return;
-            }
-            m_transform.setRotation(rotation);
-        }
-
-        [[nodiscard]] Quaternion GetRotation() const
-        {
-            return GetTransform().getRotation();
-        }
-
-        [[nodiscard]] Quaternion GetWorldRotation() const
-        {
-            return GetWorldTransform().getRotation();
-        }
-
-        void SetScale(const Vector3& scale)
-        {
-            if (m_world != nullptr && m_world->IsValid(m_entity) && m_world->HasComponent<TransformComponent>(m_entity))
-            {
-                m_world->GetComponent<TransformComponent>(m_entity).transform.setScale(scale);
-                return;
-            }
-            m_transform.setScale(scale);
-        }
-
-        [[nodiscard]] Vector3 GetScale() const
-        {
-            return GetTransform().getScale();
-        }
-
-        [[nodiscard]] Vector3 GetWorldScale() const
-        {
-            return GetWorldTransform().getScale();
-        }
-
-        [[nodiscard]] GameObject* GetParent() noexcept { return m_parent; }
-        [[nodiscard]] const GameObject* GetParent() const noexcept { return m_parent; }
-        [[nodiscard]] GameObjectHandle GetParentHandle() const noexcept { return m_parentHandle; }
-        [[nodiscard]] const std::vector<GameObjectHandle>& GetChildren() const noexcept { return m_children; }
-
-        void SetParent(GameObjectHandle parent);
-        void AddChild(GameObjectHandle child);
-        void RemoveChild(GameObjectHandle child);
+        void destroy() noexcept;
 
         template <typename T, typename... Args>
-        T& AddComponent(Args&&... args)
+        T* addComponent(Args&&... args)
         {
             static_assert(std::is_base_of_v<Component, T>, "T must derive from Component");
-            if (m_world == nullptr || !m_world->IsValid(m_entity))
-                throw std::runtime_error("GameObject is not bound to a valid ECS entity.");
+            const ComponentTypeInfo* typeInfo = ComponentRegistry::instance().get<T>();
+            ComponentRegistry::instance().ensureRegistered<T>();
+            typeInfo = ComponentRegistry::instance().get<T>();
+            const auto type = std::type_index(typeid(T));
+            auto& components = m_components[type];
+            if (!typeInfo->allowMultiple && !components.empty())
+                return static_cast<T*>(components.front().get());
 
-            auto& component = m_world->AddComponent<T>(m_entity, std::forward<Args>(args)...);
-            component.m_gameObject = this;
-            component.Initialize();
-            return component;
+            auto component = std::make_unique<T>(std::forward<Args>(args)...);
+            T* result = component.get();
+            result->setGameObject(this);
+            result->setLifecycleEnabled(typeInfo->executeLifecycle);
+            components.push_back(std::move(component));
+            if (m_lifecycleAwake)
+            {
+                result->invokeAwake();
+                if (isActiveInHierarchy() && result->isEnabled())
+                    result->invokeEnable();
+            }
+            return result;
         }
 
         template <typename T>
-        T* GetComponent()
+        [[nodiscard]] T* getComponent() noexcept
         {
-            if (m_world == nullptr || !m_world->IsValid(m_entity) || !m_world->HasComponent<T>(m_entity))
-                return nullptr;
-            return &m_world->GetComponent<T>(m_entity);
+            static_assert(std::is_base_of_v<Component, T>, "T must derive from Component");
+            const auto found = m_components.find(std::type_index(typeid(T)));
+            return found == m_components.end() || found->second.empty()
+                ? nullptr : static_cast<T*>(found->second.front().get());
         }
 
         template <typename T>
-        const T* GetComponent() const
+        [[nodiscard]] const T* getComponent() const noexcept
         {
-            if (m_world == nullptr || !m_world->IsValid(m_entity) || !m_world->HasComponent<T>(m_entity))
-                return nullptr;
-            return &m_world->GetComponent<T>(m_entity);
+            static_assert(std::is_base_of_v<Component, T>, "T must derive from Component");
+            const auto found = m_components.find(std::type_index(typeid(T)));
+            return found == m_components.end() || found->second.empty()
+                ? nullptr : static_cast<const T*>(found->second.front().get());
         }
 
         template <typename T>
-        [[nodiscard]] bool HasComponent() const
-        {
-            return m_world != nullptr && m_world->IsValid(m_entity) && m_world->HasComponent<T>(m_entity);
-        }
+        [[nodiscard]] bool hasComponent() const noexcept { return getComponent<T>() != nullptr; }
 
         template <typename T>
-        void RemoveComponent()
+        bool removeComponent() noexcept
         {
-            if (m_world == nullptr || !m_world->IsValid(m_entity))
-                return;
-            if (!m_world->HasComponent<T>(m_entity))
-                return;
-
-            auto& component = m_world->GetComponent<T>(m_entity);
-            component.OnDestroy();
-            m_world->RemoveComponent<T>(m_entity);
+            static_assert(std::is_base_of_v<Component, T>, "T must derive from Component");
+            return m_components.erase(std::type_index(typeid(T))) != 0;
         }
 
-        void Update(float deltaTime);
-        void FixedUpdate(float fixedDeltaTime);
-        void LateUpdate(float deltaTime);
-
-        void Destroy();
-        [[nodiscard]] bool IsDestroyed() const noexcept { return m_destroyed; }
-
-        [[nodiscard]] GameObjectHandle GetHandle() const noexcept { return m_handle; }
-        void SetHandle(GameObjectHandle handle) noexcept { m_handle = handle; }
+        [[nodiscard]] std::vector<std::string_view> getComponentTypeNames() const
+        {
+            std::vector<std::string_view> result;
+            for (const auto& [type, components] : m_components)
+            {
+                if (!components.empty())
+                {
+                    if (const ComponentTypeInfo* info = ComponentRegistry::instance().get(type))
+                        result.push_back(info->name);
+                }
+            }
+            return result;
+        }
 
     private:
-        std::string m_name;
-        bool m_active = true;
-        bool m_destroyed = false;
-        GameObjectHandle m_handle{};
-        GameObjectHandle m_parentHandle{};
-        GameObject* m_parent = nullptr;
-        std::vector<GameObjectHandle> m_children;
-        Transform m_transform;
-        ECSWorld* m_world = nullptr;
-        Entity m_entity = entt::null;
-
         friend class GameObjectManager;
+
+        GameObject(GameObjectManager& manager, ObjectGUID guid, std::string name);
+        [[nodiscard]] bool isDescendantOf(const GameObject& object) const noexcept;
+        void detachFromParent() noexcept;
+        void updateWorldTransform() const noexcept;
+        void initializeLifecycle() noexcept;
+        void startLifecycle() noexcept;
+        void updateLifecycle(float deltaTime) noexcept;
+        void fixedUpdateLifecycle(float fixedDeltaTime) noexcept;
+        void lateUpdateLifecycle(float deltaTime) noexcept;
+        void shutdownLifecycle() noexcept;
+        void propagateActiveState(bool wasActive, bool isActive) noexcept;
+
+        GameObjectManager* m_manager = nullptr;
+        ObjectGUID m_guid;
+        std::string m_name;
+        TagID m_tag = 0;
+        LayerID m_layer = 0;
+        bool m_activeSelf = true;
+        bool m_destroyRequested = false;
+        Transform m_transform;
+        GameObject* m_parent = nullptr;
+        std::vector<GameObject*> m_children;
+        std::unordered_map<std::type_index, std::vector<std::unique_ptr<Component>>> m_components;
+        mutable Transform m_worldTransform;
+        mutable std::uint64_t m_cachedLocalRevision = 0;
+        mutable std::uint64_t m_cachedParentRevision = 0;
+        mutable std::uint64_t m_worldRevision = 0;
+        bool m_lifecycleAwake = false;
     };
 } // namespace Engine

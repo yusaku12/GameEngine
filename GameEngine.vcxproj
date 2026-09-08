@@ -21,6 +21,7 @@
   <ItemGroup>
     <ClInclude Include="Generated\FlatBuffers\Common_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Model_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\Scene_generated.h" />
     <ClInclude Include="Source\Assets\Model\Serialization\ModelSerializer.h" />
     <ClInclude Include="Source\Assets\Model\Import\AssimpModelImporter.h" />
     <ClInclude Include="Source\Assets\Model\Resource\AnimationResource.h" />
@@ -52,16 +53,24 @@
     <ClInclude Include="Source\Graphics\Texture\TextureTypes.h" />
     <ClInclude Include="Source\Graphics\Texture\Texture.h" />
     <ClInclude Include="Source\Graphics\Texture\TextureManager.h" />
+    <ClInclude Include="Source\Core\Object\ObjectGUID.h" />
     <ClInclude Include="Source\Core\GameObject\Component.h" />
+    <ClInclude Include="Source\Core\GameObject\ComponentRegistry.h" />
+    <ClInclude Include="Source\Core\GameObject\Behaviour.h" />
+    <ClInclude Include="Source\Core\Scene\Scene.h" />
+    <ClInclude Include="Source\Core\Scene\SceneManager.h" />
+    <ClInclude Include="Source\Core\Scene\TagManager.h" />
+    <ClInclude Include="Source\Core\Scene\LayerManager.h" />
+    <ClInclude Include="Source\Core\Scene\SceneSerializer.h" />
+    <ClInclude Include="Source\Core\Prefab\Prefab.h" />
+    <ClInclude Include="Source\Core\Prefab\PrefabInstance.h" />
+    <ClInclude Include="Source\Core\Reflection\Reflection.h" />
     <ClInclude Include="Source\Core\GameObject\GameObject.h" />
-    <ClInclude Include="Source\Core\GameObject\GameObjectHandle.h" />
     <ClInclude Include="Source\Core\GameObject\GameObjectManager.h" />
-    <ClInclude Include="Source\Core\ECS\ECSWorld.h" />
     <ClInclude Include="Source\Pch.h" />
     <ClInclude Include="Source\Core\Core.h" />
     <ClInclude Include="Source\Core\CoreDefines.h" />
     <ClInclude Include="Source\Core\Containers\Containers.h" />
-    <ClInclude Include="Source\Core\Containers\RingBuffer.h" />
     <ClInclude Include="Source\Core\Logging\Assert.h" />
     <ClInclude Include="Source\Core\Logging\Logger.h" />
     <ClInclude Include="Source\Core\Logging\Logging.h" />
@@ -73,18 +82,6 @@
     <ClInclude Include="Source\Core\Math\Random.h" />
     <ClInclude Include="Source\Core\Math\SimpleMath.h" />
     <ClInclude Include="Source\Core\Math\Transform.h" />
-    <ClInclude Include="Source\Core\Memory\FreeListAllocator.h" />
-    <ClInclude Include="Source\Core\Memory\IAllocator.h" />
-    <ClInclude Include="Source\Core\Memory\LinearAllocator.h" />
-    <ClInclude Include="Source\Core\Memory\Memory.h" />
-    <ClInclude Include="Source\Core\Memory\MemoryApi.h" />
-    <ClInclude Include="Source\Core\Memory\MemoryManager.h" />
-    <ClInclude Include="Source\Core\Memory\MemoryTracker.h" />
-    <ClInclude Include="Source\Core\Memory\MemoryTypes.h" />
-    <ClInclude Include="Source\Core\Memory\MemoryUtility.h" />
-    <ClInclude Include="Source\Core\Memory\PoolAllocator.h" />
-    <ClInclude Include="Source\Core\Memory\StackAllocator.h" />
-    <ClInclude Include="Source\Core\Memory\StlAllocator.h" />
     <ClInclude Include="Source\Core\Threading\ConcurrentQueue.h" />
     <ClInclude Include="Source\Core\Threading\JobSystem.h" />
     <ClInclude Include="Source\Core\Threading\SpinLock.h" />
@@ -116,9 +113,18 @@
     <ClCompile Include="Source\Graphics\DirectX12\SwapChain.cpp" />
     <ClCompile Include="Source\Graphics\Texture\Texture.cpp" />
     <ClCompile Include="Source\Graphics\Texture\TextureManager.cpp" />
+    <ClCompile Include="Source\Core\Object\ObjectGUID.cpp" />
     <ClCompile Include="Source\Core\GameObject\GameObject.cpp" />
+    <ClCompile Include="Source\Core\GameObject\ComponentRegistry.cpp" />
+    <ClCompile Include="Source\Core\Scene\Scene.cpp" />
+    <ClCompile Include="Source\Core\Scene\SceneManager.cpp" />
+    <ClCompile Include="Source\Core\Scene\TagManager.cpp" />
+    <ClCompile Include="Source\Core\Scene\LayerManager.cpp" />
+    <ClCompile Include="Source\Core\Scene\SceneSerializer.cpp" />
+    <ClCompile Include="Source\Core\Prefab\Prefab.cpp" />
+    <ClCompile Include="Source\Core\Prefab\PrefabInstance.cpp" />
+    <ClCompile Include="Source\Core\Reflection\Reflection.cpp" />
     <ClCompile Include="Source\Core\GameObject\GameObjectManager.cpp" />
-    <ClCompile Include="Source\Core\ECS\ECSWorld.cpp" />
     <ClCompile Include="Source\Core\Containers\String.cpp" />
     <ClCompile Include="Source\Core\Input\InputManager.cpp" />
     <ClCompile Include="Source\Main.cpp" />
@@ -127,13 +133,6 @@
     <ClCompile Include="Source\Core\Math\Random.cpp" />
     <ClCompile Include="Source\Core\Math\SimpleMath.cpp" />
     <ClCompile Include="Source\Core\Math\Transform.cpp" />
-    <ClCompile Include="Source\Core\Memory\FreeListAllocator.cpp" />
-    <ClCompile Include="Source\Core\Memory\LinearAllocator.cpp" />
-    <ClCompile Include="Source\Core\Memory\MemoryApi.cpp" />
-    <ClCompile Include="Source\Core\Memory\MemoryManager.cpp" />
-    <ClCompile Include="Source\Core\Memory\MemoryTracker.cpp" />
-    <ClCompile Include="Source\Core\Memory\PoolAllocator.cpp" />
-    <ClCompile Include="Source\Core\Memory\StackAllocator.cpp" />
     <ClCompile Include="Source\Core\Threading\JobSystem.cpp" />
     <ClCompile Include="Source\Core\Threading\ThreadUtility.cpp" />
     <ClCompile Include="Source\Pch.cpp">
@@ -305,7 +304,7 @@
       <Command>copy /Y "$(USERPROFILE)\.nuget\packages\assimp_native.redist\4.0.1\build\native\bin\x64\v141\Release\assimp-vc140-mt.dll" "$(TargetDir)assimp-vc140-mt.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
-  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h">
+  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
   </Target>
   <Target Name="CompileShaders" BeforeTargets="ClCompile" Condition="Exists('$(ProjectDir)Tools\DXC\dxc.exe')" Inputs="$(ProjectDir)Assets\Shaders\ColorTriangle.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1" Outputs="$(ProjectDir)Assets\Shaders\Compiled\ColorTriangle_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\ColorTriangle_psMain_ps.cso">
