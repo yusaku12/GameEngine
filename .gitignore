@@ -1,7 +1,8 @@
 .vs/
 GameEngine/
 x64/
-Data/
-imgui.ini
+Assets/
+Config/
+Log/
 *.vcxproj.user
 Generated/FlatBuffers/
