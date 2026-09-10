@@ -1,4 +1,4 @@
-#include "Pch.h"
+﻿#include "Pch.h"
 #include "Core\GameObject\GameObjectManager.h"
 
 namespace Engine
@@ -36,11 +36,11 @@ namespace Engine
 
         std::vector<GameObject*> subtree;
         const auto collect = [&subtree](GameObject* current, const auto& collectSelf) -> void
-        {
-            subtree.push_back(current);
-            for (GameObject* child : current->m_children)
-                collectSelf(child, collectSelf);
-        };
+            {
+                subtree.push_back(current);
+                for (GameObject* child : current->m_children)
+                    collectSelf(child, collectSelf);
+            };
         collect(object, collect);
 
         for (GameObject* current : subtree)

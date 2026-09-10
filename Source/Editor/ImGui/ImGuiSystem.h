@@ -91,9 +91,9 @@ namespace Engine
          */
         std::wstring findJapaneseFont(const std::wstring& requestedPath) const;
 
-        ImGuiContext* m_context = nullptr;    //<!< ImGuiのContext
-        DX12DescriptorHeap m_srvHeap;         //<!< ImGuiが使用するShader VisibleなSRV Descriptor Heap
-        bool m_initialized = false;           //<!< 初期化済みか
-        std::unique_ptr<EditorUi> m_editorUi; //<!< Editor UIの描画を担当するクラス
+        ImGuiContext* m_context = nullptr;    //!< ImGuiのContext
+        DX12DescriptorHeap m_srvHeap;         //!< ImGuiが使用するShader VisibleなSRV Descriptor Heap
+        bool m_initialized = false;           //!< 初期化済みか
+        std::unique_ptr<EditorUi> m_editorUi; //!< Editor UIの描画を担当するクラス
     };
 } // namespace Engine

@@ -50,12 +50,6 @@ namespace Engine
                 ImGui::MenuItem("終了");
                 ImGui::EndMenu();
             }
-            if (ImGui::BeginMenu("編集"))
-            {
-                ImGui::MenuItem("元に戻す", "Ctrl+Z");
-                ImGui::MenuItem("やり直す", "Ctrl+Y");
-                ImGui::EndMenu();
-            }
             if (ImGui::BeginMenu("Window"))
             {
                 ImGui::MenuItem("Shader Manager", nullptr, &m_showShaderManager);

@@ -17,11 +17,16 @@ namespace Engine
     class TagManager
     {
     public:
+        /** @brief TagManagerのシングルトンを取得する。 */
         static TagManager& instance() noexcept;
 
+        /** @brief Tag名を登録し、そのIDを返す。 */
         TagID registerTag(std::string name);
+        /** @brief Tag名からIDを検索する。 */
         [[nodiscard]] TagID find(std::string_view name) const noexcept;
+        /** @brief Tag IDから名前を取得する。 */
         [[nodiscard]] std::string_view getName(TagID tag) const noexcept;
+        /** @brief Tagが登録済みか判定する。 */
         [[nodiscard]] bool contains(TagID tag) const noexcept;
 
     private:

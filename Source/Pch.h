@@ -25,5 +25,6 @@
 #include <DirectXPackedVector.h>
 #include <fstream>
 #include <queue>
+#include <random>
 
 #include "Core\Core.h"

@@ -1,11 +1,4 @@
-#pragma once
-
-#include <memory>
-#include <string>
-#include <typeindex>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+﻿#pragma once
 
 #include "Core\GameObject\Component.h"
 #include "Core\GameObject\ComponentRegistry.h"
@@ -27,6 +20,7 @@ namespace Engine
     class GameObject
     {
     public:
+
         ~GameObject();
 
         GameObject(const GameObject&) = delete;

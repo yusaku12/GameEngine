@@ -17,11 +17,16 @@ namespace Engine
     class LayerManager
     {
     public:
+        /** @brief LayerManagerのシングルトンを取得する。 */
         static LayerManager& instance() noexcept;
 
+        /** @brief Layer名を登録し、そのIDを返す。 */
         LayerID registerLayer(std::string name);
+        /** @brief Layer名からIDを検索する。 */
         [[nodiscard]] LayerID find(std::string_view name) const noexcept;
+        /** @brief Layer IDから名前を取得する。 */
         [[nodiscard]] std::string_view getName(LayerID layer) const noexcept;
+        /** @brief Layerが登録済みか判定する。 */
         [[nodiscard]] bool contains(LayerID layer) const noexcept;
 
     private:

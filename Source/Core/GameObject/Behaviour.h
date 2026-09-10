@@ -6,7 +6,6 @@ namespace Engine
 {
     /**
      * @brief Lifecycleを利用するComponentの基底クラス。
-     *
      * @details 派生型はComponentRegistryへexecuteLifecycle=trueで登録してください。
      * @thread_safety Main thread only.
      */
