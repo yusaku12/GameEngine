@@ -34,27 +34,7 @@ namespace Engine
         /**
          * @brief EditorのDockSpaceを描画する
          */
-        void drawSceneView();
-
-        /**
-         * @brief EditorのDockSpaceを描画する
-         */
-        void drawGameView();
-
-        /**
-         * @brief EditorのDockSpaceを描画する
-         */
         void drawInspector();
-
-        /**
-         * @brief EditorのDockSpaceを描画する
-         */
-        void drawProject();
-
-        /**
-         * @brief EditorのDockSpaceを描画する
-         */
-        void drawConsole();
 
         /**
          * @brief Shader Debug Window / Hot Reload 管理パネルを描画する
@@ -62,16 +42,7 @@ namespace Engine
          */
         void drawShaderManager(ShaderManager* shaderManager);
 
-        /**
-         * @brief EditorのDockSpaceを描画する
-         */
-        void drawStatusBar();
-
-        bool m_showStats = true;          //!< Statsパネルの表示フラグ
-        bool m_showGrid = true;           //!< Gridの表示フラグ
         bool m_showShaderManager = true;  //!< Shader Managerパネルの表示フラグ
-        bool m_playing = false;           //!< Playボタンの状態
-        int m_gizmoMode = 0;              //!< Scene Viewの操作モード
         SceneManager m_sceneManager;
         GameObject* m_selectedObject = nullptr;
     };

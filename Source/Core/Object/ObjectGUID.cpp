@@ -1,4 +1,4 @@
-#include "Pch.h"
+﻿#include "Pch.h"
 #include "Core\Object\ObjectGUID.h"
 
 #include <random>

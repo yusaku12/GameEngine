@@ -1,4 +1,4 @@
-#include "Pch.h"
+﻿#include "Pch.h"
 #include <flatbuffers/flatbuffers.h>
 
 #include "Generated\FlatBuffers\Scene_generated.h"
@@ -88,7 +88,7 @@ namespace Engine::Serialization
             {
                 if (serialized == nullptr || serialized->guid() == nullptr || serialized->name() == nullptr)
                     return false;
-                    const Engine::ObjectGUID guid = readGuid(serialized->guid());
+                const Engine::ObjectGUID guid = readGuid(serialized->guid());
                 GameObject* object = scene.createGameObject(serialized->name()->str(), guid);
                 if (object == nullptr || objects.contains(guid))
                     return false;

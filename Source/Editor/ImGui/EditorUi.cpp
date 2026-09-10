@@ -58,8 +58,6 @@ namespace Engine
             }
             if (ImGui::BeginMenu("Window"))
             {
-                ImGui::MenuItem("統計", nullptr, &m_showStats);
-                ImGui::MenuItem("グリッド", nullptr, &m_showGrid);
                 ImGui::MenuItem("Shader Manager", nullptr, &m_showShaderManager);
                 ImGui::EndMenu();
             }
@@ -67,13 +65,8 @@ namespace Engine
         }
 
         drawHierarchy();
-        drawSceneView();
-        drawGameView();
         drawInspector();
-        drawProject();
-        drawConsole();
         drawShaderManager(shaderManager);
-        drawStatusBar();
     }
 
     void EditorUi::drawHierarchy()
@@ -118,53 +111,6 @@ namespace Engine
         ImGui::PopID();
     }
 
-    void EditorUi::drawSceneView()
-    {
-        if (!ImGui::Begin("Scene"))
-        {
-            ImGui::End();
-            return;
-        }
-        ImGui::TextUnformatted("Scene View");
-        ImGui::SameLine(ImGui::GetContentRegionAvail().x - 90.0f);
-        ImGui::SetNextItemWidth(80.0f);
-        ImGui::Combo("##Gizmo", &m_gizmoMode, "Move\0Rotate\0Scale\0");
-        ImGui::Separator();
-        const ImVec2 canvasSize = ImGui::GetContentRegionAvail();
-        const ImVec2 canvasPosition = ImGui::GetCursorScreenPos();
-        ImGui::InvisibleButton("SceneCanvas", canvasSize, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
-        const ImU32 canvasColor = ImGui::GetColorU32(ImGuiCol_FrameBg);
-        ImGui::GetWindowDrawList()->AddRectFilled(canvasPosition, ImVec2(canvasPosition.x + canvasSize.x, canvasPosition.y + canvasSize.y), canvasColor);
-        if (m_showGrid)
-        {
-            const ImU32 gridColor = ImGui::GetColorU32(ImGuiCol_Border);
-            for (float x = canvasPosition.x; x < canvasPosition.x + canvasSize.x; x += 32.0f)
-                ImGui::GetWindowDrawList()->AddLine(ImVec2(x, canvasPosition.y), ImVec2(x, canvasPosition.y + canvasSize.y), gridColor);
-            for (float y = canvasPosition.y; y < canvasPosition.y + canvasSize.y; y += 32.0f)
-                ImGui::GetWindowDrawList()->AddLine(ImVec2(canvasPosition.x, y), ImVec2(canvasPosition.x + canvasSize.x, y), gridColor);
-        }
-        ImGui::End();
-    }
-
-    void EditorUi::drawGameView()
-    {
-        if (!ImGui::Begin("Game"))
-        {
-            ImGui::End();
-            return;
-        }
-        ImGui::TextUnformatted("Game View");
-        ImGui::SameLine(ImGui::GetContentRegionAvail().x - 72.0f);
-        if (ImGui::Button(m_playing ? "停止" : "再生"))
-            m_playing = !m_playing;
-        ImGui::Separator();
-        const ImVec2 size = ImGui::GetContentRegionAvail();
-        ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetCursorScreenPos(), ImVec2(ImGui::GetCursorScreenPos().x + size.x, ImGui::GetCursorScreenPos().y + size.y), ImGui::GetColorU32(ImGuiCol_FrameBg));
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + size.y * 0.5f - ImGui::GetTextLineHeight() * 0.5f);
-        ImGui::Text("%s", m_playing ? "ゲーム実行中" : "ゲーム停止中");
-        ImGui::End();
-    }
-
     void EditorUi::drawInspector()
     {
         if (!ImGui::Begin("Inspector"))
@@ -202,32 +148,6 @@ namespace Engine
             if (ImGui::InputInt("Layer", &layer) && layer >= 0 && layer < 32)
                 m_selectedObject->setLayer(static_cast<LayerID>(layer));
         }
-        ImGui::End();
-    }
-
-    void EditorUi::drawProject()
-    {
-        if (!ImGui::Begin("Project"))
-        {
-            ImGui::End();
-            return;
-        }
-        ImGui::TextUnformatted("Assets");
-        ImGui::Separator();
-        ImGui::BulletText("Shaders/ColorTriangle.hlsl");
-        ImGui::BulletText("Scenes/Sample.scene");
-        ImGui::End();
-    }
-
-    void EditorUi::drawConsole()
-    {
-        if (!ImGui::Begin("Console"))
-        {
-            ImGui::End();
-            return;
-        }
-        ImGui::TextColored(ImVec4(0.35f, 0.85f, 0.55f, 1.0f), "[Info] Editor initialized");
-        ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.30f, 1.0f), "[Debug] DirectX 12 renderer ready");
         ImGui::End();
     }
 
@@ -340,21 +260,6 @@ namespace Engine
             ImGui::EndTable();
         }
 
-        ImGui::End();
-    }
-
-    void EditorUi::drawStatusBar()
-    {
-        ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->WorkPos.x, ImGui::GetMainViewport()->WorkPos.y + ImGui::GetMainViewport()->WorkSize.y - 24.0f));
-        ImGui::SetNextWindowSize(ImVec2(ImGui::GetMainViewport()->WorkSize.x, 24.0f));
-        if (!ImGui::Begin("##StatusBar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings))
-        {
-            ImGui::End();
-            return;
-        }
-        ImGui::TextUnformatted(m_playing ? "再生中" : "編集モード");
-        ImGui::SameLine(ImGui::GetWindowWidth() - 150.0f);
-        ImGui::TextUnformatted("DirectX 12 | Ready");
         ImGui::End();
     }
 } // namespace Engine

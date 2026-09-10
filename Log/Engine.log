@@ -1,0 +1,5 @@
+[2026-09-10 23:15:03.997] [info    ] [12700] [Job] ジョブシステムを初期化しました (ワーカー 11 スレッド) (JobSystem.cpp:66)
+[2026-09-10 23:15:04.592] [info    ] [12700] [DX12] Highest supported Shader Model: 0x67 (Device.cpp:170)
+[2026-09-10 23:15:04.592] [info    ] [12700] [DX12] DirectX 12 デバイスを初期化しました (Device.cpp:36)
+[2026-09-10 23:15:04.840] [debug   ] [12700] [Time] [TimeManager] Initialized (TimeManager.cpp:37)
+[2026-09-10 23:15:31.517] [info    ] [12700] [Job] ジョブシステムを終了しました (JobSystem.cpp:88)
