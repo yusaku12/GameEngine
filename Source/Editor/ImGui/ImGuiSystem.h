@@ -17,6 +17,7 @@ namespace Engine
     class ImGuiSystem
     {
     public:
+
         ImGuiSystem();
         ~ImGuiSystem();
 

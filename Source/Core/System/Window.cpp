@@ -1,9 +1,34 @@
 ﻿#include "Pch.h"
 #include "Window.h"
+#include "Core\Scene\SceneManager.h"
+#include "Core\Threading\ThreadDebugStats.h"
 #include "Graphics\DirectX12\Renderer.h"
 
 namespace Engine
 {
+    namespace
+    {
+        class ScopedThreadRole
+        {
+        public:
+            explicit ScopedThreadRole(const ThreadRole role)
+                : m_previousRole(getCurrentThreadContext().role)
+            {
+                setCurrentThreadRole(role);
+            }
+
+            ~ScopedThreadRole()
+            {
+                setCurrentThreadRole(m_previousRole);
+            }
+
+            GE_DISABLE_COPY_AND_MOVE(ScopedThreadRole);
+
+        private:
+            ThreadRole m_previousRole;
+        };
+    }
+
     Window::Window(HWND hwnd, DX12Renderer& renderer)
         : m_hwnd(hwnd)
         , m_renderer(renderer)
@@ -18,11 +43,17 @@ namespace Engine
 
     void Window::update()
     {
-        // フレームの開始処理
-        TimeManager::instance().update();
+        TimeManager& time = TimeManager::instance();
+        SceneManager& sceneManager = SceneManager::instance();
 
-        // 入力状態を更新する
-        InputManager::instance().update();
+        sceneManager.update(time.deltaTime());
+        while (time.hasFixedUpdate())
+        {
+            sceneManager.fixedUpdate(time.fixedDeltaTime());
+            time.consumeFixedUpdate();
+        }
+        sceneManager.lateUpdate(time.deltaTime());
+        sceneManager.processDestroyQueue();
     }
 
     void Window::render()
@@ -44,9 +75,7 @@ namespace Engine
             }
             else
             {
-                // 更新、描画
-                update();
-                render();
+                runThreadedFrame();
                 updateTitleBar();
             }
         }
@@ -96,6 +125,45 @@ namespace Engine
         }
 
         return 0;
+    }
+
+    void Window::updateFrameInput()
+    {
+        TimeManager::instance().update();
+        InputManager::instance().update();
+    }
+
+    void Window::runThreadedFrame()
+    {
+        updateFrameInput();
+
+        JobCounter frameCounter;
+        JobSystem& jobSystem = JobSystem::instance();
+        jobSystem.schedule([this] { runGameUpdateJob(); }, &frameCounter);
+        jobSystem.schedule([this] { runRenderUpdateJob(); }, &frameCounter);
+
+        waitForFrameJobs(frameCounter);
+        TimeManager::instance().endFrame();
+    }
+
+    void Window::runGameUpdateJob()
+    {
+        ScopedThreadRole role(ThreadRole::GameUpdate);
+        ThreadDebugStats::ScopedTask debugTask(ThreadDebugTask::GameUpdate);
+        update();
+    }
+
+    void Window::runRenderUpdateJob()
+    {
+        ScopedThreadRole role(ThreadRole::Render);
+        ThreadDebugStats::ScopedTask debugTask(ThreadDebugTask::RenderUpdate);
+        render();
+    }
+
+    void Window::waitForFrameJobs(const JobCounter& counter) const
+    {
+        while (!counter.isComplete())
+            yieldThread();
     }
 
     void Window::updateTitleBar()

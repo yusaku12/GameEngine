@@ -12,6 +12,7 @@ namespace Engine
     class Behaviour : public Component
     {
     protected:
+
         using Component::onAwake;
         using Component::onEnable;
         using Component::onStart;
@@ -20,5 +21,6 @@ namespace Engine
         using Component::onLateUpdate;
         using Component::onDisable;
         using Component::onDestroy;
+        using Component::onImGui;
     };
 } // namespace Engine

@@ -6,3 +6,4 @@
 #include "Core\Threading\ThreadUtility.h"
 #include "Core\Threading\ConcurrentQueue.h"
 #include "Core\Threading\JobSystem.h"
+#include "Core\Threading\ThreadDebugStats.h"

@@ -24,6 +24,7 @@ namespace Engine
          * @return 生成されたGameObjectのポインタ。
          */
         GameObject* create(const std::string& name = "GameObject");
+        /** @brief GUIDを指定してGameObjectを生成する。 */
         GameObject* create(const std::string& name, ObjectGUID guid);
 
         /**
@@ -77,6 +78,7 @@ namespace Engine
          * @return 見つかったGameObjectのポインタ。見つからなかった場合はnullptr。
          */
         GameObject* find(const std::string& name) noexcept;
+        /** @brief 名前でGameObjectをconst検索する。 */
         const GameObject* find(const std::string& name) const noexcept;
 
         /**
@@ -85,6 +87,7 @@ namespace Engine
          * @return 見つかったGameObjectのポインタ。見つからなかった場合はnullptr。
          */
         GameObject* find(const ObjectGUID& guid) noexcept;
+        /** @brief GUIDでGameObjectをconst検索する。 */
         const GameObject* find(const ObjectGUID& guid) const noexcept;
 
         /**

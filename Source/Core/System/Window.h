@@ -2,6 +2,7 @@
 
 namespace Engine
 {
+    class JobCounter;
     class DX12Renderer;
 
     /**
@@ -57,6 +58,12 @@ namespace Engine
         /**
          * @brief ウィンドウのタイトルバーを更新する
          */
+        void updateFrameInput();
+        void runThreadedFrame();
+        void runGameUpdateJob();
+        void runRenderUpdateJob();
+        void waitForFrameJobs(const JobCounter& counter) const;
+
         void updateTitleBar();
 
         static constexpr float TITLE_BAR_INTERVAL = 0.5f; //!< タイトルバーを更新する間隔（秒）

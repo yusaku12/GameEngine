@@ -119,16 +119,19 @@ namespace Engine::Serialization
             channels.reserve(animation.channels.size());
             for (const Engine::AnimationChannel& channel : animation.channels) {
                 std::vector<flatbuffers::Offset<PositionKey>> positions;
+                positions.reserve(channel.positions.size());
                 for (const AnimationKeyPosition& key : channel.positions) {
                     const Vec3 value = toFlat(key.value);
                     positions.push_back(CreatePositionKey(builder, &value, key.time));
                 }
                 std::vector<flatbuffers::Offset<RotationKey>> rotations;
+                rotations.reserve(channel.rotations.size());
                 for (const AnimationKeyRotation& key : channel.rotations) {
                     const Vec4 value = toFlat(Vector4(key.value.x, key.value.y, key.value.z, key.value.w));
                     rotations.push_back(CreateRotationKey(builder, &value, key.time));
                 }
                 std::vector<flatbuffers::Offset<ScaleKey>> scales;
+                scales.reserve(channel.scales.size());
                 for (const AnimationKeyScale& key : channel.scales) {
                     const Vec3 value = toFlat(key.value);
                     scales.push_back(CreateScaleKey(builder, &value, key.time));
@@ -270,15 +273,19 @@ namespace Engine::Serialization
         flatbuffers::FlatBufferBuilder builder(1024);
         const auto header = CreateFileHeader(builder, CURRENT_SCHEMA_VERSION, CURRENT_MODEL_VERSION, 0);
         std::vector<flatbuffers::Offset<Mesh>> meshes;
+        meshes.reserve(model.meshes.size());
         for (const MeshResource& mesh : model.meshes)
             meshes.push_back(createMesh(builder, mesh));
         std::vector<flatbuffers::Offset<Material>> materials;
+        materials.reserve(model.materials.size());
         for (const MaterialResource& material : model.materials)
             materials.push_back(createMaterial(builder, material));
         std::vector<flatbuffers::Offset<Animation>> animations;
+        animations.reserve(model.animations.size());
         for (const AnimationResource& animation : model.animations)
             animations.push_back(createAnimation(builder, animation));
         std::vector<flatbuffers::Offset<ModelNode>> nodes;
+        nodes.reserve(model.nodes.size());
         for (const ::Engine::ModelNode& node : model.nodes)
             nodes.push_back(createNode(builder, node));
 

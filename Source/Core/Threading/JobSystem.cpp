@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Core\Threading\JobSystem.h"
+#include "Core\Threading\ThreadDebugStats.h"
 
 namespace Engine
 {
@@ -59,6 +60,7 @@ namespace Engine
 
         m_running.store(true, std::memory_order_release);
         m_workers.reserve(workerCount);
+        ThreadDebugStats::instance().setWorkerCount(workerCount);
 
         for (uint32_t index = 0; index < workerCount; ++index)
             m_workers.emplace_back([this, index] { workerLoop(index); });
@@ -84,6 +86,7 @@ namespace Engine
 
         m_workers.clear();
         m_jobs.clear();
+    ThreadDebugStats::instance().setWorkerCount(0);
 
         LOG_INFO("[Job] ジョブシステムを終了しました");
     }
@@ -253,6 +256,7 @@ namespace Engine
     void JobSystem::workerLoop(uint32_t index)
     {
         s_isWorkerThread = true;
+        setCurrentThreadRole(ThreadRole::Worker);
         setCurrentThreadName(spdlog::fmt_lib::format("EngineWorker{}", index).c_str());
 
         for (;;)
@@ -293,6 +297,8 @@ namespace Engine
 
     void JobSystem::executeJob(Job& job)
     {
+        ThreadDebugStats::ScopedTask debugTask(ThreadDebugTask::JobExecution);
+
         if (job.dependency != nullptr)
             job.dependency->wait();
 

@@ -1,4 +1,4 @@
-#include "Pch.h"
+﻿#include "Pch.h"
 #include "Core\Prefab\PrefabInstance.h"
 
 namespace Engine
@@ -7,9 +7,14 @@ namespace Engine
     {
         if (!isValid())
             return false;
+
+        GameObject* replacement = m_prefab->instantiate(scene);
+        if (replacement == nullptr)
+            return false;
+
         m_root->destroy();
         scene.processDestroyQueue();
-        m_root = m_prefab->instantiate(scene);
-        return m_root != nullptr;
+        m_root = replacement;
+        return true;
     }
 } // namespace Engine

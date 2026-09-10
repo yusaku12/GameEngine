@@ -169,6 +169,7 @@ namespace Engine
     std::vector<GameObject*> GameObjectManager::findGameObjectsWithTag(const TagID tag) noexcept
     {
         std::vector<GameObject*> result;
+        result.reserve(m_objects.size());
         for (const auto& object : m_objects)
         {
             if (object->getTag() == tag)
@@ -180,6 +181,7 @@ namespace Engine
     std::vector<GameObject*> GameObjectManager::findGameObjectsInLayer(const LayerID layer) noexcept
     {
         std::vector<GameObject*> result;
+        result.reserve(m_objects.size());
         for (const auto& object : m_objects)
         {
             if (object->getLayer() == layer)

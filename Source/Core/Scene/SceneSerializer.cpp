@@ -1,6 +1,5 @@
 ﻿#include "Pch.h"
 #include <flatbuffers/flatbuffers.h>
-
 #include "Generated\FlatBuffers\Scene_generated.h"
 #include "Core\Logging\Logging.h"
 #include "Core\Scene\SceneSerializer.h"
@@ -50,7 +49,9 @@ namespace Engine::Serialization
         for (const auto& object : scene.getGameObjects())
         {
             std::vector<flatbuffers::Offset<flatbuffers::String>> componentTypes;
-            for (const std::string_view typeName : object->getComponentTypeNames())
+            const std::vector<std::string_view> typeNames = object->getComponentTypeNames();
+            componentTypes.reserve(typeNames.size());
+            for (const std::string_view typeName : typeNames)
                 componentTypes.push_back(builder.CreateString(typeName));
             objects.push_back(CreateSceneObject(builder, createGuid(builder, object->getGUID()),
                 object->getParent() == nullptr ? 0 : createGuid(builder, object->getParent()->getGUID()),

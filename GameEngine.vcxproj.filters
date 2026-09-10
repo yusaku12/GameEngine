@@ -19,6 +19,7 @@
     <ClCompile Include="Source\Core\Math\SimpleMath.cpp" />
     <ClCompile Include="Source\Core\Math\Transform.cpp" />
     <ClCompile Include="Source\Core\Threading\JobSystem.cpp" />
+    <ClCompile Include="Source\Core\Threading\ThreadDebugStats.cpp" />
     <ClCompile Include="Source\Core\Threading\ThreadUtility.cpp" />
     <ClCompile Include="Source\Pch.cpp" />
     <ClCompile Include="Source\Core\Time\HighResolutionTimer.cpp" />
@@ -36,6 +37,7 @@
     <ClCompile Include="Source\Graphics\Texture\TextureManager.cpp" />
     <ClCompile Include="Source\Core\Object\ObjectGUID.cpp" />
     <ClCompile Include="Source\Core\GameObject\GameObject.cpp" />
+    <ClCompile Include="Source\Core\GameObject\Component\TransformComponent.cpp" />
     <ClCompile Include="Source\Core\GameObject\ComponentRegistry.cpp" />
     <ClCompile Include="Source\Core\Scene\Scene.cpp" />
     <ClCompile Include="Source\Core\Scene\SceneManager.cpp" />
@@ -73,6 +75,7 @@
     <ClInclude Include="Source\Core\Threading\ConcurrentQueue.h" />
     <ClInclude Include="Source\Core\Threading\JobSystem.h" />
     <ClInclude Include="Source\Core\Threading\SpinLock.h" />
+    <ClInclude Include="Source\Core\Threading\ThreadDebugStats.h" />
     <ClInclude Include="Source\Core\Threading\Threading.h" />
     <ClInclude Include="Source\Core\Threading\ThreadUtility.h" />
     <ClInclude Include="Source\Core\Time\HighResolutionTimer.h" />
@@ -117,6 +120,7 @@
     <ClInclude Include="Source\Graphics\Texture\TextureManager.h" />
     <ClInclude Include="Source\Core\Object\ObjectGUID.h" />
     <ClInclude Include="Source\Core\GameObject\Component.h" />
+    <ClInclude Include="Source\Core\GameObject\Component\TransformComponent.h" />
     <ClInclude Include="Source\Core\GameObject\ComponentRegistry.h" />
     <ClInclude Include="Source\Core\GameObject\Behaviour.h" />
     <ClInclude Include="Source\Core\Scene\Scene.h" />

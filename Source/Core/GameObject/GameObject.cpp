@@ -7,6 +7,8 @@ namespace Engine
     GameObject::GameObject(GameObjectManager& manager, const ObjectGUID guid, std::string name)
         : m_manager(&manager), m_guid(guid), m_name(std::move(name))
     {
+        ComponentRegistry::instance().registerType<TransformComponent>("Transform", false, true, false);
+        m_transformComponent = addComponent<TransformComponent>();
     }
 
     GameObject::~GameObject()
@@ -25,6 +27,16 @@ namespace Engine
     bool GameObject::isActiveInHierarchy() const noexcept
     {
         return m_activeSelf && (m_parent == nullptr || m_parent->isActiveInHierarchy());
+    }
+
+    Transform* GameObject::getTransform() noexcept
+    {
+        return m_transformComponent == nullptr ? nullptr : &m_transformComponent->localTransform();
+    }
+
+    const Transform* GameObject::getTransform() const noexcept
+    {
+        return m_transformComponent == nullptr ? nullptr : &m_transformComponent->localTransform();
     }
 
     void GameObject::setActive(const bool active) noexcept
@@ -69,6 +81,10 @@ namespace Engine
         if (m_parent == parent)
             return true;
 
+        Transform* localTransform = getTransform();
+        if (localTransform == nullptr)
+            return false;
+
         const Transform worldTransform = getWorldTransform();
         detachFromParent();
         m_parent = parent;
@@ -76,10 +92,10 @@ namespace Engine
             m_parent->m_children.push_back(this);
         if (worldPositionStays)
         {
-            m_transform = m_parent == nullptr
+            *localTransform = m_parent == nullptr
                 ? worldTransform
                 : Transform::fromMatrix(worldTransform.toMatrix() * m_parent->getWorldMatrix().Invert());
-            m_transform.markDirty();
+            localTransform->markDirty();
         }
         m_cachedLocalRevision = 0;
         return true;
@@ -253,15 +269,18 @@ namespace Engine
 
     void GameObject::updateWorldTransform() const noexcept
     {
+        const Transform* localTransform = getTransform();
+        if (localTransform == nullptr)
+            return;
         const std::uint64_t parentRevision = m_parent == nullptr ? 0 : m_parent->getWorldTransform().revision();
-        if (m_cachedLocalRevision == m_transform.revision() && m_cachedParentRevision == parentRevision)
+        if (m_cachedLocalRevision == localTransform->revision() && m_cachedParentRevision == parentRevision)
             return;
 
         m_worldTransform = m_parent == nullptr
-            ? m_transform
-            : m_transform.combine(m_parent->getWorldTransform());
+            ? *localTransform
+            : localTransform->combine(m_parent->getWorldTransform());
         m_worldTransform.markDirty();
-        m_cachedLocalRevision = m_transform.revision();
+        m_cachedLocalRevision = localTransform->revision();
         m_cachedParentRevision = parentRevision;
         ++m_worldRevision;
     }

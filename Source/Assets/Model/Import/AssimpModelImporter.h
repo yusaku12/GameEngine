@@ -56,11 +56,10 @@ namespace Engine
         /**
          * @brief AssimpのメッシュをModelResourceへ変換する。
          * @param mesh Assimpのメッシュ
-         * @param scene Assimpのシーン
          * @param model 変換先のModelResource
          * @return 変換後のメッシュインデックス
          */
-        std::uint32_t processMesh(const aiMesh* mesh, const aiScene* scene, ModelResource& model) const;
+        std::uint32_t processMesh(const aiMesh* mesh, ModelResource& model) const;
 
         /**
          * @brief AssimpのマテリアルをModelResourceへ変換する。

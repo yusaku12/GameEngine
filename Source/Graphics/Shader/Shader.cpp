@@ -26,11 +26,12 @@ namespace Engine
         const std::streamsize size = file.tellg();
         if (size <= 0)
             return false;
-        m_bytecode.resize(static_cast<std::size_t>(size));
+        std::vector<std::uint8_t> bytecode(static_cast<std::size_t>(size));
         file.seekg(0);
-        file.read(reinterpret_cast<char*>(m_bytecode.data()), size);
+        file.read(reinterpret_cast<char*>(bytecode.data()), size);
         if (!file)
             return false;
+        m_bytecode = std::move(bytecode);
         return true;
     }
 

@@ -1,14 +1,29 @@
 ﻿#include "Pch.h"
 #include "Editor\ImGui\EditorUi.h"
+#include "Core\Threading\ThreadDebugStats.h"
 #include "Graphics\Shader\ShaderManager.h"
 
 #include <imgui.h>
 
 namespace Engine
 {
+    namespace
+    {
+        const char* threadDebugTaskName(const ThreadDebugTask task)
+        {
+            switch (task)
+            {
+            case ThreadDebugTask::GameUpdate: return "Game Update";
+            case ThreadDebugTask::RenderUpdate: return "Render Update";
+            case ThreadDebugTask::JobExecution: return "Job Execution";
+            default: return "Unknown";
+            }
+        }
+    }
+
     EditorUi::EditorUi()
     {
-        Scene* scene = m_sceneManager.createScene("EditorScene");
+        Scene* scene = SceneManager::instance().createScene("EditorScene");
         if (scene != nullptr)
         {
             GameObject* camera = scene->createGameObject("Main Camera");
@@ -53,6 +68,7 @@ namespace Engine
             if (ImGui::BeginMenu("Window"))
             {
                 ImGui::MenuItem("Shader Manager", nullptr, &m_showShaderManager);
+                ImGui::MenuItem("Thread Debug", nullptr, &m_showThreadDebug);
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
@@ -61,6 +77,7 @@ namespace Engine
         drawHierarchy();
         drawInspector();
         drawShaderManager(shaderManager);
+        drawThreadDebug();
     }
 
     void EditorUi::drawHierarchy()
@@ -72,7 +89,7 @@ namespace Engine
         }
         ImGui::TextUnformatted("シーン");
         ImGui::Separator();
-        Scene* scene = m_sceneManager.getActiveScene();
+        Scene* scene = SceneManager::instance().getActiveScene();
         if (scene != nullptr)
         {
             for (const auto& object : scene->getGameObjects())
@@ -114,22 +131,6 @@ namespace Engine
         }
         ImGui::Text("選択中: %s", m_selectedObject == nullptr ? "なし" : m_selectedObject->getName().c_str());
         ImGui::Separator();
-        if (m_selectedObject != nullptr && ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
-        {
-            Transform* transform = m_selectedObject->getTransform();
-            Vector3 position = transform->getPosition();
-            Vector3 rotation = transform->getEulerAngles();
-            Vector3 scale = transform->getScale();
-            float positionData[3] = { position.x, position.y, position.z };
-            float rotationData[3] = { rotation.x, rotation.y, rotation.z };
-            float scaleData[3] = { scale.x, scale.y, scale.z };
-            if (ImGui::DragFloat3("位置", positionData, 0.1f))
-                transform->setPosition(Vector3(positionData[0], positionData[1], positionData[2]));
-            if (ImGui::DragFloat3("回転", rotationData, 0.01f))
-                transform->setEulerAngles(rotationData[0], rotationData[1], rotationData[2]);
-            if (ImGui::DragFloat3("スケール", scaleData, 0.01f))
-                transform->setScale(Vector3(scaleData[0], scaleData[1], scaleData[2]));
-        }
         if (m_selectedObject != nullptr && ImGui::CollapsingHeader("GameObject", ImGuiTreeNodeFlags_DefaultOpen))
         {
             bool active = m_selectedObject->isActiveSelf();
@@ -141,6 +142,15 @@ namespace Engine
             int layer = static_cast<int>(m_selectedObject->getLayer());
             if (ImGui::InputInt("Layer", &layer) && layer >= 0 && layer < 32)
                 m_selectedObject->setLayer(static_cast<LayerID>(layer));
+        }
+        if (m_selectedObject != nullptr)
+        {
+            m_selectedObject->forEachComponent([](Component& component, const std::type_index& type)
+            {
+                const ComponentTypeInfo* typeInfo = ComponentRegistry::instance().get(type);
+                if (typeInfo != nullptr && ImGui::CollapsingHeader(typeInfo->name.data(), ImGuiTreeNodeFlags_DefaultOpen))
+                    component.drawImGui();
+            });
         }
         ImGui::End();
     }
@@ -251,6 +261,64 @@ namespace Engine
                 }
                 ImGui::PopID();
             }
+            ImGui::EndTable();
+        }
+
+        ImGui::End();
+    }
+
+    void EditorUi::drawThreadDebug()
+    {
+        if (!m_showThreadDebug)
+            return;
+
+        if (!ImGui::Begin("Thread Debug", &m_showThreadDebug))
+        {
+            ImGui::End();
+            return;
+        }
+
+        const ThreadDebugSnapshot snapshot = ThreadDebugStats::instance().capture();
+        ImGui::Text("Worker Threads: %u / Hardware Threads: %u", snapshot.workerCount, snapshot.hardwareThreadCount);
+        ImGui::Separator();
+
+        if (ImGui::BeginTable("ThreadDebugTable", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
+        {
+            ImGui::TableSetupColumn("Task", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+            ImGui::TableSetupColumn("Running", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+            ImGui::TableSetupColumn("Runs", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+            ImGui::TableSetupColumn("Last Thread", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+            ImGui::TableSetupColumn("Last ms", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+            ImGui::TableSetupColumn("Avg ms", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+            ImGui::TableHeadersRow();
+
+            for (uint32_t taskValue = 0; taskValue < static_cast<uint32_t>(ThreadDebugTask::Count); ++taskValue)
+            {
+                const ThreadDebugTask task = static_cast<ThreadDebugTask>(taskValue);
+                const ThreadDebugTaskSnapshot& taskSnapshot = snapshot.tasks[taskValue];
+                const double lastMilliseconds = static_cast<double>(taskSnapshot.lastDurationMicroseconds) / 1000.0;
+                const double averageMilliseconds = taskSnapshot.totalRuns == 0
+                    ? 0.0
+                    : static_cast<double>(taskSnapshot.totalDurationMicroseconds) / static_cast<double>(taskSnapshot.totalRuns) / 1000.0;
+
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextUnformatted(threadDebugTaskName(task));
+                ImGui::TableSetColumnIndex(1);
+                if (taskSnapshot.activeCount > 0)
+                    ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.3f, 1.0f), "%u", taskSnapshot.activeCount);
+                else
+                    ImGui::TextUnformatted("0");
+                ImGui::TableSetColumnIndex(2);
+                ImGui::Text("%llu", static_cast<unsigned long long>(taskSnapshot.totalRuns));
+                ImGui::TableSetColumnIndex(3);
+                ImGui::Text("%u", taskSnapshot.lastThreadId);
+                ImGui::TableSetColumnIndex(4);
+                ImGui::Text("%.3f", lastMilliseconds);
+                ImGui::TableSetColumnIndex(5);
+                ImGui::Text("%.3f", averageMilliseconds);
+            }
+
             ImGui::EndTable();
         }
 

@@ -1,4 +1,4 @@
-#include "Pch.h"
+﻿#include "Pch.h"
 #include "Core\GameObject\ComponentRegistry.h"
 
 namespace Engine

@@ -1,7 +1,4 @@
-#pragma once
-
-#include <string>
-#include <vector>
+﻿#pragma once
 
 #include "Core\GameObject\GameObject.h"
 #include "Core\Scene\Scene.h"
@@ -13,14 +10,14 @@ namespace Engine
      */
     struct PrefabNode
     {
-        ObjectGUID sourceGUID;
-        std::string name;
-        bool active = true;
-        TagID tag = 0;
-        LayerID layer = 0;
-        Transform localTransform;
-        std::vector<std::string> componentTypes;
-        std::vector<PrefabNode> children;
+        ObjectGUID sourceGUID;              //!< キャプチャ元GameObjectのGUID
+        std::string name;                   //!< GameObject名
+        bool active = true;                 //!< 自身のアクティブ状態
+        TagID tag = 0;                      //!< Tag ID
+        LayerID layer = 0;                  //!< Layer ID
+        Transform localTransform;           //!< 親基準のローカルTransform
+        std::vector<std::string> componentTypes; //!< 所属Componentの型名
+        std::vector<PrefabNode> children;  //!< 子ノード
     };
 
     /**
@@ -30,23 +27,31 @@ namespace Engine
     class Prefab
     {
     public:
+
+        /** @brief 空のPrefabを生成する。 */
         Prefab() = default;
 
         /** @brief GameObject階層をPrefabスナップショットとして取得する。 */
-        [[nodiscard]] bool capture(const GameObject& root);
+        bool capture(const GameObject& root);
+
         /** @brief PrefabをSceneへインスタンス化する。 */
-        [[nodiscard]] GameObject* instantiate(Scene& scene) const;
+        GameObject* instantiate(Scene& scene) const;
 
         /** @brief Prefabのルートノードを取得する。 */
-        [[nodiscard]] const PrefabNode& getRoot() const noexcept { return m_root; }
+        const PrefabNode& getRoot() const noexcept { return m_root; }
+
         /** @brief 有効なPrefabを保持しているか判定する。 */
-        [[nodiscard]] bool isValid() const noexcept { return m_valid; }
+        bool isValid() const noexcept { return m_valid; }
 
     private:
+
+        /** @brief GameObject階層をPrefabNodeへ再帰的に変換する。 */
         static PrefabNode captureNode(const GameObject& object);
+
+        /** @brief PrefabNodeをScene上のGameObject階層へ再帰的に変換する。 */
         static GameObject* instantiateNode(const PrefabNode& node, Scene& scene, GameObject* parent);
 
-        PrefabNode m_root;
-        bool m_valid = false;
+        PrefabNode m_root; //!< ルートノード
+        bool m_valid = false; //!< Prefabが有効かどうか
     };
 } // namespace Engine

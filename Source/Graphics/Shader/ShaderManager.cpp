@@ -58,12 +58,12 @@ namespace Engine
 
     ShaderID ShaderManager::registerShader(const ShaderCompileDesc& compileDesc)
     {
-        const ShaderID id = m_nextId++;
         ShaderCompileDesc normalized = compileDesc;
         normalized.sourcePath = std::filesystem::absolute(normalized.sourcePath);
         normalized.outputPath = std::filesystem::absolute(normalized.outputPath);
         const std::vector<std::filesystem::path> dependencies = collectDependencies(normalized.sourcePath);
         std::scoped_lock lock(m_mutex);
+        const ShaderID id = m_nextId++;
         m_entries.emplace(id, Entry{ .compileDesc = std::move(normalized), .dependencies = dependencies, .shader = std::make_shared<DX12Shader>() });
         return id;
     }
@@ -107,24 +107,26 @@ namespace Engine
         {
             const CompileResult compileResult = std::move(results.front());
             results.pop();
-            std::scoped_lock lock(m_mutex);
-            auto entry = m_entries.find(compileResult.id);
-            if (entry == m_entries.end())
-                continue;
-            if (!compileResult.result.success)
             {
-                entry->second.status = ShaderStatus::ReloadFailed;
-                LOG_ERROR("[ShaderHotReload] {}", compileResult.result.diagnostics);
-                continue;
+                std::scoped_lock lock(m_mutex);
+                auto entry = m_entries.find(compileResult.id);
+                if (entry == m_entries.end())
+                    continue;
+                if (!compileResult.result.success)
+                {
+                    entry->second.status = ShaderStatus::ReloadFailed;
+                    LOG_ERROR("[ShaderHotReload] {}", compileResult.result.diagnostics);
+                    continue;
+                }
+                auto replacement = std::make_shared<DX12Shader>();
+                if (!replacement->load(DX12ShaderConfig{ .bytecodePath = compileResult.result.outputPath }))
+                {
+                    entry->second.status = ShaderStatus::ReloadFailed;
+                    continue;
+                }
+                entry->second.shader = std::move(replacement);
+                entry->second.status = ShaderStatus::Loaded;
             }
-            auto replacement = std::make_shared<DX12Shader>();
-            if (!replacement->load(DX12ShaderConfig{ .bytecodePath = compileResult.result.outputPath }))
-            {
-                entry->second.status = ShaderStatus::ReloadFailed;
-                continue;
-            }
-            entry->second.shader = std::move(replacement);
-            entry->second.status = ShaderStatus::Loaded;
             if (m_callback)
                 m_callback(compileResult.id);
         }
@@ -141,29 +143,39 @@ namespace Engine
         std::scoped_lock lock(m_mutex);
         for (const auto& [id, entry] : m_entries)
         {
+            if (entry.status == ShaderStatus::Compiling)
+                continue;
             enqueueCompile(id);
         }
     }
 
     bool ShaderManager::reloadAll()
     {
-        std::scoped_lock lock(m_mutex);
+        std::vector<ShaderID> reloadedIds;
         bool allSucceeded = true;
-        for (auto& [id, entry] : m_entries)
         {
-            auto reloaded = std::make_shared<DX12Shader>();
-            if (reloaded->load(DX12ShaderConfig{ .bytecodePath = entry.compileDesc.outputPath }))
+            std::scoped_lock lock(m_mutex);
+            reloadedIds.reserve(m_entries.size());
+            for (auto& [id, entry] : m_entries)
             {
-                entry.shader = std::move(reloaded);
-                entry.status = ShaderStatus::Loaded;
-                if (m_callback)
-                    m_callback(id);
+                auto reloaded = std::make_shared<DX12Shader>();
+                if (reloaded->load(DX12ShaderConfig{ .bytecodePath = entry.compileDesc.outputPath }))
+                {
+                    entry.shader = std::move(reloaded);
+                    entry.status = ShaderStatus::Loaded;
+                    reloadedIds.push_back(id);
+                }
+                else
+                {
+                    entry.status = ShaderStatus::ReloadFailed;
+                    allSucceeded = false;
+                }
             }
-            else
-            {
-                entry.status = ShaderStatus::ReloadFailed;
-                allSucceeded = false;
-            }
+        }
+        for (const ShaderID id : reloadedIds)
+        {
+            if (m_callback)
+                m_callback(id);
         }
         return allSucceeded;
     }
@@ -222,6 +234,8 @@ namespace Engine
     {
         const auto entry = m_entries.find(id);
         if (entry == m_entries.end())
+            return;
+        if (entry->second.status == ShaderStatus::Compiling)
             return;
         entry->second.status = ShaderStatus::Compiling;
         m_requests.push({ id, entry->second.compileDesc });

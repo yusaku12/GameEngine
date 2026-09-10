@@ -11,6 +11,7 @@ namespace Engine
     enum class ThreadRole
     {
         Main,
+        GameUpdate,
         Render,
         Worker,
         Background,

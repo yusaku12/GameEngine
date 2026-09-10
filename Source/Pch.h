@@ -26,5 +26,6 @@
 #include <fstream>
 #include <queue>
 #include <random>
+#include <typeindex>
 
 #include "Core\Core.h"

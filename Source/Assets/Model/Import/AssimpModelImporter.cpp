@@ -144,7 +144,7 @@ namespace Engine
         const Matrix worldTransform = modelNode.localTransform * parentTransform;
 
         for (unsigned int index = 0; index < node->mNumMeshes; ++index)
-            modelNode.meshIndices.push_back(processMesh(scene->mMeshes[node->mMeshes[index]], scene, model));
+            modelNode.meshIndices.push_back(processMesh(scene->mMeshes[node->mMeshes[index]], model));
 
         if (parentIndex >= 0)
             model.nodes[static_cast<std::size_t>(parentIndex)].children.push_back(nodeIndex);
@@ -153,9 +153,8 @@ namespace Engine
             processNodeInternal(node->mChildren[index], scene, model, static_cast<std::int32_t>(nodeIndex), worldTransform);
     }
 
-    std::uint32_t AssimpModelImporter::processMesh(const aiMesh* mesh, const aiScene* scene, ModelResource& model) const
+    std::uint32_t AssimpModelImporter::processMesh(const aiMesh* mesh, ModelResource& model) const
     {
-        static_cast<void>(scene);
         const std::uint32_t meshIndex = static_cast<std::uint32_t>(model.meshes.size());
         model.meshes.push_back({});
         MeshResource& resource = model.meshes.back();
@@ -208,13 +207,14 @@ namespace Engine
         resource.subMeshes.push_back({ 0, static_cast<std::uint32_t>(resource.indices.size()), mesh->mMaterialIndex });
         if (!resource.vertices.empty())
         {
-            resource.boundingBox = makeAABB(resource.vertices[0].position, resource.vertices[0].position);
+            Vector3 minimum = resource.vertices.front().position;
+            Vector3 maximum = minimum;
             for (const ModelVertex& vertex : resource.vertices)
             {
-                const Vector3 minimum = minimumPointOf(resource.boundingBox);
-                const Vector3 maximum = maximumPointOf(resource.boundingBox);
-                resource.boundingBox = makeAABB(Vector3::Min(minimum, vertex.position), Vector3::Max(maximum, vertex.position));
+                minimum = Vector3::Min(minimum, vertex.position);
+                maximum = Vector3::Max(maximum, vertex.position);
             }
+            resource.boundingBox = makeAABB(minimum, maximum);
             BoundingSphere::CreateFromBoundingBox(resource.boundingSphere, resource.boundingBox);
         }
         return meshIndex;

@@ -23,15 +23,7 @@ namespace Engine
 
     bool SceneManager::destroyScene(const std::string& name) noexcept
     {
-        const auto found = m_scenes.find(name);
-        if (found == m_scenes.end())
-            return false;
-        if (found->second.get() == m_activeScene)
-            m_activeScene = nullptr;
-        m_scenes.erase(found);
-        if (m_activeScene == nullptr && !m_scenes.empty())
-            m_activeScene = m_scenes.begin()->second.get();
-        return true;
+        return removeScene(name);
     }
 
     bool SceneManager::loadScene(const std::string& name) noexcept
@@ -41,6 +33,11 @@ namespace Engine
     }
 
     bool SceneManager::unloadScene(const std::string& name) noexcept
+    {
+        return removeScene(name);
+    }
+
+    bool SceneManager::removeScene(const std::string& name) noexcept
     {
         const auto found = m_scenes.find(name);
         if (found == m_scenes.end())

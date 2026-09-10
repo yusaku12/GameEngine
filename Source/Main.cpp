@@ -149,7 +149,13 @@ namespace Engine
 
             Window window(hwnd, renderer);
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&window));
+
+            // Window / Input / Message Pump はMain Threadで処理する
+            setCurrentThreadRole(ThreadRole::Main);
             result = window.run();
+
+            // GPUリソースの終了処理は描画側の役割として扱う
+            setCurrentThreadRole(ThreadRole::Render);
             renderer.finalize();
 
             // 描画スレッドの役割をメインスレッドに戻す

@@ -1,11 +1,8 @@
 ﻿#pragma once
 
-#include <memory>
-
-#include "Core\Scene\SceneManager.h"
-
 namespace Engine
 {
+    class GameObject;
     class ShaderManager;
 
     /**
@@ -15,6 +12,7 @@ namespace Engine
     class EditorUi
     {
     public:
+
         /** @brief Editor UIを構築する。 */
         EditorUi();
 
@@ -30,7 +28,10 @@ namespace Engine
          * @brief Editorのメニューバーを描画する
          */
         void drawHierarchy();
-        /** @brief Hierarchy内のGameObjectノードを再帰的に描画する。 */
+
+        /**
+         * @brief Hierarchy内のGameObjectノードを再帰的に描画する
+         */
         void drawGameObjectNode(GameObject& object);
 
         /**
@@ -44,8 +45,13 @@ namespace Engine
          */
         void drawShaderManager(ShaderManager* shaderManager);
 
-        bool m_showShaderManager = true;  //!< Shader Managerパネルの表示フラグ
-        SceneManager m_sceneManager;      //!< Editorが表示するSceneの管理
+        /**
+         * @brief Thread Debugパネルを描画する
+         */
+        void drawThreadDebug();
+
+        bool m_showShaderManager = true;        //!< Shader Managerパネルの表示フラグ
+        bool m_showThreadDebug = true;          //!< Thread Debugパネルの表示フラグ
         GameObject* m_selectedObject = nullptr; //!< Inspectorで選択中のGameObject
     };
 } // namespace Engine
