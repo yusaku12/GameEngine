@@ -1,4 +1,7 @@
 ﻿#include "Pch.h"
+#include "Assets\Model\ModelManager.h"
+#include "Core\GameObject\Component\ModelRendererComponent.h"
+#include "Core\Scene\SceneManager.h"
 #include "Core\System\Window.h"
 #include "Graphics\DirectX12\Renderer.h"
 
@@ -8,6 +11,19 @@ namespace Engine
     static constexpr LONG SCREEN_HEIGHT = static_cast<LONG>(720); //!< 画面の高さ
     static constexpr LPCWSTR TITLE = L"GameEngine";               //!< ウィンドウのタイトル
     static constexpr LPCWSTR WINDOW_CLASS = L"GameEngineWindow";  //!< ウィンドウクラス名
+
+    /** @brief モデル選択用の初期GameObjectをSceneへ追加する。 */
+    static bool createModelGameObject()
+    {
+        Scene* const scene = SceneManager::instance().getActiveScene();
+        if (scene == nullptr)
+            return false;
+
+        GameObject* const object = scene->createGameObject("Model");
+        if (object == nullptr)
+            return false;
+        return object->addComponent<ModelRendererComponent>() != nullptr;
+    }
 
     /**
      * @brief ウィンドウプロシージャ
@@ -19,8 +35,20 @@ namespace Engine
      */
     static LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     {
-        Window* window = reinterpret_cast<Window*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-        return window != nullptr ? window->processMessage(hwnd, msg, wparam, lparam) : DefWindowProc(hwnd, msg, wparam, lparam);
+        try
+        {
+            Window* window = reinterpret_cast<Window*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+            return window != nullptr ? window->processMessage(hwnd, msg, wparam, lparam) : DefWindowProc(hwnd, msg, wparam, lparam);
+        }
+        catch (const std::exception& exception)
+        {
+            LOG_ERROR("[Window] Message callbackで例外が発生しました: {}", exception.what());
+        }
+        catch (...)
+        {
+            LOG_ERROR("[Window] Message callbackで不明な例外が発生しました");
+        }
+        return DefWindowProc(hwnd, msg, wparam, lparam);
     }
 
     /**
@@ -147,6 +175,9 @@ namespace Engine
                 return -1;
             }
 
+            if (!createModelGameObject())
+                LOG_WARNING("[Engine] Model GameObjectの作成に失敗しました");
+
             Window window(hwnd, renderer);
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&window));
 
@@ -157,6 +188,7 @@ namespace Engine
             // GPUリソースの終了処理は描画側の役割として扱う
             setCurrentThreadRole(ThreadRole::Render);
             renderer.finalize();
+            ModelManager::instance().clear();
 
             // 描画スレッドの役割をメインスレッドに戻す
             setCurrentThreadRole(ThreadRole::Main);

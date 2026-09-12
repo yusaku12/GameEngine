@@ -1,7 +1,10 @@
 .vs/
 GameEngine/
 x64/
-Assets/
+/Assets/*
+!/Assets/Shaders/
+/Assets/Shaders/*
+!/Assets/Shaders/*.hlsl
 Config/
 Log/
 *.vcxproj.user

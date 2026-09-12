@@ -95,12 +95,9 @@ namespace Engine
         if (scene != nullptr)
         {
             GameObject* camera = scene->createGameObject("Main Camera");
-            GameObject* light = scene->createGameObject("Directional Light");
-            GameObject* triangle = scene->createGameObject("Triangle");
+            scene->createGameObject("Directional Light");
             if (camera != nullptr)
                 selectObject(camera);
-            if (light != nullptr && triangle != nullptr)
-                light->setParent(triangle, false);
         }
     }
 

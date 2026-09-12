@@ -24,6 +24,8 @@
     <ClInclude Include="Generated\FlatBuffers\Prefab_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Scene_generated.h" />
     <ClInclude Include="Source\Assets\Model\Serialization\ModelSerializer.h" />
+    <ClInclude Include="Source\Assets\Model\ModelManager.h" />
+    <ClInclude Include="Source\Assets\Model\ModelTypes.h" />
     <ClInclude Include="Source\Assets\Model\Import\AssimpModelImporter.h" />
     <ClInclude Include="Source\Assets\Model\Resource\AnimationResource.h" />
     <ClInclude Include="Source\Assets\Model\Resource\MaterialResource.h" />
@@ -45,6 +47,10 @@
     <ClInclude Include="Source\Graphics\DirectX12\Queue.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Resource.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Renderer.h" />
+    <ClInclude Include="Source\Graphics\Renderer\RenderItem.h" />
+    <ClInclude Include="Source\Graphics\Renderer\RenderQueue.h" />
+    <ClInclude Include="Source\Graphics\Renderer\ModelRenderSubmission.h" />
+    <ClInclude Include="Source\Graphics\Model\ModelGpuCache.h" />
     <ClInclude Include="Source\Graphics\Shader\Shader.h" />
     <ClInclude Include="Source\Graphics\Shader\ShaderTypes.h" />
     <ClInclude Include="Source\Graphics\Shader\ShaderCompiler.h" />
@@ -57,6 +63,7 @@
     <ClInclude Include="Source\Core\Object\ObjectGUID.h" />
     <ClInclude Include="Source\Core\GameObject\Component.h" />
     <ClInclude Include="Source\Core\GameObject\Component\TransformComponent.h" />
+    <ClInclude Include="Source\Core\GameObject\Component\ModelRendererComponent.h" />
     <ClInclude Include="Source\Core\GameObject\ComponentRegistry.h" />
     <ClInclude Include="Source\Core\GameObject\Behaviour.h" />
     <ClInclude Include="Source\Core\Scene\Scene.h" />
@@ -101,6 +108,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\Assets\Model\Serialization\ModelSerializer.cpp" />
+    <ClCompile Include="Source\Assets\Model\ModelManager.cpp" />
     <ClCompile Include="Source\Core\Serialization\FlatBufferReader.cpp" />
     <ClCompile Include="Source\Core\Serialization\FlatBufferWriter.cpp" />
     <ClCompile Include="Source\Assets\Model\Import\AssimpModelImporter.cpp" />
@@ -112,6 +120,9 @@
     <ClCompile Include="Source\Graphics\DirectX12\Queue.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Resource.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Renderer.cpp" />
+    <ClCompile Include="Source\Graphics\Renderer\RenderQueue.cpp" />
+    <ClCompile Include="Source\Graphics\Renderer\ModelRenderSubmission.cpp" />
+    <ClCompile Include="Source\Graphics\Model\ModelGpuCache.cpp" />
     <ClCompile Include="Source\Graphics\Shader\Shader.cpp" />
     <ClCompile Include="Source\Graphics\Shader\ShaderCompiler.cpp" />
     <ClCompile Include="Source\Graphics\Shader\ShaderFileWatcher.cpp" />
@@ -122,6 +133,7 @@
     <ClCompile Include="Source\Core\Object\ObjectGUID.cpp" />
     <ClCompile Include="Source\Core\GameObject\GameObject.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\TransformComponent.cpp" />
+    <ClCompile Include="Source\Core\GameObject\Component\ModelRendererComponent.cpp" />
     <ClCompile Include="Source\Core\GameObject\ComponentRegistry.cpp" />
     <ClCompile Include="Source\Core\Scene\Scene.cpp" />
     <ClCompile Include="Source\Core\Scene\SceneManager.cpp" />
@@ -177,6 +189,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <None Include="Assets\Shaders\Model.hlsl" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />
     <None Include="Schemas\FlatBuffers\Prefab.fbs" />
@@ -319,7 +332,7 @@
   <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
   </Target>
-  <Target Name="CompileShaders" BeforeTargets="ClCompile" Condition="Exists('$(ProjectDir)Tools\DXC\dxc.exe')" Inputs="$(ProjectDir)Assets\Shaders\ColorTriangle.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1" Outputs="$(ProjectDir)Assets\Shaders\Compiled\ColorTriangle_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\ColorTriangle_psMain_ps.cso">
+  <Target Name="CompileShaders" BeforeTargets="ClCompile" Condition="Exists('$(ProjectDir)Tools\DXC\dxc.exe')" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

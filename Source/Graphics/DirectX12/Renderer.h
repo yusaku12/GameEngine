@@ -10,9 +10,30 @@
 #include "Graphics\DirectX12\Resource.h"
 #include "Graphics\Shader\ShaderManager.h"
 #include "Graphics\DirectX12\SwapChain.h"
+#include "Graphics\Model\ModelGpuCache.h"
+#include "Graphics\Renderer\ModelRenderSubmission.h"
+#include "Graphics\Renderer\RenderQueue.h"
 
 namespace Engine
 {
+    /**
+     * @brief Model描画処理のフレーム統計。
+     */
+    struct RendererStatistics
+    {
+        std::uint32_t visibleObjects = 0;          //!< 直近フレームの視錐台内に存在するModelHandle数
+        std::uint32_t culledObjects = 0;           //!< 直近フレームの視錐台外に存在するModelHandle数
+        std::uint32_t renderItemCount = 0;         //!< 直近フレームの描画対象となるModelRenderSubmission数
+        std::uint32_t drawCallCount = 0;           //!< 直近フレームの描画コール数
+        std::uint32_t batchCount = 0;              //!< 直近フレームの描画バッチ数
+        std::uint32_t instanceCount = 0;           //!< 直近フレームの描画インスタンス数
+        std::uint32_t psoSwitchCount = 0;          //!< 直近フレームのGraphics PSO切り替え回数
+        std::uint32_t materialSwitchCount = 0;     //!< 直近フレームのMaterial切り替え回数
+        std::uint32_t textureSwitchCount = 0;      //!< 直近フレームのTexture切り替え回数
+        std::uint32_t vertexBufferSwitchCount = 0; //!< 直近フレームのVertex Buffer切り替え回数
+        std::uint32_t indexBufferSwitchCount = 0;  //!< 直近フレームのIndex Buffer切り替え回数
+    };
+
     /**
      * @brief DirectX 12 の初期フレーム描画を管理するクラス
      * @details 2 Frame In Flight で Back Buffer の Clear と Present を実行する。
@@ -62,26 +83,81 @@ namespace Engine
          */
         bool processImGuiMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
+        /**
+         * @brief Model描画に使用するView Projection行列を設定する。
+         * @param viewProjection View Projection行列
+         */
+        void setViewProjection(const Matrix& viewProjection) noexcept { m_viewProjection = viewProjection; }
+
+        /**
+         * @brief Transparent sortに使用するCameraのWorld座標を設定する。
+         * @param position CameraのWorld座標
+         */
+        void setCameraPosition(const Vector3& position) noexcept { m_cameraPosition = position; }
+
+        /**
+         * @brief Model描画に使用するWorld Space視錐台を設定する。
+         * @param frustum World Space視錐台
+         */
+        void setFrustum(const Frustum& frustum) noexcept { m_frustum = frustum; }
+
+        /**
+         * @brief 視錐台Cullingを無効化する。
+         */
+        void clearFrustum() noexcept { m_frustum.reset(); }
+
+        /**
+         * @brief 直近フレームのModel描画統計を取得する。
+         * @return 直近フレームのModel描画統計
+         */
+        const RendererStatistics& getStatistics() const noexcept { return m_statistics; }
+
     private:
+
+        /**
+         * @brief Graphics PSO を再生成する
+         * @return 再生成に成功した場合は true
+         */
+        bool rebuildGraphicsPipelines();
+
+        /**
+         * @brief 現在フレームの Model 描画 Queue を構築する
+         * @param usedModels 描画対象となる ModelHandle のリスト
+         */
+        void buildModelRenderQueue(std::vector<ModelHandle>& usedModels);
+
+        /**
+         * @brief 現在フレームの Model 描画 Queue を GPU に提出する
+         * @param commandList 提出先の Command List
+         * @return 提出に成功した場合は true
+         */
+        bool renderModelQueue(DX12CommandList& commandList);
 
         static constexpr std::uint32_t FRAME_COUNT = 2; //!< Frame In Flight 数
 
-        DX12Device m_device; //!< DirectX 12 デバイス
-        DX12CommandQueue m_directQueue; //!< 描画コマンドキュー
-        DX12Fence m_directFence; //!< 描画コマンドの完了 Fence
-        DX12SwapChain m_swapChain; //!< 画面出力用 SwapChain
-        ShaderManager m_shaderManager; //!< Shader のロード・キャッシュ・Hot Reload 管理
-        ShaderID m_vertexShaderID = 0; //!< 頂点 Shader ID
-        ShaderID m_pixelShaderID = 0; //!< Pixel Shader ID
-        bool m_psoRebuildPending = false; //!< Shader 更新に伴う Graphics PSO 再生成要求フラグ
-        DX12GraphicsPipeline m_graphicsPipeline; //!< キャッシュ済み Graphics PSO
-        DX12UploadBuffer m_vertexBuffer; //!< 頂点データを保持する Upload Buffer
-        D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView{}; //!< 頂点 Buffer View
-        std::array<DX12CommandList, FRAME_COUNT> m_commandLists; //!< Frame ごとの Command List
-        std::unique_ptr<ImGuiSystem> m_imguiSystem; //!< Editor UI のライフサイクル
+        DX12Device m_device;                                         //!< DirectX 12 デバイス
+        DX12CommandQueue m_directQueue;                              //!< 描画コマンドキュー
+        DX12Fence m_directFence;                                     //!< 描画コマンドの完了 Fence
+        DX12SwapChain m_swapChain;                                   //!< 画面出力用 SwapChain
+        ShaderManager m_shaderManager;                               //!< Shader のロード・キャッシュ・Hot Reload 管理
+        ShaderID m_modelVertexShaderID = 0;                          //!< Model頂点Shader ID
+        ShaderID m_modelPixelShaderID = 0;                           //!< Model Pixel Shader ID
+        bool m_psoRebuildPending = false;                            //!< Shader 更新に伴う Graphics PSO 再生成要求フラグ
+        DX12GraphicsPipeline m_modelPipeline;                        //!< Model描画用Graphics PSO
+        DX12GraphicsPipeline m_transparentModelPipeline;             //!< 透明Model描画用Graphics PSO
+        ModelGpuCache m_modelGpuCache;                               //!< ModelHandle単位のGPU Resource Cache
+        RenderQueue m_modelRenderQueue;                              //!< 現在フレームのModel描画Queue
+        std::vector<ModelRenderSubmission> m_modelSubmissions;       //!< Frame間で容量を再利用する提出Buffer
+        Matrix m_viewProjection = Matrix::Identity;                  //!< CameraのView Projection行列
+        Vector3 m_cameraPosition = Vector3::Zero;                    //!< Transparent sort用Camera座標
+        std::optional<Frustum> m_frustum;                            //!< World Space Camera Frustum
+        RendererStatistics m_statistics;                             //!< 現在構築中フレームの描画統計
+        std::array<DX12CommandList, FRAME_COUNT> m_commandLists;     //!< Frame ごとの Command List
+        std::unique_ptr<ImGuiSystem> m_imguiSystem;                  //!< Editor UI のライフサイクル
         std::array<std::uint64_t, FRAME_COUNT> m_frameFenceValues{}; //!< Frame ごとの提出 Fence 値
-        std::uint64_t m_lastSubmittedFenceValue = 0; //!< 直近に提出した Fence 値
-        std::uint32_t m_renderWidth = 0; //!< 現在の描画領域の幅
-        std::uint32_t m_renderHeight = 0; //!< 現在の描画領域の高さ
+        std::uint64_t m_lastSubmittedFenceValue = 0;                 //!< 直近に提出した Fence 値
+        std::uint32_t m_renderWidth = 0;                             //!< 現在の描画領域の幅
+        std::uint32_t m_renderHeight = 0;                            //!< 現在の描画領域の高さ
+        RendererStatistics m_frameStatistics;                        //!< 直近フレームの描画統計
     };
 } // namespace Engine

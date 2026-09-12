@@ -104,8 +104,9 @@ namespace Engine
         m_initialized = false;
     }
 
-    void ImGuiSystem::beginFrame(ShaderManager* shaderManager)
+    void ImGuiSystem::beginFrame(ShaderManager* shaderManager, const std::function<void()>& drawAdditionalUi)
     {
+        const std::scoped_lock lock(m_contextMutex);
         if (!m_initialized || m_context == nullptr)
             return;
 
@@ -114,11 +115,14 @@ namespace Engine
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
         m_editorUi->draw(shaderManager);
+        if (drawAdditionalUi)
+            drawAdditionalUi();
         ImGui::Render();
     }
 
     void ImGuiSystem::render(ID3D12GraphicsCommandList& commandList)
     {
+        const std::scoped_lock lock(m_contextMutex);
         if (!m_initialized || m_context == nullptr)
             return;
 
@@ -130,6 +134,7 @@ namespace Engine
 
     bool ImGuiSystem::processMessage(const HWND hwnd, const UINT message, const WPARAM wparam, const LPARAM lparam)
     {
+        const std::scoped_lock lock(m_contextMutex);
         if (!m_initialized || m_context == nullptr)
             return false;
 

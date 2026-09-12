@@ -16,8 +16,8 @@ if (!(Test-Path -LiteralPath $ShaderRoot)) { throw "Shader directory was not fou
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 
 $jobs = @(
-    @{ Source = Join-Path $ShaderRoot "ColorTriangle.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "ColorTriangle_vsMain_vs.cso" },
-    @{ Source = Join-Path $ShaderRoot "ColorTriangle.hlsl"; Entry = "psMain"; Target = "ps_6_0"; Output = "ColorTriangle_psMain_ps.cso" }
+    @{ Source = Join-Path $ShaderRoot "Model.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "Model_vsMain_vs.cso" },
+    @{ Source = Join-Path $ShaderRoot "Model.hlsl"; Entry = "psMain"; Target = "ps_6_0"; Output = "Model_psMain_ps.cso" }
 )
 
 foreach ($job in $jobs) {

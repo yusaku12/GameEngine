@@ -21,10 +21,10 @@ namespace Engine
         }
 
         D3D12_ROOT_SIGNATURE_DESC rootSignatureDescription{};
-        rootSignatureDescription.NumParameters = 0;
-        rootSignatureDescription.pParameters = nullptr;
-        rootSignatureDescription.NumStaticSamplers = 0;
-        rootSignatureDescription.pStaticSamplers = nullptr;
+        rootSignatureDescription.NumParameters = static_cast<UINT>(config.rootParameters.size());
+        rootSignatureDescription.pParameters = config.rootParameters.data();
+        rootSignatureDescription.NumStaticSamplers = static_cast<UINT>(config.staticSamplers.size());
+        rootSignatureDescription.pStaticSamplers = config.staticSamplers.data();
         rootSignatureDescription.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
         Microsoft::WRL::ComPtr<ID3DBlob> serializedRootSignature;
@@ -69,10 +69,10 @@ namespace Engine
         description.BlendState.AlphaToCoverageEnable = FALSE;
         description.BlendState.IndependentBlendEnable = FALSE;
         const D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlend{
-            .BlendEnable = FALSE,
+            .BlendEnable = config.enableAlphaBlend,
             .LogicOpEnable = FALSE,
-            .SrcBlend = D3D12_BLEND_ONE,
-            .DestBlend = D3D12_BLEND_ZERO,
+            .SrcBlend = config.enableAlphaBlend ? D3D12_BLEND_SRC_ALPHA : D3D12_BLEND_ONE,
+            .DestBlend = config.enableAlphaBlend ? D3D12_BLEND_INV_SRC_ALPHA : D3D12_BLEND_ZERO,
             .BlendOp = D3D12_BLEND_OP_ADD,
             .SrcBlendAlpha = D3D12_BLEND_ONE,
             .DestBlendAlpha = D3D12_BLEND_ZERO,

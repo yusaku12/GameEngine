@@ -12,7 +12,7 @@ namespace Engine
 
     /**
      * @brief Dear ImGuiのContextと公式Backendのライフサイクルを管理するクラス
-     * @thread_safety Main thread only.
+    * @thread_safety Thread-safe. Context access is serialized internally.
      */
     class ImGuiSystem
     {
@@ -41,8 +41,9 @@ namespace Engine
         /**
          * @brief ImGuiのフレームを開始し、Editor UIを生成する
          * @param shaderManager ShaderManager オブジェクトのポインタ (省略可能)
+         * @param drawAdditionalUi Editor UIの後、ImGui::Render前に追加UIを生成するCallback
          */
-        void beginFrame(ShaderManager* shaderManager = nullptr);
+        void beginFrame(ShaderManager* shaderManager = nullptr, const std::function<void()>& drawAdditionalUi = {});
 
         /**
          * @brief 記録中のCommandListへImGuiを描画する
@@ -94,6 +95,7 @@ namespace Engine
 
         ImGuiContext* m_context = nullptr;    //!< ImGuiのContext
         DX12DescriptorHeap m_srvHeap;         //!< ImGuiが使用するShader VisibleなSRV Descriptor Heap
+        std::recursive_mutex m_contextMutex;  //!< WndProc再入を許容するImGui Contextアクセス保護
         bool m_initialized = false;           //!< 初期化済みか
         std::unique_ptr<EditorUi> m_editorUi; //!< Editor UIの描画を担当するクラス
     };
