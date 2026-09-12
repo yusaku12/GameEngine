@@ -31,6 +31,13 @@ namespace Engine
         GE_DISABLE_COPY_AND_MOVE(SceneManager);
 
         /**
+         * @brief 管理中の全SceneとGameObjectを破棄する。
+         *
+         * @details ComponentのLifecycleをSingleton Managerの終了前に完了させる。
+         */
+        void shutdown() noexcept;
+
+        /**
          * @brief 名前を指定してSceneを生成する。
          * @param name 生成するSceneの名前
          * @return 生成されたSceneのポインタ

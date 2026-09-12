@@ -1,11 +1,13 @@
 ﻿#include "Pch.h"
 #include "Editor\ImGui\EditorUi.h"
+#include "Core\GameObject\Component\CameraComponent.h"
+#include "Core\GameObject\Component\ModelRendererComponent.h"
 #include "Core\Prefab\PrefabSerializer.h"
 #include "Core\System\Dialog.h"
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Threading\ThreadDebugStats.h"
+#include "Editor\Camera\FreeCameraController.h"
 #include "Graphics\Shader\ShaderManager.h"
-
 #include <imgui.h>
 
 namespace Engine
@@ -94,8 +96,8 @@ namespace Engine
         Scene* scene = SceneManager::instance().createScene("EditorScene");
         if (scene != nullptr)
         {
-            GameObject* camera = scene->createGameObject("Main Camera");
-            scene->createGameObject("Directional Light");
+            GameObject* camera = createGameObject(*scene, GameObjectCreateType::Camera);
+            createGameObject(*scene, GameObjectCreateType::Model);
             if (camera != nullptr)
                 selectObject(camera);
         }
@@ -322,6 +324,64 @@ namespace Engine
             });
     }
 
+    GameObject* EditorUi::createGameObject(
+        Scene& scene,
+        const GameObjectCreateType type,
+        GameObject* const parent)
+    {
+        const char* name = "GameObject";
+        switch (type)
+        {
+        case GameObjectCreateType::Model:
+            name = "Model";
+            break;
+        case GameObjectCreateType::Camera:
+            name = "Main Camera";
+            break;
+        default:
+            break;
+        }
+
+        GameObject* const object = scene.createGameObject(name);
+        if (object == nullptr)
+            return nullptr;
+        if (parent != nullptr && !object->setParent(parent, false))
+        {
+            scene.destroyGameObject(object);
+            return nullptr;
+        }
+
+        switch (type)
+        {
+        case GameObjectCreateType::Model:
+            object->addComponent<ModelRendererComponent>();
+            break;
+        case GameObjectCreateType::Camera:
+            object->getTransform()->setPosition(Vector3(0.0f, 0.0f, -5.0f));
+            object->addComponent<CameraComponent>();
+            object->addComponent<FreeCameraController>();
+            break;
+        default:
+            break;
+        }
+        return object;
+    }
+
+    void EditorUi::requestGameObjectCreation(
+        const GameObjectCreateType type,
+        GameObject* const parent) noexcept
+    {
+        m_hierarchyCreateType = type;
+        m_hierarchyCreateParent = parent;
+        m_hierarchyCreateRequested = true;
+    }
+
+    void EditorUi::drawGameObjectCreationMenu(GameObject* const parent)
+    {
+        if (ImGui::MenuItem("Create Empty"))
+            requestGameObjectCreation(GameObjectCreateType::Empty, parent);
+    }
+
     void EditorUi::drawHierarchy()
     {
         if (!ImGui::Begin("Hierarchy"))
@@ -330,12 +390,14 @@ namespace Engine
             return;
         }
         if (ImGui::Button("+"))
-        {
-            m_hierarchyCreateParent = nullptr;
-            m_hierarchyCreateRequested = true;
-        }
+            ImGui::OpenPopup("CreateGameObjectPopup");
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Create Empty GameObject");
+            ImGui::SetTooltip("Create GameObject");
+        if (ImGui::BeginPopup("CreateGameObjectPopup"))
+        {
+            drawGameObjectCreationMenu(nullptr);
+            ImGui::EndPopup();
+        }
         ImGui::SameLine();
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint("##HierarchySearch", "Search", m_hierarchySearch.data(), m_hierarchySearch.size());
@@ -363,11 +425,7 @@ namespace Engine
 
             if (ImGui::BeginPopupContextWindow("HierarchyContext", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
             {
-                if (ImGui::MenuItem("Create Empty"))
-                {
-                    m_hierarchyCreateParent = nullptr;
-                    m_hierarchyCreateRequested = true;
-                }
+                drawGameObjectCreationMenu(nullptr);
                 if (ImGui::MenuItem("Instantiate Prefab..."))
                     instantiatePrefab();
                 ImGui::EndPopup();
@@ -379,12 +437,12 @@ namespace Engine
 
             if (m_hierarchyCreateRequested)
             {
-                GameObject* object = scene->createGameObject("GameObject");
-                if (object != nullptr && m_hierarchyCreateParent != nullptr)
-                    object->setParent(m_hierarchyCreateParent, false);
+                GameObject* const object = createGameObject(
+                    *scene, m_hierarchyCreateType, m_hierarchyCreateParent);
                 selectObject(object);
                 m_hierarchyCreateRequested = false;
                 m_hierarchyCreateParent = nullptr;
+                m_hierarchyCreateType = GameObjectCreateType::Empty;
             }
             if (m_hierarchyDeleteTarget != nullptr)
             {
@@ -427,10 +485,10 @@ namespace Engine
         }
         if (ImGui::BeginPopupContextItem())
         {
-            if (ImGui::MenuItem("Create Empty Child"))
+            if (ImGui::BeginMenu("Create Child"))
             {
-                m_hierarchyCreateParent = &object;
-                m_hierarchyCreateRequested = true;
+                drawGameObjectCreationMenu(&object);
+                ImGui::EndMenu();
             }
             if (ImGui::MenuItem("Delete"))
                 m_hierarchyDeleteTarget = &object;
@@ -516,6 +574,29 @@ namespace Engine
                     component.drawImGui();
                 ImGui::PopID();
             });
+
+        ImGui::Separator();
+        if (ImGui::Button("Add Component", ImVec2(-1.0f, 0.0f)))
+            ImGui::OpenPopup("AddComponentPopup");
+        if (ImGui::BeginPopup("AddComponentPopup"))
+        {
+            if (!m_selectedObject->hasComponent<ModelRendererComponent>()
+                && ImGui::MenuItem("Model Renderer"))
+            {
+                m_selectedObject->addComponent<ModelRendererComponent>();
+            }
+            if (!m_selectedObject->hasComponent<CameraComponent>()
+                && ImGui::MenuItem("Camera"))
+            {
+                m_selectedObject->addComponent<CameraComponent>();
+            }
+
+            const bool hasCamera = m_selectedObject->hasComponent<CameraComponent>();
+            const bool hasController = m_selectedObject->hasComponent<FreeCameraController>();
+            if (ImGui::MenuItem("Free Camera Controller", nullptr, false, hasCamera && !hasController))
+                m_selectedObject->addComponent<FreeCameraController>();
+            ImGui::EndPopup();
+        }
         ImGui::End();
     }
 

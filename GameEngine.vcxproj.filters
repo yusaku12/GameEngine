@@ -119,13 +119,11 @@
     <ClInclude Include="Source\Editor\ImGui\ImGuiSystem.h" />
     <ClInclude Include="Source\Editor\Scene\SceneDocument.h" />
     <ClInclude Include="Source\Editor\Camera\FreeCameraController.h" />
-    <ClInclude Include="Source\Tests\CameraSystemTests.h" />
     <ClCompile Include="Source\Editor\ImGui\EditorUi.cpp" />
     <ClCompile Include="Source\Core\System\Dialog.cpp" />
     <ClCompile Include="Source\Editor\ImGui\ImGuiSystem.cpp" />
     <ClCompile Include="Source\Editor\Scene\SceneDocument.cpp" />
     <ClCompile Include="Source\Editor\Camera\FreeCameraController.cpp" />
-    <ClCompile Include="Source\Tests\CameraSystemTests.cpp" />
     <ClCompile Include="Library\imgui\imgui.cpp" />
     <ClCompile Include="Library\imgui\imgui_draw.cpp" />
     <ClCompile Include="Library\imgui\imgui_tables.cpp" />

@@ -8,6 +8,18 @@ namespace Engine
     {
     }
 
+    void SceneManager::shutdown() noexcept
+    {
+        m_activeScene = nullptr;
+        for (auto& [name, scene] : m_scenes)
+        {
+            GE_UNUSED(name);
+            scene->clear();
+        }
+        m_scenes.clear();
+        m_persistentScene.clear();
+    }
+
     Scene* SceneManager::createScene(const std::string& name)
     {
         if (name.empty() || m_scenes.contains(name))

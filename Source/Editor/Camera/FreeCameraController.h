@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "Core\GameObject\Component.h"
 #include "Core\Math\Geometry.h"
 
 namespace Engine
@@ -11,33 +12,14 @@ namespace Engine
      * @details Scene Viewが入力を占有している間だけupdateを呼び出す。
      * @thread_safety Main thread only.
      */
-    class FreeCameraController
+    class FreeCameraController final : public Component
     {
     public:
 
         /**
-         * @brief 操作対象Cameraを指定して生成する。
-         * @param camera 操作対象。Controllerより長く生存する必要がある。
+         * @brief Free Camera Controllerを生成する。
          */
-        explicit FreeCameraController(CameraComponent& camera) noexcept;
-
-        /**
-         * @brief 現在の入力でCamera Transformを更新する。
-         * @param deltaTime 前フレームからの経過時間（秒）。
-         */
-        void update(float deltaTime) noexcept;
-
-        /**
-         * @brief 操作の有効状態を設定する。
-         * @param enabled 入力を反映する場合はtrue。
-         */
-        void setEnabled(bool enabled) noexcept { m_enabled = enabled; }
-
-        /**
-         * @brief 操作が有効か取得する。
-         * @return 有効な場合はtrue。
-         */
-        bool isEnabled() const noexcept { return m_enabled; }
+        FreeCameraController() noexcept;
 
         /**
          * @brief 通常移動速度を設定する。
@@ -63,7 +45,14 @@ namespace Engine
          */
         void setOrbitPoint(const Vector3& point) noexcept;
 
+    protected:
+
+        void onUpdate(float deltaTime) override;
+        void onImGui() override;
+
     private:
+
+        CameraComponent* getCamera() noexcept;
 
         /**
          * @brief Cameraの回転を更新する。
@@ -79,7 +68,6 @@ namespace Engine
          */
         void updateOrbit(float yawDelta, float pitchDelta) noexcept;
 
-        CameraComponent* m_camera = nullptr;  //!< 操作対象Camera
         Vector3 m_orbitPoint = Vector3::Zero; //!< Orbit中心点
         float m_orbitDistance = 5.0f;         //!< Orbit中心からの距離
         float m_moveSpeed = 5.0f;             //!< 通常移動速度（World Unit毎秒）
@@ -89,6 +77,5 @@ namespace Engine
         float m_pitch = 0.0f;                 //!< Pitch角度（Radian）
         float m_yaw = 0.0f;                   //!< Yaw角度（Radian）
         bool m_rotationInitialized = false;   //!< 初回回転更新時にYaw/Pitchを初期化するフラグ
-        bool m_enabled = true;                //!< 操作有効フラグ
     };
 } // namespace Engine

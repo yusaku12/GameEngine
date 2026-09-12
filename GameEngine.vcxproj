@@ -112,7 +112,6 @@
     <ClInclude Include="Source\Editor\ImGui\ImGuiSystem.h" />
     <ClInclude Include="Source\Editor\Camera\FreeCameraController.h" />
     <ClInclude Include="Source\Editor\Scene\SceneDocument.h" />
-    <ClInclude Include="Source\Tests\CameraSystemTests.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\Assets\Model\Serialization\ModelSerializer.cpp" />
@@ -180,7 +179,6 @@
     <ClCompile Include="Source\Editor\ImGui\ImGuiSystem.cpp" />
     <ClCompile Include="Source\Editor\Camera\FreeCameraController.cpp" />
     <ClCompile Include="Source\Editor\Scene\SceneDocument.cpp" />
-    <ClCompile Include="Source\Tests\CameraSystemTests.cpp" />
     <ClCompile Include="Library\imgui\imgui.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>

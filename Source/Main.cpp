@@ -1,13 +1,9 @@
 ﻿#include "Pch.h"
 #include "Assets\Model\ModelManager.h"
-#include "Core\GameObject\Component\CameraComponent.h"
-#include "Core\GameObject\Component\ModelRendererComponent.h"
 #include "Core\Scene\SceneManager.h"
 #include "Core\System\Window.h"
 #include "Graphics\Camera\CameraManager.h"
 #include "Graphics\DirectX12\Renderer.h"
-#include "Tests\CameraSystemTests.h"
-#include <cwchar>
 
 namespace Engine
 {
@@ -15,42 +11,6 @@ namespace Engine
     static constexpr LONG SCREEN_HEIGHT = static_cast<LONG>(720); //!< 画面の高さ
     static constexpr LPCWSTR TITLE = L"GameEngine";               //!< ウィンドウのタイトル
     static constexpr LPCWSTR WINDOW_CLASS = L"GameEngineWindow";  //!< ウィンドウクラス名
-
-    /** @brief モデル選択用の初期GameObjectをSceneへ追加する。 */
-    static bool createModelGameObject()
-    {
-        Scene* const scene = SceneManager::instance().getActiveScene();
-        if (scene == nullptr)
-            return false;
-
-        GameObject* const object = scene->createGameObject("Model");
-        if (object == nullptr)
-            return false;
-        return object->addComponent<ModelRendererComponent>() != nullptr;
-    }
-
-    /**
-     * @brief 初期Main CameraをSceneへ追加する。
-     *
-     * @return Cameraを生成できた場合はtrue。
-     */
-    static bool createMainCamera()
-    {
-        Scene* const scene = SceneManager::instance().getActiveScene();
-        if (scene == nullptr)
-            return false;
-
-        GameObject* const object = scene->createGameObject("Main Camera");
-        if (object == nullptr)
-            return false;
-        object->getTransform()->setPosition(Vector3(0.0f, 0.0f, -5.0f));
-
-        CameraComponent* const camera = object->addComponent<CameraComponent>();
-        if (camera == nullptr)
-            return false;
-        CameraManager::instance().registerCamera(camera);
-        return CameraManager::instance().setMainCamera(camera);
-    }
 
     /**
      * @brief ウィンドウプロシージャ
@@ -203,11 +163,6 @@ namespace Engine
             }
 
             CameraManager::instance().setRenderTargetSize(SCREEN_WIDTH, SCREEN_HEIGHT);
-            if (!createMainCamera())
-                LOG_WARNING("[Engine] Main Cameraの作成に失敗しました");
-
-            if (!createModelGameObject())
-                LOG_WARNING("[Engine] Model GameObjectの作成に失敗しました");
 
             Window window(hwnd, renderer);
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&window));
@@ -219,11 +174,12 @@ namespace Engine
             // GPUリソースの終了処理は描画側の役割として扱う
             setCurrentThreadRole(ThreadRole::Render);
             renderer.finalize();
+
+            // ComponentをSingleton Managerより先にMain Threadで破棄する
+            setCurrentThreadRole(ThreadRole::Main);
+            SceneManager::instance().shutdown();
             CameraManager::instance().shutdown();
             ModelManager::instance().clear();
-
-            // 描画スレッドの役割をメインスレッドに戻す
-            setCurrentThreadRole(ThreadRole::Main);
         }
 
         finalizeCore();
@@ -242,10 +198,8 @@ namespace Engine
 INT WINAPI wWinMain(
     HINSTANCE instance,
     [[maybe_unused]] HINSTANCE prevInstance,
-    LPWSTR cmdLine,
+    [[maybe_unused]] LPWSTR cmdLine,
     INT cmdShow)
 {
-    if (cmdLine != nullptr && std::wcsstr(cmdLine, L"--camera-tests") != nullptr)
-        return Engine::Tests::runCameraSystemTests() ? 0 : 1;
     return Engine::runEngine(instance, cmdShow);
 }

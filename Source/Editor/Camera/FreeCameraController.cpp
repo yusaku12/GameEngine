@@ -1,7 +1,10 @@
 ﻿#include "Pch.h"
 #include "Editor\Camera\FreeCameraController.h"
 #include "Core\GameObject\Component\CameraComponent.h"
+#include "Core\GameObject\ComponentRegistry.h"
+#include "Core\GameObject\GameObject.h"
 #include "Core\Input\InputManager.h"
+#include <imgui.h>
 
 namespace Engine
 {
@@ -11,17 +14,22 @@ namespace Engine
         constexpr float MAX_PITCH = DirectX::XM_PIDIV2 - 0.01f;
         constexpr float FAST_SPEED_MULTIPLIER = 4.0f;
         constexpr float SLOW_SPEED_MULTIPLIER = 0.25f;
+
+        const ComponentTypeID freeCameraControllerType =
+            ComponentRegistry::instance().registerType<FreeCameraController>(
+                "Free Camera Controller", false, false, true);
     }
 
-    FreeCameraController::FreeCameraController(CameraComponent& camera) noexcept
-        : m_camera(&camera)
+    FreeCameraController::FreeCameraController() noexcept
     {
+        GE_UNUSED(freeCameraControllerType);
     }
 
-    void FreeCameraController::update(const float deltaTime) noexcept
+    void FreeCameraController::onUpdate(const float deltaTime)
     {
-        if (!m_enabled || !std::isfinite(deltaTime) || deltaTime <= 0.0f
-            || m_camera == nullptr || m_camera->getTransform() == nullptr)
+        CameraComponent* const camera = getCamera();
+        if (!std::isfinite(deltaTime) || deltaTime <= 0.0f
+            || camera == nullptr || getTransform() == nullptr)
         {
             return;
         }
@@ -48,24 +56,24 @@ namespace Engine
                 speed *= SLOW_SPEED_MULTIPLIER;
 
             Vector3 movement = Vector3::Zero;
-            if (input.isKeyHeld('W')) movement += m_camera->getForward();
-            if (input.isKeyHeld('S')) movement -= m_camera->getForward();
-            if (input.isKeyHeld('D')) movement += m_camera->getRight();
-            if (input.isKeyHeld('A')) movement -= m_camera->getRight();
+            if (input.isKeyHeld('W')) movement += camera->getForward();
+            if (input.isKeyHeld('S')) movement -= camera->getForward();
+            if (input.isKeyHeld('D')) movement += camera->getRight();
+            if (input.isKeyHeld('A')) movement -= camera->getRight();
             if (input.isKeyHeld('E')) movement += Vector3::UnitY;
             if (input.isKeyHeld('Q')) movement -= Vector3::UnitY;
             if (movement.LengthSquared() > 0.0f)
             {
                 movement.Normalize();
-                m_camera->getTransform()->translate(movement * speed * deltaTime);
+                getTransform()->translate(movement * speed * deltaTime);
             }
         }
 
         if (input.isMouseHeld(2))
         {
-            const Vector3 pan = m_camera->getRight() * -static_cast<float>(mouseDelta.x)
-                + m_camera->getUp() * static_cast<float>(mouseDelta.y);
-            m_camera->getTransform()->translate(pan * m_panSensitivity * m_orbitDistance);
+            const Vector3 pan = camera->getRight() * -static_cast<float>(mouseDelta.x)
+                + camera->getUp() * static_cast<float>(mouseDelta.y);
+            getTransform()->translate(pan * m_panSensitivity * m_orbitDistance);
             m_orbitPoint += pan * m_panSensitivity * m_orbitDistance;
         }
 
@@ -73,7 +81,7 @@ namespace Engine
         if (wheel != 0)
         {
             const float distance = static_cast<float>(wheel) * m_zoomSensitivity;
-            m_camera->getTransform()->translate(m_camera->getForward() * distance);
+            getTransform()->translate(camera->getForward() * distance);
             m_orbitDistance = std::max(MIN_SETTING_VALUE, m_orbitDistance - distance);
         }
     }
@@ -92,29 +100,36 @@ namespace Engine
 
     void FreeCameraController::focus(const AABB& bounds) noexcept
     {
-        if (m_camera == nullptr || m_camera->getTransform() == nullptr)
+        CameraComponent* const camera = getCamera();
+        if (camera == nullptr || getTransform() == nullptr)
             return;
 
         m_orbitPoint = Vector3(bounds.Center);
         const Vector3 extents(bounds.Extents);
         const float radius = std::max({ extents.x, extents.y, extents.z, MIN_SETTING_VALUE });
-        const float halfFov = DirectX::XMConvertToRadians(m_camera->getFieldOfView()) * 0.5f;
-        m_orbitDistance = m_camera->getProjectionMode() == CameraProjectionMode::Perspective
+        const float halfFov = DirectX::XMConvertToRadians(camera->getFieldOfView()) * 0.5f;
+        m_orbitDistance = camera->getProjectionMode() == CameraProjectionMode::Perspective
             ? radius / std::tan(halfFov) + radius
             : radius * 2.0f;
-        m_camera->getTransform()->setPosition(m_orbitPoint - m_camera->getForward() * m_orbitDistance);
+        getTransform()->setPosition(m_orbitPoint - camera->getForward() * m_orbitDistance);
     }
 
     void FreeCameraController::setOrbitPoint(const Vector3& point) noexcept
     {
         m_orbitPoint = point;
-        if (m_camera != nullptr)
-            m_orbitDistance = std::max((m_camera->getPosition() - point).Length(), MIN_SETTING_VALUE);
+        if (CameraComponent* const camera = getCamera())
+            m_orbitDistance = std::max((camera->getPosition() - point).Length(), MIN_SETTING_VALUE);
+    }
+
+    CameraComponent* FreeCameraController::getCamera() noexcept
+    {
+        GameObject* const gameObject = getGameObject();
+        return gameObject != nullptr ? gameObject->getComponent<CameraComponent>() : nullptr;
     }
 
     void FreeCameraController::updateRotation(const float yawDelta, const float pitchDelta) noexcept
     {
-        Transform* const transform = m_camera->getTransform();
+        Transform* const transform = getTransform();
         if (!m_rotationInitialized)
         {
             const Vector3 rotation = transform->getEulerAngles();
@@ -129,7 +144,24 @@ namespace Engine
 
     void FreeCameraController::updateOrbit(const float yawDelta, const float pitchDelta) noexcept
     {
+        CameraComponent* const camera = getCamera();
+        if (camera == nullptr || getTransform() == nullptr)
+            return;
         updateRotation(yawDelta, pitchDelta);
-        m_camera->getTransform()->setPosition(m_orbitPoint - m_camera->getForward() * m_orbitDistance);
+        getTransform()->setPosition(m_orbitPoint - camera->getForward() * m_orbitDistance);
+    }
+
+    void FreeCameraController::onImGui()
+    {
+        float moveSpeed = m_moveSpeed;
+        if (ImGui::DragFloat("Move Speed", &moveSpeed, 0.1f, MIN_SETTING_VALUE, 1000.0f))
+            setMoveSpeed(moveSpeed);
+
+        float lookSensitivity = m_lookSensitivity;
+        if (ImGui::DragFloat("Look Sensitivity", &lookSensitivity, 0.0001f,
+            MIN_SETTING_VALUE, 1.0f, "%.4f"))
+        {
+            setLookSensitivity(lookSensitivity);
+        }
     }
 } // namespace Engine

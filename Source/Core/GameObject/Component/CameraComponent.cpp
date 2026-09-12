@@ -39,11 +39,6 @@ namespace Engine
         GE_UNUSED(cameraType);
     }
 
-    CameraComponent::~CameraComponent()
-    {
-        CameraManager::instance().unregisterCamera(this);
-    }
-
     void CameraComponent::setProjectionMode(const CameraProjectionMode mode) noexcept
     {
         if (m_projectionMode == mode)

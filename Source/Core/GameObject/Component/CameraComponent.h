@@ -14,7 +14,7 @@ namespace Engine
     public:
 
         CameraComponent() noexcept;
-        ~CameraComponent() override;
+        ~CameraComponent() override = default;
 
         CameraComponent(const CameraComponent&) = delete;
         CameraComponent& operator=(const CameraComponent&) = delete;
