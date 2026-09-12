@@ -25,13 +25,13 @@ namespace Engine
      */
     struct LoggerConfig
     {
-        std::string fileName = "Log/Engine.log"; //!< ログファイルの出力先
-        LogLevel    level = LogLevel::TRACE;     //!< 出力する最小のログレベル
+        std::string fileName = "Log/Engine.log";    //!< ログファイルの出力先
+        LogLevel    level = LogLevel::TRACE;        //!< 出力する最小のログレベル
         LogLevel    flushLevel = LogLevel::WARNING; //!< 即時フラッシュする最小のログレベル
-        bool        useConsole = true;           //!< コンソールへ出力するか
-        bool        useFile = true;              //!< ファイルへ出力するか
-        bool        useDebugOutput = true;       //!< デバッグ出力へ出力するか
-        bool        truncate = true;             //!< 起動時にログファイルを空にするか
+        bool        useConsole = true;              //!< コンソールへ出力するか
+        bool        useFile = true;                 //!< ファイルへ出力するか
+        bool        useDebugOutput = true;          //!< デバッグ出力へ出力するか
+        bool        truncate = true;                //!< 起動時にログファイルを空にするか
     };
 
     /**
@@ -149,7 +149,7 @@ namespace Engine
          */
         static spdlog::level::level_enum toSpdlogLevel(LogLevel level);
 
-        std::shared_ptr<spdlog::logger> m_logger;             //!< ログ出力先
+        std::shared_ptr<spdlog::logger> m_logger;                  //!< ログ出力先
         LogLevel                        m_level = LogLevel::TRACE; //!< 出力する最小のログレベル
     };
 } // namespace Engine

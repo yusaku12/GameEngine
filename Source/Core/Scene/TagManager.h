@@ -51,7 +51,7 @@ namespace Engine
 
         TagManager();
 
-        std::vector<std::string> m_names; //!< Tag IDごとの名前
+        std::vector<std::string> m_names;             //!< Tag IDごとの名前
         std::unordered_map<std::string, TagID> m_ids; //!< Tag名からIDへの索引
     };
 } // namespace Engine

@@ -440,20 +440,20 @@ namespace Engine
         static constexpr float LEFT_STICK_DEADZONE = 7849.f;  //!< 左スティックのデッドゾーン半径（平方距離）
         static constexpr float RIGHT_STICK_DEADZONE = 8689.f; //!< 右スティックのデッドゾーン半径（平方距離）
 
-        uint8_t m_prevKeys[256]{}; //!< 前フレームのキー状態
-        uint8_t m_currKeys[256]{}; //!< 現フレームのキー状態
-        uint8_t m_prevMouse[3]{};  //!< 前フレームのマウスボタン状態
-        uint8_t m_currMouse[3]{};  //!< 現フレームのマウスボタン状態
-        POINT m_mousePos{};        //!< 現フレームのマウス位置
-        POINT m_prevMousePos{};    //!< 前フレームのマウス位置
-        POINT m_mouseDelta{};      //!< 前フレームからのマウス移動量
-        int m_mouseWheel = 0;      //!< マウスホイールの回転量（フレームごとに加算される）
-        int m_prevMouseWheel = 0;  //!< 前フレームのマウスホイールの回転量
-        GamepadState m_gamepads[XUSER_MAX_COUNT]{}; //!< ゲームパッドの状態
-        int m_disconnectedPollCounter = 0;          //!< 未接続コントローラーのポーリングカウンター
+        uint8_t m_prevKeys[256]{};                                          //!< 前フレームのキー状態
+        uint8_t m_currKeys[256]{};                                          //!< 現フレームのキー状態
+        uint8_t m_prevMouse[3]{};                                           //!< 前フレームのマウスボタン状態
+        uint8_t m_currMouse[3]{};                                           //!< 現フレームのマウスボタン状態
+        POINT m_mousePos{};                                                 //!< 現フレームのマウス位置
+        POINT m_prevMousePos{};                                             //!< 前フレームのマウス位置
+        POINT m_mouseDelta{};                                               //!< 前フレームからのマウス移動量
+        int m_mouseWheel = 0;                                               //!< マウスホイールの回転量（フレームごとに加算される）
+        int m_prevMouseWheel = 0;                                           //!< 前フレームのマウスホイールの回転量
+        GamepadState m_gamepads[XUSER_MAX_COUNT]{};                         //!< ゲームパッドの状態
+        int m_disconnectedPollCounter = 0;                                  //!< 未接続コントローラーのポーリングカウンター
         std::unordered_map<std::string, InputAxis>        m_axes;           //!< 軸のバインド情報
         std::unordered_map<std::string, ActionBinding>    m_actionBindings; //!< アクションのバインド情報
         std::unordered_map<std::string, InputBufferEntry> m_actionBuffers;  //!< アクションのバッファリング状態
-        bool m_windowFocused = true; //!< ウィンドウがフォーカスされているかどうか
+        bool m_windowFocused = true;                                        //!< ウィンドウがフォーカスされているかどうか
     };
 }

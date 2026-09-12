@@ -37,7 +37,7 @@ namespace Engine
 
     private:
 
-        std::mutex m_mutex; //!< Task queueを保護するMutex。
+        std::mutex m_mutex;                         //!< Task queueを保護するMutex。
         std::vector<std::function<void()>> m_tasks; //!< Main threadで実行待ちのTask。
     };
 } // namespace Engine

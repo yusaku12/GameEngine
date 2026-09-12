@@ -123,6 +123,16 @@ namespace Engine
         Matrix getWorldMatrix() const noexcept;
 
         /**
+         * @brief ワールドTransformのリビジョンを取得する。
+         * @return ワールドTransformのリビジョン
+         */
+        std::uint64_t getWorldTransformRevision() const noexcept
+        {
+            updateWorldTransform();
+            return m_worldRevision;
+        }
+
+        /**
          * @brief 親GameObjectを取得する。
          * @return 親GameObjectのポインタ。親が存在しない場合はnullptr。
          */
@@ -370,21 +380,21 @@ namespace Engine
          */
         void propagateActiveState(bool wasActive, bool isActive) noexcept;
 
-        GameObjectManager* m_manager = nullptr; //!< 所属するGameObjectManagerのポインタ
-        ObjectGUID m_guid;   //!< GameObjectのGUID
-        std::string m_name;  //!< GameObjectの名前
-        TagID m_tag = 0;     //!< タグID
-        LayerID m_layer = 0; //!< レイヤーID
-        bool m_activeSelf = true; //!< 自身のアクティブ状態
-        bool m_destroyRequested = false; //!< 破棄要求が出ているかどうか
-        TransformComponent* m_transformComponent = nullptr; //!< ローカルTransformを保持する必須Component。所有しない
-        GameObject* m_parent = nullptr; //!< 親GameObjectのポインタ
-        std::vector<GameObject*> m_children; //!< 子GameObjectの配列
+        GameObjectManager* m_manager = nullptr;                                                    //!< 所属するGameObjectManagerのポインタ
+        ObjectGUID m_guid;                                                                         //!< GameObjectのGUID
+        std::string m_name;                                                                        //!< GameObjectの名前
+        TagID m_tag = 0;                                                                           //!< タグID
+        LayerID m_layer = 0;                                                                       //!< レイヤーID
+        bool m_activeSelf = true;                                                                  //!< 自身のアクティブ状態
+        bool m_destroyRequested = false;                                                           //!< 破棄要求が出ているかどうか
+        TransformComponent* m_transformComponent = nullptr;                                        //!< ローカルTransformを保持する必須Component。所有しない
+        GameObject* m_parent = nullptr;                                                            //!< 親GameObjectのポインタ
+        std::vector<GameObject*> m_children;                                                       //!< 子GameObjectの配列
         std::unordered_map<std::type_index, std::vector<std::unique_ptr<Component>>> m_components; //!< Componentの型ごとのマップ
-        mutable Transform m_worldTransform; //!< Transformのワールド変換をキャッシュするための変数
-        mutable std::uint64_t m_cachedLocalRevision = 0;  //!< 自身のTransformの変更リビジョンをキャッシュするための変数
-        mutable std::uint64_t m_cachedParentRevision = 0; //!< 親のTransformの変更リビジョンをキャッシュするための変数
-        mutable std::uint64_t m_worldRevision = 0; //!< Transformの変更リビジョンをキャッシュするための変数
-        bool m_lifecycleAwake = false; //!< LifecycleのAwakeが呼ばれたかどうか
+        mutable Transform m_worldTransform;                                                        //!< Transformのワールド変換をキャッシュするための変数
+        mutable std::uint64_t m_cachedLocalRevision = 0;                                           //!< 自身のTransformの変更リビジョンをキャッシュするための変数
+        mutable std::uint64_t m_cachedParentRevision = 0;                                          //!< 親のTransformの変更リビジョンをキャッシュするための変数
+        mutable std::uint64_t m_worldRevision = 0;                                                 //!< Transformの変更リビジョンをキャッシュするための変数
+        bool m_lifecycleAwake = false;                                                             //!< LifecycleのAwakeが呼ばれたかどうか
     };
 } // namespace Engine

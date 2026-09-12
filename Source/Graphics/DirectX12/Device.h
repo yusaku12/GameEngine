@@ -10,9 +10,9 @@ namespace Engine
      */
     struct DX12DeviceConfig
     {
-        bool enableDebugLayer = false; //!< D3D12 デバッグレイヤーを有効にするか
+        bool enableDebugLayer = false;         //!< D3D12 デバッグレイヤーを有効にするか
         bool enableGpuBasedValidation = false; //!< GPU-based validation を有効にするか
-        bool enableDxgiDebug = false; //!< DXGI Debug の Live Object Report を有効にするか
+        bool enableDxgiDebug = false;          //!< DXGI Debug の Live Object Report を有効にするか
     };
 
     /**
@@ -21,7 +21,7 @@ namespace Engine
     struct DX12DeviceCapabilities
     {
         D3D12_RESOURCE_BINDING_TIER resourceBindingTier = D3D12_RESOURCE_BINDING_TIER_1; //!< Resource Binding Tier
-        std::uint32_t shaderModel = 0x60; //!< 最大対応 Shader Model (6.x encoded as 0x6x)
+        std::uint32_t shaderModel = 0x60;                                                //!< 最大対応 Shader Model (6.x encoded as 0x6x)
     };
 
     /**
@@ -119,8 +119,8 @@ namespace Engine
 
         Microsoft::WRL::ComPtr<IDXGIFactory6> m_factory; //!< DXGI Factory
         Microsoft::WRL::ComPtr<IDXGIAdapter4> m_adapter; //!< 選択した GPU アダプター
-        Microsoft::WRL::ComPtr<ID3D12Device> m_device; //!< DirectX 12 デバイス
+        Microsoft::WRL::ComPtr<ID3D12Device> m_device;   //!< DirectX 12 デバイス
         Microsoft::WRL::ComPtr<IDXGIDebug1> m_dxgiDebug; //!< DXGI Debug Interface
-        DX12DeviceCapabilities m_capabilities; //!< デバイス機能
+        DX12DeviceCapabilities m_capabilities;           //!< デバイス機能
     };
 } // namespace Engine

@@ -12,10 +12,10 @@ namespace Engine
      */
     struct DX12ResourceConfig
     {
-        D3D12_HEAP_TYPE heapType = D3D12_HEAP_TYPE_DEFAULT; //!< Resource を配置する Heap 種別
-        D3D12_RESOURCE_DESC description{}; //!< Format、Size、Usage を含む Resource 設定
+        D3D12_HEAP_TYPE heapType = D3D12_HEAP_TYPE_DEFAULT;               //!< Resource を配置する Heap 種別
+        D3D12_RESOURCE_DESC description{};                                //!< Format、Size、Usage を含む Resource 設定
         D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON; //!< 作成直後の Resource State
-        const D3D12_CLEAR_VALUE* clearValue = nullptr; //!< Render Target または Depth Stencil の最適化 Clear 値
+        const D3D12_CLEAR_VALUE* clearValue = nullptr;                    //!< Render Target または Depth Stencil の最適化 Clear 値
     };
 
     /**
@@ -88,8 +88,8 @@ namespace Engine
 
     private:
 
-        Microsoft::WRL::ComPtr<ID3D12Resource> m_resource; //!< DirectX 12 Resource
-        D3D12_RESOURCE_DESC m_description{}; //!< Format、Size、Usage を含む Resource 設定
+        Microsoft::WRL::ComPtr<ID3D12Resource> m_resource;                  //!< DirectX 12 Resource
+        D3D12_RESOURCE_DESC m_description{};                                //!< Format、Size、Usage を含む Resource 設定
         D3D12_RESOURCE_STATES m_initialState = D3D12_RESOURCE_STATE_COMMON; //!< 作成時 Resource State
         D3D12_RESOURCE_STATES m_currentState = D3D12_RESOURCE_STATE_COMMON; //!< 追跡中の現在 Resource State
     };
@@ -157,11 +157,11 @@ namespace Engine
 
     private:
 
-        DX12Resource m_resource; //!< Upload Heap 上の Resource
+        DX12Resource m_resource;                      //!< Upload Heap 上の Resource
         const DX12Fence* m_completionFence = nullptr; //!< GPU 使用完了 Fence への非所有参照
-        std::byte* m_mappedData = nullptr; //!< 永続マップした CPU 書き込み先
-        std::uint64_t m_size = 0; //!< Buffer サイズ
-        std::uint64_t m_lastUsedFenceValue = 0; //!< 解放前に完了が必要な Fence 値
+        std::byte* m_mappedData = nullptr;            //!< 永続マップした CPU 書き込み先
+        std::uint64_t m_size = 0;                     //!< Buffer サイズ
+        std::uint64_t m_lastUsedFenceValue = 0;       //!< 解放前に完了が必要な Fence 値
     };
 
     /**
@@ -221,9 +221,9 @@ namespace Engine
 
     private:
 
-        DX12Resource m_resource; //!< Readback Heap 上の Resource
+        DX12Resource m_resource;                      //!< Readback Heap 上の Resource
         const DX12Fence* m_completionFence = nullptr; //!< GPU Copy 完了 Fence への非所有参照
-        std::uint64_t m_size = 0; //!< Buffer サイズ
-        std::uint64_t m_pendingFenceValue = 0; //!< 読み取り・解放前に完了が必要な Fence 値
+        std::uint64_t m_size = 0;                     //!< Buffer サイズ
+        std::uint64_t m_pendingFenceValue = 0;        //!< 読み取り・解放前に完了が必要な Fence 値
     };
 } // namespace Engine

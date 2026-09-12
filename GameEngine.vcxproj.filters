@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="Source\Assets\Model\Import\AssimpModelImporter.cpp" />
@@ -12,6 +12,9 @@
     <ClCompile Include="Source\Graphics\DirectX12\Renderer.cpp" />
     <ClCompile Include="Source\Graphics\Renderer\RenderQueue.cpp" />
     <ClCompile Include="Source\Graphics\Renderer\ModelRenderSubmission.cpp" />
+    <ClCompile Include="Source\Graphics\Camera\CameraManager.cpp" />
+    <ClCompile Include="Source\Graphics\Camera\CameraRenderSubmission.cpp" />
+    <ClCompile Include="Source\Graphics\Camera\CameraUtils.cpp" />
     <ClCompile Include="Source\Graphics\Model\ModelGpuCache.cpp" />
     <ClCompile Include="Source\Graphics\Shader\Shader.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\SwapChain.cpp" />
@@ -42,6 +45,7 @@
     <ClCompile Include="Source\Graphics\Texture\TextureManager.cpp" />
     <ClCompile Include="Source\Core\Object\ObjectGUID.cpp" />
     <ClCompile Include="Source\Core\GameObject\GameObject.cpp" />
+    <ClCompile Include="Source\Core\GameObject\Component\CameraComponent.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\TransformComponent.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\ModelRendererComponent.cpp" />
     <ClCompile Include="Source\Core\GameObject\ComponentRegistry.cpp" />
@@ -101,6 +105,11 @@
     <ClInclude Include="Source\Graphics\Renderer\RenderItem.h" />
     <ClInclude Include="Source\Graphics\Renderer\RenderQueue.h" />
     <ClInclude Include="Source\Graphics\Renderer\ModelRenderSubmission.h" />
+    <ClInclude Include="Source\Graphics\Camera\CameraData.h" />
+    <ClInclude Include="Source\Graphics\Camera\CameraManager.h" />
+    <ClInclude Include="Source\Graphics\Camera\CameraRenderSubmission.h" />
+    <ClInclude Include="Source\Graphics\Camera\CameraTypes.h" />
+    <ClInclude Include="Source\Graphics\Camera\CameraUtils.h" />
     <ClInclude Include="Source\Graphics\Model\ModelGpuCache.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Pipeline.h" />
     <ClInclude Include="Source\Graphics\Shader\Shader.h" />
@@ -109,10 +118,14 @@
     <ClInclude Include="Source\Core\System\Dialog.h" />
     <ClInclude Include="Source\Editor\ImGui\ImGuiSystem.h" />
     <ClInclude Include="Source\Editor\Scene\SceneDocument.h" />
+    <ClInclude Include="Source\Editor\Camera\FreeCameraController.h" />
+    <ClInclude Include="Source\Tests\CameraSystemTests.h" />
     <ClCompile Include="Source\Editor\ImGui\EditorUi.cpp" />
     <ClCompile Include="Source\Core\System\Dialog.cpp" />
     <ClCompile Include="Source\Editor\ImGui\ImGuiSystem.cpp" />
     <ClCompile Include="Source\Editor\Scene\SceneDocument.cpp" />
+    <ClCompile Include="Source\Editor\Camera\FreeCameraController.cpp" />
+    <ClCompile Include="Source\Tests\CameraSystemTests.cpp" />
     <ClCompile Include="Library\imgui\imgui.cpp" />
     <ClCompile Include="Library\imgui\imgui_draw.cpp" />
     <ClCompile Include="Library\imgui\imgui_tables.cpp" />
@@ -138,6 +151,7 @@
     <ClInclude Include="Source\Graphics\Texture\TextureManager.h" />
     <ClInclude Include="Source\Core\Object\ObjectGUID.h" />
     <ClInclude Include="Source\Core\GameObject\Component.h" />
+    <ClInclude Include="Source\Core\GameObject\Component\CameraComponent.h" />
     <ClInclude Include="Source\Core\GameObject\Component\TransformComponent.h" />
     <ClInclude Include="Source\Core\GameObject\Component\ModelRendererComponent.h" />
     <ClInclude Include="Source\Core\GameObject\ComponentRegistry.h" />

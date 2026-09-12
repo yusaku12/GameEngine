@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Graphics\DirectX12\Renderer.h"
+#include "Graphics\Camera\CameraRenderSubmission.h"
 #include "Graphics\Renderer\ModelRenderSubmission.h"
 #include "Graphics\Texture\TextureManager.h"
 #include <imgui.h>
@@ -159,6 +160,11 @@ namespace Engine
         m_frustum.reset();
         m_viewProjection = Matrix::Identity;
         m_cameraPosition = Vector3::Zero;
+        m_cameraViewport = {};
+        m_cameraClearMode = CameraClearMode::SolidColor;
+        m_cameraClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);
+        m_cameraCullingMask = UINT32_MAX;
+        CameraRenderSubmissionQueue::instance().clear();
         m_statistics = {};
         m_frameStatistics = {};
         m_directFence.finalize();
@@ -171,6 +177,10 @@ namespace Engine
     {
         if (m_imguiSystem == nullptr || !m_imguiSystem->isInitialized())
             return false;
+
+        RenderView submittedView;
+        if (CameraRenderSubmissionQueue::instance().consume(submittedView))
+            setRenderView(submittedView);
 
         m_shaderManager.processHotReload();
 
@@ -230,15 +240,24 @@ namespace Engine
             return false;
         }
 
-        static constexpr float CLEAR_COLOR[] = { 0.08f, 0.16f, 0.24f, 1.0f };
         ID3D12GraphicsCommandList* const nativeCommandList = commandList.getForRecording();
         const D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_swapChain.getCurrentRtv().native;
-        const D3D12_VIEWPORT viewport{ 0.0f, 0.0f, static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight), 0.0f, 1.0f };
-        const D3D12_RECT scissorRect{ 0, 0, static_cast<LONG>(m_renderWidth), static_cast<LONG>(m_renderHeight) };
+        const float viewportX = m_cameraViewport.x * static_cast<float>(m_renderWidth);
+        const float viewportY = m_cameraViewport.y * static_cast<float>(m_renderHeight);
+        const float viewportWidth = m_cameraViewport.width * static_cast<float>(m_renderWidth);
+        const float viewportHeight = m_cameraViewport.height * static_cast<float>(m_renderHeight);
+        const D3D12_VIEWPORT viewport{ viewportX, viewportY, viewportWidth, viewportHeight, 0.0f, 1.0f };
+        const D3D12_RECT scissorRect{
+            static_cast<LONG>(viewportX),
+            static_cast<LONG>(viewportY),
+            static_cast<LONG>(viewportX + viewportWidth),
+            static_cast<LONG>(viewportY + viewportHeight)
+        };
         nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
         nativeCommandList->RSSetViewports(1, &viewport);
         nativeCommandList->RSSetScissorRects(1, &scissorRect);
-        nativeCommandList->ClearRenderTargetView(renderTargetView, CLEAR_COLOR, 0, nullptr);
+        if (m_cameraClearMode == CameraClearMode::SolidColor || m_cameraClearMode == CameraClearMode::Skybox)
+            nativeCommandList->ClearRenderTargetView(renderTargetView, &m_cameraClearColor.x, 0, nullptr);
         if (!renderModelQueue(commandList))
             return false;
 
@@ -291,6 +310,17 @@ namespace Engine
         m_renderWidth = width;
         m_renderHeight = height;
         return true;
+    }
+
+    void DX12Renderer::setRenderView(const RenderView& view) noexcept
+    {
+        m_viewProjection = view.camera.viewProjection;
+        m_cameraPosition = view.camera.position;
+        m_frustum = view.frustum;
+        m_cameraViewport = view.viewport;
+        m_cameraClearMode = view.clearMode;
+        m_cameraClearColor = view.backgroundColor;
+        m_cameraCullingMask = view.cullingMask;
     }
 
     bool DX12Renderer::processImGuiMessage(const HWND hwnd, const UINT message, const WPARAM wparam, const LPARAM lparam)
@@ -370,6 +400,13 @@ namespace Engine
 
         for (const ModelRenderSubmission& submission : m_modelSubmissions)
         {
+            if (submission.layer >= 32
+                || (m_cameraCullingMask & (1u << submission.layer)) == 0)
+            {
+                ++m_frameStatistics.culledObjects;
+                continue;
+            }
+
             if (m_frustum && !isVisible(*m_frustum, submission.worldBounds))
             {
                 ++m_frameStatistics.culledObjects;
@@ -423,7 +460,7 @@ namespace Engine
                             .meshID = static_cast<std::uint32_t>(meshIndex),
                             .cameraDepth = (Vector3(meshWorldBounds.Center) - m_cameraPosition).LengthSquared(),
                             .pass = pass,
-                        }, m_frustum ? &*m_frustum : nullptr) || objectVisible;
+                            }, m_frustum ? &*m_frustum : nullptr) || objectVisible;
                     };
 
                 if (mesh.subMeshes.empty())

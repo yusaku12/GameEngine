@@ -73,7 +73,7 @@ namespace Engine
     private:
 
         Microsoft::WRL::ComPtr<ID3D12Fence> m_fence; //!< DirectX 12 Fence
-        HANDLE m_event = nullptr; //!< CPU 待機イベント
-        std::uint64_t m_nextValue = 1; //!< 次に通知する Fence 値
+        HANDLE m_event = nullptr;                    //!< CPU 待機イベント
+        std::uint64_t m_nextValue = 1;               //!< 次に通知する Fence 値
     };
 } // namespace Engine

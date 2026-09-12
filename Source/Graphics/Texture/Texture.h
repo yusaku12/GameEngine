@@ -180,13 +180,13 @@ namespace Engine
         Microsoft::WRL::ComPtr<ID3D12Resource> m_uploadBuffer; //!< Upload 用バッファ（完了後解放）
 
         // メタデータ
-        std::filesystem::path m_path; //!< ファイルパス（正規化済み）
-        TextureResourceInfo m_info;   //!< GPU リソース情報
-        TextureState m_state = TextureState::Unloaded; //!< ロード状態
+        std::filesystem::path m_path;                                        //!< ファイルパス（正規化済み）
+        TextureResourceInfo m_info;                                          //!< GPU リソース情報
+        TextureState m_state = TextureState::Unloaded;                       //!< ロード状態
         D3D12_RESOURCE_STATES m_resourceState = D3D12_RESOURCE_STATE_COMMON; //!< 現在の Resource State
 
         // Upload 追跡
         const DX12Fence* m_uploadFence = nullptr; //!< Upload 完了確認用 Fence（非所有）
-        uint64_t m_uploadFenceValue = 0; //!< Upload が完了した Fence 値
+        uint64_t m_uploadFenceValue = 0;          //!< Upload が完了した Fence 値
     };
 } // namespace Engine

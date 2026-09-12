@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Window.h"
+#include "Graphics\Camera\CameraManager.h"
 #include "Core\Scene\SceneManager.h"
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Threading\ThreadDebugStats.h"
@@ -107,6 +108,8 @@ namespace Engine
                 const std::uint32_t height = HIWORD(lparam);
                 if (!m_renderer.resize(width, height))
                     LOG_ERROR("[Window] 描画領域のリサイズに失敗しました");
+                else
+                    CameraManager::instance().setRenderTargetSize(width, height);
             }
             break;
 

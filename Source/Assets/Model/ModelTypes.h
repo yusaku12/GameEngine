@@ -9,7 +9,7 @@ namespace Engine
      */
     struct ModelHandle
     {
-        // 無効なインデックス値。
+        //! 無効なインデックス値。
         static constexpr std::uint32_t INVALID_INDEX = UINT32_MAX;
 
         std::uint32_t index = INVALID_INDEX; //!< インデックス値

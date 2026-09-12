@@ -3,6 +3,7 @@
 #include "Assets\Model\ModelTypes.h"
 #include "Core\CoreDefines.h"
 #include "Core\Math\Geometry.h"
+#include "Core\Scene\LayerManager.h"
 
 namespace Engine
 {
@@ -15,6 +16,7 @@ namespace Engine
         Matrix worldMatrix = Matrix::Identity; //!< モデルのワールド変換行列
         AABB worldBounds{};                    //!< モデルのワールド空間でのAABB
         std::uint32_t objectID = 0;            //!< オブジェクトID。レンダリングパスでの識別に使用される
+        LayerID layer = 0;                     //!< Camera Culling Maskで判定するLayer
         bool castShadows = true;               //!< シャドウをキャストするかどうか
     };
 
@@ -55,7 +57,7 @@ namespace Engine
         ModelRenderSubmissionQueue() { m_pending.reserve(256); }
         ~ModelRenderSubmissionQueue() = default;
 
-        std::mutex m_mutex; //!< 提出結果の保護用Mutex
+        std::mutex m_mutex;                           //!< 提出結果の保護用Mutex
         std::vector<ModelRenderSubmission> m_pending; //!< 提出された描画Snapshotの保管用Buffer
     };
 } // namespace Engine

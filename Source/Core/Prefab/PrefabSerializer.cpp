@@ -1,4 +1,4 @@
-#include "Pch.h"
+﻿#include "Pch.h"
 #include <flatbuffers/flatbuffers.h>
 #include "Generated\FlatBuffers\Prefab_generated.h"
 #include "Core\Prefab\PrefabSerializer.h"

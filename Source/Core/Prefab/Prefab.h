@@ -15,14 +15,14 @@ namespace Engine
      */
     struct PrefabNode
     {
-        ObjectGUID sourceGUID;              //!< キャプチャ元GameObjectのGUID
-        std::string name;                   //!< GameObject名
-        bool active = true;                 //!< 自身のアクティブ状態
-        TagID tag = 0;                      //!< Tag ID
-        LayerID layer = 0;                  //!< Layer ID
-        Transform localTransform;           //!< 親基準のローカルTransform
+        ObjectGUID sourceGUID;                   //!< キャプチャ元GameObjectのGUID
+        std::string name;                        //!< GameObject名
+        bool active = true;                      //!< 自身のアクティブ状態
+        TagID tag = 0;                           //!< Tag ID
+        LayerID layer = 0;                       //!< Layer ID
+        Transform localTransform;                //!< 親基準のローカルTransform
         std::vector<std::string> componentTypes; //!< 所属Componentの型名
-        std::vector<PrefabNode> children;  //!< 子ノード
+        std::vector<PrefabNode> children;        //!< 子ノード
     };
 
     /**

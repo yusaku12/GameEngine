@@ -42,7 +42,7 @@ namespace Engine
 
     private:
 
-        uint64_t m_frequency = 0;      //!< タイマーの周波数（ティック/秒）
-        int64_t  m_startCounter = 0;   //!< リセット時のカウンタ値
+        uint64_t m_frequency = 0;    //!< タイマーの周波数（ティック/秒）
+        int64_t  m_startCounter = 0; //!< リセット時のカウンタ値
     };
 } // namespace Engine

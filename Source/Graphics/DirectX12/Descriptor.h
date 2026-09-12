@@ -10,7 +10,7 @@ namespace Engine
     struct DX12CpuDescriptorHandle
     {
         D3D12_CPU_DESCRIPTOR_HANDLE native{}; //!< DirectX 12 CPU Descriptor Handle
-        std::uint32_t index = 0; //!< Heap 内の Descriptor Index
+        std::uint32_t index = 0;              //!< Heap 内の Descriptor Index
     };
 
     /**
@@ -19,7 +19,7 @@ namespace Engine
     struct DX12GpuDescriptorHandle
     {
         D3D12_GPU_DESCRIPTOR_HANDLE native{}; //!< DirectX 12 GPU Descriptor Handle
-        std::uint32_t index = 0; //!< Heap 内の Descriptor Index
+        std::uint32_t index = 0;              //!< Heap 内の Descriptor Index
     };
 
     /**
@@ -28,8 +28,8 @@ namespace Engine
     struct DX12DescriptorHeapConfig
     {
         D3D12_DESCRIPTOR_HEAP_TYPE type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV; //!< Heap の用途
-        std::uint32_t capacity = 0; //!< 割り当て可能な Descriptor 数
-        bool shaderVisible = false; //!< GPU から参照可能にするか
+        std::uint32_t capacity = 0;                                               //!< 割り当て可能な Descriptor 数
+        bool shaderVisible = false;                                               //!< GPU から参照可能にするか
     };
 
     /**
@@ -37,7 +37,7 @@ namespace Engine
      */
     struct DX12DescriptorAllocation
     {
-        DX12CpuDescriptorHandle cpu; //!< CPU Descriptor Handle
+        DX12CpuDescriptorHandle cpu;                //!< CPU Descriptor Handle
         std::optional<DX12GpuDescriptorHandle> gpu; //!< Shader Visible Heap の GPU Descriptor Handle
     };
 
@@ -102,11 +102,11 @@ namespace Engine
     private:
 
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_heap; //!< DirectX 12 Descriptor Heap
-        D3D12_CPU_DESCRIPTOR_HANDLE m_cpuStart{}; //!< CPU Handle の先頭
-        D3D12_GPU_DESCRIPTOR_HANDLE m_gpuStart{}; //!< GPU Handle の先頭
-        std::uint32_t m_descriptorSize = 0; //!< Descriptor 1 個のサイズ
-        std::uint32_t m_capacity = 0; //!< 割り当て可能な Descriptor 数
-        std::uint32_t m_nextIndex = 0; //!< 次に割り当てる Descriptor Index
-        bool m_shaderVisible = false; //!< GPU から参照可能か
+        D3D12_CPU_DESCRIPTOR_HANDLE m_cpuStart{};            //!< CPU Handle の先頭
+        D3D12_GPU_DESCRIPTOR_HANDLE m_gpuStart{};            //!< GPU Handle の先頭
+        std::uint32_t m_descriptorSize = 0;                  //!< Descriptor 1 個のサイズ
+        std::uint32_t m_capacity = 0;                        //!< 割り当て可能な Descriptor 数
+        std::uint32_t m_nextIndex = 0;                       //!< 次に割り当てる Descriptor Index
+        bool m_shaderVisible = false;                        //!< GPU から参照可能か
     };
 } // namespace Engine

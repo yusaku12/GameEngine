@@ -93,8 +93,8 @@ namespace Engine
          */
         std::unique_ptr<ModelGpuResource> createResource(ModelHandle handle);
 
-        DX12Device* m_device = nullptr; //!< DX12Deviceへの非所有参照
-        DX12Fence* m_fence = nullptr;   //!< DX12Fenceへの非所有参照
+        DX12Device* m_device = nullptr;                                                   //!< DX12Deviceへの非所有参照
+        DX12Fence* m_fence = nullptr;                                                     //!< DX12Fenceへの非所有参照
         std::unordered_map<std::uint64_t, std::unique_ptr<ModelGpuResource>> m_resources; //!< ModelHandleに対応するGPU ResourceのMap
     };
 } // namespace Engine

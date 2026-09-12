@@ -255,24 +255,24 @@ namespace Engine
         static constexpr double FPS_UPDATE_INTERVAL = 0.5;          //!< FPS統計を更新する間隔（秒）
         static constexpr uint32_t MAX_FIXED_UPDATES_PER_FRAME = 8;  //!< 1フレーム内の Fixed Update 上限数
 
-        HighResolutionTimer m_timer;               //!< 高精度タイマー
-        double m_deltaTime = 0.0;                  //!< 前フレームからの経過時間（Time Scale適用後）
-        double m_unscaledDeltaTime = 0.0;          //!< 前フレームからの経過時間（Time Scale未適用）
-        double m_gameTime = 0.0;                   //!< ゲーム開始からの経過時間（Time Scale適用後）
-        double m_unscaledTime = 0.0;               //!< ゲーム開始からの経過時間（Time Scale未適用）
-        double m_timeScale = 1.0;                  //!< 時間の進み方（1.0で等倍、0.0で停止）
-        double m_maxDeltaTime = 0.1;               //!< 1フレームの経過時間の上限
-        double m_fixedDeltaTime = 1.0 / 60.0;      //!< Fixed Update の1フレーム時間
-        double m_fixedAccumulator = 0.0;           //!< Fixed Update のAccumulator
-        uint64_t m_frameCount = 0;                 //!< フレーム数
-        uint64_t m_fixedFrameCount = 0;            //!< Fixed Update の実行回数
-        double m_fps = 0.0;                        //!< 現在のFPS
-        double m_averageFps = 0.0;                 //!< 平均FPS
-        double m_fpsTimer = 0.0;                   //!< FPS計測用タイマー
-        uint32_t m_fpsFrameCount = 0;              //!< FPS計測用フレームカウント
-        double m_smoothDeltaTime = 0.0;            //!< 平滑化された Delta Time
-        uint32_t m_smoothBufferIndex = 0;          //!< バッファのインデックス
-        bool m_paused = false;                     //!< ゲーム一時停止フラグ
+        HighResolutionTimer m_timer;                                           //!< 高精度タイマー
+        double m_deltaTime = 0.0;                                              //!< 前フレームからの経過時間（Time Scale適用後）
+        double m_unscaledDeltaTime = 0.0;                                      //!< 前フレームからの経過時間（Time Scale未適用）
+        double m_gameTime = 0.0;                                               //!< ゲーム開始からの経過時間（Time Scale適用後）
+        double m_unscaledTime = 0.0;                                           //!< ゲーム開始からの経過時間（Time Scale未適用）
+        double m_timeScale = 1.0;                                              //!< 時間の進み方（1.0で等倍、0.0で停止）
+        double m_maxDeltaTime = 0.1;                                           //!< 1フレームの経過時間の上限
+        double m_fixedDeltaTime = 1.0 / 60.0;                                  //!< Fixed Update の1フレーム時間
+        double m_fixedAccumulator = 0.0;                                       //!< Fixed Update のAccumulator
+        uint64_t m_frameCount = 0;                                             //!< フレーム数
+        uint64_t m_fixedFrameCount = 0;                                        //!< Fixed Update の実行回数
+        double m_fps = 0.0;                                                    //!< 現在のFPS
+        double m_averageFps = 0.0;                                             //!< 平均FPS
+        double m_fpsTimer = 0.0;                                               //!< FPS計測用タイマー
+        uint32_t m_fpsFrameCount = 0;                                          //!< FPS計測用フレームカウント
+        double m_smoothDeltaTime = 0.0;                                        //!< 平滑化された Delta Time
+        uint32_t m_smoothBufferIndex = 0;                                      //!< バッファのインデックス
+        bool m_paused = false;                                                 //!< ゲーム一時停止フラグ
         std::array<double, SMOOTH_SAMPLE_COUNT> m_smoothDeltaTimeBuffer = {};  //!< Smooth Delta Time 用バッファ
     };
 } // namespace Engine

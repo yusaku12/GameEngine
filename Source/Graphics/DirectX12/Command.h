@@ -88,10 +88,10 @@ namespace Engine
 
     private:
 
-        Microsoft::WRL::ComPtr<ID3D12CommandAllocator> m_allocator; //!< Command Allocator
+        Microsoft::WRL::ComPtr<ID3D12CommandAllocator> m_allocator;      //!< Command Allocator
         Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> m_commandList; //!< Graphics Command List
-        DX12CommandQueueType m_type = DX12CommandQueueType::DIRECT; //!< Command List の種別
-        DX12CommandListState m_state = DX12CommandListState::CLOSED; //!< Command List の状態
-        std::uint64_t m_lastSubmittedFenceValue = 0; //!< Allocator を再利用可能にする Fence 値
+        DX12CommandQueueType m_type = DX12CommandQueueType::DIRECT;      //!< Command List の種別
+        DX12CommandListState m_state = DX12CommandListState::CLOSED;     //!< Command List の状態
+        std::uint64_t m_lastSubmittedFenceValue = 0;                     //!< Allocator を再利用可能にする Fence 値
     };
 } // namespace Engine

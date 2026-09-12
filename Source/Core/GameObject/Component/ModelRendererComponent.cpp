@@ -1,4 +1,4 @@
-#include "Pch.h"
+﻿#include "Pch.h"
 #include "Core\GameObject\Component\ModelRendererComponent.h"
 #include "Assets\Model\ModelManager.h"
 #include "Core\GameObject\ComponentRegistry.h"
@@ -41,8 +41,9 @@ namespace Engine
             .worldMatrix = worldMatrix,
             .worldBounds = worldBounds,
             .objectID = m_objectID,
+            .layer = getGameObject()->getLayer(),
             .castShadows = m_castShadows,
-        });
+            });
     }
 
     void ModelRendererComponent::onImGui()

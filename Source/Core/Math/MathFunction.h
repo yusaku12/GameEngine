@@ -4,12 +4,12 @@
 
 namespace Engine
 {
-    static constexpr float PI = 3.14159265358979323846f;         //!< 円周率
-    static constexpr float TWO_PI = PI * 2.0f;                   //!< 円周率の2倍
-    static constexpr float HALF_PI = PI * 0.5f;                  //!< 円周率の半分
-    static constexpr float DEG_TO_RAD = PI / 180.0f;             //!< 度からラジアンへの変換係数
-    static constexpr float RAD_TO_DEG = 180.0f / PI;             //!< ラジアンから度への変換係数
-    static constexpr float EPSILON = 1.0e-6f;                    //!< 浮動小数点の比較に使う許容誤差
+    static constexpr float PI = 3.14159265358979323846f; //!< 円周率
+    static constexpr float TWO_PI = PI * 2.0f;           //!< 円周率の2倍
+    static constexpr float HALF_PI = PI * 0.5f;          //!< 円周率の半分
+    static constexpr float DEG_TO_RAD = PI / 180.0f;     //!< 度からラジアンへの変換係数
+    static constexpr float RAD_TO_DEG = 180.0f / PI;     //!< ラジアンから度への変換係数
+    static constexpr float EPSILON = 1.0e-6f;            //!< 浮動小数点の比較に使う許容誤差
 
     /**
      * @brief 小さい方の値を返す

@@ -125,8 +125,8 @@ namespace Engine
 
     private:
 
-        std::vector<std::unique_ptr<GameObject>> m_objects; //!< 管理しているGameObjectの配列
-        std::vector<GameObject*> m_destroyQueue;            //!< 破棄キューに溜まったGameObjectの配列
+        std::vector<std::unique_ptr<GameObject>> m_objects;                      //!< 管理しているGameObjectの配列
+        std::vector<GameObject*> m_destroyQueue;                                 //!< 破棄キューに溜まったGameObjectの配列
         std::unordered_map<ObjectGUID, GameObject*, ObjectGUIDHash> m_guidIndex; //!< GUIDでGameObjectを検索するためのインデックス
     };
 } // namespace Engine

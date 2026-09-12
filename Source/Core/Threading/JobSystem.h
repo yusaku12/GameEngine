@@ -69,9 +69,9 @@ namespace Engine
 
     private:
 
-        mutable std::mutex      m_mutex;          //!< 条件変数待機用
+        mutable std::mutex      m_mutex;             //!< 条件変数待機用
         mutable std::condition_variable m_condition; //!< 依存完了通知
-        std::atomic<uint32_t>   m_remaining{ 0 }; //!< 残り依存数
+        std::atomic<uint32_t>   m_remaining{ 0 };    //!< 残り依存数
     };
 
     /**
@@ -312,10 +312,10 @@ namespace Engine
          */
         struct Job
         {
-            JobFunction function;                          //!< 実行する処理
-            JobCounter* counter = nullptr;                 //!< 完了を数えるカウンタ
+            JobFunction function;                                 //!< 実行する処理
+            JobCounter* counter = nullptr;                        //!< 完了を数えるカウンタ
             std::shared_ptr<CancellationToken> cancellationToken; //!< キャンセルトークン
-            std::shared_ptr<JobDependency> dependency;     //!< 実行依存
+            std::shared_ptr<JobDependency> dependency;            //!< 実行依存
         };
 
         JobSystem() = default;
@@ -342,12 +342,12 @@ namespace Engine
          */
         void executeJob(Job& job);
 
-        std::vector<std::thread> m_workers;             //!< ワーカースレッド
-        std::deque<Job>          m_jobs;                //!< 投入されたジョブ
-        mutable std::mutex       m_mutex;               //!< ジョブキューの排他制御
-        std::condition_variable  m_condition;           //!< ジョブの到着を待つ条件変数
-        std::atomic<uint32_t>    m_pendingCount{ 0 };   //!< 未完了のジョブ数
-        std::atomic<bool>        m_running{ false };    //!< 稼働中か
+        std::vector<std::thread> m_workers;           //!< ワーカースレッド
+        std::deque<Job>          m_jobs;              //!< 投入されたジョブ
+        mutable std::mutex       m_mutex;             //!< ジョブキューの排他制御
+        std::condition_variable  m_condition;         //!< ジョブの到着を待つ条件変数
+        std::atomic<uint32_t>    m_pendingCount{ 0 }; //!< 未完了のジョブ数
+        std::atomic<bool>        m_running{ false };  //!< 稼働中か
     };
 
     /**
@@ -480,9 +480,9 @@ namespace Engine
 
     private:
 
-        std::vector<JobSystem::JobFunction> m_tasks;               //!< 実行するジョブ群
-        JobCounter m_counter;                                      //!< 完了数カウンタ
-        std::shared_ptr<CancellationToken> m_cancellationToken;    //!< グループ全体のキャンセル状態
-        std::atomic<bool> m_cancelled{ false };                    //!< グループがキャンセルされたか
+        std::vector<JobSystem::JobFunction> m_tasks;            //!< 実行するジョブ群
+        JobCounter m_counter;                                   //!< 完了数カウンタ
+        std::shared_ptr<CancellationToken> m_cancellationToken; //!< グループ全体のキャンセル状態
+        std::atomic<bool> m_cancelled{ false };                 //!< グループがキャンセルされたか
     };
 } // namespace Engine

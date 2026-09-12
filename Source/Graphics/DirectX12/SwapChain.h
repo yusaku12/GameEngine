@@ -13,9 +13,9 @@ namespace Engine
      */
     struct DX12SwapChainConfig
     {
-        std::uint32_t bufferCount = 2; //!< Back Buffer 数
+        std::uint32_t bufferCount = 2;                   //!< Back Buffer 数
         DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM; //!< Back Buffer Format
-        bool allowTearing = false; //!< VSync 無効時の Tearing を許可するか
+        bool allowTearing = false;                       //!< VSync 無効時の Tearing を許可するか
     };
 
     /**
@@ -122,11 +122,11 @@ namespace Engine
          */
         bool waitForGpu(const DX12Fence& completionFence, std::uint64_t lastSubmittedFenceValue) const;
 
-        Microsoft::WRL::ComPtr<IDXGISwapChain4> m_swapChain; //!< DXGI SwapChain
-        DX12DescriptorHeap m_rtvHeap; //!< Back Buffer RTV を保持する Descriptor Heap
+        Microsoft::WRL::ComPtr<IDXGISwapChain4> m_swapChain;      //!< DXGI SwapChain
+        DX12DescriptorHeap m_rtvHeap;                             //!< Back Buffer RTV を保持する Descriptor Heap
         std::vector<std::unique_ptr<DX12Resource>> m_backBuffers; //!< State を追跡する Back Buffer
-        std::vector<DX12CpuDescriptorHandle> m_rtvs; //!< Back Buffer RTV
-        DX12SwapChainConfig m_config; //!< SwapChain の作成設定
-        std::uint32_t m_currentBackBufferIndex = 0; //!< 現在の Back Buffer Index
+        std::vector<DX12CpuDescriptorHandle> m_rtvs;              //!< Back Buffer RTV
+        DX12SwapChainConfig m_config;                             //!< SwapChain の作成設定
+        std::uint32_t m_currentBackBufferIndex = 0;               //!< 現在の Back Buffer Index
     };
 } // namespace Engine

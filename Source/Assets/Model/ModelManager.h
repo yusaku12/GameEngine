@@ -75,9 +75,9 @@ namespace Engine
          */
         static std::filesystem::path normalizePath(const std::filesystem::path& path);
 
-        mutable std::mutex m_mutex;   //!< スレッドセーフのためのMutex
-        std::vector<Entry> m_entries; //!< モデルの管理情報の配列
+        mutable std::mutex m_mutex;                                         //!< スレッドセーフのためのMutex
+        std::vector<Entry> m_entries;                                       //!< モデルの管理情報の配列
         std::unordered_map<std::filesystem::path, ModelHandle> m_pathCache; //!< パスからHandleへのキャッシュ
-        std::uint32_t m_nextGeneration = 1; //!< 次に割り当てる世代番号。0は無効世代なので1から開始
+        std::uint32_t m_nextGeneration = 1;                                 //!< 次に割り当てる世代番号。0は無効世代なので1から開始
     };
 } // namespace Engine

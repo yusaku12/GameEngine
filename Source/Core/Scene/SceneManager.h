@@ -127,7 +127,7 @@ namespace Engine
         bool removeScene(const std::string& name) noexcept;
 
         std::unordered_map<std::string, std::unique_ptr<Scene>> m_scenes; //!< 名前からSceneへの索引
-        Scene m_persistentScene; //!< Scene切り替え後も保持する永続Scene
-        Scene* m_activeScene = nullptr; //!< 現在アクティブなScene。所有しない
+        Scene m_persistentScene;                                          //!< Scene切り替え後も保持する永続Scene
+        Scene* m_activeScene = nullptr;                                   //!< 現在アクティブなScene。所有しない
     };
 } // namespace Engine

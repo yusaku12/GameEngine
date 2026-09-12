@@ -116,7 +116,7 @@ namespace Engine
 
     private:
 
-        ComponentTypeID m_nextId = 1; //!< 次に割り当てるComponent型ID。0は無効IDとして予約する。
+        ComponentTypeID m_nextId = 1;                                   //!< 次に割り当てるComponent型ID。0は無効IDとして予約する。
         std::unordered_map<std::type_index, ComponentTypeInfo> m_types; //!< Component型とメタデータの対応
         std::unordered_map<ComponentTypeID, std::type_index> m_ids;     //!< Component型IDとComponent型の対応
     };

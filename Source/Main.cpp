@@ -1,9 +1,13 @@
 ﻿#include "Pch.h"
 #include "Assets\Model\ModelManager.h"
+#include "Core\GameObject\Component\CameraComponent.h"
 #include "Core\GameObject\Component\ModelRendererComponent.h"
 #include "Core\Scene\SceneManager.h"
 #include "Core\System\Window.h"
+#include "Graphics\Camera\CameraManager.h"
 #include "Graphics\DirectX12\Renderer.h"
+#include "Tests\CameraSystemTests.h"
+#include <cwchar>
 
 namespace Engine
 {
@@ -23,6 +27,29 @@ namespace Engine
         if (object == nullptr)
             return false;
         return object->addComponent<ModelRendererComponent>() != nullptr;
+    }
+
+    /**
+     * @brief 初期Main CameraをSceneへ追加する。
+     *
+     * @return Cameraを生成できた場合はtrue。
+     */
+    static bool createMainCamera()
+    {
+        Scene* const scene = SceneManager::instance().getActiveScene();
+        if (scene == nullptr)
+            return false;
+
+        GameObject* const object = scene->createGameObject("Main Camera");
+        if (object == nullptr)
+            return false;
+        object->getTransform()->setPosition(Vector3(0.0f, 0.0f, -5.0f));
+
+        CameraComponent* const camera = object->addComponent<CameraComponent>();
+        if (camera == nullptr)
+            return false;
+        CameraManager::instance().registerCamera(camera);
+        return CameraManager::instance().setMainCamera(camera);
     }
 
     /**
@@ -175,6 +202,10 @@ namespace Engine
                 return -1;
             }
 
+            CameraManager::instance().setRenderTargetSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+            if (!createMainCamera())
+                LOG_WARNING("[Engine] Main Cameraの作成に失敗しました");
+
             if (!createModelGameObject())
                 LOG_WARNING("[Engine] Model GameObjectの作成に失敗しました");
 
@@ -188,6 +219,7 @@ namespace Engine
             // GPUリソースの終了処理は描画側の役割として扱う
             setCurrentThreadRole(ThreadRole::Render);
             renderer.finalize();
+            CameraManager::instance().shutdown();
             ModelManager::instance().clear();
 
             // 描画スレッドの役割をメインスレッドに戻す
@@ -210,8 +242,10 @@ namespace Engine
 INT WINAPI wWinMain(
     HINSTANCE instance,
     [[maybe_unused]] HINSTANCE prevInstance,
-    [[maybe_unused]] LPWSTR cmdLine,
+    LPWSTR cmdLine,
     INT cmdShow)
 {
+    if (cmdLine != nullptr && std::wcsstr(cmdLine, L"--camera-tests") != nullptr)
+        return Engine::Tests::runCameraSystemTests() ? 0 : 1;
     return Engine::runEngine(instance, cmdShow);
 }

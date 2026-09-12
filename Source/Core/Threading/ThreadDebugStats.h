@@ -20,10 +20,10 @@ namespace Engine
      */
     struct ThreadDebugTaskSnapshot
     {
-        uint64_t totalRuns = 0;              //!< 実行回数
-        uint32_t activeCount = 0;            //!< 現在実行中の数
-        uint32_t lastThreadId = 0;           //!< 直近で実行したスレッドID
-        uint64_t lastDurationMicroseconds = 0; //!< 直近の実行時間
+        uint64_t totalRuns = 0;                 //!< 実行回数
+        uint32_t activeCount = 0;               //!< 現在実行中の数
+        uint32_t lastThreadId = 0;              //!< 直近で実行したスレッドID
+        uint64_t lastDurationMicroseconds = 0;  //!< 直近の実行時間
         uint64_t totalDurationMicroseconds = 0; //!< 累積実行時間
     };
 
@@ -33,8 +33,8 @@ namespace Engine
     struct ThreadDebugSnapshot
     {
         std::array<ThreadDebugTaskSnapshot, static_cast<size_t>(ThreadDebugTask::Count)> tasks{}; //!< 処理ごとの統計
-        uint32_t workerCount = 0;          //!< JobSystemのワーカースレッド数
-        uint32_t hardwareThreadCount = 0;  //!< ハードウェア並列数
+        uint32_t workerCount = 0;                                                                 //!< JobSystemのワーカースレッド数
+        uint32_t hardwareThreadCount = 0;                                                         //!< ハードウェア並列数
     };
 
     /**
@@ -59,7 +59,7 @@ namespace Engine
 
         private:
 
-            ThreadDebugTask m_task; //!< 記録対象
+            ThreadDebugTask m_task;                            //!< 記録対象
             std::chrono::steady_clock::time_point m_startTime; //!< 開始時刻
         };
 
@@ -124,6 +124,6 @@ namespace Engine
         static size_t taskIndex(ThreadDebugTask task) noexcept;
 
         std::array<TaskCounters, static_cast<size_t>(ThreadDebugTask::Count)> m_tasks{}; //!< 処理ごとの統計
-        std::atomic<uint32_t> m_workerCount{ 0 }; //!< ワーカー数
+        std::atomic<uint32_t> m_workerCount{ 0 };                                        //!< ワーカー数
     };
 } // namespace Engine

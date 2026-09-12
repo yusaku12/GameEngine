@@ -60,7 +60,7 @@ namespace Engine
 
     private:
 
-        Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_queue; //!< DirectX 12 コマンドキュー
+        Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_queue;         //!< DirectX 12 コマンドキュー
         DX12CommandQueueType m_type = DX12CommandQueueType::DIRECT; //!< コマンドキューの種別
     };
 } // namespace Engine

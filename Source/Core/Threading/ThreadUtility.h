@@ -23,10 +23,10 @@ namespace Engine
      */
     struct ThreadContext
     {
-        uint32_t threadId = 0;     //!< 現在のスレッドID
-        std::string name;          //!< スレッド名
-        uint32_t jobCount = 0;     //!< このスレッドで処理したジョブ数
-        uint32_t affinityIndex = 0; //!< 固定したCPUコア番号
+        uint32_t threadId = 0;              //!< 現在のスレッドID
+        std::string name;                   //!< スレッド名
+        uint32_t jobCount = 0;              //!< このスレッドで処理したジョブ数
+        uint32_t affinityIndex = 0;         //!< 固定したCPUコア番号
         ThreadRole role = ThreadRole::Main; //!< 現在の役割
     };
 

@@ -12,15 +12,15 @@ namespace Engine
      */
     struct DX12GraphicsPipelineConfig
     {
-        const DX12Shader* vertexShader = nullptr; //!< Vertex Shader
-        const DX12Shader* pixelShader = nullptr; //!< Pixel Shader
-        std::span<const D3D12_INPUT_ELEMENT_DESC> inputLayout; //!< Vertex Input Layout
-        std::span<const D3D12_ROOT_PARAMETER> rootParameters; //!< Root Signature Parameter
-        std::span<const D3D12_STATIC_SAMPLER_DESC> staticSamplers; //!< Static Sampler
-        DXGI_FORMAT renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM; //!< Render Target Format
-        DXGI_FORMAT depthStencilFormat = DXGI_FORMAT_UNKNOWN; //!< Depth Stencil Format
+        const DX12Shader* vertexShader = nullptr;                                                 //!< Vertex Shader
+        const DX12Shader* pixelShader = nullptr;                                                  //!< Pixel Shader
+        std::span<const D3D12_INPUT_ELEMENT_DESC> inputLayout;                                    //!< Vertex Input Layout
+        std::span<const D3D12_ROOT_PARAMETER> rootParameters;                                     //!< Root Signature Parameter
+        std::span<const D3D12_STATIC_SAMPLER_DESC> staticSamplers;                                //!< Static Sampler
+        DXGI_FORMAT renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM;                              //!< Render Target Format
+        DXGI_FORMAT depthStencilFormat = DXGI_FORMAT_UNKNOWN;                                     //!< Depth Stencil Format
         D3D12_PRIMITIVE_TOPOLOGY_TYPE primitiveTopology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; //!< Primitive Topology 種別
-        bool enableAlphaBlend = false; //!< SrcAlphaによる透過Blendを有効にするか
+        bool enableAlphaBlend = false;                                                            //!< SrcAlphaによる透過Blendを有効にするか
     };
 
     /**

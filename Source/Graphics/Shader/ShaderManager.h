@@ -37,11 +37,11 @@ namespace Engine
      */
     struct ShaderDetails
     {
-        ShaderID id = 0;                                                   //!< Shader 登録 ID
-        ShaderCompileDesc compileDesc;                                     //!< コンパイル設定
-        std::vector<std::filesystem::path> dependencies;                   //!< インクルード依存関係 (.hlsli) 一覧
-        ShaderStatus status = ShaderStatus::Unloaded;                      //!< 現在のステータス
-        bool hasValidBytecode = false;                                     //!< 有効な Bytecode を保持しているか
+        ShaderID id = 0;                                 //!< Shader 登録 ID
+        ShaderCompileDesc compileDesc;                   //!< コンパイル設定
+        std::vector<std::filesystem::path> dependencies; //!< インクルード依存関係 (.hlsli) 一覧
+        ShaderStatus status = ShaderStatus::Unloaded;    //!< 現在のステータス
+        bool hasValidBytecode = false;                   //!< 有効な Bytecode を保持しているか
     };
 
     /**
@@ -186,18 +186,18 @@ namespace Engine
          */
         static std::vector<std::filesystem::path> collectDependencies(const std::filesystem::path& sourcePath);
 
-        ShaderMode m_mode = ShaderMode::Runtime;                              //!< 動作モード
-        std::filesystem::path m_shaderRoot;                                   //!< Shader ルートディレクトリ絶対パス
-        ShaderCompiler m_compiler;                                            //!< DXC コンパイラ呼び出しオブジェクト
-        ShaderFileWatcher m_watcher;                                          //!< ファイル変更監視オブジェクト
-        ShaderChangedCallback m_callback;                                     //!< 更新通知コールバック
-        mutable std::mutex m_mutex;                                           //!< 内部データ構造保護用ミューテックス
-        std::unordered_map<ShaderID, Entry> m_entries;                        //!< ShaderID 検索マップ
-        std::queue<CompileRequest> m_requests;                                //!< 非同期コンパイル要求キュー
-        std::queue<CompileResult> m_results;                                  //!< 完了済みコンパイル結果キュー
-        std::condition_variable m_condition;                                  //!< ワーカースレッド通知条件変数
-        std::atomic_bool m_running = false;                                   //!< ワーカースレッド実行フラグ
-        std::thread m_worker;                                                 //!< バックグラウンドコンパイルワーカースレッド
-        ShaderID m_nextId = 1;                                                //!< 次に割り当てる ShaderID
+        ShaderMode m_mode = ShaderMode::Runtime;       //!< 動作モード
+        std::filesystem::path m_shaderRoot;            //!< Shader ルートディレクトリ絶対パス
+        ShaderCompiler m_compiler;                     //!< DXC コンパイラ呼び出しオブジェクト
+        ShaderFileWatcher m_watcher;                   //!< ファイル変更監視オブジェクト
+        ShaderChangedCallback m_callback;              //!< 更新通知コールバック
+        mutable std::mutex m_mutex;                    //!< 内部データ構造保護用ミューテックス
+        std::unordered_map<ShaderID, Entry> m_entries; //!< ShaderID 検索マップ
+        std::queue<CompileRequest> m_requests;         //!< 非同期コンパイル要求キュー
+        std::queue<CompileResult> m_results;           //!< 完了済みコンパイル結果キュー
+        std::condition_variable m_condition;           //!< ワーカースレッド通知条件変数
+        std::atomic_bool m_running = false;            //!< ワーカースレッド実行フラグ
+        std::thread m_worker;                          //!< バックグラウンドコンパイルワーカースレッド
+        ShaderID m_nextId = 1;                         //!< 次に割り当てる ShaderID
     };
 } // namespace Engine

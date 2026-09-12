@@ -256,7 +256,7 @@ namespace Engine
          */
         void releaseStorage();
 
-        char* m_data;                        //!< 文字列の格納先（内部バッファかヒープを指す）
+        char* m_data;                         //!< 文字列の格納先（内部バッファかヒープを指す）
         size_t m_size;                        //!< 文字数
         size_t m_capacity;                    //!< 確保済みの容量（終端文字を除く）
         char   m_inline[INLINE_CAPACITY + 1]; //!< 短い文字列用の内部バッファ
