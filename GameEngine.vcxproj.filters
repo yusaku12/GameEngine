@@ -48,7 +48,6 @@
     <ClCompile Include="Source\Core\Prefab\Prefab.cpp" />
     <ClCompile Include="Source\Core\Prefab\PrefabInstance.cpp" />
     <ClCompile Include="Source\Core\Prefab\PrefabSerializer.cpp" />
-    <ClCompile Include="Source\Core\Reflection\Reflection.cpp" />
     <ClCompile Include="Source\Core\GameObject\GameObjectManager.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -139,7 +138,6 @@
     <ClInclude Include="Source\Core\Prefab\Prefab.h" />
     <ClInclude Include="Source\Core\Prefab\PrefabInstance.h" />
     <ClInclude Include="Source\Core\Prefab\PrefabSerializer.h" />
-    <ClInclude Include="Source\Core\Reflection\Reflection.h" />
     <ClInclude Include="Source\Core\GameObject\GameObject.h" />
     <ClInclude Include="Source\Core\GameObject\GameObjectManager.h" />
   </ItemGroup>

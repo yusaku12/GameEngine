@@ -22,4 +22,3 @@
 #include "Core\Scene\SceneSerializer.h"
 #include "Core\Prefab\Prefab.h"
 #include "Core\Prefab\PrefabInstance.h"
-#include "Core\Reflection\Reflection.h"
