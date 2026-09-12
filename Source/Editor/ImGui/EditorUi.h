@@ -49,6 +49,16 @@ namespace Engine
         void saveSceneAs();
 
         /**
+         * @brief 選択中のGameObject階層をPrefabとして保存する。
+         */
+        void saveSelectedAsPrefab();
+
+        /**
+         * @brief ファイルからPrefabを読み込み、現在のSceneへ配置する。
+         */
+        void instantiatePrefab();
+
+        /**
          * @brief Editorのメニューバーを描画する
          */
         void drawHierarchy();
@@ -88,6 +98,7 @@ namespace Engine
         std::array<char, 128> m_hierarchySearch{};     //!< Hierarchyの検索文字列
         std::array<char, 128> m_objectName{};          //!< Inspectorで編集中のGameObject名
         Editor::SceneDocument m_sceneDocument;         //!< 編集中Sceneのファイル状態
+        std::string m_prefabStatus;                    //!< 直近のPrefab保存結果
         bool m_hierarchyCreateRequested = false;       //!< GameObject作成要求
     };
 } // namespace Engine

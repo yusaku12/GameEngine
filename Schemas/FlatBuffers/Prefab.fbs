@@ -1,0 +1,40 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+table ObjectGUID {
+    high:ulong;
+    low:ulong;
+}
+
+table Quaternion {
+    x:float;
+    y:float;
+    z:float;
+    w:float;
+}
+
+table TransformData {
+    position:Vec3;
+    rotation:Quaternion;
+    scale:Vec3;
+}
+
+table PrefabNodeData {
+    source_guid:ObjectGUID;
+    name:string;
+    active:bool = true;
+    tag:uint;
+    layer:ubyte;
+    transform:TransformData;
+    component_types:[string];
+    children:[PrefabNodeData];
+}
+
+table PrefabFile {
+    header:FileHeader;
+    root:PrefabNodeData;
+}
+
+root_type PrefabFile;
+file_identifier "PREF";

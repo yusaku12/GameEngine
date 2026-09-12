@@ -47,6 +47,7 @@
     <ClCompile Include="Source\Core\Scene\SceneSerializer.cpp" />
     <ClCompile Include="Source\Core\Prefab\Prefab.cpp" />
     <ClCompile Include="Source\Core\Prefab\PrefabInstance.cpp" />
+    <ClCompile Include="Source\Core\Prefab\PrefabSerializer.cpp" />
     <ClCompile Include="Source\Core\Reflection\Reflection.cpp" />
     <ClCompile Include="Source\Core\GameObject\GameObjectManager.cpp" />
   </ItemGroup>
@@ -112,6 +113,7 @@
     <ClCompile Include="Library\imgui\backends\imgui_impl_win32.cpp" />
     <ClInclude Include="Generated\FlatBuffers\Common_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Model_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\Prefab_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Scene_generated.h" />
     <ClInclude Include="Source\Assets\Model\Serialization\ModelSerializer.h" />
     <ClInclude Include="Source\Core\Serialization\FlatBufferReader.h" />
@@ -136,6 +138,7 @@
     <ClInclude Include="Source\Core\Scene\SceneSerializer.h" />
     <ClInclude Include="Source\Core\Prefab\Prefab.h" />
     <ClInclude Include="Source\Core\Prefab\PrefabInstance.h" />
+    <ClInclude Include="Source\Core\Prefab\PrefabSerializer.h" />
     <ClInclude Include="Source\Core\Reflection\Reflection.h" />
     <ClInclude Include="Source\Core\GameObject\GameObject.h" />
     <ClInclude Include="Source\Core\GameObject\GameObjectManager.h" />
@@ -143,6 +146,7 @@
   <ItemGroup>
     <None Include="Schemas\FlatBuffers\Common.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />
+    <None Include="Schemas\FlatBuffers\Prefab.fbs" />
     <None Include="Tools\FlatBuffers\build_schema.bat" />
     <None Include="Tools\FlatBuffers\build_schema.ps1" />
     <None Include="Tools\Shaders\CompileShaders.bat" />

@@ -3,6 +3,11 @@
 #include "Core\GameObject\GameObject.h"
 #include "Core\Scene\Scene.h"
 
+namespace Engine::Serialization
+{
+    class PrefabSerializer;
+}
+
 namespace Engine
 {
     /**
@@ -60,6 +65,8 @@ namespace Engine
         bool isValid() const noexcept { return m_valid; }
 
     private:
+
+        friend class Serialization::PrefabSerializer;
 
         /**
          * @brief GameObject階層をPrefabNodeへ再帰的に変換する。

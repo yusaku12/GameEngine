@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Editor\ImGui\EditorUi.h"
+#include "Core\Prefab\PrefabSerializer.h"
 #include "Core\System\Dialog.h"
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Threading\ThreadDebugStats.h"
@@ -138,6 +139,8 @@ namespace Engine
                     ImGui::Separator();
                     ImGui::TextDisabled("%s", m_sceneDocument.status().c_str());
                 }
+                if (!m_prefabStatus.empty())
+                    ImGui::TextDisabled("%s", m_prefabStatus.c_str());
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Window"))
@@ -238,6 +241,90 @@ namespace Engine
             });
     }
 
+    void EditorUi::saveSelectedAsPrefab()
+    {
+        if (m_selectedObject == nullptr)
+            return;
+
+        const ObjectGUID selectedGuid = m_selectedObject->getGUID();
+        const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+        MainThreadDispatcher::instance().post([this, selectedGuid, ownerWindow]
+            {
+                Scene* scene = SceneManager::instance().getActiveScene();
+                GameObject* selectedObject = scene == nullptr ? nullptr : scene->find(selectedGuid);
+                if (selectedObject == nullptr)
+                {
+                    m_prefabStatus = "Prefab save failed: object no longer exists.";
+                    return;
+                }
+
+                const std::filesystem::path initialPath = std::filesystem::path("Assets/Prefabs")
+                    / (selectedObject->getName() + ".prefab");
+                std::error_code error;
+                std::filesystem::create_directories(initialPath.parent_path(), error);
+                if (error)
+                {
+                    m_prefabStatus = "Prefab save failed: " + error.message();
+                    return;
+                }
+
+                static constexpr std::array filters = {
+                    FileDialogFilter{ L"GameEngine Prefab", L"*.prefab" },
+                    FileDialogFilter{ L"All Files", L"*.*" }
+                };
+                std::filesystem::path path;
+                if (Dialog::saveFile(path, L"Prefabとして保存", initialPath, L"prefab", filters, ownerWindow) != DialogResult::Ok)
+                    return;
+
+                Prefab prefab;
+                if (!prefab.capture(*selectedObject) || !Serialization::PrefabSerializer{}.save(path, prefab))
+                {
+                    m_prefabStatus = "Prefab save failed: " + path.string();
+                    return;
+                }
+                m_prefabStatus = "Prefab saved: " + path.string();
+            });
+    }
+
+    void EditorUi::instantiatePrefab()
+    {
+        const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+        MainThreadDispatcher::instance().post([this, ownerWindow]
+            {
+                static constexpr std::array filters = {
+                    FileDialogFilter{ L"GameEngine Prefab", L"*.prefab" },
+                    FileDialogFilter{ L"All Files", L"*.*" }
+                };
+                std::vector<std::filesystem::path> paths;
+                if (Dialog::openFile(paths, L"Prefabを配置", "Assets/Prefabs", filters, false, ownerWindow) != DialogResult::Ok)
+                    return;
+
+                Scene* scene = SceneManager::instance().getActiveScene();
+                if (scene == nullptr || paths.empty())
+                {
+                    m_prefabStatus = "Prefab load failed: no active scene.";
+                    return;
+                }
+
+                Prefab prefab;
+                if (!Serialization::PrefabSerializer{}.load(paths.front(), prefab))
+                {
+                    m_prefabStatus = "Prefab load failed: " + paths.front().string();
+                    return;
+                }
+
+                GameObject* root = prefab.instantiate(*scene);
+                if (root == nullptr)
+                {
+                    m_prefabStatus = "Prefab instantiate failed: " + paths.front().string();
+                    return;
+                }
+
+                selectObject(root);
+                m_prefabStatus = "Prefab instantiated: " + paths.front().string();
+            });
+    }
+
     void EditorUi::drawHierarchy()
     {
         if (!ImGui::Begin("Hierarchy"))
@@ -284,6 +371,8 @@ namespace Engine
                     m_hierarchyCreateParent = nullptr;
                     m_hierarchyCreateRequested = true;
                 }
+                if (ImGui::MenuItem("Instantiate Prefab..."))
+                    instantiatePrefab();
                 ImGui::EndPopup();
             }
 
@@ -348,6 +437,11 @@ namespace Engine
             }
             if (ImGui::MenuItem("Delete"))
                 m_hierarchyDeleteTarget = &object;
+            if (ImGui::MenuItem("Save as Prefab..."))
+            {
+                selectObject(&object);
+                saveSelectedAsPrefab();
+            }
             ImGui::EndPopup();
         }
         if (open)
