@@ -68,23 +68,28 @@ namespace Engine
     void GameObjectManager::update(const float deltaTime) noexcept
     {
         for (const auto& object : m_objects)
-            object->initializeLifecycle();
+            if (object->getParent() == nullptr)
+                object->initializeLifecycle();
         for (const auto& object : m_objects)
-            object->startLifecycle();
+            if (object->getParent() == nullptr)
+                object->startLifecycle();
         for (const auto& object : m_objects)
-            object->updateLifecycle(deltaTime);
+            if (object->getParent() == nullptr)
+                object->updateLifecycle(deltaTime);
     }
 
     void GameObjectManager::fixedUpdate(const float fixedDeltaTime) noexcept
     {
         for (const auto& object : m_objects)
-            object->fixedUpdateLifecycle(fixedDeltaTime);
+            if (object->getParent() == nullptr)
+                object->fixedUpdateLifecycle(fixedDeltaTime);
     }
 
     void GameObjectManager::lateUpdate(const float deltaTime) noexcept
     {
         for (const auto& object : m_objects)
-            object->lateUpdateLifecycle(deltaTime);
+            if (object->getParent() == nullptr)
+                object->lateUpdateLifecycle(deltaTime);
     }
 
     void GameObjectManager::processDestroyQueue() noexcept

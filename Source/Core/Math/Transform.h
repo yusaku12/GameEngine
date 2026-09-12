@@ -1,7 +1,5 @@
 ﻿#pragma once
 
-#include <cstdint>
-
 #include "Core\Math\MathFunction.h"
 #include "Core\Math\MathTypes.h"
 
@@ -73,10 +71,14 @@ namespace Engine
          */
         Vector3 transformDirection(const Vector3& direction) const;
 
-        /** @brief 変更リビジョンを取得する */
-        [[nodiscard]] std::uint64_t revision() const noexcept { return m_revision; }
+        /**
+         * @brief 変更リビジョンを取得する
+         */
+        std::uint64_t revision() const noexcept { return m_revision; }
 
-        /** @brief 外部から変更されたTransformをDirtyにする */
+        /**
+         * @brief 外部から変更されたTransformをDirtyにする.
+         */
         void markDirty() noexcept { ++m_revision; }
 
         /**

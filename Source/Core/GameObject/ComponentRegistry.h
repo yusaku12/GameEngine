@@ -83,25 +83,41 @@ namespace Engine
          * @return 登録済みメタデータ。未登録の場合はnullptr
          */
         template <typename T>
-        [[nodiscard]] const ComponentTypeInfo* get() const noexcept
+        const ComponentTypeInfo* get() const noexcept
         {
             const auto found = m_types.find(std::type_index(typeid(T)));
             return found == m_types.end() ? nullptr : &found->second;
         }
 
-        /** @brief Component型IDからメタデータを取得する。 */
+        /**
+         * @brief Component型IDからメタデータを取得する。.
+         * @param id 取得するComponent型ID
+         */
         const ComponentTypeInfo* get(ComponentTypeID id) const noexcept;
-        /** @brief std::type_indexからメタデータを取得する。 */
+
+        /**
+         * @brief std::type_indexからメタデータを取得する。.
+         * @param type 取得するComponent型のtype_index
+         * @return 登録済みメタデータ。未登録の場合はnullptr
+         */
         const ComponentTypeInfo* get(std::type_index type) const noexcept;
-        /** @brief 表示名からComponentメタデータを検索する。 */
+
+        /**
+         * @brief 表示名からComponentメタデータを検索する。.
+         * @param name 取得するComponent型の表示名
+         * @return 登録済みメタデータ。未登録の場合はnullptr
+         */
         const ComponentTypeInfo* findByName(std::string_view name) const noexcept;
-        /** @brief 登録済みComponent型をすべて削除する。 */
+
+        /**
+         * @brief 登録済みComponent型をすべて削除する。.
+         */
         void clear() noexcept;
 
     private:
 
         ComponentTypeID m_nextId = 1; //!< 次に割り当てるComponent型ID。0は無効IDとして予約する。
         std::unordered_map<std::type_index, ComponentTypeInfo> m_types; //!< Component型とメタデータの対応
-        std::unordered_map<ComponentTypeID, std::type_index> m_ids; //!< Component型IDとComponent型の対応
+        std::unordered_map<ComponentTypeID, std::type_index> m_ids;     //!< Component型IDとComponent型の対応
     };
 } // namespace Engine

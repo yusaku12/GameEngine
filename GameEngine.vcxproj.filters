@@ -19,6 +19,7 @@
     <ClCompile Include="Source\Core\Math\SimpleMath.cpp" />
     <ClCompile Include="Source\Core\Math\Transform.cpp" />
     <ClCompile Include="Source\Core\Threading\JobSystem.cpp" />
+    <ClCompile Include="Source\Core\Threading\MainThreadDispatcher.cpp" />
     <ClCompile Include="Source\Core\Threading\ThreadDebugStats.cpp" />
     <ClCompile Include="Source\Core\Threading\ThreadUtility.cpp" />
     <ClCompile Include="Source\Pch.cpp" />
@@ -74,6 +75,7 @@
     <ClInclude Include="Source\Core\Math\Transform.h" />
     <ClInclude Include="Source\Core\Threading\ConcurrentQueue.h" />
     <ClInclude Include="Source\Core\Threading\JobSystem.h" />
+    <ClInclude Include="Source\Core\Threading\MainThreadDispatcher.h" />
     <ClInclude Include="Source\Core\Threading\SpinLock.h" />
     <ClInclude Include="Source\Core\Threading\ThreadDebugStats.h" />
     <ClInclude Include="Source\Core\Threading\Threading.h" />
@@ -95,9 +97,13 @@
     <ClInclude Include="Source\Graphics\Shader\Shader.h" />
     <ClInclude Include="Source\Core\Input\InputManager.h" />
     <ClInclude Include="Source\Editor\ImGui\EditorUi.h" />
+    <ClInclude Include="Source\Core\System\Dialog.h" />
     <ClInclude Include="Source\Editor\ImGui\ImGuiSystem.h" />
+    <ClInclude Include="Source\Editor\Scene\SceneDocument.h" />
     <ClCompile Include="Source\Editor\ImGui\EditorUi.cpp" />
+    <ClCompile Include="Source\Core\System\Dialog.cpp" />
     <ClCompile Include="Source\Editor\ImGui\ImGuiSystem.cpp" />
+    <ClCompile Include="Source\Editor\Scene\SceneDocument.cpp" />
     <ClCompile Include="Library\imgui\imgui.cpp" />
     <ClCompile Include="Library\imgui\imgui_draw.cpp" />
     <ClCompile Include="Library\imgui\imgui_tables.cpp" />

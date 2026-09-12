@@ -4,7 +4,9 @@
 
 namespace Engine
 {
-    /** @brief 入力状態を表す列挙型。 */
+    /**
+     * @brief 入力状態を表す列挙型。
+     */
     enum class InputState
     {
         None,
@@ -14,7 +16,9 @@ namespace Engine
         Max
     };
 
-    /** @brief 入力バッファの状態を表す列挙型。 */
+    /**
+     * @brief 入力バッファの状態を表す列挙型。
+     */
     enum class BufferedState
     {
         None,
@@ -22,7 +26,9 @@ namespace Engine
         Consumed   //!< バッファリングが消費された
     };
 
-    /** @brief ゲームパッドのボタンを表す列挙型。 */
+    /**
+     * @brief ゲームパッドのボタンを表す列挙型。
+     */
     enum class GamepadButton : uint32_t
     {
         DPadUp = 0x00000001,        //!< 十字キー 上
@@ -43,7 +49,9 @@ namespace Engine
         RightTrigger = 0x00020000,  //!< RT デジタル押し込み（閾値超過）
     };
 
-    /** @brief ゲームパッドの軸を表す列挙型。 */
+    /**
+     * @brief ゲームパッドの軸を表す列挙型。
+     */
     enum class GamepadAxis : uint8_t
     {
         LeftStickX,    //!< 左スティック 水平軸  [-1, 1]
@@ -62,14 +70,18 @@ namespace Engine
     {
     public:
 
-        /** @brief シングルトンインスタンスを取得する。 */
+        /**
+         * @brief シングルトンインスタンスを取得する。
+         */
         static InputManager& instance()
         {
             static InputManager instance;
             return instance;
         }
 
-        /** @brief 入力状態を次のフレームへ更新する。 */
+        /**
+         * @brief 入力状態を次のフレームへ更新する。
+         */
         void update();
 
         /**

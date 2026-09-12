@@ -1,6 +1,7 @@
 ﻿#include "Pch.h"
 #include "Window.h"
 #include "Core\Scene\SceneManager.h"
+#include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Threading\ThreadDebugStats.h"
 #include "Graphics\DirectX12\Renderer.h"
 
@@ -76,6 +77,7 @@ namespace Engine
             else
             {
                 runThreadedFrame();
+                MainThreadDispatcher::instance().dispatchPending();
                 updateTitleBar();
             }
         }

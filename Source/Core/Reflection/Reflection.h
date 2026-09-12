@@ -2,7 +2,9 @@
 
 namespace Engine
 {
-    /** @brief リフレクションで扱うプロパティの型。 */
+    /**
+     * @brief リフレクションで扱うプロパティの型。
+     */
     enum class PropertyType
     {
         Boolean,         //!< bool型
@@ -14,7 +16,9 @@ namespace Engine
         String           //!< 文字列型
     };
 
-    /** @brief リフレクション対象プロパティのメタデータ。 */
+    /**
+     * @brief リフレクション対象プロパティのメタデータ。
+     */
     struct PropertyInfo
     {
         std::string_view name;                   //!< プロパティ名
@@ -24,7 +28,9 @@ namespace Engine
         bool editable = false;                   //!< Editorで編集可能か
     };
 
-    /** @brief 型名と所属プロパティのメタデータ。 */
+    /**
+     * @brief 型名と所属プロパティのメタデータ。
+     */
     struct TypeInfo
     {
         std::string_view name;                //!< Editorで表示する型名
@@ -39,7 +45,10 @@ namespace Engine
     {
     public:
 
-        /** @brief リフレクションレジストリのシングルトンを取得する。 */
+        /**
+         * @brief リフレクションレジストリのシングルトンを取得する。
+         * @return リフレクションレジストリのシングルトン
+         */
         static ReflectionRegistry& instance() noexcept;
 
         /**
@@ -74,11 +83,13 @@ namespace Engine
          */
         const TypeInfo* get(std::type_index type) const noexcept;
 
-        /** @brief 登録済みの型情報をすべて削除する。 */
+        /**
+         * @brief 登録済みの型情報をすべて削除する。
+         */
         void clear() noexcept;
 
     private:
 
-        std::unordered_map<std::type_index, TypeInfo> m_types;
+        std::unordered_map<std::type_index, TypeInfo> m_types; //!< 登録済み型情報のマップ
     };
 } // namespace Engine

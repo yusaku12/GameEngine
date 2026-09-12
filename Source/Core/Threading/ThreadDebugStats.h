@@ -1,11 +1,6 @@
-#pragma once
+﻿#pragma once
 
 #include "Core\CoreDefines.h"
-
-#include <array>
-#include <atomic>
-#include <chrono>
-#include <cstdint>
 
 namespace Engine
 {
@@ -56,12 +51,14 @@ namespace Engine
         class ScopedTask
         {
         public:
+
             explicit ScopedTask(ThreadDebugTask task) noexcept;
             ~ScopedTask() noexcept;
 
             GE_DISABLE_COPY_AND_MOVE(ScopedTask);
 
         private:
+
             ThreadDebugTask m_task; //!< 記録対象
             std::chrono::steady_clock::time_point m_startTime; //!< 開始時刻
         };
@@ -90,22 +87,40 @@ namespace Engine
 
     private:
 
+        /**
+         * @brief 1種類のスレッド処理に対する統計。
+         */
         struct TaskCounters
         {
-            std::atomic<uint64_t> totalRuns{ 0 };
-            std::atomic<uint32_t> activeCount{ 0 };
-            std::atomic<uint32_t> lastThreadId{ 0 };
-            std::atomic<uint64_t> lastDurationMicroseconds{ 0 };
-            std::atomic<uint64_t> totalDurationMicroseconds{ 0 };
+            std::atomic<uint64_t> totalRuns{ 0 };                 //!< 実行回数
+            std::atomic<uint32_t> activeCount{ 0 };               //!< 現在実行中の数
+            std::atomic<uint32_t> lastThreadId{ 0 };              //!< 直近で実行したスレッドID
+            std::atomic<uint64_t> lastDurationMicroseconds{ 0 };  //!< 直近の実行時間
+            std::atomic<uint64_t> totalDurationMicroseconds{ 0 }; //!< 累積実行時間
         };
 
         ThreadDebugStats() = default;
 
         GE_DISABLE_COPY_AND_MOVE(ThreadDebugStats);
 
+        /**
+         * @brief 処理開始を記録する。
+         * @param task 記録対象の処理
+         */
         void beginTask(ThreadDebugTask task) noexcept;
+
+        /**
+         * @brief 処理終了を記録する。
+         * @param task 記録対象の処理
+         * @param durationMicroseconds 実行時間（マイクロ秒）
+         */
         void endTask(ThreadDebugTask task, uint64_t durationMicroseconds) noexcept;
 
+        /**
+         * @brief 処理のインデックスを取得する。
+         * @param task 対象の処理
+         * @return size_t インデックス
+         */
         static size_t taskIndex(ThreadDebugTask task) noexcept;
 
         std::array<TaskCounters, static_cast<size_t>(ThreadDebugTask::Count)> m_tasks{}; //!< 処理ごとの統計

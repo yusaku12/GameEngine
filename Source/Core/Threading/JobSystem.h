@@ -482,7 +482,7 @@ namespace Engine
 
         std::vector<JobSystem::JobFunction> m_tasks;               //!< 実行するジョブ群
         JobCounter m_counter;                                      //!< 完了数カウンタ
-        std::shared_ptr<CancellationToken> m_cancellationToken;     //!< グループ全体のキャンセル状態
+        std::shared_ptr<CancellationToken> m_cancellationToken;    //!< グループ全体のキャンセル状態
         std::atomic<bool> m_cancelled{ false };                    //!< グループがキャンセルされたか
     };
 } // namespace Engine

@@ -27,5 +27,6 @@
 #include <queue>
 #include <random>
 #include <typeindex>
+#include <array>
 
 #include "Core\Core.h"

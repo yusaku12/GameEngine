@@ -11,6 +11,7 @@ namespace Engine::Serialization
     class SceneSerializer
     {
     public:
+
         /**
          * @brief SceneをFlatBuffersバイナリへ保存する。
          * @param path 保存先のファイルパス

@@ -1,5 +1,7 @@
 ﻿#include "Pch.h"
 #include "Editor\ImGui\EditorUi.h"
+#include "Core\System\Dialog.h"
+#include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Threading\ThreadDebugStats.h"
 #include "Graphics\Shader\ShaderManager.h"
 
@@ -9,6 +11,71 @@ namespace Engine
 {
     namespace
     {
+        /**
+         * @brief 大文字小文字を区別せずに文字列が含まれているかを判定する。
+         * @param text 検索対象の文字列
+         * @param query 検索する文字列
+         * @return 含まれている場合はtrue、含まれていない場合はfalse
+         */
+        bool containsCaseInsensitive(const std::string_view text, const std::string_view query)
+        {
+            if (query.empty())
+                return true;
+            if (query.size() > text.size())
+                return false;
+
+            const auto equalsIgnoreCase = [](const char left, const char right)
+                {
+                    const auto toLower = [](const unsigned char value)
+                        {
+                            return value >= 'A' && value <= 'Z' ? static_cast<unsigned char>(value + ('a' - 'A')) : value;
+                        };
+                    return toLower(static_cast<unsigned char>(left)) == toLower(static_cast<unsigned char>(right));
+                };
+            return std::search(text.begin(), text.end(), query.begin(), query.end(), equalsIgnoreCase) != text.end();
+        }
+
+        /**
+         * @brief GameObjectの階層構造を再帰的に検索し、名前が一致するかを判定する。
+         * @param object 検索対象のGameObject
+         * @param query 検索する文字列
+         * @return 一致する場合はtrue、一致しない場合はfalse
+         */
+        bool hierarchyMatches(const GameObject& object, const std::string_view query)
+        {
+            if (containsCaseInsensitive(object.getName(), query))
+                return true;
+            for (std::size_t index = 0; index < object.getChildCount(); ++index)
+            {
+                if (hierarchyMatches(*object.getChild(index), query))
+                    return true;
+            }
+            return false;
+        }
+
+        /**
+         * @brief GameObjectの階層構造を再帰的に検索し、指定したGameObjectが含まれているかを判定する。
+         * @param root 検索対象のGameObject
+         * @param object 検索するGameObject
+         * @return 含まれている場合はtrue、含まれていない場合はfalse
+         */
+        bool containsObject(const GameObject& root, const GameObject* object)
+        {
+            if (&root == object)
+                return true;
+            for (std::size_t index = 0; index < root.getChildCount(); ++index)
+            {
+                if (containsObject(*root.getChild(index), object))
+                    return true;
+            }
+            return false;
+        }
+
+        /**
+         * @brief ThreadDebugTaskの列挙値を文字列に変換する。
+         * @param task ThreadDebugTaskの列挙値
+         * @return 文字列
+         */
         const char* threadDebugTaskName(const ThreadDebugTask task)
         {
             switch (task)
@@ -30,7 +97,7 @@ namespace Engine
             GameObject* light = scene->createGameObject("Directional Light");
             GameObject* triangle = scene->createGameObject("Triangle");
             if (camera != nullptr)
-                m_selectedObject = camera;
+                selectObject(camera);
             if (light != nullptr && triangle != nullptr)
                 light->setParent(triangle, false);
         }
@@ -59,10 +126,18 @@ namespace Engine
         {
             if (ImGui::BeginMenu("ファイル"))
             {
-                ImGui::MenuItem("新規シーン");
-                ImGui::MenuItem("シーンを保存");
+                if (ImGui::MenuItem("新規シーン"))
+                    newScene();
+                if (ImGui::MenuItem("シーンを開く..."))
+                    openScene();
+                if (ImGui::MenuItem("シーンを保存"))
+                    saveScene();
                 ImGui::Separator();
-                ImGui::MenuItem("終了");
+                if (!m_sceneDocument.status().empty())
+                {
+                    ImGui::Separator();
+                    ImGui::TextDisabled("%s", m_sceneDocument.status().c_str());
+                }
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Window"))
@@ -80,6 +155,89 @@ namespace Engine
         drawThreadDebug();
     }
 
+    void EditorUi::newScene()
+    {
+        MainThreadDispatcher::instance().post([this]
+            {
+                if (Scene* scene = SceneManager::instance().getActiveScene())
+                {
+                    selectObject(nullptr);
+                    m_hierarchyCreateParent = nullptr;
+                    m_hierarchyDeleteTarget = nullptr;
+                    m_hierarchyCreateRequested = false;
+                    scene->clear();
+                    m_sceneDocument.reset();
+                }
+            });
+    }
+
+    void EditorUi::openScene()
+    {
+        const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+        MainThreadDispatcher::instance().post([this, ownerWindow]
+            {
+                static constexpr std::array filters = {
+                    FileDialogFilter{ L"GameEngine Scene", L"*.scene" },
+                    FileDialogFilter{ L"All Files", L"*.*" }
+                };
+                const std::filesystem::path initialPath = m_sceneDocument.hasPath()
+                    ? m_sceneDocument.path() : std::filesystem::path("Assets/Scenes");
+                std::vector<std::filesystem::path> paths;
+                if (Dialog::openFile(paths, L"シーンを開く", initialPath, filters, false, ownerWindow) != DialogResult::Ok)
+                    return;
+
+                Scene* scene = SceneManager::instance().getActiveScene();
+                if (scene == nullptr || paths.empty())
+                    return;
+
+                selectObject(nullptr);
+                m_hierarchyCreateParent = nullptr;
+                m_hierarchyDeleteTarget = nullptr;
+                m_hierarchyCreateRequested = false;
+                static_cast<void>(m_sceneDocument.load(*scene, paths.front()));
+            });
+    }
+
+    void EditorUi::saveScene()
+    {
+        if (!m_sceneDocument.hasPath())
+        {
+            saveSceneAs();
+            return;
+        }
+
+        MainThreadDispatcher::instance().post([this]
+            {
+                if (const Scene* scene = SceneManager::instance().getActiveScene())
+                    static_cast<void>(m_sceneDocument.save(*scene));
+            });
+    }
+
+    void EditorUi::saveSceneAs()
+    {
+        const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+        MainThreadDispatcher::instance().post([this, ownerWindow]
+            {
+                static constexpr std::array filters = {
+                    FileDialogFilter{ L"GameEngine Scene", L"*.scene" },
+                    FileDialogFilter{ L"All Files", L"*.*" }
+                };
+                Scene* scene = SceneManager::instance().getActiveScene();
+                if (scene == nullptr)
+                    return;
+
+                const std::filesystem::path initialPath = m_sceneDocument.hasPath()
+                    ? m_sceneDocument.path()
+                    : std::filesystem::path("Assets/Scenes") / (scene->getName() + ".scene");
+                std::error_code error;
+                std::filesystem::create_directories(initialPath.parent_path(), error);
+
+                std::filesystem::path path;
+                if (Dialog::saveFile(path, L"シーンを保存", initialPath, L"scene", filters, ownerWindow) == DialogResult::Ok)
+                    static_cast<void>(m_sceneDocument.saveAs(*scene, path));
+            });
+    }
+
     void EditorUi::drawHierarchy()
     {
         if (!ImGui::Begin("Hierarchy"))
@@ -87,15 +245,67 @@ namespace Engine
             ImGui::End();
             return;
         }
-        ImGui::TextUnformatted("シーン");
+        if (ImGui::Button("+"))
+        {
+            m_hierarchyCreateParent = nullptr;
+            m_hierarchyCreateRequested = true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Create Empty GameObject");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputTextWithHint("##HierarchySearch", "Search", m_hierarchySearch.data(), m_hierarchySearch.size());
         ImGui::Separator();
         Scene* scene = SceneManager::instance().getActiveScene();
         if (scene != nullptr)
         {
+            ImGui::Selectable(scene->getName().c_str());
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("HIERARCHY_GAME_OBJECT"))
+                {
+                    GameObject* droppedObject = *static_cast<GameObject* const*>(payload->Data);
+                    droppedObject->setParent(nullptr);
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            const std::string_view query(m_hierarchySearch.data());
             for (const auto& object : scene->getGameObjects())
             {
-                if (object->getParent() == nullptr)
+                if (object->getParent() == nullptr && hierarchyMatches(*object, query))
                     drawGameObjectNode(*object);
+            }
+
+            if (ImGui::BeginPopupContextWindow("HierarchyContext", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+            {
+                if (ImGui::MenuItem("Create Empty"))
+                {
+                    m_hierarchyCreateParent = nullptr;
+                    m_hierarchyCreateRequested = true;
+                }
+                ImGui::EndPopup();
+            }
+
+            if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
+                && ImGui::IsKeyPressed(ImGuiKey_Delete) && !ImGui::GetIO().WantTextInput)
+                m_hierarchyDeleteTarget = m_selectedObject;
+
+            if (m_hierarchyCreateRequested)
+            {
+                GameObject* object = scene->createGameObject("GameObject");
+                if (object != nullptr && m_hierarchyCreateParent != nullptr)
+                    object->setParent(m_hierarchyCreateParent, false);
+                selectObject(object);
+                m_hierarchyCreateRequested = false;
+                m_hierarchyCreateParent = nullptr;
+            }
+            if (m_hierarchyDeleteTarget != nullptr)
+            {
+                if (containsObject(*m_hierarchyDeleteTarget, m_selectedObject))
+                    selectObject(nullptr);
+                scene->destroyGameObject(m_hierarchyDeleteTarget);
+                m_hierarchyDeleteTarget = nullptr;
             }
         }
         ImGui::End();
@@ -103,7 +313,7 @@ namespace Engine
 
     void EditorUi::drawGameObjectNode(GameObject& object)
     {
-        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow;
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
         if (m_selectedObject == &object)
             flags |= ImGuiTreeNodeFlags_Selected;
         if (object.getChildCount() == 0)
@@ -112,14 +322,53 @@ namespace Engine
         ImGui::PushID(&object);
         const bool open = ImGui::TreeNodeEx(object.getName().c_str(), flags);
         if (ImGui::IsItemClicked())
-            m_selectedObject = &object;
+            selectObject(&object);
+        if (ImGui::BeginDragDropSource())
+        {
+            GameObject* payloadObject = &object;
+            ImGui::SetDragDropPayload("HIERARCHY_GAME_OBJECT", &payloadObject, sizeof(payloadObject));
+            ImGui::TextUnformatted(object.getName().c_str());
+            ImGui::EndDragDropSource();
+        }
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("HIERARCHY_GAME_OBJECT"))
+            {
+                GameObject* droppedObject = *static_cast<GameObject* const*>(payload->Data);
+                droppedObject->setParent(&object);
+            }
+            ImGui::EndDragDropTarget();
+        }
+        if (ImGui::BeginPopupContextItem())
+        {
+            if (ImGui::MenuItem("Create Empty Child"))
+            {
+                m_hierarchyCreateParent = &object;
+                m_hierarchyCreateRequested = true;
+            }
+            if (ImGui::MenuItem("Delete"))
+                m_hierarchyDeleteTarget = &object;
+            ImGui::EndPopup();
+        }
         if (open)
         {
             for (std::size_t index = 0; index < object.getChildCount(); ++index)
-                drawGameObjectNode(*object.getChild(index));
+            {
+                GameObject* child = object.getChild(index);
+                if (hierarchyMatches(*child, m_hierarchySearch.data()))
+                    drawGameObjectNode(*child);
+            }
             ImGui::TreePop();
         }
         ImGui::PopID();
+    }
+
+    void EditorUi::selectObject(GameObject* object)
+    {
+        m_selectedObject = object;
+        m_objectName.fill('\0');
+        if (object != nullptr)
+            std::snprintf(m_objectName.data(), m_objectName.size(), "%s", object->getName().c_str());
     }
 
     void EditorUi::drawInspector()
@@ -129,29 +378,53 @@ namespace Engine
             ImGui::End();
             return;
         }
-        ImGui::Text("選択中: %s", m_selectedObject == nullptr ? "なし" : m_selectedObject->getName().c_str());
-        ImGui::Separator();
-        if (m_selectedObject != nullptr && ImGui::CollapsingHeader("GameObject", ImGuiTreeNodeFlags_DefaultOpen))
+        if (m_selectedObject == nullptr)
         {
-            bool active = m_selectedObject->isActiveSelf();
-            if (ImGui::Checkbox("Active", &active))
-                m_selectedObject->setActive(active);
+            ImGui::TextDisabled("Select a GameObject to inspect it.");
+            ImGui::End();
+            return;
+        }
+
+        bool active = m_selectedObject->isActiveSelf();
+        if (ImGui::Checkbox("##Active", &active))
+            m_selectedObject->setActive(active);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::InputText("##Name", m_objectName.data(), m_objectName.size()))
+            m_selectedObject->setName(m_objectName.data());
+
+        if (ImGui::BeginTable("GameObjectSettings", 2, ImGuiTableFlags_SizingStretchProp))
+        {
+            ImGui::TableNextColumn();
             int tag = static_cast<int>(m_selectedObject->getTag());
             if (ImGui::InputInt("Tag", &tag) && tag >= 0)
                 m_selectedObject->setTag(static_cast<TagID>(tag));
+            ImGui::TableNextColumn();
             int layer = static_cast<int>(m_selectedObject->getLayer());
             if (ImGui::InputInt("Layer", &layer) && layer >= 0 && layer < 32)
                 m_selectedObject->setLayer(static_cast<LayerID>(layer));
+            ImGui::EndTable();
         }
-        if (m_selectedObject != nullptr)
-        {
-            m_selectedObject->forEachComponent([](Component& component, const std::type_index& type)
+
+        ImGui::Separator();
+        m_selectedObject->forEachComponent([](Component& component, const std::type_index& type)
             {
                 const ComponentTypeInfo* typeInfo = ComponentRegistry::instance().get(type);
-                if (typeInfo != nullptr && ImGui::CollapsingHeader(typeInfo->name.data(), ImGuiTreeNodeFlags_DefaultOpen))
+                if (typeInfo == nullptr)
+                    return;
+
+                ImGui::PushID(&component);
+                if (!typeInfo->required)
+                {
+                    bool enabled = component.isEnabled();
+                    if (ImGui::Checkbox("##Enabled", &enabled))
+                        component.setEnabled(enabled);
+                    ImGui::SameLine();
+                }
+                if (ImGui::CollapsingHeader(typeInfo->name.data(), ImGuiTreeNodeFlags_DefaultOpen))
                     component.drawImGui();
+                ImGui::PopID();
             });
-        }
         ImGui::End();
     }
 

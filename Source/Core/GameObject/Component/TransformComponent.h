@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Core\GameObject\Component.h"
 #include "Core\Math\Transform.h"
@@ -13,9 +13,10 @@ namespace Engine
     {
     public:
 
-        /** @brief ローカルTransformを取得する。 */
+        /**
+         * @brief ローカルTransformを取得する。
+         */
         Transform& localTransform() noexcept { return m_localTransform; }
-        /** @brief ローカルTransformをconstで取得する。 */
         const Transform& localTransform() const noexcept { return m_localTransform; }
 
     protected:

@@ -22,11 +22,20 @@ namespace Engine
         if (count == 0)
             return;
 
-        const uint32_t previous = m_remaining.fetch_sub(count, std::memory_order_acq_rel);
-        if (previous <= count)
+        uint32_t remaining = m_remaining.load(std::memory_order_acquire);
+        while (remaining != 0)
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_condition.notify_all();
+            const uint32_t updated = remaining > count ? remaining - count : 0;
+            if (m_remaining.compare_exchange_weak(remaining, updated,
+                std::memory_order_acq_rel, std::memory_order_acquire))
+            {
+                if (updated == 0)
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    m_condition.notify_all();
+                }
+                return;
+            }
         }
     }
 
@@ -86,7 +95,7 @@ namespace Engine
 
         m_workers.clear();
         m_jobs.clear();
-    ThreadDebugStats::instance().setWorkerCount(0);
+        ThreadDebugStats::instance().setWorkerCount(0);
 
         LOG_INFO("[Job] ジョブシステムを終了しました");
     }

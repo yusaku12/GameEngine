@@ -1,4 +1,4 @@
-#include "Pch.h"
+﻿#include "Pch.h"
 #include "Core\Threading\ThreadDebugStats.h"
 #include "Core\Threading\ThreadUtility.h"
 

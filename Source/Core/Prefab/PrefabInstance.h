@@ -11,7 +11,10 @@ namespace Engine
     class PrefabInstance
     {
     public:
-        /** @brief 無効なPrefabInstanceを生成する。 */
+
+        /**
+         * @brief 無効なPrefabInstanceを生成する。
+         */
         PrefabInstance() = default;
 
         /**
@@ -23,16 +26,29 @@ namespace Engine
             : m_prefab(prefab), m_root(root) {
         }
 
-        /** @brief 対応するPrefabアセットを取得する。 */
+        /**
+         * @brief 対応するPrefabアセットを取得する。
+         * @return 対応するPrefabアセット
+         */
         const Prefab* getPrefab() const noexcept { return m_prefab; }
 
-        /** @brief 生成されたルートGameObjectを取得する。 */
+        /**
+         * @brief 生成されたルートGameObjectを取得する。
+         * @return 生成されたルートGameObject
+         */
         GameObject* getRoot() const noexcept { return m_root; }
 
-        /** @brief Prefabとルートが有効か判定する。 */
+        /**
+         * @brief Prefabとルートが有効か判定する。
+         * @return 有効な場合はtrue、そうでない場合はfalse
+         */
         bool isValid() const noexcept { return m_prefab != nullptr && m_prefab->isValid() && m_root != nullptr; }
 
-        /** @brief Prefabの内容をScene上のインスタンスへ反映する。 */
+        /**
+         * @brief Prefabの内容をScene上のインスタンスへ反映する。
+         * @param scene インスタンス化するScene
+         * @return 反映に成功した場合はtrue、失敗した場合はfalse
+         */
         bool revert(Scene& scene);
 
     private:

@@ -59,11 +59,31 @@ namespace Engine
          * @brief ウィンドウのタイトルバーを更新する
          */
         void updateFrameInput();
+
+        /**
+         * @brief ウィンドウの描画を更新する
+         */
         void runThreadedFrame();
+
+        /**
+         * @brief ゲームの更新処理を実行する
+         */
         void runGameUpdateJob();
+
+        /**
+         * @brief 描画の更新処理を実行する
+         */
         void runRenderUpdateJob();
+
+        /**
+         * @brief フレームジョブの完了を待機する
+         * @param counter 待機対象のジョブカウンター
+         */
         void waitForFrameJobs(const JobCounter& counter) const;
 
+        /**
+         * @brief タイトルバーの更新処理を実行する
+         */
         void updateTitleBar();
 
         static constexpr float TITLE_BAR_INTERVAL = 0.5f; //!< タイトルバーを更新する間隔（秒）

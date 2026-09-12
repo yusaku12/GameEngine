@@ -179,9 +179,7 @@ namespace Engine
             && create({ 255, 0, 255, 255 }, m_defaultError);
     }
 
-    TextureHandle TextureManager::loadInternal(
-        const std::filesystem::path& path,
-        const TextureLoadDesc& desc)
+    TextureHandle TextureManager::loadInternal(const std::filesystem::path& path, const TextureLoadDesc& desc)
     {
         if (m_device == nullptr)
         {

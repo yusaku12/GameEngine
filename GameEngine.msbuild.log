@@ -1,0 +1,149 @@
+﻿2026/09/12 16:25:12 にビルドを開始しました。
+ログの詳細度は次のように設定されています: Normal。
+     1>ノード 1 上のプロジェクト "c:\Users\2210359\Desktop\GameEngine\GameEngine.sln" (Rebuild ターゲット)。
+     1>ValidateSolutionConfiguration:
+         ソリューション構成 "Debug|x64" をビルドしています。
+     1>プロジェクト "c:\Users\2210359\Desktop\GameEngine\GameEngine.sln" (1) は、ノード 1 上に "c:\Users\2210359\Desktop\GameEngine\GameEngine.vcxproj" (2) をビルドしています (Rebuild ターゲット)。
+     2>_PrepareForClean:
+         ファイル "GameEngine\x64\Debug\GameEngine.tlog\GameEngine.lastbuildstate" を削除しています。
+       PrepareForBuild:
+         構造化出力が有効になっています。コンパイラ診断の書式設定にはエラー階層が反映されます。詳細については、https://aka.ms/cpp/structured-output を参照してください。
+       InitializeBuildStatus:
+         "AlwaysCreate" が指定されたため "GameEngine\x64\Debug\GameEngine.tlog\unsuccessfulbuild" を作成しています。
+         "GameEngine\x64\Debug\GameEngine.tlog\unsuccessfulbuild" のタッチ タスクを実行しています。
+       GenerateFlatBuffers:
+       すべての出力ファイルが入力ファイルに対して最新なので、ターゲット "GenerateFlatBuffers" を省略します。
+       CompileShaders:
+       すべての出力ファイルが入力ファイルに対して最新なので、ターゲット "CompileShaders" を省略します。
+       ClCompile:
+         C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\bin\HostX86\x64\CL.exe /c /I.\Source /I.\Library /I.\Library\flatbuffers\include /I.\Library\spdlog\include /I".\Library\DirectXTex-main\DirectXTex" /I".\Library\DirectXTex-main\Common" /I.\Library\imgui /I.\Library\imgui\backends /IC:\Users\2210359\.nuget\packages\assimp_native\4.0.1\build\native\include /Ic:\Users\2210359\Desktop\GameEngine\ /ZI /JMC /nologo /W4 /WX /diagnostics:column /sdl /MP /Od /D _DEBUG /D _UNICODE /D UNICODE /Gm- /EHsc /RTC1 /MTd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++20 /permissive- /Yc"Pch.h" /Fp"GameEngine\x64\Debug\GameEngine.pch" /Fo"GameEngine\x64\Debug\\" /Fd"GameEngine\x64\Debug\vc143.pdb" /external:W4 /Gd /TP /FC /errorReport:queue /utf-8 Source\Pch.cpp
+         Pch.cpp
+         C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\bin\HostX86\x64\CL.exe /c /I.\Source /I.\Library /I.\Library\flatbuffers\include /I.\Library\spdlog\include /I".\Library\DirectXTex-main\DirectXTex" /I".\Library\DirectXTex-main\Common" /I.\Library\imgui /I.\Library\imgui\backends /IC:\Users\2210359\.nuget\packages\assimp_native\4.0.1\build\native\include /Ic:\Users\2210359\Desktop\GameEngine\ /ZI /JMC /nologo /W4 /WX /diagnostics:column /sdl /MP /Od /D _DEBUG /D _UNICODE /D UNICODE /Gm- /EHsc /RTC1 /MTd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++20 /permissive- /Yu"Pch.h" /Fp"GameEngine\x64\Debug\GameEngine.pch" /Fo"GameEngine\x64\Debug\\" /Fd"GameEngine\x64\Debug\vc143.pdb" /external:W4 /Gd /TP /FC /errorReport:queue /utf-8 Source\Assets\Model\Serialization\ModelSerializer.cpp Source\Core\Serialization\FlatBufferReader.cpp Source\Core\Serialization\FlatBufferWriter.cpp Source\Assets\Model\Import\AssimpModelImporter.cpp Source\Graphics\DirectX12\Command.cpp Source\Graphics\DirectX12\Descriptor.cpp Source\Graphics\DirectX12\Device.cpp Source\Graphics\DirectX12\Fence.cpp Source\Graphics\DirectX12\Pipeline.cpp Source\Graphics\DirectX12\Queue.cpp Source\Graphics\DirectX12\Resource.cpp Source\Graphics\DirectX12\Renderer.cpp Source\Graphics\Shader\Shader.cpp Source\Graphics\Shader\ShaderCompiler.cpp Source\Graphics\Shader\ShaderFileWatcher.cpp Source\Graphics\Shader\ShaderManager.cpp Source\Graphics\DirectX12\SwapChain.cpp Source\Graphics\Texture\Texture.cpp Source\Graphics\Texture\TextureManager.cpp Source\Core\Object\ObjectGUID.cpp Source\Core\GameObject\GameObject.cpp Source\Core\GameObject\Component\TransformComponent.cpp Source\Core\GameObject\ComponentRegistry.cpp Source\Core\Scene\Scene.cpp Source\Core\Scene\SceneManager.cpp Source\Core\Scene\TagManager.cpp Source\Core\Scene\LayerManager.cpp Source\Core\Scene\SceneSerializer.cpp Source\Core\Prefab\Prefab.cpp Source\Core\Prefab\PrefabInstance.cpp Source\Core\Reflection\Reflection.cpp Source\Core\GameObject\GameObjectManager.cpp Source\Core\Containers\String.cpp Source\Core\Input\InputManager.cpp Source\Main.cpp Source\Core\Logging\Assert.cpp Source\Core\Logging\Logger.cpp Source\Core\Math\Random.cpp Source\Core\Math\SimpleMath.cpp Source\Core\Math\Transform.cpp Source\Core\Threading\JobSystem.cpp Source\Core\Threading\ThreadDebugStats.cpp Source\Core\Threading\ThreadUtility.cpp Source\Core\Time\HighResolutionTimer.cpp Source\Core\Time\TimeManager.cpp Source\Core\System\Window.cpp Source\Editor\ImGui\EditorUi.cpp Source\Editor\ImGui\ImGuiSystem.cpp
+         ModelSerializer.cpp
+         FlatBufferReader.cpp
+         FlatBufferWriter.cpp
+         AssimpModelImporter.cpp
+         Command.cpp
+         Descriptor.cpp
+         Device.cpp
+         Fence.cpp
+         Pipeline.cpp
+         Queue.cpp
+         Resource.cpp
+         Renderer.cpp
+         Shader.cpp
+         ShaderCompiler.cpp
+         ShaderFileWatcher.cpp
+         ShaderManager.cpp
+         SwapChain.cpp
+         Texture.cpp
+         TextureManager.cpp
+         ObjectGUID.cpp
+         GameObject.cpp
+         TransformComponent.cpp
+         ComponentRegistry.cpp
+         Scene.cpp
+         SceneManager.cpp
+         TagManager.cpp
+         LayerManager.cpp
+         SceneSerializer.cpp
+         Prefab.cpp
+         PrefabInstance.cpp
+         Reflection.cpp
+         GameObjectManager.cpp
+         String.cpp
+         InputManager.cpp
+         Main.cpp
+         Assert.cpp
+         Logger.cpp
+         Random.cpp
+         SimpleMath.cpp
+         Transform.cpp
+         JobSystem.cpp
+         ThreadDebugStats.cpp
+         ThreadUtility.cpp
+         HighResolutionTimer.cpp
+         TimeManager.cpp
+         Window.cpp
+         EditorUi.cpp
+         ImGuiSystem.cpp
+         C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\bin\HostX86\x64\CL.exe /c /I.\Source /I.\Library /I.\Library\flatbuffers\include /I.\Library\spdlog\include /I".\Library\DirectXTex-main\DirectXTex" /I".\Library\DirectXTex-main\Common" /I.\Library\imgui /I.\Library\imgui\backends /IC:\Users\2210359\.nuget\packages\assimp_native\4.0.1\build\native\include /Ic:\Users\2210359\Desktop\GameEngine\ /ZI /JMC /nologo /W4 /WX /diagnostics:column /sdl /MP /Od /D _DEBUG /D _UNICODE /D UNICODE /Gm- /EHsc /RTC1 /MTd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++20 /permissive- /Fo"GameEngine\x64\Debug\\" /Fd"GameEngine\x64\Debug\vc143.pdb" /external:W4 /Gd /TP /FC /errorReport:queue /utf-8 Library\imgui\imgui.cpp Library\imgui\imgui_draw.cpp Library\imgui\imgui_tables.cpp Library\imgui\imgui_widgets.cpp
+         imgui.cpp
+         imgui_draw.cpp
+         imgui_tables.cpp
+         imgui_widgets.cpp
+         C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\bin\HostX86\x64\CL.exe /c /I.\Source /I.\Library /I.\Library\flatbuffers\include /I.\Library\spdlog\include /I".\Library\DirectXTex-main\DirectXTex" /I".\Library\DirectXTex-main\Common" /I.\Library\imgui /I.\Library\imgui\backends /IC:\Users\2210359\.nuget\packages\assimp_native\4.0.1\build\native\include /Ic:\Users\2210359\Desktop\GameEngine\ /ZI /JMC /nologo /W3 /WX /diagnostics:column /sdl /MP /Od /D _DEBUG /D _UNICODE /D UNICODE /Gm- /EHsc /RTC1 /MTd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++20 /permissive- /Fo"GameEngine\x64\Debug\\" /Fd"GameEngine\x64\Debug\vc143.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /utf-8 Library\imgui\backends\imgui_impl_dx12.cpp Library\imgui\backends\imgui_impl_win32.cpp
+         imgui_impl_dx12.cpp
+         imgui_impl_win32.cpp
+       Link:
+         C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\bin\HostX86\x64\link.exe /ERRORREPORT:QUEUE /OUT:"c:\Users\2210359\Desktop\GameEngine\x64\Debug\GameEngine.exe" /INCREMENTAL /ILK:"GameEngine\x64\Debug\GameEngine.ilk" /NOLOGO /LIBPATH:"c:\Users\2210359\Desktop\GameEngine\Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Debug" /LIBPATH:C:\Users\2210359\.nuget\packages\assimp_native\4.0.1\build\native\lib\x64\v141\Debug "assimp-vc140-mt.lib" DirectXTex.lib d3d12.lib d3dcompiler.lib dxgi.lib dxguid.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"c:\Users\2210359\Desktop\GameEngine\x64\Debug\GameEngine.pdb" /SUBSYSTEM:WINDOWS /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"c:\Users\2210359\Desktop\GameEngine\x64\Debug\GameEngine.lib" /MACHINE:X64 GameEngine\x64\Debug\ModelSerializer.obj
+         GameEngine\x64\Debug\FlatBufferReader.obj
+         GameEngine\x64\Debug\FlatBufferWriter.obj
+         GameEngine\x64\Debug\AssimpModelImporter.obj
+         GameEngine\x64\Debug\Command.obj
+         GameEngine\x64\Debug\Descriptor.obj
+         GameEngine\x64\Debug\Device.obj
+         GameEngine\x64\Debug\Fence.obj
+         GameEngine\x64\Debug\Pipeline.obj
+         GameEngine\x64\Debug\Queue.obj
+         GameEngine\x64\Debug\Resource.obj
+         GameEngine\x64\Debug\Renderer.obj
+         GameEngine\x64\Debug\Shader.obj
+         GameEngine\x64\Debug\ShaderCompiler.obj
+         GameEngine\x64\Debug\ShaderFileWatcher.obj
+         GameEngine\x64\Debug\ShaderManager.obj
+         GameEngine\x64\Debug\SwapChain.obj
+         GameEngine\x64\Debug\Texture.obj
+         GameEngine\x64\Debug\TextureManager.obj
+         GameEngine\x64\Debug\ObjectGUID.obj
+         GameEngine\x64\Debug\GameObject.obj
+         GameEngine\x64\Debug\TransformComponent.obj
+         GameEngine\x64\Debug\ComponentRegistry.obj
+         GameEngine\x64\Debug\Scene.obj
+         GameEngine\x64\Debug\SceneManager.obj
+         GameEngine\x64\Debug\TagManager.obj
+         GameEngine\x64\Debug\LayerManager.obj
+         GameEngine\x64\Debug\SceneSerializer.obj
+         GameEngine\x64\Debug\Prefab.obj
+         GameEngine\x64\Debug\PrefabInstance.obj
+         GameEngine\x64\Debug\Reflection.obj
+         GameEngine\x64\Debug\GameObjectManager.obj
+         GameEngine\x64\Debug\String.obj
+         GameEngine\x64\Debug\InputManager.obj
+         GameEngine\x64\Debug\Main.obj
+         GameEngine\x64\Debug\Assert.obj
+         GameEngine\x64\Debug\Logger.obj
+         GameEngine\x64\Debug\Random.obj
+         GameEngine\x64\Debug\SimpleMath.obj
+         GameEngine\x64\Debug\Transform.obj
+         GameEngine\x64\Debug\JobSystem.obj
+         GameEngine\x64\Debug\ThreadDebugStats.obj
+         GameEngine\x64\Debug\ThreadUtility.obj
+         GameEngine\x64\Debug\Pch.obj
+         GameEngine\x64\Debug\HighResolutionTimer.obj
+         GameEngine\x64\Debug\TimeManager.obj
+         GameEngine\x64\Debug\Window.obj
+         GameEngine\x64\Debug\EditorUi.obj
+         GameEngine\x64\Debug\ImGuiSystem.obj
+         GameEngine\x64\Debug\imgui.obj
+         GameEngine\x64\Debug\imgui_draw.obj
+         GameEngine\x64\Debug\imgui_tables.obj
+         GameEngine\x64\Debug\imgui_widgets.obj
+         GameEngine\x64\Debug\imgui_impl_dx12.obj
+         GameEngine\x64\Debug\imgui_impl_win32.obj
+         GameEngine.vcxproj -> c:\Users\2210359\Desktop\GameEngine\x64\Debug\GameEngine.exe
+       PostBuildEvent:
+         copy /Y "C:\Users\2210359\.nuget\packages\assimp_native.redist\4.0.1\build\native\bin\x64\v141\Debug\assimp-vc140-mt.dll" "c:\Users\2210359\Desktop\GameEngine\x64\Debug\assimp-vc140-mt.dll"
+         :VCEnd
+                 1 個のファイルをコピーしました。
+       FinalizeBuildStatus:
+         ファイル "GameEngine\x64\Debug\GameEngine.tlog\unsuccessfulbuild" を削除しています。
+         "GameEngine\x64\Debug\GameEngine.tlog\GameEngine.lastbuildstate" のタッチ タスクを実行しています。
+     2>プロジェクト "c:\Users\2210359\Desktop\GameEngine\GameEngine.vcxproj" (Rebuild ターゲット) のビルドが完了しました。
+     1>プロジェクト "c:\Users\2210359\Desktop\GameEngine\GameEngine.sln" (Rebuild ターゲット) のビルドが完了しました。
+
+ビルドに成功しました。
+    0 個の警告
+    0 エラー
+
+経過時間 00:00:17.86

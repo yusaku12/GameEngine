@@ -13,65 +13,117 @@ namespace Engine
     {
     public:
 
-        /** @brief SceneManagerのインスタンスを取得する。 */
+        /**
+         * @brief SceneManagerのインスタンスを取得する。
+         */
         static SceneManager& instance()
         {
             static SceneManager instance;
             return instance;
         }
 
-        /** @brief 永続Sceneを初期化してSceneManagerを生成する。 */
+        /**
+         * @brief 永続Sceneを初期化してSceneManagerを生成する。
+         */
         SceneManager();
         ~SceneManager() = default;
 
         GE_DISABLE_COPY_AND_MOVE(SceneManager);
 
-        /** @brief 名前を指定してSceneを生成する。 */
+        /**
+         * @brief 名前を指定してSceneを生成する。
+         * @param name 生成するSceneの名前
+         * @return 生成されたSceneのポインタ
+         */
         Scene* createScene(const std::string& name);
 
-        /** @brief 名前を指定したSceneを破棄する。 */
+        /**
+         * @brief 名前を指定したSceneを破棄する。
+         * @param name 破棄するSceneの名前
+         * @return 破棄に成功した場合はtrue、存在しない場合はfalse
+         */
         bool destroyScene(const std::string& name) noexcept;
 
-        /** @brief 名前を指定したSceneをロードする。 */
+        /**
+         * @brief 名前を指定したSceneをロードする。
+         * @param name ロードするSceneの名前
+         * @return ロードに成功した場合はtrue、存在しない場合はfalse
+         */
         bool loadScene(const std::string& name) noexcept;
 
-        /** @brief 名前を指定したSceneをアンロードする。 */
+        /**
+         * @brief 名前を指定したSceneをアンロードする。
+         * @param name アンロードするSceneの名前
+         * @return アンロードに成功した場合はtrue、存在しない場合はfalse
+         */
         bool unloadScene(const std::string& name) noexcept;
 
-        /** @brief アクティブSceneを設定する。 */
+        /**
+         * @brief アクティブSceneを設定する。
+         * @param scene 設定するSceneのポインタ
+         * @return 設定に成功した場合はtrue、存在しない場合はfalse
+         */
         bool setActiveScene(Scene* scene) noexcept;
 
-        /** @brief GameObjectを永続Sceneへ移動する。 */
+        /**
+         * @brief GameObjectを永続Sceneへ移動する。
+         * @param object 移動するGameObjectのポインタ
+         * @return 移動に成功した場合はtrue、存在しない場合はfalse
+         */
         bool dontDestroyOnLoad(GameObject* object) noexcept;
 
-        /** @brief 現在アクティブなSceneを取得する。 */
+        /**
+         * @brief 現在アクティブなSceneを取得する。
+         * @return 現在アクティブなSceneのポインタ
+         */
         Scene* getActiveScene() noexcept { return m_activeScene; }
-        /** @brief 現在アクティブなSceneをconstで取得する。 */
         const Scene* getActiveScene() const noexcept { return m_activeScene; }
 
-        /** @brief ロード間で保持される永続Sceneを取得する。 */
+        /**
+         * @brief ロード間で保持される永続Sceneを取得する。
+         * @return 永続Sceneのポインタ
+         */
         Scene* getPersistentScene() noexcept { return &m_persistentScene; }
 
-        /** @brief 名前からSceneを検索する。 */
+        /**
+         * @brief 名前からSceneを検索する。.
+         * @param name 検索するSceneの名前
+         * @return 見つかったSceneのポインタ、存在しない場合はnullptr
+         */
         Scene* findScene(const std::string& name) noexcept;
-        /** @brief 名前からSceneをconstで検索する。 */
         const Scene* findScene(const std::string& name) const noexcept;
 
-        /** @brief アクティブSceneを通常更新する。 */
+        /**
+         * @brief アクティブSceneを通常更新する。
+         * @param deltaTime 経過時間
+         */
         void update(float deltaTime) noexcept;
 
-        /** @brief アクティブSceneを固定時間刻みで更新する。 */
+        /**
+         * @brief アクティブSceneを固定時間刻みで更新する。
+         * @param fixedDeltaTime 固定時間刻みの経過時間
+         */
         void fixedUpdate(float fixedDeltaTime) noexcept;
 
-        /** @brief アクティブSceneを遅延更新する。 */
+        /**
+         * @brief アクティブSceneを遅延更新する。
+         * @param deltaTime 経過時間
+         */
         void lateUpdate(float deltaTime) noexcept;
 
-        /** @brief 破棄待ちGameObjectを処理する。 */
+        /**
+         * @brief 破棄待ちGameObjectを処理する。
+         * @return void
+         */
         void processDestroyQueue() noexcept;
 
     private:
 
-        /** @brief 名前を指定したSceneを管理対象から削除する。 */
+        /**
+         * @brief 名前を指定したSceneを管理対象から削除する。
+         * @param name 削除するSceneの名前
+         * @return 削除に成功した場合はtrue、存在しない場合はfalse
+         */
         bool removeScene(const std::string& name) noexcept;
 
         std::unordered_map<std::string, std::unique_ptr<Scene>> m_scenes; //!< 名前からSceneへの索引

@@ -14,7 +14,6 @@ namespace Engine
 
     /**
      * @brief Componentを所有し、親子階層を形成するゲームオブジェクト。
-     *
      * @note ECS Entityではありません。Scene/Managerから所有される通常のオブジェクトです。
      * @thread_safety Main thread only.
      */
@@ -29,71 +28,133 @@ namespace Engine
         GameObject(GameObject&&) = delete;
         GameObject& operator=(GameObject&&) = delete;
 
-        /** @brief GameObjectのGUIDを取得する。 */
+        /**
+         * @brief GameObjectのGUIDを取得する。
+         */
         const ObjectGUID& getGUID() const noexcept { return m_guid; }
 
-        /** @brief GameObjectの名前を取得する。 */
+        /**
+         * @brief GameObjectの名前を取得する。
+         */
         const std::string& getName() const noexcept { return m_name; }
 
-        /** @brief GameObjectの名前を設定する。 */
+        /**
+         * @brief GameObjectの名前を設定する。
+         * @param name 設定する名前
+         */
         void setName(std::string name) { m_name = std::move(name); }
 
-        /** @brief GameObjectのTagを取得する。 */
+        /**
+         * @brief GameObjectのTagを取得する。
+         * @return GameObjectのTag
+         */
         TagID getTag() const noexcept { return m_tag; }
 
-        /** @brief GameObjectのTagを設定する。 */
+        /**
+         * @brief GameObjectのTagを設定する。
+         * @param tag 設定するTag
+         */
         void setTag(TagID tag) noexcept { m_tag = tag; }
 
-        /** @brief GameObjectのLayerを取得する。 */
+        /**
+         * @brief GameObjectのLayerを取得する。
+         * @return GameObjectのLayer
+         */
         LayerID getLayer() const noexcept { return m_layer; }
 
-        /** @brief GameObjectのLayerを設定する。 */
+        /**
+         * @brief GameObjectのLayerを設定する。
+         * @param layer 設定するLayer
+         */
         void setLayer(LayerID layer) noexcept { m_layer = layer; }
 
-        /** @brief 自身のアクティブ状態を取得する。 */
+        /**
+         * @brief 自身のアクティブ状態を取得する。
+         * @return 自身のアクティブ状態
+         */
         bool isActiveSelf() const noexcept { return m_activeSelf; }
 
-        /** @brief 親階層を含めたアクティブ状態を取得する。 */
+        /**
+         * @brief 親階層を含めたアクティブ状態を取得する。
+         * @return 親階層を含めたアクティブ状態
+         */
         bool isActiveInHierarchy() const noexcept;
 
-        /** @brief 自身のアクティブ状態を設定する。 */
+        /**
+         * @brief 自身のアクティブ状態を設定する。
+         * @param active 設定するアクティブ状態
+         */
         void setActive(bool active) noexcept;
 
-        /** @brief ローカルTransformを取得する。 */
+        /**
+         * @brief ローカルTransformを取得する。
+         * @return ローカルTransform
+         */
         Transform* getTransform() noexcept;
-        /** @brief ローカルTransformをconstで取得する。 */
         const Transform* getTransform() const noexcept;
 
-        /** @brief ワールドTransformを取得する。 */
+        /**
+         * @brief ワールドTransformを取得する。
+         * @return ワールドTransform
+         */
         const Transform& getWorldTransform() const noexcept;
 
-        /** @brief ワールド座標を取得する。 */
+        /**
+         * @brief ワールド座標を取得する。
+         */
         Vector3 getWorldPosition() const noexcept;
 
-        /** @brief ワールド回転を取得する。 */
+        /**
+         * @brief ワールド回転を取得する。
+         * @return ワールド回転
+         */
         Quaternion getWorldRotation() const noexcept;
 
-        /** @brief ワールドスケールを取得する。 */
+        /**
+         * @brief ワールドスケールを取得する。
+         * @return ワールドスケール
+         */
         Vector3 getWorldScale() const noexcept;
 
-        /** @brief ワールド変換行列を取得する。 */
+        /**
+         * @brief ワールド変換行列を取得する。
+         * @return ワールド変換行列
+         */
         Matrix getWorldMatrix() const noexcept;
 
-        /** @brief 親GameObjectを取得する。 */
+        /**
+         * @brief 親GameObjectを取得する。
+         * @return 親GameObjectのポインタ。親が存在しない場合はnullptr。
+         */
         GameObject* getParent() const noexcept { return m_parent; }
 
-        /** @brief 親を設定する。必要に応じてワールドTransformを維持する。 */
+        /**
+         * @brief 親を設定する。必要に応じてワールドTransformを維持する。
+         * @param parent 設定する親GameObjectのポインタ
+         * @param worldPositionStays ワールドTransformを維持するかどうか
+         * @return 設定に成功した場合はtrue、失敗した場合はfalse
+         */
         bool setParent(GameObject* parent, bool worldPositionStays = true) noexcept;
 
-        /** @brief 直下の子GameObject数を取得する。 */
+        /**
+         * @brief 直下の子GameObject数を取得する。
+         * @return 直下の子GameObject数
+         */
         std::size_t getChildCount() const noexcept { return m_children.size(); }
 
-        /** @brief インデックスで直下の子GameObjectを取得する。 */
+        /**
+         * @brief インデックスで直下の子GameObjectを取得する。.
+         * @param index 取得する子GameObjectのインデックス
+         * @return 取得した子GameObjectのポインタ。インデックスが範囲外の場合はnullptr。
+         */
         GameObject* getChild(std::size_t index) noexcept;
-        /** @brief インデックスで直下の子GameObjectをconstで取得する。 */
         const GameObject* getChild(std::size_t index) const noexcept;
 
-        /** @brief 子孫を含めて名前からGameObjectを検索する。 */
+        /**
+         * @brief 子孫を含めて名前からGameObjectを検索する。.
+         * @param name 検索するGameObjectの名前
+         * @return 見つかったGameObjectのポインタ。見つからなかった場合はnullptr。
+         */
         GameObject* find(const std::string& name) noexcept;
 
         /**

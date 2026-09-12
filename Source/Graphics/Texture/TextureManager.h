@@ -71,9 +71,7 @@ namespace Engine
          * @param desc ロード設定
          * @return 割り当てたテクスチャハンドル。失敗時は無効なハンドル
          */
-        TextureHandle load(
-            const std::filesystem::path& path,
-            const TextureLoadDesc& desc);
+        TextureHandle load(const std::filesystem::path& path, const TextureLoadDesc& desc);
 
         /**
          * @brief テクスチャを取得する
@@ -108,7 +106,11 @@ namespace Engine
          */
         bool exists(const std::filesystem::path& path) const noexcept;
 
-        /** @brief TextureHandleに対応するBindless用SRV indexを取得する */
+        /**
+         * @brief TextureHandleに対応するBindless用SRV indexを取得する.
+         * \param handle テクスチャハンドル
+         * \return SRV index. 無効なハンドルの場合は UINT32_MAX
+         */
         std::uint32_t getSRVIndex(TextureHandle handle) const noexcept;
 
         /**

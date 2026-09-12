@@ -2,7 +2,7 @@
 
 namespace Engine
 {
-    /** @brief Tagを識別するID。 */
+    //!< Tagを識別するID。
     using TagID = std::uint32_t;
 
     /**
@@ -13,19 +13,38 @@ namespace Engine
     {
     public:
 
-        /** @brief TagManagerのシングルトンを取得する。 */
+        /**
+         * @brief TagManagerのシングルトンを取得する。
+         * @return TagManagerのインスタンス
+         */
         static TagManager& instance() noexcept;
 
-        /** @brief Tag名を登録し、そのIDを返す。 */
+        /**
+         * @brief Tag名を登録し、そのIDを返す。
+         * @param name 登録するTag名
+         * @return 登録されたTagのID
+         */
         TagID registerTag(std::string name);
 
-        /** @brief Tag名からIDを検索する。 */
+        /**
+         * @brief Tag名からIDを検索する。
+         * @param name 検索するTag名
+         * @return 見つかったTagのID、存在しない場合は無効なID
+         */
         TagID find(std::string_view name) const noexcept;
 
-        /** @brief Tag IDから名前を取得する。 */
+        /**
+         * @brief Tag IDから名前を取得する。
+         * @param tag 検索するTagのID
+         * @return 見つかったTagの名前、存在しない場合は空文字列
+         */
         std::string_view getName(TagID tag) const noexcept;
 
-        /** @brief Tagが登録済みか判定する。 */
+        /**
+         * @brief Tagが登録済みか判定する。
+         * @param tag 判定するTagのID
+         * @return 登録済みの場合はtrue、存在しない場合はfalse
+         */
         bool contains(TagID tag) const noexcept;
 
     private:

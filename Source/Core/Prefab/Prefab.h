@@ -28,30 +28,56 @@ namespace Engine
     {
     public:
 
-        /** @brief 空のPrefabを生成する。 */
+        /**
+         * @brief 空のPrefabを生成する。.
+         */
         Prefab() = default;
 
-        /** @brief GameObject階層をPrefabスナップショットとして取得する。 */
+        /**
+         * @brief GameObject階層をPrefabスナップショットとして取得する。
+         * @param root キャプチャするGameObjectのルート
+         * @return キャプチャに成功した場合はtrue、失敗した場合はfalse
+         */
         bool capture(const GameObject& root);
 
-        /** @brief PrefabをSceneへインスタンス化する。 */
+        /**
+         * @brief PrefabをSceneへインスタンス化する。
+         * @param scene インスタンス化するScene
+         * @return インスタンス化されたGameObjectのポインタ
+         */
         GameObject* instantiate(Scene& scene) const;
 
-        /** @brief Prefabのルートノードを取得する。 */
+        /**
+         * @brief Prefabのルートノードを取得する。
+         * @return Prefabのルートノード
+         */
         const PrefabNode& getRoot() const noexcept { return m_root; }
 
-        /** @brief 有効なPrefabを保持しているか判定する。 */
+        /**
+         * @brief 有効なPrefabを保持しているか判定する。
+         * @return 有効なPrefabを保持している場合はtrue、そうでない場合はfalse
+         */
         bool isValid() const noexcept { return m_valid; }
 
     private:
 
-        /** @brief GameObject階層をPrefabNodeへ再帰的に変換する。 */
+        /**
+         * @brief GameObject階層をPrefabNodeへ再帰的に変換する。
+         * @param object キャプチャするGameObject
+         * @return 変換されたPrefabNode
+         */
         static PrefabNode captureNode(const GameObject& object);
 
-        /** @brief PrefabNodeをScene上のGameObject階層へ再帰的に変換する。 */
+        /**
+         * @brief PrefabNodeをScene上のGameObject階層へ再帰的に変換する。
+         * @param node 変換するPrefabNode
+         * @param scene インスタンス化するScene
+         * @param parent 親GameObject
+         * @return 変換されたGameObjectのポインタ
+         */
         static GameObject* instantiateNode(const PrefabNode& node, Scene& scene, GameObject* parent);
 
-        PrefabNode m_root; //!< ルートノード
+        PrefabNode m_root;    //!< ルートノード
         bool m_valid = false; //!< Prefabが有効かどうか
     };
 } // namespace Engine
