@@ -40,6 +40,16 @@ namespace Engine
         };
 
         /**
+         * @brief Scene ViewのTransform Gizmo操作。
+         */
+        enum class GizmoOperation
+        {
+            Translate,
+            Rotate,
+            Scale
+        };
+
+        /**
          * @brief Main threadで新規Sceneを作成する。
          */
         void newScene();
@@ -97,6 +107,11 @@ namespace Engine
         void drawHierarchy();
 
         /**
+         * @brief 選択中GameObjectのTransform Gizmoを描画する。
+         */
+        void drawSelectedObjectGizmo();
+
+        /**
          * @brief Hierarchy内のGameObjectノードを再帰的に描画する
          */
         void drawGameObjectNode(GameObject& object);
@@ -133,6 +148,7 @@ namespace Engine
         Editor::SceneDocument m_sceneDocument;                                    //!< 編集中Sceneのファイル状態
         std::string m_prefabStatus;                                               //!< 直近のPrefab保存結果
         GameObjectCreateType m_hierarchyCreateType = GameObjectCreateType::Empty; //!< 生成予定のGameObject種別
+        GizmoOperation m_gizmoOperation = GizmoOperation::Translate;              //!< Transform Gizmo操作
         bool m_hierarchyCreateRequested = false;                                  //!< GameObject作成要求
     };
 } // namespace Engine

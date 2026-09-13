@@ -12,10 +12,10 @@ namespace Engine
         Matrix convertMatrix(const aiMatrix4x4& value)
         {
             const DirectX::XMFLOAT4X4 converted{
-                value.a1, value.a2, value.a3, value.a4,
-                value.b1, value.b2, value.b3, value.b4,
-                value.c1, value.c2, value.c3, value.c4,
-                value.d1, value.d2, value.d3, value.d4 };
+                value.a1, value.b1, value.c1, value.d1,
+                value.a2, value.b2, value.c2, value.d2,
+                value.a3, value.b3, value.c3, value.d3,
+                value.a4, value.b4, value.c4, value.d4 };
             return Matrix(converted);
         }
 
@@ -68,6 +68,7 @@ namespace Engine
             aiProcess_JoinIdenticalVertices |
             aiProcess_GenSmoothNormals |
             aiProcess_CalcTangentSpace |
+            aiProcess_FlipUVs |
             aiProcess_ImproveCacheLocality |
             aiProcess_LimitBoneWeights |
             aiProcess_ValidateDataStructure |
@@ -106,20 +107,43 @@ namespace Engine
         processNode(scene->mRootNode, scene, model, Matrix::Identity);
         processAnimations(scene, model);
 
-        bool hasBounds = false;
-        for (const MeshResource& mesh : model.meshes)
+        std::string extension = model.sourcePath.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+            [](const unsigned char character) { return static_cast<char>(std::tolower(character)); });
+        if (extension == ".fbx")
         {
-            if (mesh.vertices.empty())
-                continue;
-            if (!hasBounds)
+            for (ModelNode& node : model.nodes)
             {
-                model.boundingBox = mesh.boundingBox;
-                hasBounds = true;
-                continue;
+                if (node.parentIndex < 0)
+                    node.localTransform *= Matrix::CreateScale(0.01f);
             }
-            model.boundingBox = makeAABB(
-                Vector3::Min(minimumPointOf(model.boundingBox), minimumPointOf(mesh.boundingBox)),
-                Vector3::Max(maximumPointOf(model.boundingBox), maximumPointOf(mesh.boundingBox)));
+        }
+
+        std::vector<Matrix> nodeTransforms(model.nodes.size(), Matrix::Identity);
+        bool hasBounds = false;
+        for (std::size_t nodeIndex = 0; nodeIndex < model.nodes.size(); ++nodeIndex)
+        {
+            const ModelNode& node = model.nodes[nodeIndex];
+            nodeTransforms[nodeIndex] = node.localTransform;
+            if (node.parentIndex >= 0 && static_cast<std::size_t>(node.parentIndex) < nodeIndex)
+                nodeTransforms[nodeIndex] *= nodeTransforms[static_cast<std::size_t>(node.parentIndex)];
+
+            for (const std::uint32_t meshIndex : node.meshIndices)
+            {
+                if (meshIndex >= model.meshes.size() || model.meshes[meshIndex].vertices.empty())
+                    continue;
+                AABB transformedBounds;
+                model.meshes[meshIndex].boundingBox.Transform(transformedBounds, nodeTransforms[nodeIndex]);
+                if (!hasBounds)
+                {
+                    model.boundingBox = transformedBounds;
+                    hasBounds = true;
+                    continue;
+                }
+                model.boundingBox = makeAABB(
+                    Vector3::Min(minimumPointOf(model.boundingBox), minimumPointOf(transformedBounds)),
+                    Vector3::Max(maximumPointOf(model.boundingBox), maximumPointOf(transformedBounds)));
+            }
         }
         if (hasBounds)
             BoundingSphere::CreateFromBoundingBox(model.boundingSphere, model.boundingBox);
@@ -254,6 +278,12 @@ namespace Engine
                 const std::string name = sourceBone->mName.C_Str();
                 if (skeleton.boneMap.contains(name))
                     continue;
+
+                if (skeleton.bones.size() >= MAX_SKINNING_BONES)
+                {
+                    LOG_WARNING_CAT("ModelImporter", "GPUスキニング上限を超えたBoneをスキップします: {}", name);
+                    continue;
+                }
 
                 const std::uint32_t index = static_cast<std::uint32_t>(skeleton.bones.size());
                 skeleton.boneMap.emplace(name, index);

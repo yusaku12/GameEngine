@@ -156,8 +156,10 @@ namespace Engine
             .pixelShader = &pixelShader,
             .inputLayout = DEBUG_INPUT_LAYOUT,
             .rootParameters = rootParameters,
+            .depthStencilFormat = DXGI_FORMAT_D32_FLOAT,
             .primitiveTopology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE,
             .enableAlphaBlend = true,
+            .enableDepthWrite = false,
         };
         m_pipeline.finalize();
         return m_pipeline.initialize(*m_device->get(), config);

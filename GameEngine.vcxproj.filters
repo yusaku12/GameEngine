@@ -121,6 +121,7 @@
     <ClInclude Include="Source\Editor\ImGui\ImGuiSystem.h" />
     <ClInclude Include="Source\Editor\Scene\SceneDocument.h" />
     <ClInclude Include="Source\Editor\Camera\FreeCameraController.h" />
+    <ClInclude Include="Library\ImGuizmo\ImGuizmo.h" />
     <ClCompile Include="Source\Editor\ImGui\EditorUi.cpp" />
     <ClCompile Include="Source\Core\System\Dialog.cpp" />
     <ClCompile Include="Source\Editor\ImGui\ImGuiSystem.cpp" />
@@ -132,6 +133,7 @@
     <ClCompile Include="Library\imgui\imgui_widgets.cpp" />
     <ClCompile Include="Library\imgui\backends\imgui_impl_dx12.cpp" />
     <ClCompile Include="Library\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="Library\ImGuizmo\ImGuizmo.cpp" />
     <ClInclude Include="Generated\FlatBuffers\Common_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Model_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Prefab_generated.h" />

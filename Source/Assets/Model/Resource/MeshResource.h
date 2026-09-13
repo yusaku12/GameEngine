@@ -15,6 +15,11 @@ namespace Engine
     inline constexpr std::size_t MAX_BONE_INFLUENCES = 4;
 
     /**
+     * @brief 1モデルでGPUスキニングに使用できる最大ボーン数。
+     */
+    inline constexpr std::size_t MAX_SKINNING_BONES = 256;
+
+    /**
      * @brief モデル頂点のCPU側データ。
      */
     struct ModelVertex

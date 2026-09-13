@@ -5,6 +5,8 @@
 
 namespace Engine
 {
+    class DX12UploadBuffer;
+
     /**
      * @brief RenderItemが描画されるパス。
      */
@@ -36,6 +38,7 @@ namespace Engine
         std::uint32_t materialID = 0;                           //!< Material識別子
         std::uint32_t textureID = 0;                            //!< 主Texture識別子
         TextureHandle baseColorTexture;                         //!< BaseColor Texture
+        const DX12UploadBuffer* bonePaletteBuffer = nullptr;    //!< Bind PoseまたはAnimation済みBone行列Buffer
         std::uint32_t meshID = 0;                               //!< Mesh識別子
         float cameraDepth = 0.0f;                               //!< Transparent sort用Camera深度
         RenderPassType pass = RenderPassType::Opaque;           //!< 描画Pass

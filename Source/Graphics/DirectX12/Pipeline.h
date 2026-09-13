@@ -21,6 +21,7 @@ namespace Engine
         DXGI_FORMAT depthStencilFormat = DXGI_FORMAT_UNKNOWN;                                     //!< Depth Stencil Format
         D3D12_PRIMITIVE_TOPOLOGY_TYPE primitiveTopology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; //!< Primitive Topology 種別
         bool enableAlphaBlend = false;                                                            //!< SrcAlphaによる透過Blendを有効にするか
+        bool enableDepthWrite = true;                                                             //!< Depth Bufferへの書き込みを有効にするか
     };
 
     /**

@@ -13,6 +13,8 @@ namespace Engine
             D3D12_INPUT_ELEMENT_DESC{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, position)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
             D3D12_INPUT_ELEMENT_DESC{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, color)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
             D3D12_INPUT_ELEMENT_DESC{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, texCoord)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            D3D12_INPUT_ELEMENT_DESC{ "BLENDINDICES", 0, DXGI_FORMAT_R16G16B16A16_UINT, 0, static_cast<UINT>(offsetof(ModelVertex, boneIndices)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            D3D12_INPUT_ELEMENT_DESC{ "BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, boneWeights)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         };
     }
 
@@ -53,6 +55,17 @@ namespace Engine
             width,
             height,
             swapChainConfig))
+        {
+            finalize();
+            return false;
+        }
+
+        if (!m_dsvHeap.initialize(*m_device.get(), {
+                .type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
+                .capacity = 1,
+                .shaderVisible = false,
+            })
+            || !createDepthBuffer(width, height))
         {
             finalize();
             return false;
@@ -159,6 +172,10 @@ namespace Engine
 
         if (!m_swapChain.finalize(m_directFence, m_lastSubmittedFenceValue))
             return false;
+
+        m_depthBuffer.finalize();
+        m_dsvHeap.finalize();
+        m_depthStencilView = {};
 
         ModelRenderSubmissionQueue::instance().clear();
         m_modelRenderQueue.clear();
@@ -280,11 +297,13 @@ namespace Engine
             static_cast<LONG>(viewportX + viewportWidth),
             static_cast<LONG>(viewportY + viewportHeight)
         };
-        nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, nullptr);
+        nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
         nativeCommandList->RSSetViewports(1, &viewport);
         nativeCommandList->RSSetScissorRects(1, &scissorRect);
         if (m_cameraClearMode == CameraClearMode::SolidColor || m_cameraClearMode == CameraClearMode::Skybox)
             nativeCommandList->ClearRenderTargetView(renderTargetView, &m_cameraClearColor.x, 0, nullptr);
+        nativeCommandList->ClearDepthStencilView(
+            m_depthStencilView.native, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
         if (!renderModelQueue(commandList))
             return false;
         DebugPrimitive::instance().drawGrid(Vector3::Zero, 20.0f, 20.0f, 1.0f);
@@ -337,6 +356,9 @@ namespace Engine
         if (!m_swapChain.resize(*m_device.get(), m_directFence, m_lastSubmittedFenceValue, width, height))
             return false;
 
+        if (!createDepthBuffer(width, height))
+            return false;
+
         m_frameFenceValues.fill(0);
         m_lastSubmittedFenceValue = 0;
         m_renderWidth = width;
@@ -353,6 +375,45 @@ namespace Engine
         m_cameraClearMode = view.clearMode;
         m_cameraClearColor = view.backgroundColor;
         m_cameraCullingMask = view.cullingMask;
+    }
+
+    bool DX12Renderer::createDepthBuffer(const std::uint32_t width, const std::uint32_t height)
+    {
+        if (m_device.get() == nullptr || m_dsvHeap.get() == nullptr || width == 0 || height == 0)
+            return false;
+
+        m_depthBuffer.finalize();
+        D3D12_RESOURCE_DESC description{};
+        description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        description.Width = width;
+        description.Height = height;
+        description.DepthOrArraySize = 1;
+        description.MipLevels = 1;
+        description.Format = DXGI_FORMAT_D32_FLOAT;
+        description.SampleDesc = { 1, 0 };
+        description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        description.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        const D3D12_CLEAR_VALUE clearValue{
+            .Format = DXGI_FORMAT_D32_FLOAT,
+            .DepthStencil = { 1.0f, 0 },
+        };
+        const DX12ResourceConfig config{
+            .description = description,
+            .initialState = D3D12_RESOURCE_STATE_DEPTH_WRITE,
+            .clearValue = &clearValue,
+        };
+        if (!m_depthBuffer.initialize(*m_device.get(), config))
+            return false;
+
+        if (m_dsvHeap.getAllocatedCount() == 0)
+        {
+            const std::optional<DX12DescriptorAllocation> allocation = m_dsvHeap.allocate();
+            if (!allocation)
+                return false;
+            m_depthStencilView = allocation->cpu;
+        }
+        m_device.get()->CreateDepthStencilView(m_depthBuffer.get(), nullptr, m_depthStencilView.native);
+        return true;
     }
 
     bool DX12Renderer::processImGuiMessage(const HWND hwnd, const UINT message, const WPARAM wparam, const LPARAM lparam)
@@ -394,7 +455,12 @@ namespace Engine
         baseColorTable.DescriptorTable.NumDescriptorRanges = 1;
         baseColorTable.DescriptorTable.pDescriptorRanges = &baseColorRange;
         baseColorTable.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        const std::array rootParameters = { objectConstants, baseColorTable };
+        D3D12_ROOT_PARAMETER bonePalette{};
+        bonePalette.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        bonePalette.Descriptor.ShaderRegister = 1;
+        bonePalette.Descriptor.RegisterSpace = 0;
+        bonePalette.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+        const std::array rootParameters = { objectConstants, bonePalette, baseColorTable };
         const std::array staticSamplers = {
             D3D12_STATIC_SAMPLER_DESC{
                 .Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR,
@@ -419,9 +485,11 @@ namespace Engine
             .rootParameters = rootParameters,
             .staticSamplers = staticSamplers,
             .renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM,
+            .depthStencilFormat = DXGI_FORMAT_D32_FLOAT,
         };
         DX12GraphicsPipelineConfig transparentModelConfig = modelConfig;
         transparentModelConfig.enableAlphaBlend = true;
+        transparentModelConfig.enableDepthWrite = false;
         return m_modelPipeline.initialize(*m_device.get(), modelConfig)
             && m_transparentModelPipeline.initialize(*m_device.get(), transparentModelConfig)
             && DebugPrimitive::instance().rebuildPipeline(*debugVertexShader, *debugPixelShader);
@@ -461,8 +529,9 @@ namespace Engine
                 if (gpuMesh == nullptr)
                     continue;
                 const MeshResource& mesh = gpuModel->source->meshes[meshIndex];
+                const Matrix meshWorldMatrix = gpuMesh->nodeTransform * submission.worldMatrix;
                 AABB meshWorldBounds;
-                mesh.boundingBox.Transform(meshWorldBounds, submission.worldMatrix);
+                mesh.boundingBox.Transform(meshWorldBounds, meshWorldMatrix);
 
                 const auto submitSubMesh = [&](const std::uint32_t indexStart, const std::uint32_t indexCount,
                     const std::uint32_t materialIndex)
@@ -484,7 +553,7 @@ namespace Engine
                         objectVisible = m_modelRenderQueue.submit(RenderItem{
                             .vertexBuffer = &gpuMesh->vertexBufferView,
                             .indexBuffer = &gpuMesh->indexBufferView,
-                            .worldMatrix = submission.worldMatrix,
+                            .worldMatrix = meshWorldMatrix,
                             .worldBounds = meshWorldBounds,
                             .baseColor = baseColor,
                             .indexStart = indexStart,
@@ -494,6 +563,7 @@ namespace Engine
                             .materialID = materialIndex,
                             .textureID = baseColorTexture.index,
                             .baseColorTexture = baseColorTexture,
+                            .bonePaletteBuffer = &gpuModel->bonePaletteBuffer,
                             .meshID = static_cast<std::uint32_t>(meshIndex),
                             .cameraDepth = (Vector3(meshWorldBounds.Center) - m_cameraPosition).LengthSquared(),
                             .pass = pass,
@@ -537,6 +607,7 @@ namespace Engine
         const DX12GraphicsPipeline* currentPipeline = nullptr;
         const D3D12_VERTEX_BUFFER_VIEW* currentVertexBuffer = nullptr;
         const D3D12_INDEX_BUFFER_VIEW* currentIndexBuffer = nullptr;
+        const DX12UploadBuffer* currentBonePalette = nullptr;
         std::uint32_t currentMaterial = UINT32_MAX;
         TextureHandle currentTexture = TextureHandle::Invalid();
         nativeCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -551,6 +622,7 @@ namespace Engine
                     return false;
                 currentPipeline = requiredPipeline;
                 currentTexture = TextureHandle::Invalid();
+                currentBonePalette = nullptr;
                 ++m_frameStatistics.psoSwitchCount;
             }
             if (currentVertexBuffer != item.vertexBuffer)
@@ -570,13 +642,20 @@ namespace Engine
                 currentMaterial = item.materialID;
                 ++m_frameStatistics.materialSwitchCount;
             }
+            if (currentBonePalette != item.bonePaletteBuffer)
+            {
+                if (item.bonePaletteBuffer == nullptr || item.bonePaletteBuffer->getGpuVirtualAddress() == 0)
+                    return false;
+                nativeCommandList->SetGraphicsRootConstantBufferView(1, item.bonePaletteBuffer->getGpuVirtualAddress());
+                currentBonePalette = item.bonePaletteBuffer;
+            }
             if (currentTexture != item.baseColorTexture)
             {
                 const Texture* texture = textureManager.get(item.baseColorTexture);
                 const TextureResourceInfo* textureInfo = texture != nullptr ? texture->getResourceInfo() : nullptr;
                 if (textureInfo == nullptr)
                     return false;
-                nativeCommandList->SetGraphicsRootDescriptorTable(1, textureInfo->srv);
+                nativeCommandList->SetGraphicsRootDescriptorTable(2, textureInfo->srv);
                 currentTexture = item.baseColorTexture;
                 ++m_frameStatistics.textureSwitchCount;
             }

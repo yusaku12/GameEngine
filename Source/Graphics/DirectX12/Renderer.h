@@ -123,6 +123,14 @@ namespace Engine
     private:
 
         /**
+         * @brief 描画領域に対応する深度バッファとDSVを作成する。
+         * @param width 深度バッファ幅
+         * @param height 深度バッファ高さ
+         * @return 作成に成功した場合は true
+         */
+        bool createDepthBuffer(std::uint32_t width, std::uint32_t height);
+
+        /**
          * @brief Graphics PSO を再生成する
          * @return 再生成に成功した場合は true
          */
@@ -148,6 +156,9 @@ namespace Engine
         DX12CommandQueue m_directQueue;                                  //!< 描画コマンドキュー
         DX12Fence m_directFence;                                         //!< 描画コマンドの完了 Fence
         DX12SwapChain m_swapChain;                                       //!< 画面出力用 SwapChain
+        DX12DescriptorHeap m_dsvHeap;                                    //!< 深度バッファ用 DSV Heap
+        DX12Resource m_depthBuffer;                                      //!< 画面描画用深度バッファ
+        DX12CpuDescriptorHandle m_depthStencilView;                      //!< 深度バッファの DSV
         ShaderManager m_shaderManager;                                   //!< Shader のロード・キャッシュ・Hot Reload 管理
         ShaderID m_modelVertexShaderID = 0;                              //!< Model頂点Shader ID
         ShaderID m_modelPixelShaderID = 0;                               //!< Model Pixel Shader ID

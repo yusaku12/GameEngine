@@ -96,7 +96,8 @@ namespace Engine
         description.RasterizerState.ForcedSampleCount = 0;
         description.RasterizerState.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
         description.DepthStencilState.DepthEnable = config.depthStencilFormat != DXGI_FORMAT_UNKNOWN;
-        description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+        description.DepthStencilState.DepthWriteMask = config.enableDepthWrite
+            ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
         description.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
         description.DepthStencilState.StencilEnable = FALSE;
         description.DepthStencilState.StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;

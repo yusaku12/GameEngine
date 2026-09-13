@@ -18,6 +18,7 @@ namespace Engine
         DX12UploadBuffer indexBuffer;                //!< インデックスBuffer
         D3D12_VERTEX_BUFFER_VIEW vertexBufferView{}; //!< 頂点Buffer View
         D3D12_INDEX_BUFFER_VIEW indexBufferView{};   //!< インデックスBuffer View
+        Matrix nodeTransform = Matrix::Identity;     //!< Model RootからMesh Nodeまでの累積変換
     };
 
     /**
@@ -36,6 +37,7 @@ namespace Engine
         std::shared_ptr<const ModelResource> source;       //!< 元のModelResourceへの参照
         std::vector<std::unique_ptr<ModelGpuMesh>> meshes; //!< Mesh単位のGPU描画Resource
         std::vector<Material> materials;                   //!< Material単位のGPU描画Resource
+        DX12UploadBuffer bonePaletteBuffer;                //!< Bind Pose用Bone行列Buffer
     };
 
     /**

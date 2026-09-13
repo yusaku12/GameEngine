@@ -28,6 +28,7 @@ namespace Engine
         for (auto& [key, resource] : m_resources)
         {
             GE_UNUSED(key);
+            succeeded = resource->bonePaletteBuffer.finalize() && succeeded;
             for (const std::unique_ptr<ModelGpuMesh>& mesh : resource->meshes)
             {
                 if (mesh == nullptr)
@@ -65,6 +66,7 @@ namespace Engine
             return false;
 
         bool succeeded = true;
+        succeeded = found->second->bonePaletteBuffer.markUsed(fenceValue) && succeeded;
         for (const std::unique_ptr<ModelGpuMesh>& mesh : found->second->meshes)
         {
             if (mesh == nullptr)
@@ -88,6 +90,23 @@ namespace Engine
 
         auto resource = std::make_unique<ModelGpuResource>();
         resource->source = std::move(source);
+        std::vector<Matrix> nodeTransforms(resource->source->nodes.size(), Matrix::Identity);
+        for (std::size_t nodeIndex = 0; nodeIndex < resource->source->nodes.size(); ++nodeIndex)
+        {
+            const ModelNode& node = resource->source->nodes[nodeIndex];
+            nodeTransforms[nodeIndex] = node.localTransform;
+            if (node.parentIndex >= 0 && static_cast<std::size_t>(node.parentIndex) < nodeIndex)
+                nodeTransforms[nodeIndex] *= nodeTransforms[static_cast<std::size_t>(node.parentIndex)];
+        }
+
+        std::array<Matrix, MAX_SKINNING_BONES> bonePalette;
+        bonePalette.fill(Matrix::Identity);
+        if (!resource->bonePaletteBuffer.initialize(*m_device->get(), *m_fence, sizeof(bonePalette))
+            || !resource->bonePaletteBuffer.write(std::as_bytes(std::span{ bonePalette })))
+        {
+            LOG_ERROR("[ModelGpuCache] Bone Palette Bufferの作成に失敗しました");
+            return nullptr;
+        }
         resource->materials.reserve(resource->source->materials.size());
         TextureManager& textureManager = TextureManager::instance();
         for (const MaterialResource& material : resource->source->materials)
@@ -98,7 +117,9 @@ namespace Engine
                 std::filesystem::path texturePath = material.textures.baseColor;
                 if (texturePath.is_relative() && !resource->source->sourcePath.empty())
                     texturePath = resource->source->sourcePath.parent_path() / texturePath;
-                const TextureHandle loadedTexture = textureManager.load(texturePath);
+                const TextureHandle loadedTexture = textureManager.load(texturePath, {
+                    .colorSpace = TextureColorSpace::SRGB,
+                });
                 if (loadedTexture.isValid())
                     baseColorTexture = loadedTexture;
             }
@@ -136,6 +157,16 @@ namespace Engine
                 .SizeInBytes = static_cast<UINT>(mesh->indexBuffer.getSize()),
                 .Format = DXGI_FORMAT_R32_UINT,
             };
+            const std::size_t meshIndex = resource->meshes.size();
+            for (std::size_t nodeIndex = 0; nodeIndex < resource->source->nodes.size(); ++nodeIndex)
+            {
+                const ModelNode& node = resource->source->nodes[nodeIndex];
+                if (std::find(node.meshIndices.begin(), node.meshIndices.end(), meshIndex) != node.meshIndices.end())
+                {
+                    mesh->nodeTransform = nodeTransforms[nodeIndex];
+                    break;
+                }
+            }
             resource->meshes.push_back(std::move(mesh));
         }
         return resource;

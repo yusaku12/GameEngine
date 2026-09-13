@@ -2,6 +2,7 @@
 #include "Editor\ImGui\ImGuiSystem.h"
 #include "Editor\ImGui\EditorUi.h"
 #include <imgui.h>
+#include <ImGuizmo.h>
 #include <backends\imgui_impl_dx12.h>
 #include <backends\imgui_impl_win32.h>
 
@@ -114,6 +115,7 @@ namespace Engine
         ImGui_ImplDX12_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
+        ImGuizmo::BeginFrame();
         m_editorUi->draw(shaderManager);
         if (drawAdditionalUi)
             drawAdditionalUi();

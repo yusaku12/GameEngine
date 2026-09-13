@@ -7,8 +7,10 @@
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Threading\ThreadDebugStats.h"
 #include "Editor\Camera\FreeCameraController.h"
+#include "Graphics\Camera\CameraManager.h"
 #include "Graphics\Shader\ShaderManager.h"
 #include <imgui.h>
+#include <ImGuizmo.h>
 
 namespace Engine
 {
@@ -118,6 +120,7 @@ namespace Engine
             | ImGuiWindowFlags_NoNavFocus
             | ImGuiWindowFlags_NoBackground;
         ImGui::Begin("##EditorRoot", nullptr, rootFlags);
+        drawSelectedObjectGizmo();
         const ImGuiID dockspaceId = ImGui::GetID("GameEngineDockSpace");
         ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
         ImGui::End();
@@ -155,6 +158,54 @@ namespace Engine
         drawInspector();
         drawShaderManager(shaderManager);
         drawThreadDebug();
+    }
+
+    void EditorUi::drawSelectedObjectGizmo()
+    {
+        const bool acceptsShortcuts = !ImGui::GetIO().WantTextInput
+            && !ImGui::IsMouseDown(ImGuiMouseButton_Right)
+            && !ImGuizmo::IsUsing();
+        if (acceptsShortcuts)
+        {
+            if (ImGui::IsKeyPressed(ImGuiKey_W))
+                m_gizmoOperation = GizmoOperation::Translate;
+            else if (ImGui::IsKeyPressed(ImGuiKey_E))
+                m_gizmoOperation = GizmoOperation::Rotate;
+            else if (ImGui::IsKeyPressed(ImGuiKey_R))
+                m_gizmoOperation = GizmoOperation::Scale;
+        }
+
+        CameraComponent* const camera = CameraManager::instance().getActiveCamera();
+        Transform* const localTransform = m_selectedObject == nullptr ? nullptr : m_selectedObject->getTransform();
+        if (camera == nullptr || localTransform == nullptr)
+            return;
+
+        ImGuizmo::OPERATION operation = ImGuizmo::TRANSLATE;
+        if (m_gizmoOperation == GizmoOperation::Rotate)
+            operation = ImGuizmo::ROTATE;
+        else if (m_gizmoOperation == GizmoOperation::Scale)
+            operation = ImGuizmo::SCALE;
+
+        ImGuiViewport* const viewport = ImGui::GetMainViewport();
+        Matrix worldMatrix = m_selectedObject->getWorldMatrix();
+        const Matrix& viewMatrix = camera->getViewMatrix();
+        const Matrix& projectionMatrix = camera->getProjectionMatrix();
+        ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+        ImGuizmo::SetRect(viewport->Pos.x, viewport->Pos.y, viewport->Size.x, viewport->Size.y);
+        ImGuizmo::SetOrthographic(camera->getProjectionMode() == CameraProjectionMode::Orthographic);
+
+        const ImGuizmo::MODE mode = m_gizmoOperation == GizmoOperation::Scale
+            ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+        if (ImGuizmo::Manipulate(&viewMatrix._11, &projectionMatrix._11, operation, mode, &worldMatrix._11))
+        {
+            const GameObject* const parent = m_selectedObject->getParent();
+            const Matrix localMatrix = parent == nullptr
+                ? worldMatrix : worldMatrix * parent->getWorldMatrix().Invert();
+            const Transform manipulatedTransform = Transform::fromMatrix(localMatrix);
+            localTransform->setPosition(manipulatedTransform.getPosition());
+            localTransform->setRotation(manipulatedTransform.getRotation());
+            localTransform->setScale(manipulatedTransform.getScale());
+        }
     }
 
     void EditorUi::newScene()
@@ -357,7 +408,8 @@ namespace Engine
             object->addComponent<ModelRendererComponent>();
             break;
         case GameObjectCreateType::Camera:
-            object->getTransform()->setPosition(Vector3(0.0f, 0.0f, -5.0f));
+            object->getTransform()->setPosition(Vector3(-0.087f, 1.768f, 4.772f));
+            object->getTransform()->setEulerAngles(0.181f, 3.121f, 0.0f);
             object->addComponent<CameraComponent>();
             object->addComponent<FreeCameraController>();
             break;

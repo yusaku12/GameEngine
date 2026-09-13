@@ -142,12 +142,14 @@ namespace Engine
     {
         updateFrameInput();
 
-        JobCounter frameCounter;
         JobSystem& jobSystem = JobSystem::instance();
-        jobSystem.schedule([this] { runGameUpdateJob(); }, &frameCounter);
-        jobSystem.schedule([this] { runRenderUpdateJob(); }, &frameCounter);
+        JobCounter updateCounter;
+        jobSystem.schedule([this] { runGameUpdateJob(); }, &updateCounter);
+        waitForFrameJobs(updateCounter);
 
-        waitForFrameJobs(frameCounter);
+        JobCounter renderCounter;
+        jobSystem.schedule([this] { runRenderUpdateJob(); }, &renderCounter);
+        waitForFrameJobs(renderCounter);
         TimeManager::instance().endFrame();
     }
 
