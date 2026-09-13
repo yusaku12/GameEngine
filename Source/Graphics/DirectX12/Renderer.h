@@ -11,6 +11,7 @@
 #include "Graphics\Shader\ShaderManager.h"
 #include "Graphics\DirectX12\SwapChain.h"
 #include "Graphics\Camera\CameraData.h"
+#include "Graphics\Debug\DebugPrimitive.h"
 #include "Graphics\Model\ModelGpuCache.h"
 #include "Graphics\Renderer\ModelRenderSubmission.h"
 #include "Graphics\Renderer\RenderQueue.h"
@@ -150,6 +151,8 @@ namespace Engine
         ShaderManager m_shaderManager;                                   //!< Shader のロード・キャッシュ・Hot Reload 管理
         ShaderID m_modelVertexShaderID = 0;                              //!< Model頂点Shader ID
         ShaderID m_modelPixelShaderID = 0;                               //!< Model Pixel Shader ID
+        ShaderID m_debugVertexShaderID = 0;                              //!< Debug Primitive頂点Shader ID
+        ShaderID m_debugPixelShaderID = 0;                               //!< Debug Primitive Pixel Shader ID
         bool m_psoRebuildPending = false;                                //!< Shader 更新に伴う Graphics PSO 再生成要求フラグ
         DX12GraphicsPipeline m_modelPipeline;                            //!< Model描画用Graphics PSO
         DX12GraphicsPipeline m_transparentModelPipeline;                 //!< 透明Model描画用Graphics PSO

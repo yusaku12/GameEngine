@@ -36,7 +36,8 @@ namespace Engine
         if (!m_directQueue.initialize(*m_device.get(), DX12CommandQueueType::DIRECT)
             || !m_directFence.initialize(*m_device.get())
             || !TextureManager::instance().initialize(m_device, m_directQueue, m_directFence)
-            || !m_modelGpuCache.initialize(m_device, m_directFence))
+            || !m_modelGpuCache.initialize(m_device, m_directFence)
+            || !DebugPrimitive::instance().initialize(m_device, m_directFence))
         {
             finalize();
             return false;
@@ -105,6 +106,28 @@ namespace Engine
         };
         m_modelVertexShaderID = m_shaderManager.registerShader(modelVertexShaderDesc);
         m_modelPixelShaderID = m_shaderManager.registerShader(modelPixelShaderDesc);
+        const ShaderCompileDesc debugVertexShaderDesc{
+            .sourcePath = "Assets/Shaders/DebugPrimitive.hlsl",
+            .outputPath = "Assets/Shaders/Compiled/DebugPrimitive_vsMain_vs.cso",
+            .entryPoint = "vsMain",
+            .stage = ShaderStage::Vertex,
+            .shaderModel = ShaderModel::SM_6_0,
+            .languageVersion = HlslLanguageVersion::Hlsl2021,
+            .debug = true,
+            .optimize = false,
+        };
+        const ShaderCompileDesc debugPixelShaderDesc{
+            .sourcePath = "Assets/Shaders/DebugPrimitive.hlsl",
+            .outputPath = "Assets/Shaders/Compiled/DebugPrimitive_psMain_ps.cso",
+            .entryPoint = "psMain",
+            .stage = ShaderStage::Pixel,
+            .shaderModel = ShaderModel::SM_6_0,
+            .languageVersion = HlslLanguageVersion::Hlsl2021,
+            .debug = true,
+            .optimize = false,
+        };
+        m_debugVertexShaderID = m_shaderManager.registerShader(debugVertexShaderDesc);
+        m_debugPixelShaderID = m_shaderManager.registerShader(debugPixelShaderDesc);
 
         if (!m_shaderManager.loadAll())
         {
@@ -139,6 +162,8 @@ namespace Engine
 
         ModelRenderSubmissionQueue::instance().clear();
         m_modelRenderQueue.clear();
+        if (!DebugPrimitive::instance().finalize())
+            return false;
         if (!m_modelGpuCache.finalize())
             return false;
         if (!TextureManager::instance().finalize())
@@ -149,6 +174,8 @@ namespace Engine
         m_shaderManager.shutdown();
         m_modelVertexShaderID = 0;
         m_modelPixelShaderID = 0;
+        m_debugVertexShaderID = 0;
+        m_debugPixelShaderID = 0;
         m_psoRebuildPending = false;
         for (DX12CommandList& commandList : m_commandLists)
             commandList.finalize();
@@ -260,6 +287,9 @@ namespace Engine
             nativeCommandList->ClearRenderTargetView(renderTargetView, &m_cameraClearColor.x, 0, nullptr);
         if (!renderModelQueue(commandList))
             return false;
+        DebugPrimitive::instance().drawGrid(Vector3::Zero, 20.0f, 20.0f, 1.0f);
+        if (!DebugPrimitive::instance().render(commandList, frameIndex, m_viewProjection))
+            return false;
 
         m_imguiSystem->render(*nativeCommandList);
 
@@ -284,6 +314,8 @@ namespace Engine
         }
 
         if (!commandList.markSubmitted(submittedFenceValue))
+            return false;
+        if (!DebugPrimitive::instance().markFrameUsed(frameIndex, submittedFenceValue))
             return false;
         for (const ModelHandle handle : usedModels)
         {
@@ -332,8 +364,12 @@ namespace Engine
     {
         const auto modelVertexShader = m_shaderManager.get(m_modelVertexShaderID);
         const auto modelPixelShader = m_shaderManager.get(m_modelPixelShaderID);
+        const auto debugVertexShader = m_shaderManager.get(m_debugVertexShaderID);
+        const auto debugPixelShader = m_shaderManager.get(m_debugPixelShaderID);
         if (!modelVertexShader || !modelPixelShader
-            || !modelVertexShader->isCompiled() || !modelPixelShader->isCompiled())
+            || !debugVertexShader || !debugPixelShader
+            || !modelVertexShader->isCompiled() || !modelPixelShader->isCompiled()
+            || !debugVertexShader->isCompiled() || !debugPixelShader->isCompiled())
         {
             LOG_ERROR("[DX12] 有効なModel Shaderがロードされていません");
             return false;
@@ -387,7 +423,8 @@ namespace Engine
         DX12GraphicsPipelineConfig transparentModelConfig = modelConfig;
         transparentModelConfig.enableAlphaBlend = true;
         return m_modelPipeline.initialize(*m_device.get(), modelConfig)
-            && m_transparentModelPipeline.initialize(*m_device.get(), transparentModelConfig);
+            && m_transparentModelPipeline.initialize(*m_device.get(), transparentModelConfig)
+            && DebugPrimitive::instance().rebuildPipeline(*debugVertexShader, *debugPixelShader);
     }
 
     void DX12Renderer::buildModelRenderQueue(std::vector<ModelHandle>& usedModels)

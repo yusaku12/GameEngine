@@ -55,6 +55,7 @@
     <ClInclude Include="Source\Graphics\Camera\CameraRenderSubmission.h" />
     <ClInclude Include="Source\Graphics\Camera\CameraTypes.h" />
     <ClInclude Include="Source\Graphics\Camera\CameraUtils.h" />
+    <ClInclude Include="Source\Graphics\Debug\DebugPrimitive.h" />
     <ClInclude Include="Source\Graphics\Model\ModelGpuCache.h" />
     <ClInclude Include="Source\Graphics\Shader\Shader.h" />
     <ClInclude Include="Source\Graphics\Shader\ShaderTypes.h" />
@@ -132,6 +133,7 @@
     <ClCompile Include="Source\Graphics\Camera\CameraManager.cpp" />
     <ClCompile Include="Source\Graphics\Camera\CameraRenderSubmission.cpp" />
     <ClCompile Include="Source\Graphics\Camera\CameraUtils.cpp" />
+    <ClCompile Include="Source\Graphics\Debug\DebugPrimitive.cpp" />
     <ClCompile Include="Source\Graphics\Model\ModelGpuCache.cpp" />
     <ClCompile Include="Source\Graphics\Shader\Shader.cpp" />
     <ClCompile Include="Source\Graphics\Shader\ShaderCompiler.cpp" />
@@ -202,6 +204,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Shaders\Model.hlsl" />
+    <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />
     <None Include="Schemas\FlatBuffers\Prefab.fbs" />
