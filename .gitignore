@@ -1,6 +1,7 @@
 .vs/
 GameEngine/
 x64/
+/Build/
 /Assets/*
 !/Assets/Shaders/
 /Assets/Shaders/*

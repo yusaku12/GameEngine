@@ -261,6 +261,7 @@
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
+    <OzzLibraryPostfix>_d</OzzLibraryPostfix>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -268,6 +269,7 @@
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
+    <OzzLibraryPostfix>_r</OzzLibraryPostfix>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -321,7 +323,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -331,8 +333,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>assimp-vc140-mt.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Debug;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\lib\x64\v141\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;assimp-vc140-mt.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration);$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Debug;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\lib\x64\v141\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(USERPROFILE)\.nuget\packages\assimp_native.redist\4.0.1\build\native\bin\x64\v141\Debug\assimp-vc140-mt.dll" "$(TargetDir)assimp-vc140-mt.dll"</Command>
@@ -348,7 +350,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -358,8 +360,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>assimp-vc140-mt.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Release;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\lib\x64\v141\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;assimp-vc140-mt.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration);$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Release;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\lib\x64\v141\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(USERPROFILE)\.nuget\packages\assimp_native.redist\4.0.1\build\native\bin\x64\v141\Release\assimp-vc140-mt.dll" "$(TargetDir)assimp-vc140-mt.dll"</Command>
@@ -367,6 +369,9 @@
   </ItemDefinitionGroup>
   <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
+  </Target>
+  <Target Name="BuildOzzAnimation" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'" Inputs="$(ProjectDir)Library\ozz-animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\build_ozz.ps1;$(ProjectDir)Tests\Animation\OzzRoundTripTests.cpp" Outputs="$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration)\ozz_animation_offline$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\$(Configuration)\AnimationOzzRoundTripTests.exe">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Animation\build_ozz.ps1&quot; -Configuration $(Configuration) -RunTests" />
   </Target>
   <Target Name="CompileShaders" BeforeTargets="ClCompile" Condition="Exists('$(ProjectDir)Tools\DXC\dxc.exe')" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
