@@ -37,6 +37,14 @@ namespace Engine
         ModelHandle create(ModelResource model, const std::filesystem::path& cacheKey = {});
 
         /**
+         * @brief 現在のモデルSnapshotをFlatBuffersバイナリとして保存する。
+         * @param handle 保存対象Handle
+         * @param path 保存先のアセットパス
+         * @return 保存に成功した場合はtrue
+         */
+        bool save(ModelHandle handle, const std::filesystem::path& path) const;
+
+        /**
          * @brief Handleに対応するResourceの共有参照を取得する。
          * @param handle 取得するResourceのHandle
          */

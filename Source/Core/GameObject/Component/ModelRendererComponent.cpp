@@ -161,6 +161,24 @@ namespace Engine
                 });
         }
 
+        void requestModelSaveAs(const ModelHandle handle)
+        {
+            const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+            MainThreadDispatcher::instance().post([handle, ownerWindow]
+                {
+                    static constexpr std::array filters = {
+                        FileDialogFilter{ L"GameEngine Model", L"*.model;*.mdl" },
+                        FileDialogFilter{ L"All Files", L"*.*" },
+                    };
+                    std::filesystem::path path;
+                    if (Dialog::saveFile(path, L"モデルを保存", "Assets/Models", L"model", filters, ownerWindow)
+                        == DialogResult::Ok && !ModelManager::instance().save(handle, path))
+                    {
+                        LOG_ERROR("[ModelEditor] Model Save As failed: {}", path.string());
+                    }
+                });
+        }
+
         void drawSharedMaterial(const MaterialHandle handle)
         {
             MaterialManager& manager = MaterialManager::instance();
@@ -390,6 +408,11 @@ namespace Engine
             }
         }
 
+        ImGui::SameLine();
+        ImGui::BeginDisabled(model == nullptr);
+        if (ImGui::Button("Save Model"))
+            requestModelSaveAs(m_model);
+        ImGui::EndDisabled();
         ImGui::SameLine();
         if (ImGui::Button("Clear"))
         {

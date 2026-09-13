@@ -140,6 +140,16 @@ namespace Engine
         return handle;
     }
 
+    bool ModelManager::save(const ModelHandle handle, const std::filesystem::path& path) const
+    {
+        const std::filesystem::path normalizedPath = normalizePath(path);
+        if (normalizedPath.empty())
+            return false;
+
+        const std::shared_ptr<const ModelResource> model = get(handle);
+        return model != nullptr && Serialization::ModelSerializer{}.save(normalizedPath, *model);
+    }
+
     std::shared_ptr<const ModelResource> ModelManager::get(const ModelHandle handle) const noexcept
     {
         const std::scoped_lock lock(m_mutex);
