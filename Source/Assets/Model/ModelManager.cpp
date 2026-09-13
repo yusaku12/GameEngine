@@ -1,10 +1,67 @@
 ﻿#include "Pch.h"
 #include "Assets\Model\ModelManager.h"
+#include "Assets\Material\MaterialManager.h"
 #include "Assets\Model\Import\AssimpModelImporter.h"
 #include "Assets\Model\Serialization\ModelSerializer.h"
+#include "Graphics\Texture\TextureManager.h"
 
 namespace Engine
 {
+    namespace
+    {
+        /**
+         * @brief ModelResourceのMaterialResourceからMaterialAssetを作成し、ModelMaterialSlotに登録する。
+         * @param model ModelResource
+         */
+        void createMaterialSlots(ModelResource& model)
+        {
+            if (model.materialSlots.size() < model.materials.size())
+                model.materialSlots.resize(model.materials.size());
+
+            MaterialManager& materialManager = MaterialManager::instance();
+            TextureManager& textureManager = TextureManager::instance();
+            for (std::size_t index = 0; index < model.materials.size(); ++index)
+            {
+                const MaterialResource& legacyMaterial = model.materials[index];
+                ModelMaterialSlot& slot = model.materialSlots[index];
+                if (slot.name.empty())
+                    slot.name = legacyMaterial.name;
+                if (slot.defaultMaterialGuid.isValid()
+                    && materialManager.findByGuid(slot.defaultMaterialGuid).isValid())
+                    continue;
+
+                MaterialAsset material;
+                material.guid = slot.defaultMaterialGuid;
+                material.name = legacyMaterial.name;
+                material.baseColor = legacyMaterial.baseColor;
+                material.baseColor.w *= legacyMaterial.opacity;
+                material.metallic = legacyMaterial.metallic;
+                material.roughness = legacyMaterial.roughness;
+                material.emissiveColor = legacyMaterial.emissive;
+                if (legacyMaterial.opacity < 1.0f)
+                    material.renderState.surfaceType = MaterialSurfaceType::Transparent;
+                const auto registerTexture = [&model, &textureManager](const std::string& sourcePath)
+                    {
+                        if (sourcePath.empty())
+                            return AssetGUID{};
+                        std::filesystem::path texturePath = sourcePath;
+                        if (texturePath.is_relative() && !model.sourcePath.empty())
+                            texturePath = model.sourcePath.parent_path() / texturePath;
+                        return textureManager.registerAssetPath(texturePath);
+                    };
+                material.textures.baseColor = registerTexture(legacyMaterial.textures.baseColor);
+                material.textures.normal = registerTexture(legacyMaterial.textures.normal);
+                material.textures.metallicRoughness = registerTexture(legacyMaterial.textures.metallicRoughness);
+                material.textures.ambientOcclusion = registerTexture(legacyMaterial.textures.ambientOcclusion);
+                material.textures.emissive = registerTexture(legacyMaterial.textures.emissive);
+                const MaterialHandle handle = materialManager.create(std::move(material));
+                const std::shared_ptr<const MaterialAsset> created = materialManager.get(handle);
+                if (created != nullptr)
+                    slot.defaultMaterialGuid = created->guid;
+            }
+        }
+    }
+
     ModelManager& ModelManager::instance() noexcept
     {
         static ModelManager manager;
@@ -60,6 +117,9 @@ namespace Engine
             if (const auto found = m_pathCache.find(normalizedKey); found != m_pathCache.end())
                 return found->second;
         }
+
+        // モデルのMaterialResourceからMaterialAssetを作成し、ModelMaterialSlotに登録する
+        createMaterialSlots(model);
 
         if (m_nextGeneration == 0)
             ++m_nextGeneration;

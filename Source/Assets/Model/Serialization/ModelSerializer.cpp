@@ -14,10 +14,12 @@ namespace Engine::Serialization
         Vec2 toFlat(const Vector2& value) { return Vec2(value.x, value.y); }
         Vec3 toFlat(const Vector3& value) { return Vec3(value.x, value.y, value.z); }
         Vec4 toFlat(const Vector4& value) { return Vec4(value.x, value.y, value.z, value.w); }
+        AssetGuid toFlat(const AssetGUID& value) { return AssetGuid(value.high, value.low); }
 
         Vector2 toEngine(const Vec2* value) { return value ? Vector2(value->x(), value->y()) : Vector2::Zero; }
         Vector3 toEngine(const Vec3* value) { return value ? Vector3(value->x(), value->y(), value->z()) : Vector3::Zero; }
         Vector4 toEngine(const Vec4* value) { return value ? Vector4(value->x(), value->y(), value->z(), value->w()) : Vector4::Zero; }
+        AssetGUID toEngine(const AssetGuid* value) { return value ? AssetGUID{ value->high(), value->low() } : AssetGUID{}; }
 
         flatbuffers::Offset<Bounds> createBounds(flatbuffers::FlatBufferBuilder& builder, const AABB& box, const BoundingSphere& sphere)
         {
@@ -60,6 +62,13 @@ namespace Engine::Serialization
             return CreateMaterial(builder, builder.CreateString(material.name), &baseColor,
                 material.metallic, material.roughness, &emissive, material.opacity,
                 createTexturePaths(builder, material.textures));
+        }
+
+        flatbuffers::Offset<ModelMaterialSlot> createMaterialSlot(flatbuffers::FlatBufferBuilder& builder,
+            const Engine::ModelMaterialSlot& slot)
+        {
+            const AssetGuid materialGuid = toFlat(slot.defaultMaterialGuid);
+            return CreateModelMaterialSlot(builder, builder.CreateString(slot.name), &materialGuid);
         }
 
         flatbuffers::Offset<ModelVertex> createVertex(flatbuffers::FlatBufferBuilder& builder, const Engine::ModelVertex& vertex)
@@ -280,6 +289,10 @@ namespace Engine::Serialization
         materials.reserve(model.materials.size());
         for (const MaterialResource& material : model.materials)
             materials.push_back(createMaterial(builder, material));
+        std::vector<flatbuffers::Offset<ModelMaterialSlot>> materialSlots;
+        materialSlots.reserve(model.materialSlots.size());
+        for (const Engine::ModelMaterialSlot& slot : model.materialSlots)
+            materialSlots.push_back(createMaterialSlot(builder, slot));
         std::vector<flatbuffers::Offset<Animation>> animations;
         animations.reserve(model.animations.size());
         for (const AnimationResource& animation : model.animations)
@@ -292,7 +305,7 @@ namespace Engine::Serialization
         const auto root = CreateModelFile(builder, header, builder.CreateVector(meshes), builder.CreateVector(materials),
             model.skeleton ? createSkeleton(builder, *model.skeleton) : 0, builder.CreateVector(animations),
             builder.CreateVector(nodes), createBounds(builder, model.boundingBox, model.boundingSphere),
-            builder.CreateString(model.sourcePath.generic_string()));
+            builder.CreateString(model.sourcePath.generic_string()), builder.CreateVector(materialSlots));
         FinishModelFileBuffer(builder, root);
         return FlatBufferWriter{}.saveAtomic(path, std::span<const std::uint8_t>(builder.GetBufferPointer(), builder.GetSize()));
     }
@@ -355,6 +368,14 @@ namespace Engine::Serialization
                 model.materials.push_back(std::move(material));
             }
         }
+        if (const auto* materialSlots = source->material_slots()) {
+            model.materialSlots.reserve(materialSlots->size());
+            for (const ModelMaterialSlot* sourceSlot : *materialSlots) {
+                if (sourceSlot == nullptr || sourceSlot->name() == nullptr)
+                    return false;
+                model.materialSlots.push_back({ sourceSlot->name()->str(), toEngine(sourceSlot->default_material_guid()) });
+            }
+        }
         if (source->skeleton() != nullptr) {
             model.skeleton.emplace();
             if (!readSkeleton(source->skeleton(), *model.skeleton))
@@ -378,7 +399,8 @@ namespace Engine::Serialization
         }
         for (const MeshResource& mesh : model.meshes) {
             for (const SubMeshResource& subMesh : mesh.subMeshes) {
-                if (subMesh.materialIndex >= model.materials.size() ||
+                const std::size_t materialCount = std::max(model.materials.size(), model.materialSlots.size());
+                if (subMesh.materialIndex >= materialCount ||
                     static_cast<std::size_t>(subMesh.indexStart) + subMesh.indexCount > mesh.indices.size())
                     return false;
             }

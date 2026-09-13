@@ -1,5 +1,10 @@
 namespace Engine.Serialization;
 
+struct AssetGuid {
+    high:ulong;
+    low:ulong;
+}
+
 struct Vec2 {
     x:float;
     y:float;

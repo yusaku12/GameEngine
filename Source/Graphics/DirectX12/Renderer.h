@@ -15,6 +15,7 @@
 #include "Graphics\Model\ModelGpuCache.h"
 #include "Graphics\Renderer\ModelRenderSubmission.h"
 #include "Graphics\Renderer\RenderQueue.h"
+#include "Graphics\Material\MaterialGpuCache.h"
 
 namespace Engine
 {
@@ -98,6 +99,17 @@ namespace Engine
         void setCameraPosition(const Vector3& position) noexcept { m_cameraPosition = position; }
 
         /**
+         * @brief ShadowCaster passで使用するLight View Projectionを設定する。
+         * @param viewProjection Light View Projection行列
+         */
+        void setShadowViewProjection(const Matrix& viewProjection) noexcept { m_shadowViewProjection = viewProjection; }
+
+        /**
+         * @brief ShadowCaster passを無効化する。
+         */
+        void clearShadowViewProjection() noexcept { m_shadowViewProjection.reset(); }
+
+        /**
          * @brief Model描画に使用するWorld Space視錐台を設定する。
          * @param frustum World Space視錐台
          */
@@ -131,6 +143,12 @@ namespace Engine
         bool createDepthBuffer(std::uint32_t width, std::uint32_t height);
 
         /**
+         * @brief ShadowCaster pass用Depth Bufferを作成する。
+         * @return 作成に成功した場合は true
+         */
+        bool createShadowMap();
+
+        /**
          * @brief Graphics PSO を再生成する
          * @return 再生成に成功した場合は true
          */
@@ -140,7 +158,7 @@ namespace Engine
          * @brief 現在フレームの Model 描画 Queue を構築する
          * @param usedModels 描画対象となる ModelHandle のリスト
          */
-        void buildModelRenderQueue(std::vector<ModelHandle>& usedModels);
+        void buildModelRenderQueue(std::vector<ModelHandle>& usedModels, std::vector<MaterialHandle>& usedMaterials);
 
         /**
          * @brief 現在フレームの Model 描画 Queue を GPU に提出する
@@ -159,20 +177,29 @@ namespace Engine
         DX12DescriptorHeap m_dsvHeap;                                    //!< 深度バッファ用 DSV Heap
         DX12Resource m_depthBuffer;                                      //!< 画面描画用深度バッファ
         DX12CpuDescriptorHandle m_depthStencilView;                      //!< 深度バッファの DSV
+        DX12Resource m_shadowMap;                                        //!< ShadowCaster pass用Depth Buffer
+        DX12CpuDescriptorHandle m_shadowDepthStencilView;                //!< Shadow MapのDSV
         ShaderManager m_shaderManager;                                   //!< Shader のロード・キャッシュ・Hot Reload 管理
         ShaderID m_modelVertexShaderID = 0;                              //!< Model頂点Shader ID
         ShaderID m_modelPixelShaderID = 0;                               //!< Model Pixel Shader ID
+        ShaderID m_alphaTestPixelShaderID = 0;                           //!< Alpha Test Pixel Shader ID
+        ShaderID m_depthAlphaTestPixelShaderID = 0;                      //!< Depth Alpha Test Pixel Shader ID
         ShaderID m_debugVertexShaderID = 0;                              //!< Debug Primitive頂点Shader ID
         ShaderID m_debugPixelShaderID = 0;                               //!< Debug Primitive Pixel Shader ID
         bool m_psoRebuildPending = false;                                //!< Shader 更新に伴う Graphics PSO 再生成要求フラグ
         DX12GraphicsPipeline m_modelPipeline;                            //!< Model描画用Graphics PSO
+        DX12GraphicsPipeline m_alphaTestModelPipeline;                   //!< Alpha Test Model描画用Graphics PSO
         DX12GraphicsPipeline m_transparentModelPipeline;                 //!< 透明Model描画用Graphics PSO
+        DX12GraphicsPipeline m_depthOnlyModelPipeline;                   //!< Opaque Depth/Shadow描画用Graphics PSO
+        DX12GraphicsPipeline m_depthAlphaTestModelPipeline;              //!< Alpha Test Depth/Shadow描画用Graphics PSO
         ModelGpuCache m_modelGpuCache;                                   //!< ModelHandle単位のGPU Resource Cache
+        MaterialGpuCache m_materialGpuCache;                             //!< MaterialHandle単位のGPU Resource Cache
         RenderQueue m_modelRenderQueue;                                  //!< 現在フレームのModel描画Queue
         std::vector<ModelRenderSubmission> m_modelSubmissions;           //!< Frame間で容量を再利用する提出Buffer
         Matrix m_viewProjection = Matrix::Identity;                      //!< CameraのView Projection行列
         Vector3 m_cameraPosition = Vector3::Zero;                        //!< Transparent sort用Camera座標
         std::optional<Frustum> m_frustum;                                //!< World Space Camera Frustum
+        std::optional<Matrix> m_shadowViewProjection;                    //!< Light View Projection。未設定時はShadow passを省略
         CameraViewport m_cameraViewport{};                               //!< 描画先に対する正規化Camera Viewport
         CameraClearMode m_cameraClearMode = CameraClearMode::SolidColor; //!< CameraのClear方式
         Color m_cameraClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);     //!< Cameraの背景Clear Color

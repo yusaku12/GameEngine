@@ -22,7 +22,7 @@ The batch equivalent is:
 Tools\FlatBuffers\build_schema.bat
 ```
 
-Both commands fail with a clear message when `flatc.exe` is unavailable. They generate the shared and model headers together because `Model.fbs` includes `Common.fbs`.
+Both commands fail with a clear message when `flatc.exe` is unavailable. They generate all shared, material, model, prefab, and scene headers together.
 
 ## Normal Visual Studio build
 
@@ -44,7 +44,7 @@ if (!serializer.load("Data/Characters/player.mdl", loaded))
     return false;
 ```
 
-`ModelSerializer` converts between engine resource types and generated FlatBuffers types. It writes the `MODL` file identifier, schema version `1`, and model asset version `1`. Loading verifies the identifier, FlatBuffers buffer, supported versions, required bounds, matrix sizes, and resource indices before returning data.
+`ModelSerializer` converts between engine resource types and generated FlatBuffers types. It writes the `MODL` file identifier, schema version `1`, and model asset version `2`. Version 2 adds GUID-based material slots; version 1 files remain supported and receive slots when registered with `ModelManager`. Loading verifies the identifier, FlatBuffers buffer, supported versions, required bounds, matrix sizes, and resource indices before returning data.
 
 Asset paths should be project-relative or asset IDs, not absolute machine paths. `sourcePath` is stored as the model's generic path string and is not used to open files during deserialization.
 

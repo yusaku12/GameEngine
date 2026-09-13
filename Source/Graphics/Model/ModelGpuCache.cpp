@@ -2,7 +2,6 @@
 #include "Graphics\Model\ModelGpuCache.h"
 #include "Graphics\DirectX12\Device.h"
 #include "Graphics\DirectX12\Fence.h"
-#include "Graphics\Texture\TextureManager.h"
 
 namespace Engine
 {
@@ -106,24 +105,6 @@ namespace Engine
         {
             LOG_ERROR("[ModelGpuCache] Bone Palette Bufferの作成に失敗しました");
             return nullptr;
-        }
-        resource->materials.reserve(resource->source->materials.size());
-        TextureManager& textureManager = TextureManager::instance();
-        for (const MaterialResource& material : resource->source->materials)
-        {
-            TextureHandle baseColorTexture = textureManager.getWhiteTexture();
-            if (!material.textures.baseColor.empty())
-            {
-                std::filesystem::path texturePath = material.textures.baseColor;
-                if (texturePath.is_relative() && !resource->source->sourcePath.empty())
-                    texturePath = resource->source->sourcePath.parent_path() / texturePath;
-                const TextureHandle loadedTexture = textureManager.load(texturePath, {
-                    .colorSpace = TextureColorSpace::SRGB,
-                });
-                if (loadedTexture.isValid())
-                    baseColorTexture = loadedTexture;
-            }
-            resource->materials.push_back({ .baseColorTexture = baseColorTexture });
         }
         resource->meshes.reserve(resource->source->meshes.size());
         for (const MeshResource& sourceMesh : resource->source->meshes)

@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Graphics\DirectX12\Renderer.h"
+#include "Assets\Material\MaterialManager.h"
 #include "Graphics\Camera\CameraRenderSubmission.h"
 #include "Graphics\Renderer\ModelRenderSubmission.h"
 #include "Graphics\Texture\TextureManager.h"
@@ -39,6 +40,7 @@ namespace Engine
             || !m_directFence.initialize(*m_device.get())
             || !TextureManager::instance().initialize(m_device, m_directQueue, m_directFence)
             || !m_modelGpuCache.initialize(m_device, m_directFence)
+            || !m_materialGpuCache.initialize(m_device, m_directFence)
             || !DebugPrimitive::instance().initialize(m_device, m_directFence))
         {
             finalize();
@@ -62,10 +64,11 @@ namespace Engine
 
         if (!m_dsvHeap.initialize(*m_device.get(), {
                 .type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
-                .capacity = 1,
+                .capacity = 2,
                 .shaderVisible = false,
             })
-            || !createDepthBuffer(width, height))
+            || !createDepthBuffer(width, height)
+            || !createShadowMap())
         {
             finalize();
             return false;
@@ -119,6 +122,14 @@ namespace Engine
         };
         m_modelVertexShaderID = m_shaderManager.registerShader(modelVertexShaderDesc);
         m_modelPixelShaderID = m_shaderManager.registerShader(modelPixelShaderDesc);
+        ShaderCompileDesc alphaTestPixelShaderDesc = modelPixelShaderDesc;
+        alphaTestPixelShaderDesc.outputPath = "Assets/Shaders/Compiled/Model_psAlphaTest_ps.cso";
+        alphaTestPixelShaderDesc.entryPoint = "psAlphaTest";
+        m_alphaTestPixelShaderID = m_shaderManager.registerShader(alphaTestPixelShaderDesc);
+        ShaderCompileDesc depthAlphaTestPixelShaderDesc = modelPixelShaderDesc;
+        depthAlphaTestPixelShaderDesc.outputPath = "Assets/Shaders/Compiled/Model_psDepthAlphaTest_ps.cso";
+        depthAlphaTestPixelShaderDesc.entryPoint = "psDepthAlphaTest";
+        m_depthAlphaTestPixelShaderID = m_shaderManager.registerShader(depthAlphaTestPixelShaderDesc);
         const ShaderCompileDesc debugVertexShaderDesc{
             .sourcePath = "Assets/Shaders/DebugPrimitive.hlsl",
             .outputPath = "Assets/Shaders/Compiled/DebugPrimitive_vsMain_vs.cso",
@@ -174,8 +185,10 @@ namespace Engine
             return false;
 
         m_depthBuffer.finalize();
+        m_shadowMap.finalize();
         m_dsvHeap.finalize();
         m_depthStencilView = {};
+        m_shadowDepthStencilView = {};
 
         ModelRenderSubmissionQueue::instance().clear();
         m_modelRenderQueue.clear();
@@ -183,14 +196,21 @@ namespace Engine
             return false;
         if (!m_modelGpuCache.finalize())
             return false;
+        if (!m_materialGpuCache.finalize())
+            return false;
         if (!TextureManager::instance().finalize())
             return false;
 
         m_transparentModelPipeline.finalize();
+        m_alphaTestModelPipeline.finalize();
+        m_depthOnlyModelPipeline.finalize();
+        m_depthAlphaTestModelPipeline.finalize();
         m_modelPipeline.finalize();
         m_shaderManager.shutdown();
         m_modelVertexShaderID = 0;
         m_modelPixelShaderID = 0;
+        m_alphaTestPixelShaderID = 0;
+        m_depthAlphaTestPixelShaderID = 0;
         m_debugVertexShaderID = 0;
         m_debugPixelShaderID = 0;
         m_psoRebuildPending = false;
@@ -202,6 +222,7 @@ namespace Engine
         m_renderWidth = 0;
         m_renderHeight = 0;
         m_frustum.reset();
+        m_shadowViewProjection.reset();
         m_viewProjection = Matrix::Identity;
         m_cameraPosition = Vector3::Zero;
         m_cameraViewport = {};
@@ -227,6 +248,7 @@ namespace Engine
             setRenderView(submittedView);
 
         m_shaderManager.processHotReload();
+        m_materialGpuCache.collectGarbage();
 
         if (m_psoRebuildPending)
         {
@@ -236,7 +258,7 @@ namespace Engine
             }
             if (rebuildGraphicsPipelines())
             {
-                LOG_INFO("[Renderer] Graphics Pipelines successfully rebuilt via Shader Hot Reload.");
+                LOG_INFO("[Renderer] Graphics Pipelines and Material GPU Cache successfully rebuilt via Shader Hot Reload.");
             }
             else
             {
@@ -246,7 +268,8 @@ namespace Engine
         }
 
         std::vector<ModelHandle> usedModels;
-        buildModelRenderQueue(usedModels);
+        std::vector<MaterialHandle> usedMaterials;
+        buildModelRenderQueue(usedModels, usedMaterials);
         m_imguiSystem->beginFrame(&m_shaderManager, [this]
             {
                 if (ImGui::Begin("Renderer Statistics"))
@@ -341,6 +364,11 @@ namespace Engine
             if (!m_modelGpuCache.markUsed(handle, submittedFenceValue))
                 return false;
         }
+        for (const MaterialHandle handle : usedMaterials)
+        {
+            if (!m_materialGpuCache.markUsed(handle, submittedFenceValue))
+                return false;
+        }
 
         m_frameFenceValues[frameIndex] = submittedFenceValue;
         m_lastSubmittedFenceValue = submittedFenceValue;
@@ -416,6 +444,45 @@ namespace Engine
         return true;
     }
 
+    bool DX12Renderer::createShadowMap()
+    {
+        constexpr std::uint32_t SHADOW_MAP_SIZE = 2048;
+        if (m_device.get() == nullptr || m_dsvHeap.get() == nullptr)
+            return false;
+
+        m_shadowMap.finalize();
+        D3D12_RESOURCE_DESC description{};
+        description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        description.Width = SHADOW_MAP_SIZE;
+        description.Height = SHADOW_MAP_SIZE;
+        description.DepthOrArraySize = 1;
+        description.MipLevels = 1;
+        description.Format = DXGI_FORMAT_D32_FLOAT;
+        description.SampleDesc = { 1, 0 };
+        description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        description.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        const D3D12_CLEAR_VALUE clearValue{
+            .Format = DXGI_FORMAT_D32_FLOAT,
+            .DepthStencil = { 1.0f, 0 },
+        };
+        const DX12ResourceConfig config{
+            .description = description,
+            .initialState = D3D12_RESOURCE_STATE_DEPTH_WRITE,
+            .clearValue = &clearValue,
+        };
+        if (!m_shadowMap.initialize(*m_device.get(), config))
+            return false;
+        if (m_dsvHeap.getAllocatedCount() < 2)
+        {
+            const std::optional<DX12DescriptorAllocation> allocation = m_dsvHeap.allocate();
+            if (!allocation)
+                return false;
+            m_shadowDepthStencilView = allocation->cpu;
+        }
+        m_device.get()->CreateDepthStencilView(m_shadowMap.get(), nullptr, m_shadowDepthStencilView.native);
+        return true;
+    }
+
     bool DX12Renderer::processImGuiMessage(const HWND hwnd, const UINT message, const WPARAM wparam, const LPARAM lparam)
     {
         return m_imguiSystem != nullptr && m_imguiSystem->processMessage(hwnd, message, wparam, lparam);
@@ -425,24 +492,25 @@ namespace Engine
     {
         const auto modelVertexShader = m_shaderManager.get(m_modelVertexShaderID);
         const auto modelPixelShader = m_shaderManager.get(m_modelPixelShaderID);
+        const auto alphaTestPixelShader = m_shaderManager.get(m_alphaTestPixelShaderID);
+        const auto depthAlphaTestPixelShader = m_shaderManager.get(m_depthAlphaTestPixelShaderID);
         const auto debugVertexShader = m_shaderManager.get(m_debugVertexShaderID);
         const auto debugPixelShader = m_shaderManager.get(m_debugPixelShaderID);
-        if (!modelVertexShader || !modelPixelShader
+        if (!modelVertexShader || !modelPixelShader || !alphaTestPixelShader || !depthAlphaTestPixelShader
             || !debugVertexShader || !debugPixelShader
             || !modelVertexShader->isCompiled() || !modelPixelShader->isCompiled()
+            || !alphaTestPixelShader->isCompiled() || !depthAlphaTestPixelShader->isCompiled()
             || !debugVertexShader->isCompiled() || !debugPixelShader->isCompiled())
         {
             LOG_ERROR("[DX12] 有効なModel Shaderがロードされていません");
             return false;
         }
 
-        m_modelPipeline.finalize();
-        m_transparentModelPipeline.finalize();
         D3D12_ROOT_PARAMETER objectConstants{};
         objectConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         objectConstants.Constants.ShaderRegister = 0;
         objectConstants.Constants.RegisterSpace = 0;
-        objectConstants.Constants.Num32BitValues = 20;
+        objectConstants.Constants.Num32BitValues = 16;
         objectConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
         D3D12_DESCRIPTOR_RANGE baseColorRange{};
         baseColorRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -460,7 +528,18 @@ namespace Engine
         bonePalette.Descriptor.ShaderRegister = 1;
         bonePalette.Descriptor.RegisterSpace = 0;
         bonePalette.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-        const std::array rootParameters = { objectConstants, bonePalette, baseColorTable };
+        D3D12_ROOT_PARAMETER materialConstants{};
+        materialConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        materialConstants.Descriptor.ShaderRegister = 2;
+        materialConstants.Descriptor.RegisterSpace = 0;
+        materialConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        D3D12_ROOT_PARAMETER materialProperties{};
+        materialProperties.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        materialProperties.Constants.ShaderRegister = 3;
+        materialProperties.Constants.RegisterSpace = 0;
+        materialProperties.Constants.Num32BitValues = 17;
+        materialProperties.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        const std::array rootParameters = { objectConstants, bonePalette, materialConstants, baseColorTable, materialProperties };
         const std::array staticSamplers = {
             D3D12_STATIC_SAMPLER_DESC{
                 .Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR,
@@ -490,18 +569,49 @@ namespace Engine
         DX12GraphicsPipelineConfig transparentModelConfig = modelConfig;
         transparentModelConfig.enableAlphaBlend = true;
         transparentModelConfig.enableDepthWrite = false;
-        return m_modelPipeline.initialize(*m_device.get(), modelConfig)
-            && m_transparentModelPipeline.initialize(*m_device.get(), transparentModelConfig)
-            && DebugPrimitive::instance().rebuildPipeline(*debugVertexShader, *debugPixelShader);
+        DX12GraphicsPipelineConfig alphaTestModelConfig = modelConfig;
+        alphaTestModelConfig.pixelShader = alphaTestPixelShader.get();
+        alphaTestModelConfig.enableDepthWrite = false;
+        alphaTestModelConfig.depthComparison = D3D12_COMPARISON_FUNC_EQUAL;
+        DX12GraphicsPipelineConfig opaqueModelConfig = modelConfig;
+        opaqueModelConfig.enableDepthWrite = false;
+        opaqueModelConfig.depthComparison = D3D12_COMPARISON_FUNC_EQUAL;
+        DX12GraphicsPipelineConfig depthOnlyModelConfig = modelConfig;
+        depthOnlyModelConfig.pixelShader = nullptr;
+        depthOnlyModelConfig.renderTargetFormat = DXGI_FORMAT_UNKNOWN;
+        DX12GraphicsPipelineConfig depthAlphaTestModelConfig = depthOnlyModelConfig;
+        depthAlphaTestModelConfig.pixelShader = depthAlphaTestPixelShader.get();
+        DX12GraphicsPipeline nextModelPipeline;
+        DX12GraphicsPipeline nextAlphaTestModelPipeline;
+        DX12GraphicsPipeline nextTransparentModelPipeline;
+        DX12GraphicsPipeline nextDepthOnlyModelPipeline;
+        DX12GraphicsPipeline nextDepthAlphaTestModelPipeline;
+        if (!nextModelPipeline.initialize(*m_device.get(), opaqueModelConfig)
+            || !nextAlphaTestModelPipeline.initialize(*m_device.get(), alphaTestModelConfig)
+            || !nextTransparentModelPipeline.initialize(*m_device.get(), transparentModelConfig)
+            || !nextDepthOnlyModelPipeline.initialize(*m_device.get(), depthOnlyModelConfig)
+            || !nextDepthAlphaTestModelPipeline.initialize(*m_device.get(), depthAlphaTestModelConfig)
+            || !DebugPrimitive::instance().rebuildPipeline(*debugVertexShader, *debugPixelShader)
+            || !m_materialGpuCache.rebuildAll())
+        {
+            return false;
+        }
+        m_modelPipeline.swap(nextModelPipeline);
+        m_alphaTestModelPipeline.swap(nextAlphaTestModelPipeline);
+        m_transparentModelPipeline.swap(nextTransparentModelPipeline);
+        m_depthOnlyModelPipeline.swap(nextDepthOnlyModelPipeline);
+        m_depthAlphaTestModelPipeline.swap(nextDepthAlphaTestModelPipeline);
+        return true;
     }
 
-    void DX12Renderer::buildModelRenderQueue(std::vector<ModelHandle>& usedModels)
+    void DX12Renderer::buildModelRenderQueue(std::vector<ModelHandle>& usedModels, std::vector<MaterialHandle>& usedMaterials)
     {
         m_modelRenderQueue.clear();
         m_frameStatistics = {};
         ModelRenderSubmissionQueue::instance().consume(m_modelSubmissions);
         m_modelRenderQueue.reserve(m_modelSubmissions.size());
         usedModels.reserve(m_modelSubmissions.size());
+        usedMaterials.reserve(m_modelSubmissions.size());
 
         for (const ModelRenderSubmission& submission : m_modelSubmissions)
         {
@@ -540,34 +650,53 @@ namespace Engine
                             || indexCount > mesh.indices.size() - indexStart)
                             return;
 
-                        const MaterialResource* material = materialIndex < gpuModel->source->materials.size()
-                            ? &gpuModel->source->materials[materialIndex] : nullptr;
-                        const TextureHandle baseColorTexture = materialIndex < gpuModel->materials.size()
-                            ? gpuModel->materials[materialIndex].baseColorTexture
-                            : TextureManager::instance().getWhiteTexture();
-                        Vector4 baseColor = material != nullptr ? material->baseColor : Vector4::One;
-                        if (material != nullptr)
-                            baseColor.w *= material->opacity;
-                        const RenderPassType pass = baseColor.w < 1.0f
-                            ? RenderPassType::Transparent : RenderPassType::Opaque;
-                        objectVisible = m_modelRenderQueue.submit(RenderItem{
+                        MaterialHandle materialHandle = materialIndex < submission.materials.size()
+                            ? submission.materials[materialIndex] : MaterialHandle::Invalid();
+                        MaterialGpuResource* const gpuMaterial = m_materialGpuCache.getOrCreate(materialHandle);
+                        if (gpuMaterial == nullptr || gpuMaterial->source == nullptr)
+                            return;
+                        materialHandle = gpuMaterial->handle;
+                        RenderPassType pass = RenderPassType::Opaque;
+                        if (gpuMaterial->source->renderState.surfaceType == MaterialSurfaceType::AlphaTest)
+                            pass = RenderPassType::AlphaTest;
+                        else if (gpuMaterial->source->renderState.surfaceType == MaterialSurfaceType::Transparent)
+                            pass = RenderPassType::Transparent;
+                        RenderItem colorItem{
                             .vertexBuffer = &gpuMesh->vertexBufferView,
                             .indexBuffer = &gpuMesh->indexBufferView,
                             .worldMatrix = meshWorldMatrix,
                             .worldBounds = meshWorldBounds,
-                            .baseColor = baseColor,
                             .indexStart = indexStart,
                             .indexCount = indexCount,
                             .objectID = submission.objectID,
                             .pipelineID = static_cast<std::uint32_t>(pass),
-                            .materialID = materialIndex,
-                            .textureID = baseColorTexture.index,
-                            .baseColorTexture = baseColorTexture,
+                            .shaderVariantID = gpuMaterial->shaderVariantID,
+                            .material = materialHandle,
+                            .surfaceType = gpuMaterial->source->renderState.surfaceType,
+                            .materialProperties = submission.materialProperties,
+                            .textureID = gpuMaterial->baseColorTexture.index,
                             .bonePaletteBuffer = &gpuModel->bonePaletteBuffer,
                             .meshID = static_cast<std::uint32_t>(meshIndex),
                             .cameraDepth = (Vector3(meshWorldBounds.Center) - m_cameraPosition).LengthSquared(),
                             .pass = pass,
-                            }, m_frustum ? &*m_frustum : nullptr) || objectVisible;
+                            };
+                        const bool submitted = m_modelRenderQueue.submit(colorItem, m_frustum ? &*m_frustum : nullptr);
+                        if (submitted && pass != RenderPassType::Transparent)
+                        {
+                            RenderItem depthItem = colorItem;
+                            depthItem.pipelineID = depthItem.surfaceType == MaterialSurfaceType::AlphaTest ? 1u : 0u;
+                            depthItem.pass = RenderPassType::DepthOnly;
+                            m_modelRenderQueue.submit(depthItem);
+                            if (m_shadowViewProjection && submission.castShadows)
+                            {
+                                RenderItem shadowItem = depthItem;
+                                shadowItem.pass = RenderPassType::Shadow;
+                                m_modelRenderQueue.submit(shadowItem);
+                            }
+                        }
+                        objectVisible = submitted || objectVisible;
+                        if (submitted && std::find(usedMaterials.begin(), usedMaterials.end(), materialHandle) == usedMaterials.end())
+                            usedMaterials.push_back(materialHandle);
                     };
 
                 if (mesh.subMeshes.empty())
@@ -608,19 +737,77 @@ namespace Engine
         const D3D12_VERTEX_BUFFER_VIEW* currentVertexBuffer = nullptr;
         const D3D12_INDEX_BUFFER_VIEW* currentIndexBuffer = nullptr;
         const DX12UploadBuffer* currentBonePalette = nullptr;
-        std::uint32_t currentMaterial = UINT32_MAX;
+        MaterialHandle currentMaterial;
+        MaterialGpuResource* currentMaterialResource = nullptr;
         TextureHandle currentTexture = TextureHandle::Invalid();
+        RenderPassType targetPass = RenderPassType::Opaque;
+        bool shadowMapCleared = false;
         nativeCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
         for (const RenderItem& item : items)
         {
-            const DX12GraphicsPipeline* const requiredPipeline = item.pass == RenderPassType::Transparent
-                ? &m_transparentModelPipeline : &m_modelPipeline;
+            if (item.pass != targetPass)
+            {
+                if (item.pass == RenderPassType::DepthOnly)
+                {
+                    nativeCommandList->OMSetRenderTargets(0, nullptr, FALSE, &m_depthStencilView.native);
+                }
+                else if (item.pass == RenderPassType::Shadow)
+                {
+                    nativeCommandList->OMSetRenderTargets(0, nullptr, FALSE, &m_shadowDepthStencilView.native);
+                    if (!shadowMapCleared)
+                    {
+                        nativeCommandList->ClearDepthStencilView(
+                            m_shadowDepthStencilView.native, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+                        shadowMapCleared = true;
+                    }
+                    constexpr float shadowMapSize = 2048.0f;
+                    const D3D12_VIEWPORT shadowViewport{ 0.0f, 0.0f, shadowMapSize, shadowMapSize, 0.0f, 1.0f };
+                    const D3D12_RECT shadowScissor{ 0, 0, 2048, 2048 };
+                    nativeCommandList->RSSetViewports(1, &shadowViewport);
+                    nativeCommandList->RSSetScissorRects(1, &shadowScissor);
+                }
+                else
+                {
+                    const D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_swapChain.getCurrentRtv().native;
+                    nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
+                    const float viewportX = m_cameraViewport.x * static_cast<float>(m_renderWidth);
+                    const float viewportY = m_cameraViewport.y * static_cast<float>(m_renderHeight);
+                    const D3D12_VIEWPORT viewport{
+                        viewportX, viewportY,
+                        m_cameraViewport.width * static_cast<float>(m_renderWidth),
+                        m_cameraViewport.height * static_cast<float>(m_renderHeight), 0.0f, 1.0f };
+                    const D3D12_RECT scissor{
+                        static_cast<LONG>(viewport.TopLeftX), static_cast<LONG>(viewport.TopLeftY),
+                        static_cast<LONG>(viewport.TopLeftX + viewport.Width),
+                        static_cast<LONG>(viewport.TopLeftY + viewport.Height) };
+                    nativeCommandList->RSSetViewports(1, &viewport);
+                    nativeCommandList->RSSetScissorRects(1, &scissor);
+                }
+                targetPass = item.pass;
+            }
+
+            const DX12GraphicsPipeline* requiredPipeline = &m_modelPipeline;
+            if (item.pass == RenderPassType::DepthOnly || item.pass == RenderPassType::Shadow)
+            {
+                requiredPipeline = item.surfaceType == MaterialSurfaceType::AlphaTest
+                    ? &m_depthAlphaTestModelPipeline : &m_depthOnlyModelPipeline;
+            }
+            else if (item.pass == RenderPassType::AlphaTest)
+            {
+                requiredPipeline = &m_alphaTestModelPipeline;
+            }
+            else if (item.pass == RenderPassType::Transparent)
+            {
+                requiredPipeline = &m_transparentModelPipeline;
+            }
             if (currentPipeline != requiredPipeline)
             {
                 if (!requiredPipeline->bind(commandList))
                     return false;
                 currentPipeline = requiredPipeline;
+                currentMaterial = MaterialHandle::Invalid();
+                currentMaterialResource = nullptr;
                 currentTexture = TextureHandle::Invalid();
                 currentBonePalette = nullptr;
                 ++m_frameStatistics.psoSwitchCount;
@@ -637,9 +824,13 @@ namespace Engine
                 currentIndexBuffer = item.indexBuffer;
                 ++m_frameStatistics.indexBufferSwitchCount;
             }
-            if (currentMaterial != item.materialID)
+            if (currentMaterial != item.material)
             {
-                currentMaterial = item.materialID;
+                currentMaterialResource = m_materialGpuCache.getOrCreate(item.material);
+                if (currentMaterialResource == nullptr || currentMaterialResource->constantBuffer.getGpuVirtualAddress() == 0)
+                    return false;
+                nativeCommandList->SetGraphicsRootConstantBufferView(2, currentMaterialResource->constantBuffer.getGpuVirtualAddress());
+                currentMaterial = item.material;
                 ++m_frameStatistics.materialSwitchCount;
             }
             if (currentBonePalette != item.bonePaletteBuffer)
@@ -649,20 +840,27 @@ namespace Engine
                 nativeCommandList->SetGraphicsRootConstantBufferView(1, item.bonePaletteBuffer->getGpuVirtualAddress());
                 currentBonePalette = item.bonePaletteBuffer;
             }
-            if (currentTexture != item.baseColorTexture)
+            if (currentMaterialResource == nullptr)
+                return false;
+            if (currentTexture != currentMaterialResource->baseColorTexture)
             {
-                const Texture* texture = textureManager.get(item.baseColorTexture);
+                const Texture* texture = textureManager.get(currentMaterialResource->baseColorTexture);
                 const TextureResourceInfo* textureInfo = texture != nullptr ? texture->getResourceInfo() : nullptr;
                 if (textureInfo == nullptr)
                     return false;
-                nativeCommandList->SetGraphicsRootDescriptorTable(2, textureInfo->srv);
-                currentTexture = item.baseColorTexture;
+                nativeCommandList->SetGraphicsRootDescriptorTable(3, textureInfo->srv);
+                currentTexture = currentMaterialResource->baseColorTexture;
                 ++m_frameStatistics.textureSwitchCount;
             }
 
-            const Matrix worldViewProjection = item.worldMatrix * m_viewProjection;
+            const Matrix& viewProjection = item.pass == RenderPassType::Shadow && m_shadowViewProjection
+                ? *m_shadowViewProjection : m_viewProjection;
+            const Matrix worldViewProjection = item.worldMatrix * viewProjection;
             nativeCommandList->SetGraphicsRoot32BitConstants(0, 16, &worldViewProjection._11, 0);
-            nativeCommandList->SetGraphicsRoot32BitConstants(0, 4, &item.baseColor.x, 16);
+            const MaterialParameterValues& propertyValues = item.materialProperties.getValues();
+            nativeCommandList->SetGraphicsRoot32BitConstants(4, 16, &propertyValues.baseColor.x, 0);
+            const std::uint32_t overrideMask = item.materialProperties.getOverrideMask();
+            nativeCommandList->SetGraphicsRoot32BitConstants(4, 1, &overrideMask, 16);
             nativeCommandList->DrawIndexedInstanced(item.indexCount, 1, item.indexStart, item.baseVertex, 0);
             ++m_frameStatistics.drawCallCount;
             ++m_frameStatistics.instanceCount;

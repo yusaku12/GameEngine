@@ -40,6 +40,11 @@ table Material {
     textures:MaterialTexturePaths;
 }
 
+table ModelMaterialSlot {
+    name:string;
+    default_material_guid:AssetGuid;
+}
+
 table Bounds {
     box_center:Vec3;
     box_extents:Vec3;
@@ -113,6 +118,7 @@ table ModelFile {
     nodes:[ModelNode];
     bounds:Bounds;
     source_path:string;
+    material_slots:[ModelMaterialSlot];
 }
 
 root_type ModelFile;

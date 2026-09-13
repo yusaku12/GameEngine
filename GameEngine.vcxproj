@@ -20,9 +20,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Generated\FlatBuffers\Common_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\Material_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Model_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Prefab_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Scene_generated.h" />
+    <ClInclude Include="Source\Assets\Material\MaterialAsset.h" />
+    <ClInclude Include="Source\Assets\Material\MaterialInstance.h" />
+    <ClInclude Include="Source\Assets\Material\MaterialManager.h" />
+    <ClInclude Include="Source\Assets\Material\MaterialTypes.h" />
+    <ClInclude Include="Source\Assets\Material\Serialization\MaterialSerializer.h" />
     <ClInclude Include="Source\Assets\Model\Serialization\ModelSerializer.h" />
     <ClInclude Include="Source\Assets\Model\ModelManager.h" />
     <ClInclude Include="Source\Assets\Model\ModelTypes.h" />
@@ -56,6 +62,11 @@
     <ClInclude Include="Source\Graphics\Camera\CameraTypes.h" />
     <ClInclude Include="Source\Graphics\Camera\CameraUtils.h" />
     <ClInclude Include="Source\Graphics\Debug\DebugPrimitive.h" />
+    <ClInclude Include="Source\Graphics\Material\MaterialGpuCache.h" />
+    <ClInclude Include="Source\Graphics\Material\MaterialGpuResource.h" />
+    <ClInclude Include="Source\Graphics\Material\MaterialParameterLayout.h" />
+    <ClInclude Include="Source\Graphics\Material\MaterialPropertyBlock.h" />
+    <ClInclude Include="Source\Graphics\Material\MaterialShaderVariant.h" />
     <ClInclude Include="Source\Graphics\Model\ModelGpuCache.h" />
     <ClInclude Include="Source\Graphics\Shader\Shader.h" />
     <ClInclude Include="Source\Graphics\Shader\ShaderTypes.h" />
@@ -116,6 +127,9 @@
     <ClInclude Include="Library\ImGuizmo\ImGuizmo.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Source\Assets\Material\MaterialInstance.cpp" />
+    <ClCompile Include="Source\Assets\Material\MaterialManager.cpp" />
+    <ClCompile Include="Source\Assets\Material\Serialization\MaterialSerializer.cpp" />
     <ClCompile Include="Source\Assets\Model\Serialization\ModelSerializer.cpp" />
     <ClCompile Include="Source\Assets\Model\ModelManager.cpp" />
     <ClCompile Include="Source\Core\Serialization\FlatBufferReader.cpp" />
@@ -135,6 +149,8 @@
     <ClCompile Include="Source\Graphics\Camera\CameraRenderSubmission.cpp" />
     <ClCompile Include="Source\Graphics\Camera\CameraUtils.cpp" />
     <ClCompile Include="Source\Graphics\Debug\DebugPrimitive.cpp" />
+    <ClCompile Include="Source\Graphics\Material\MaterialGpuCache.cpp" />
+    <ClCompile Include="Source\Graphics\Material\MaterialPropertyBlock.cpp" />
     <ClCompile Include="Source\Graphics\Model\ModelGpuCache.cpp" />
     <ClCompile Include="Source\Graphics\Shader\Shader.cpp" />
     <ClCompile Include="Source\Graphics\Shader\ShaderCompiler.cpp" />
@@ -210,6 +226,7 @@
     <None Include="Assets\Shaders\Model.hlsl" />
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
+    <None Include="Schemas\FlatBuffers\Material.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />
     <None Include="Schemas\FlatBuffers\Prefab.fbs" />
     <None Include="Tools\FlatBuffers\build_schema.bat" />
@@ -348,10 +365,10 @@
       <Command>copy /Y "$(USERPROFILE)\.nuget\packages\assimp_native.redist\4.0.1\build\native\bin\x64\v141\Release\assimp-vc140-mt.dll" "$(TargetDir)assimp-vc140-mt.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
-  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h">
+  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
   </Target>
-  <Target Name="CompileShaders" BeforeTargets="ClCompile" Condition="Exists('$(ProjectDir)Tools\DXC\dxc.exe')" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso">
+  <Target Name="CompileShaders" BeforeTargets="ClCompile" Condition="Exists('$(ProjectDir)Tools\DXC\dxc.exe')" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

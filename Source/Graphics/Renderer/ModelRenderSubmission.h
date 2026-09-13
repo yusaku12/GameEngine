@@ -1,9 +1,11 @@
 ﻿#pragma once
 
+#include "Assets\Material\MaterialTypes.h"
 #include "Assets\Model\ModelTypes.h"
 #include "Core\CoreDefines.h"
 #include "Core\Math\Geometry.h"
 #include "Core\Scene\LayerManager.h"
+#include "Graphics\Material\MaterialPropertyBlock.h"
 
 namespace Engine
 {
@@ -12,12 +14,14 @@ namespace Engine
      */
     struct ModelRenderSubmission
     {
-        ModelHandle model;                     //!< 描画するモデルのHandle
-        Matrix worldMatrix = Matrix::Identity; //!< モデルのワールド変換行列
-        AABB worldBounds{};                    //!< モデルのワールド空間でのAABB
-        std::uint32_t objectID = 0;            //!< オブジェクトID。レンダリングパスでの識別に使用される
-        LayerID layer = 0;                     //!< Camera Culling Maskで判定するLayer
-        bool castShadows = true;               //!< シャドウをキャストするかどうか
+        ModelHandle model;                        //!< 描画するモデルのHandle
+        std::vector<MaterialHandle> materials;    //!< 優先順位を解決済みのSlot IndexごとのMaterial
+        MaterialPropertyBlock materialProperties; //!< Renderer単位の数値Parameter Override
+        Matrix worldMatrix = Matrix::Identity;    //!< モデルのワールド変換行列
+        AABB worldBounds{};                       //!< モデルのワールド空間でのAABB
+        std::uint32_t objectID = 0;               //!< オブジェクトID。レンダリングパスでの識別に使用される
+        LayerID layer = 0;                        //!< Camera Culling Maskで判定するLayer
+        bool castShadows = true;                  //!< シャドウをキャストするかどうか
     };
 
     /**

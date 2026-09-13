@@ -58,12 +58,6 @@ namespace Engine
          */
         const RenderQueueStatistics& getStatistics() const noexcept { return m_statistics; }
 
-        /**
-         * @brief Opaque Item用の64bit Sort Keyを作成する。
-         * @param item Sort Keyを作成する描画Item
-         */
-        static std::uint64_t createSortKey(const RenderItem& item) noexcept;
-
     private:
 
         std::vector<RenderItem> m_items;    //!< 描画Itemの配列

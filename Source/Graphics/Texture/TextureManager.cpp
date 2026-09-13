@@ -67,6 +67,7 @@ namespace Engine
         m_defaultWhite = TextureHandle::Invalid();
         m_defaultBlack = TextureHandle::Invalid();
         m_defaultNormal = TextureHandle::Invalid();
+        m_defaultMetallicRoughness = TextureHandle::Invalid();
         m_defaultError = TextureHandle::Invalid();
         return true;
     }
@@ -93,6 +94,57 @@ namespace Engine
 
         // 新規ロード
         return loadInternal(normPath, desc);
+    }
+
+    bool TextureManager::registerAssetPath(const AssetGUID& guid, const std::filesystem::path& path)
+    {
+        if (!guid.isValid() || path.empty())
+            return false;
+        std::error_code error;
+        const std::filesystem::path normalizedPath = std::filesystem::weakly_canonical(path, error);
+        if (error)
+            return false;
+
+        const std::scoped_lock lock(m_assetPathMutex);
+        if (const auto guidEntry = m_guidToPath.find(guid); guidEntry != m_guidToPath.end())
+            return guidEntry->second == normalizedPath;
+        if (const auto pathEntry = m_pathToGuid.find(normalizedPath); pathEntry != m_pathToGuid.end())
+            return pathEntry->second == guid;
+
+        m_guidToPath.emplace(guid, normalizedPath);
+        m_pathToGuid.emplace(normalizedPath, guid);
+        return true;
+    }
+
+    AssetGUID TextureManager::registerAssetPath(const std::filesystem::path& path)
+    {
+        if (path.empty())
+            return {};
+        std::error_code error;
+        const std::filesystem::path normalizedPath = std::filesystem::weakly_canonical(path, error);
+        if (error)
+            return {};
+        const std::scoped_lock lock(m_assetPathMutex);
+        if (const auto found = m_pathToGuid.find(normalizedPath); found != m_pathToGuid.end())
+            return found->second;
+
+        const AssetGUID guid = AssetGUID::generate();
+        m_guidToPath.emplace(guid, normalizedPath);
+        m_pathToGuid.emplace(normalizedPath, guid);
+        return guid;
+    }
+
+    TextureHandle TextureManager::load(const AssetGUID& guid, const TextureLoadDesc& desc)
+    {
+        std::filesystem::path path;
+        {
+            const std::scoped_lock lock(m_assetPathMutex);
+            const auto found = m_guidToPath.find(guid);
+            if (found == m_guidToPath.end())
+                return TextureHandle::Invalid();
+            path = found->second;
+        }
+        return load(path, desc);
     }
 
     Texture* TextureManager::get(TextureHandle handle) noexcept
@@ -145,6 +197,7 @@ namespace Engine
         m_defaultWhite = TextureHandle::Invalid();
         m_defaultBlack = TextureHandle::Invalid();
         m_defaultNormal = TextureHandle::Invalid();
+        m_defaultMetallicRoughness = TextureHandle::Invalid();
         m_defaultError = TextureHandle::Invalid();
     }
 
@@ -176,6 +229,7 @@ namespace Engine
         return create({ 255, 255, 255, 255 }, m_defaultWhite)
             && create({ 0, 0, 0, 255 }, m_defaultBlack)
             && create({ 128, 128, 255, 255 }, m_defaultNormal)
+            && create({ 0, 255, 0, 255 }, m_defaultMetallicRoughness)
             && create({ 255, 0, 255, 255 }, m_defaultError);
     }
 

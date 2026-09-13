@@ -5,6 +5,12 @@
 
 namespace Engine
 {
+    void DX12GraphicsPipeline::swap(DX12GraphicsPipeline& other) noexcept
+    {
+        m_rootSignature.Swap(other.m_rootSignature);
+        m_pipelineState.Swap(other.m_pipelineState);
+    }
+
     bool DX12GraphicsPipeline::initialize(ID3D12Device& device, const DX12GraphicsPipelineConfig& config)
     {
         if (m_pipelineState != nullptr || m_rootSignature != nullptr)
@@ -13,8 +19,9 @@ namespace Engine
             return false;
         }
 
-        if (config.vertexShader == nullptr || config.pixelShader == nullptr
-            || !config.vertexShader->isCompiled() || !config.pixelShader->isCompiled())
+        const bool requiresPixelShader = config.renderTargetFormat != DXGI_FORMAT_UNKNOWN;
+        if (config.vertexShader == nullptr || !config.vertexShader->isCompiled()
+            || (requiresPixelShader && (config.pixelShader == nullptr || !config.pixelShader->isCompiled())))
         {
             LOG_ERROR("[DX12] Graphics Pipeline にコンパイル済みの Vertex/Pixel Shader が必要です");
             return false;
@@ -65,7 +72,7 @@ namespace Engine
         D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};
         description.pRootSignature = m_rootSignature.Get();
         description.VS = config.vertexShader->getBytecode();
-        description.PS = config.pixelShader->getBytecode();
+        description.PS = config.pixelShader != nullptr ? config.pixelShader->getBytecode() : D3D12_SHADER_BYTECODE{};
         description.BlendState.AlphaToCoverageEnable = FALSE;
         description.BlendState.IndependentBlendEnable = FALSE;
         const D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlend{
@@ -98,7 +105,7 @@ namespace Engine
         description.DepthStencilState.DepthEnable = config.depthStencilFormat != DXGI_FORMAT_UNKNOWN;
         description.DepthStencilState.DepthWriteMask = config.enableDepthWrite
             ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
-        description.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+        description.DepthStencilState.DepthFunc = config.depthComparison;
         description.DepthStencilState.StencilEnable = FALSE;
         description.DepthStencilState.StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;
         description.DepthStencilState.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
@@ -109,8 +116,9 @@ namespace Engine
         description.DepthStencilState.BackFace = description.DepthStencilState.FrontFace;
         description.InputLayout = { config.inputLayout.data(), static_cast<UINT>(config.inputLayout.size()) };
         description.PrimitiveTopologyType = config.primitiveTopology;
-        description.NumRenderTargets = 1;
-        description.RTVFormats[0] = config.renderTargetFormat;
+        description.NumRenderTargets = config.renderTargetFormat == DXGI_FORMAT_UNKNOWN ? 0 : 1;
+        if (description.NumRenderTargets != 0)
+            description.RTVFormats[0] = config.renderTargetFormat;
         description.DSVFormat = config.depthStencilFormat;
         description.SampleDesc = { 1, 0 };
 

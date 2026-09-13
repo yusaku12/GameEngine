@@ -1,4 +1,5 @@
 ﻿#include "Pch.h"
+#include <tuple>
 #include "Graphics\Renderer\RenderQueue.h"
 
 namespace Engine
@@ -37,19 +38,14 @@ namespace Engine
                 if (left.pass != right.pass)
                     return left.pass < right.pass;
                 if (left.pass == RenderPassType::Transparent)
-                    return left.cameraDepth > right.cameraDepth;
-                return createSortKey(left) < createSortKey(right);
+                {
+                    if (left.cameraDepth != right.cameraDepth)
+                        return left.cameraDepth > right.cameraDepth;
+                }
+                return std::tie(left.pipelineID, left.shaderVariantID, left.material.index, left.material.generation,
+                    left.textureID, left.meshID, left.objectID)
+                    < std::tie(right.pipelineID, right.shaderVariantID, right.material.index, right.material.generation,
+                        right.textureID, right.meshID, right.objectID);
             });
-    }
-
-    std::uint64_t RenderQueue::createSortKey(const RenderItem& item) noexcept
-    {
-        constexpr std::uint64_t FIELD_MASK = 0xFFF;
-        return (static_cast<std::uint64_t>(item.pass) << 60)
-            | ((static_cast<std::uint64_t>(item.pipelineID) & FIELD_MASK) << 48)
-            | ((static_cast<std::uint64_t>(item.materialID) & FIELD_MASK) << 36)
-            | ((static_cast<std::uint64_t>(item.textureID) & FIELD_MASK) << 24)
-            | ((static_cast<std::uint64_t>(item.meshID) & FIELD_MASK) << 12)
-            | (static_cast<std::uint64_t>(item.objectID) & FIELD_MASK);
     }
 } // namespace Engine

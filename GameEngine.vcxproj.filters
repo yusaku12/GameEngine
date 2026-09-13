@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <ClCompile Include="Source\Assets\Material\MaterialInstance.cpp" />
+    <ClCompile Include="Source\Graphics\Material\MaterialPropertyBlock.cpp" />
+    <ClCompile Include="Source\Assets\Material\MaterialManager.cpp" />
+    <ClCompile Include="Source\Assets\Material\Serialization\MaterialSerializer.cpp" />
     <ClCompile Include="Source\Assets\Model\Import\AssimpModelImporter.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Command.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Descriptor.cpp" />
@@ -16,6 +20,7 @@
     <ClCompile Include="Source\Graphics\Camera\CameraRenderSubmission.cpp" />
     <ClCompile Include="Source\Graphics\Camera\CameraUtils.cpp" />
     <ClCompile Include="Source\Graphics\Debug\DebugPrimitive.cpp" />
+    <ClCompile Include="Source\Graphics\Material\MaterialGpuCache.cpp" />
     <ClCompile Include="Source\Graphics\Model\ModelGpuCache.cpp" />
     <ClCompile Include="Source\Graphics\Shader\Shader.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\SwapChain.cpp" />
@@ -61,6 +66,11 @@
     <ClCompile Include="Source\Core\GameObject\GameObjectManager.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\Assets\Material\MaterialAsset.h" />
+    <ClInclude Include="Source\Assets\Material\MaterialInstance.h" />
+    <ClInclude Include="Source\Assets\Material\MaterialManager.h" />
+    <ClInclude Include="Source\Assets\Material\MaterialTypes.h" />
+    <ClInclude Include="Source\Assets\Material\Serialization\MaterialSerializer.h" />
     <ClInclude Include="Source\Assets\Model\Import\AssimpModelImporter.h" />
     <ClInclude Include="Source\Assets\Model\Resource\AnimationResource.h" />
     <ClInclude Include="Source\Assets\Model\Resource\MaterialResource.h" />
@@ -112,6 +122,11 @@
     <ClInclude Include="Source\Graphics\Camera\CameraTypes.h" />
     <ClInclude Include="Source\Graphics\Camera\CameraUtils.h" />
     <ClInclude Include="Source\Graphics\Debug\DebugPrimitive.h" />
+    <ClInclude Include="Source\Graphics\Material\MaterialGpuCache.h" />
+    <ClInclude Include="Source\Graphics\Material\MaterialGpuResource.h" />
+    <ClInclude Include="Source\Graphics\Material\MaterialParameterLayout.h" />
+    <ClInclude Include="Source\Graphics\Material\MaterialPropertyBlock.h" />
+    <ClInclude Include="Source\Graphics\Material\MaterialShaderVariant.h" />
     <ClInclude Include="Source\Graphics\Model\ModelGpuCache.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Pipeline.h" />
     <ClInclude Include="Source\Graphics\Shader\Shader.h" />
@@ -135,6 +150,7 @@
     <ClCompile Include="Library\imgui\backends\imgui_impl_win32.cpp" />
     <ClCompile Include="Library\ImGuizmo\ImGuizmo.cpp" />
     <ClInclude Include="Generated\FlatBuffers\Common_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\Material_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Model_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Prefab_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Scene_generated.h" />
@@ -173,6 +189,7 @@
     <None Include="Assets\Shaders\Model.hlsl" />
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
+    <None Include="Schemas\FlatBuffers\Material.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />
     <None Include="Schemas\FlatBuffers\Prefab.fbs" />
     <None Include="Tools\FlatBuffers\build_schema.bat" />

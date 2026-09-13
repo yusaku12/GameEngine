@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "Assets\Material\MaterialTypes.h"
 #include "Graphics\Texture\TextureTypes.h"
 #include "Graphics\Texture\Texture.h"
 #include "Graphics\DirectX12\Descriptor.h"
@@ -74,6 +75,32 @@ namespace Engine
         TextureHandle load(const std::filesystem::path& path, const TextureLoadDesc& desc);
 
         /**
+         * @brief Texture Asset GUIDとPathを登録する。
+         * @param guid Texture Asset GUID
+         * @param path Texture AssetのPath
+         * @return 登録または同一内容の再登録に成功した場合はtrue
+         * @thread_safety Thread-safe.
+         */
+        bool registerAssetPath(const AssetGUID& guid, const std::filesystem::path& path);
+
+        /**
+         * @brief PathへGUIDを割り当てて登録する。同じPathには同じGUIDを返す。
+         * @param path Texture AssetのPath
+         * @return 登録したGUID。失敗時は無効GUID
+         * @thread_safety Thread-safe.
+         */
+        AssetGUID registerAssetPath(const std::filesystem::path& path);
+
+        /**
+         * @brief GUIDに対応するTexture Assetをロードする。
+         * @param guid Texture Asset GUID
+         * @param desc ロード設定
+         * @return Texture Handle。未登録または失敗時は無効Handle
+         * @thread_safety GUID解決はThread-safe。Textureのロードは外部同期が必要。
+         */
+        TextureHandle load(const AssetGUID& guid, const TextureLoadDesc& desc = {});
+
+        /**
          * @brief テクスチャを取得する
          * @param handle テクスチャハンドル
          * @return テクスチャへのポインタ。無効なハンドル時は nullptr
@@ -139,6 +166,11 @@ namespace Engine
         TextureHandle getNormalTexture() const noexcept { return m_defaultNormal; }
 
         /**
+         * @brief Metallic 0、Roughness 1の既定Textureを取得する。
+         */
+        TextureHandle getMetallicRoughnessTexture() const noexcept { return m_defaultMetallicRoughness; }
+
+        /**
          * @brief エラー用デフォルトテクスチャを取得する（マゼンタ色）
          * @return テクスチャハンドル
          */
@@ -186,12 +218,16 @@ namespace Engine
         uint32_t m_nextHandle = 0;                        //!< 次に割り当てるハンドルインデックス
 
         // キャッシュ機構
-        std::unordered_map<std::string, uint32_t> m_pathToHandle; //!< パス → ハンドルインデックスのマッピング
+        std::unordered_map<std::string, uint32_t> m_pathToHandle;                          //!< パス → ハンドルインデックスのマッピング
+        std::unordered_map<AssetGUID, std::filesystem::path, ObjectGUIDHash> m_guidToPath; //!< GUIDからAsset Pathへの対応
+        std::unordered_map<std::filesystem::path, AssetGUID> m_pathToGuid;                 //!< Asset PathからGUIDへの対応
+        mutable std::mutex m_assetPathMutex;                                               //!< GUIDとPathの対応を保護するMutex
 
         // デフォルトテクスチャ
-        TextureHandle m_defaultWhite;  //!< White (1.0, 1.0, 1.0, 1.0)
-        TextureHandle m_defaultBlack;  //!< Black (0.0, 0.0, 0.0, 1.0)
-        TextureHandle m_defaultNormal; //!< Normal (0.5, 0.5, 1.0, 1.0) - 青紫
-        TextureHandle m_defaultError;  //!< Error (1.0, 0.0, 1.0, 1.0) - マゼンタ
+        TextureHandle m_defaultWhite;             //!< White (1.0, 1.0, 1.0, 1.0)
+        TextureHandle m_defaultBlack;             //!< Black (0.0, 0.0, 0.0, 1.0)
+        TextureHandle m_defaultNormal;            //!< Normal (0.5, 0.5, 1.0, 1.0) - 青紫
+        TextureHandle m_defaultMetallicRoughness; //!< Metallic 0、Roughness 1
+        TextureHandle m_defaultError;             //!< Error (1.0, 0.0, 1.0, 1.0) - マゼンタ
     };
 } // namespace Engine

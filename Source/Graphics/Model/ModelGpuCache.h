@@ -2,7 +2,6 @@
 
 #include "Assets\Model\ModelManager.h"
 #include "Graphics\DirectX12\Resource.h"
-#include "Graphics\Texture\TextureTypes.h"
 
 namespace Engine
 {
@@ -26,17 +25,8 @@ namespace Engine
      */
     struct ModelGpuResource
     {
-        /**
-         * @brief 解決済みの初期Material GPU参照。
-         */
-        struct Material
-        {
-            TextureHandle baseColorTexture; //!< Base Color Texture Handle
-        };
-
         std::shared_ptr<const ModelResource> source;       //!< 元のModelResourceへの参照
         std::vector<std::unique_ptr<ModelGpuMesh>> meshes; //!< Mesh単位のGPU描画Resource
-        std::vector<Material> materials;                   //!< Material単位のGPU描画Resource
         DX12UploadBuffer bonePaletteBuffer;                //!< Bind Pose用Bone行列Buffer
     };
 

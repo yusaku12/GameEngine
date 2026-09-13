@@ -18,6 +18,8 @@ New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $jobs = @(
     @{ Source = Join-Path $ShaderRoot "Model.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "Model_vsMain_vs.cso" },
     @{ Source = Join-Path $ShaderRoot "Model.hlsl"; Entry = "psMain"; Target = "ps_6_0"; Output = "Model_psMain_ps.cso" },
+    @{ Source = Join-Path $ShaderRoot "Model.hlsl"; Entry = "psAlphaTest"; Target = "ps_6_0"; Output = "Model_psAlphaTest_ps.cso" },
+    @{ Source = Join-Path $ShaderRoot "Model.hlsl"; Entry = "psDepthAlphaTest"; Target = "ps_6_0"; Output = "Model_psDepthAlphaTest_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "DebugPrimitive.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "DebugPrimitive_vsMain_vs.cso" },
     @{ Source = Join-Path $ShaderRoot "DebugPrimitive.hlsl"; Entry = "psMain"; Target = "ps_6_0"; Output = "DebugPrimitive_psMain_ps.cso" }
 )

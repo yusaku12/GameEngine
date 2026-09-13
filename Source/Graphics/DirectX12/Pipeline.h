@@ -20,6 +20,7 @@ namespace Engine
         DXGI_FORMAT renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM;                              //!< Render Target Format
         DXGI_FORMAT depthStencilFormat = DXGI_FORMAT_UNKNOWN;                                     //!< Depth Stencil Format
         D3D12_PRIMITIVE_TOPOLOGY_TYPE primitiveTopology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; //!< Primitive Topology 種別
+        D3D12_COMPARISON_FUNC depthComparison = D3D12_COMPARISON_FUNC_LESS;                       //!< 深度比較関数
         bool enableAlphaBlend = false;                                                            //!< SrcAlphaによる透過Blendを有効にするか
         bool enableDepthWrite = true;                                                             //!< Depth Bufferへの書き込みを有効にするか
     };
@@ -58,6 +59,12 @@ namespace Engine
          * @return 設定に成功した場合は true
          */
         bool bind(DX12CommandList& commandList) const;
+
+        /**
+         * @brief GPU PipelineとRoot Signatureを交換する。
+         * @param other 交換する相手の DX12GraphicsPipeline
+         */
+        void swap(DX12GraphicsPipeline& other) noexcept;
 
         /**
          * @brief Graphics PSO を取得する

@@ -1,0 +1,74 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+enum MaterialSurfaceType:ubyte {
+    Opaque,
+    AlphaTest,
+    Transparent
+}
+
+enum MaterialCullMode:ubyte {
+    None,
+    Front,
+    Back
+}
+
+enum MaterialDepthTest:ubyte {
+    Disabled,
+    Less,
+    LessEqual,
+    Equal,
+    GreaterEqual,
+    Greater,
+    Always
+}
+
+enum MaterialBlendMode:ubyte {
+    Opaque,
+    Alpha,
+    Additive
+}
+
+table MaterialRenderState {
+    surface_type:MaterialSurfaceType = Opaque;
+    cull_mode:MaterialCullMode = Back;
+    depth_test:MaterialDepthTest = LessEqual;
+    blend_mode:MaterialBlendMode = Opaque;
+    depth_write:bool = true;
+    render_queue_offset:int;
+}
+
+table MaterialTextureReferences {
+    base_color:AssetGuid;
+    normal:AssetGuid;
+    metallic_roughness:AssetGuid;
+    ambient_occlusion:AssetGuid;
+    emissive:AssetGuid;
+}
+
+table MaterialAssetData {
+    guid:AssetGuid;
+    name:string;
+    shader_guid:AssetGuid;
+    render_state:MaterialRenderState;
+    base_color:Vec4;
+    metallic:float;
+    roughness:float = 1.0;
+    emissive_color:Vec3;
+    emissive_intensity:float;
+    normal_scale:float = 1.0;
+    occlusion_strength:float = 1.0;
+    alpha_cutoff:float = 0.5;
+    textures:MaterialTextureReferences;
+    shader_keywords:[string];
+    keyword_mask:uint;
+}
+
+table MaterialFile {
+    header:FileHeader;
+    material:MaterialAssetData;
+}
+
+root_type MaterialFile;
+file_identifier "MATL";
