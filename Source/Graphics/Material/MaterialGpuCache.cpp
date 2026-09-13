@@ -49,7 +49,10 @@ namespace Engine
             GE_UNUSED(key);
             succeeded = resource->constantBuffer.finalize() && succeeded;
         }
+        for (std::unique_ptr<MaterialGpuResource>& resource : m_retiredResources)
+            succeeded = resource->constantBuffer.finalize() && succeeded;
         m_resources.clear();
+        m_retiredResources.clear();
         m_device = nullptr;
         m_fence = nullptr;
         return succeeded;
@@ -61,7 +64,18 @@ namespace Engine
             return nullptr;
         const std::uint64_t key = makeKey(handle);
         if (const auto found = m_resources.find(key); found != m_resources.end())
+        {
+            const std::shared_ptr<const MaterialAsset> current = MaterialManager::instance().get(handle);
+            if (current == nullptr || found->second->source == current)
+                return found->second.get();
+
+            std::unique_ptr<MaterialGpuResource> replacement = createResource(handle);
+            if (replacement == nullptr)
+                return found->second.get();
+            m_retiredResources.push_back(std::move(found->second));
+            found->second = std::move(replacement);
             return found->second.get();
+        }
 
         std::unique_ptr<MaterialGpuResource> resource = createResource(handle);
         if (resource == nullptr)
@@ -113,6 +127,9 @@ namespace Engine
             GE_UNUSED(key);
             resource->constantBuffer.finalize();
         }
+        for (std::unique_ptr<MaterialGpuResource>& resource : m_retiredResources)
+            resource->constantBuffer.finalize();
+        m_retiredResources.clear();
         m_resources.swap(replacements);
         return true;
     }
@@ -121,6 +138,13 @@ namespace Engine
     {
         if (m_fence == nullptr)
             return;
+        std::erase_if(m_retiredResources, [this](std::unique_ptr<MaterialGpuResource>& resource)
+            {
+                if (resource->lastUsedFenceValue != 0 && !m_fence->isComplete(resource->lastUsedFenceValue))
+                    return false;
+                resource->constantBuffer.finalize();
+                return true;
+            });
         for (auto iterator = m_resources.begin(); iterator != m_resources.end();)
         {
             MaterialGpuResource& resource = *iterator->second;

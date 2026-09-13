@@ -34,6 +34,22 @@ namespace Engine
         MaterialHandle create(MaterialAsset material, const std::filesystem::path& cacheKey = {});
 
         /**
+         * @brief Materialを新しい不変Snapshotへ置換する。
+         * @param handle 更新対象Handle
+         * @param material 新しいMaterial値。GUIDは既存値を維持する
+         * @return 更新に成功した場合はtrue
+         */
+        bool update(MaterialHandle handle, MaterialAsset material);
+
+        /**
+         * @brief 現在のMaterial SnapshotをAtomic Saveする。
+         * @param handle 保存対象Handle
+         * @param path 保存先。空の場合は既存Asset Pathを使用する
+         * @return 保存に成功した場合はtrue
+         */
+        bool save(MaterialHandle handle, const std::filesystem::path& path = {});
+
+        /**
          * @brief Handleに対応する不変Material Assetを取得する。
          * @param handle 取得するMaterial Handle
          * @return 取得したMaterial Assetの共有ポインタ
@@ -52,6 +68,12 @@ namespace Engine
          * @return 取得したMaterial Handleのベクター
          */
         std::vector<MaterialHandle> getAllHandles() const;
+
+        /**
+         * @brief Material Assetの保存Pathを取得する。メモリ上のMaterialは空Pathを返す。
+         * @param handle 取得するMaterial Handle
+         */
+        std::filesystem::path getPath(MaterialHandle handle) const;
 
         /**
          * @brief Handleに対応するMaterial Assetを管理対象から外す。組み込みMaterialは保持する。

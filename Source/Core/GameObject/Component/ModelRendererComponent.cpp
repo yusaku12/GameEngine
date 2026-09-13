@@ -8,6 +8,7 @@
 #include "Core\System\Dialog.h"
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Graphics\Renderer\ModelRenderSubmission.h"
+#include "Graphics\Texture\TextureManager.h"
 #include <imgui.h>
 
 namespace Engine
@@ -17,6 +18,21 @@ namespace Engine
         std::atomic_uint32_t nextModelRendererObjectID = 1;
         const ComponentTypeID modelRendererType = ComponentRegistry::instance().registerType<ModelRendererComponent>(
             "Model Renderer", false, false, true);
+
+        struct MaterialTextureDescriptor
+        {
+            const char* name;
+            AssetGUID MaterialTextureReferences::* member;
+            std::filesystem::path MaterialTextureReferences::* pathMember;
+        };
+
+        constexpr std::array MATERIAL_TEXTURES = {
+            MaterialTextureDescriptor{ "Base Color", &MaterialTextureReferences::baseColor, &MaterialTextureReferences::baseColorPath },
+            MaterialTextureDescriptor{ "Normal", &MaterialTextureReferences::normal, &MaterialTextureReferences::normalPath },
+            MaterialTextureDescriptor{ "Metallic-Roughness", &MaterialTextureReferences::metallicRoughness, &MaterialTextureReferences::metallicRoughnessPath },
+            MaterialTextureDescriptor{ "Ambient Occlusion", &MaterialTextureReferences::ambientOcclusion, &MaterialTextureReferences::ambientOcclusionPath },
+            MaterialTextureDescriptor{ "Emissive", &MaterialTextureReferences::emissive, &MaterialTextureReferences::emissivePath },
+        };
 
         MaterialParameterValues parameterValues(const MaterialAsset& material) noexcept
         {
@@ -30,6 +46,18 @@ namespace Engine
                 .occlusionStrength = material.occlusionStrength,
                 .alphaCutoff = material.alphaCutoff,
             };
+        }
+
+        void applyParameterValues(MaterialAsset& material, const MaterialParameterValues& values) noexcept
+        {
+            material.baseColor = values.baseColor;
+            material.metallic = values.metallic;
+            material.roughness = values.roughness;
+            material.emissiveColor = values.emissiveColor;
+            material.emissiveIntensity = values.emissiveIntensity;
+            material.normalScale = values.normalScale;
+            material.occlusionStrength = values.occlusionStrength;
+            material.alphaCutoff = values.alphaCutoff;
         }
 
         void setPropertyValue(MaterialPropertyBlock& block, const MaterialParameterDescriptor& descriptor,
@@ -82,24 +110,127 @@ namespace Engine
             }
         }
 
-        void drawSharedMaterial(const MaterialAsset& material)
+        void requestTextureSelection(const MaterialHandle handle,
+            AssetGUID MaterialTextureReferences::* const member,
+            std::filesystem::path MaterialTextureReferences::* const pathMember)
         {
-            ImGui::Text("Shared Material (Read Only)");
-            ImGui::TextWrapped("Name: %s", material.name.c_str());
-            ImGui::Text("Keyword Mask: 0x%08X", material.shaderKeywords);
-            MaterialParameterValues values = parameterValues(material);
-            ImGui::BeginDisabled();
+            const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+            MainThreadDispatcher::instance().post([handle, member, pathMember, ownerWindow]
+                {
+                    static constexpr std::array filters = {
+                        FileDialogFilter{ L"Texture Files", L"*.dds;*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.hdr" },
+                        FileDialogFilter{ L"All Files", L"*.*" },
+                    };
+                    std::vector<std::filesystem::path> paths;
+                    if (Dialog::openFile(paths, L"テクスチャを選択", "Assets/Model/Textures", filters, false, ownerWindow)
+                        != DialogResult::Ok || paths.empty())
+                    {
+                        return;
+                    }
+
+                    const AssetGUID textureGuid = TextureManager::instance().registerAssetPath(paths.front());
+                    const std::shared_ptr<const MaterialAsset> current = MaterialManager::instance().get(handle);
+                    if (!textureGuid.isValid() || current == nullptr)
+                        return;
+                    MaterialAsset edited = *current;
+                    edited.textures.*member = textureGuid;
+                    edited.textures.*pathMember = paths.front().lexically_normal();
+                    if (member == &MaterialTextureReferences::normal)
+                        edited.shaderKeywords |= toMask(MaterialKeyword::UseNormalMap);
+                    else if (member == &MaterialTextureReferences::emissive)
+                        edited.shaderKeywords |= toMask(MaterialKeyword::UseEmissiveMap);
+                    MaterialManager::instance().update(handle, std::move(edited));
+                });
+        }
+
+        void requestMaterialSaveAs(const MaterialHandle handle)
+        {
+            const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+            MainThreadDispatcher::instance().post([handle, ownerWindow]
+                {
+                    static constexpr std::array filters = {
+                        FileDialogFilter{ L"GameEngine Material", L"*.material;*.mat" },
+                        FileDialogFilter{ L"All Files", L"*.*" },
+                    };
+                    std::filesystem::path path;
+                    if (Dialog::saveFile(path, L"マテリアルを保存", "Assets/Materials", L"material", filters, ownerWindow)
+                        == DialogResult::Ok && !MaterialManager::instance().save(handle, path))
+                    {
+                        LOG_ERROR("[MaterialEditor] Material Save As failed: {}", path.string());
+                    }
+                });
+        }
+
+        void drawSharedMaterial(const MaterialHandle handle)
+        {
+            MaterialManager& manager = MaterialManager::instance();
+            const std::shared_ptr<const MaterialAsset> current = manager.get(handle);
+            if (current == nullptr)
+                return;
+
+            MaterialAsset edited = *current;
+            MaterialParameterValues values = parameterValues(edited);
+            bool changed = false;
+            ImGui::Text("Shared Material");
+            ImGui::TextWrapped("Name: %s", edited.name.c_str());
             for (const MaterialParameterDescriptor& parameter : MaterialParameterLayout::standard())
             {
                 auto* value = reinterpret_cast<std::byte*>(&values) + parameter.offset;
                 if (parameter.type == MaterialParameterType::Float)
-                    ImGui::SliderFloat(parameter.name.data(), reinterpret_cast<float*>(value), parameter.minimum, parameter.maximum);
+                    changed = ImGui::SliderFloat(parameter.name.data(), reinterpret_cast<float*>(value), parameter.minimum, parameter.maximum) || changed;
                 else if (parameter.type == MaterialParameterType::Vector3)
-                    ImGui::ColorEdit3(parameter.name.data(), reinterpret_cast<float*>(value));
+                    changed = ImGui::ColorEdit3(parameter.name.data(), reinterpret_cast<float*>(value)) || changed;
                 else
-                    ImGui::ColorEdit4(parameter.name.data(), reinterpret_cast<float*>(value));
+                    changed = ImGui::ColorEdit4(parameter.name.data(), reinterpret_cast<float*>(value)) || changed;
             }
+            if (changed)
+            {
+                applyParameterValues(edited, values);
+                manager.update(handle, edited);
+            }
+
+            if (ImGui::TreeNodeEx("Textures", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                TextureManager& textures = TextureManager::instance();
+                for (const MaterialTextureDescriptor& texture : MATERIAL_TEXTURES)
+                {
+                    ImGui::PushID(texture.name);
+                    const AssetGUID textureGuid = edited.textures.*texture.member;
+                    std::filesystem::path texturePath = edited.textures.*texture.pathMember;
+                    if (texturePath.empty())
+                        texturePath = textures.getAssetPath(textureGuid);
+                    ImGui::TextUnformatted(texture.name);
+                    ImGui::SameLine(150.0f);
+                    ImGui::TextDisabled("%s", texturePath.empty() ? "None" : texturePath.filename().string().c_str());
+                    if (ImGui::Button("Select..."))
+                        requestTextureSelection(handle, texture.member, texture.pathMember);
+                    ImGui::SameLine();
+                    ImGui::BeginDisabled(!textureGuid.isValid());
+                    if (ImGui::Button("Clear"))
+                    {
+                        MaterialAsset withoutTexture = edited;
+                        withoutTexture.textures.*texture.member = {};
+                        (withoutTexture.textures.*texture.pathMember).clear();
+                        if (texture.member == &MaterialTextureReferences::normal)
+                            withoutTexture.shaderKeywords &= ~toMask(MaterialKeyword::UseNormalMap);
+                        else if (texture.member == &MaterialTextureReferences::emissive)
+                            withoutTexture.shaderKeywords &= ~toMask(MaterialKeyword::UseEmissiveMap);
+                        manager.update(handle, std::move(withoutTexture));
+                    }
+                    ImGui::EndDisabled();
+                    ImGui::PopID();
+                }
+                ImGui::TreePop();
+            }
+
+            const std::filesystem::path materialPath = manager.getPath(handle);
+            ImGui::BeginDisabled(materialPath.empty());
+            if (ImGui::Button("Save") && !manager.save(handle))
+                LOG_ERROR("[MaterialEditor] Material Save failed: {}", materialPath.string());
             ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (ImGui::Button("Save As..."))
+                requestMaterialSaveAs(handle);
         }
     }
 
@@ -309,7 +440,7 @@ namespace Engine
         if (const std::shared_ptr<const MaterialAsset> inspected = MaterialManager::instance().get(m_inspectedMaterial);
             inspected != nullptr && ImGui::CollapsingHeader("Material Inspector", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            drawSharedMaterial(*inspected);
+            drawSharedMaterial(m_inspectedMaterial);
         }
 
         if (ImGui::CollapsingHeader("Material Property Block", ImGuiTreeNodeFlags_DefaultOpen))

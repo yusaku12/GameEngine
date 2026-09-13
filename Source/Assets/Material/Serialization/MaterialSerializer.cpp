@@ -64,7 +64,12 @@ namespace Engine::Serialization
             static_cast<Engine::Serialization::MaterialBlendMode>(material.renderState.blendMode),
             material.renderState.depthWrite, material.renderState.renderQueueOffset);
         const auto textures = CreateMaterialTextureReferences(builder, &baseColorTexture, &normalTexture,
-            &metallicRoughnessTexture, &ambientOcclusionTexture, &emissiveTexture);
+            &metallicRoughnessTexture, &ambientOcclusionTexture, &emissiveTexture,
+            builder.CreateString(material.textures.baseColorPath.generic_string()),
+            builder.CreateString(material.textures.normalPath.generic_string()),
+            builder.CreateString(material.textures.metallicRoughnessPath.generic_string()),
+            builder.CreateString(material.textures.ambientOcclusionPath.generic_string()),
+            builder.CreateString(material.textures.emissivePath.generic_string()));
 
         const auto data = CreateMaterialAssetData(builder, &guid, builder.CreateString(material.name), &shaderGuid,
             renderState, &baseColor, material.metallic, material.roughness, &emissiveColor,
@@ -128,6 +133,14 @@ namespace Engine::Serialization
         loaded.textures.metallicRoughness = toEngine(textures->metallic_roughness());
         loaded.textures.ambientOcclusion = toEngine(textures->ambient_occlusion());
         loaded.textures.emissive = toEngine(textures->emissive());
+        if (file->header()->asset_version() >= 3)
+        {
+            loaded.textures.baseColorPath = textures->base_color_path() ? textures->base_color_path()->str() : "";
+            loaded.textures.normalPath = textures->normal_path() ? textures->normal_path()->str() : "";
+            loaded.textures.metallicRoughnessPath = textures->metallic_roughness_path() ? textures->metallic_roughness_path()->str() : "";
+            loaded.textures.ambientOcclusionPath = textures->ambient_occlusion_path() ? textures->ambient_occlusion_path()->str() : "";
+            loaded.textures.emissivePath = textures->emissive_path() ? textures->emissive_path()->str() : "";
+        }
         if (file->header()->asset_version() >= 2)
         {
             if ((source->keyword_mask() & ~VALID_MATERIAL_KEYWORDS) != 0) {

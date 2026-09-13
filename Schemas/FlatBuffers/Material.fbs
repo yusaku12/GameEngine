@@ -45,6 +45,11 @@ table MaterialTextureReferences {
     metallic_roughness:AssetGuid;
     ambient_occlusion:AssetGuid;
     emissive:AssetGuid;
+    base_color_path:string;
+    normal_path:string;
+    metallic_roughness_path:string;
+    ambient_occlusion_path:string;
+    emissive_path:string;
 }
 
 table MaterialAssetData {

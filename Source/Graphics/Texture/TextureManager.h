@@ -92,6 +92,12 @@ namespace Engine
         AssetGUID registerAssetPath(const std::filesystem::path& path);
 
         /**
+         * @brief GUIDに対応するTexture Asset Pathを取得する。
+         * @param guid Texture Asset GUID
+         */
+        std::filesystem::path getAssetPath(const AssetGUID& guid) const;
+
+        /**
          * @brief GUIDに対応するTexture Assetをロードする。
          * @param guid Texture Asset GUID
          * @param desc ロード設定

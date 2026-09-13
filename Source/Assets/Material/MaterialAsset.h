@@ -11,11 +11,16 @@ namespace Engine
      */
     struct MaterialTextureReferences
     {
-        AssetGUID baseColor;         //!< BaseColor TextureのGUID
-        AssetGUID normal;            //!< Normal TextureのGUID
-        AssetGUID metallicRoughness; //!< MetallicRoughness TextureのGUID
-        AssetGUID ambientOcclusion;  //!< AmbientOcclusion TextureのGUID
-        AssetGUID emissive;          //!< Emissive TextureのGUID
+        AssetGUID baseColor;                         //!< BaseColor TextureのGUID
+        AssetGUID normal;                            //!< Normal TextureのGUID
+        AssetGUID metallicRoughness;                 //!< MetallicRoughness TextureのGUID
+        AssetGUID ambientOcclusion;                  //!< AmbientOcclusion TextureのGUID
+        AssetGUID emissive;                          //!< Emissive TextureのGUID
+        std::filesystem::path baseColorPath;         //!< GUID解決用のAsset Path Hint
+        std::filesystem::path normalPath;            //!< GUID解決用のAsset Path Hint
+        std::filesystem::path metallicRoughnessPath; //!< GUID解決用のAsset Path Hint
+        std::filesystem::path ambientOcclusionPath;  //!< GUID解決用のAsset Path Hint
+        std::filesystem::path emissivePath;          //!< GUID解決用のAsset Path Hint
     };
 
     /**

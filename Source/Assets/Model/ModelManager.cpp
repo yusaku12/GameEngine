@@ -40,20 +40,22 @@ namespace Engine
                 material.emissiveColor = legacyMaterial.emissive;
                 if (legacyMaterial.opacity < 1.0f)
                     material.renderState.surfaceType = MaterialSurfaceType::Transparent;
-                const auto registerTexture = [&model, &textureManager](const std::string& sourcePath)
+                const auto registerTexture = [&model, &textureManager](const std::string& sourcePath,
+                    std::filesystem::path& storedPath)
                     {
                         if (sourcePath.empty())
                             return AssetGUID{};
                         std::filesystem::path texturePath = sourcePath;
                         if (texturePath.is_relative() && !model.sourcePath.empty())
                             texturePath = model.sourcePath.parent_path() / texturePath;
+                        storedPath = texturePath.lexically_normal();
                         return textureManager.registerAssetPath(texturePath);
                     };
-                material.textures.baseColor = registerTexture(legacyMaterial.textures.baseColor);
-                material.textures.normal = registerTexture(legacyMaterial.textures.normal);
-                material.textures.metallicRoughness = registerTexture(legacyMaterial.textures.metallicRoughness);
-                material.textures.ambientOcclusion = registerTexture(legacyMaterial.textures.ambientOcclusion);
-                material.textures.emissive = registerTexture(legacyMaterial.textures.emissive);
+                material.textures.baseColor = registerTexture(legacyMaterial.textures.baseColor, material.textures.baseColorPath);
+                material.textures.normal = registerTexture(legacyMaterial.textures.normal, material.textures.normalPath);
+                material.textures.metallicRoughness = registerTexture(legacyMaterial.textures.metallicRoughness, material.textures.metallicRoughnessPath);
+                material.textures.ambientOcclusion = registerTexture(legacyMaterial.textures.ambientOcclusion, material.textures.ambientOcclusionPath);
+                material.textures.emissive = registerTexture(legacyMaterial.textures.emissive, material.textures.emissivePath);
                 const MaterialHandle handle = materialManager.create(std::move(material));
                 const std::shared_ptr<const MaterialAsset> created = materialManager.get(handle);
                 if (created != nullptr)

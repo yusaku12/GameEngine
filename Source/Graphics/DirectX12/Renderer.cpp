@@ -10,8 +10,23 @@ namespace Engine
 {
     namespace
     {
+        /**
+         * @brief モデル頂点の入力レイアウト
+         * @details
+         * - POSITION: float3
+         * - NORMAL: float3
+         * - TANGENT: float3
+         * - BITANGENT: float3
+         * - COLOR: float4
+         * - TEXCOORD: float2
+         * - BLENDINDICES: uint4 (16bit each)
+         * - BLENDWEIGHT: float4
+         */
         constexpr std::array MODEL_INPUT_LAYOUT = {
             D3D12_INPUT_ELEMENT_DESC{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, position)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            D3D12_INPUT_ELEMENT_DESC{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, normal)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            D3D12_INPUT_ELEMENT_DESC{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, tangent)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            D3D12_INPUT_ELEMENT_DESC{ "BITANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, bitangent)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
             D3D12_INPUT_ELEMENT_DESC{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, color)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
             D3D12_INPUT_ELEMENT_DESC{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, texCoord)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
             D3D12_INPUT_ELEMENT_DESC{ "BLENDINDICES", 0, DXGI_FORMAT_R16G16B16A16_UINT, 0, static_cast<UINT>(offsetof(ModelVertex, boneIndices)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -510,19 +525,22 @@ namespace Engine
         objectConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         objectConstants.Constants.ShaderRegister = 0;
         objectConstants.Constants.RegisterSpace = 0;
-        objectConstants.Constants.Num32BitValues = 16;
+        objectConstants.Constants.Num32BitValues = 32;
         objectConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        D3D12_DESCRIPTOR_RANGE baseColorRange{};
-        baseColorRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        baseColorRange.NumDescriptors = 1;
-        baseColorRange.BaseShaderRegister = 0;
-        baseColorRange.RegisterSpace = 0;
-        baseColorRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-        D3D12_ROOT_PARAMETER baseColorTable{};
-        baseColorTable.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        baseColorTable.DescriptorTable.NumDescriptorRanges = 1;
-        baseColorTable.DescriptorTable.pDescriptorRanges = &baseColorRange;
-        baseColorTable.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        std::array<D3D12_DESCRIPTOR_RANGE, 5> textureRanges{};
+        std::array<D3D12_ROOT_PARAMETER, 5> textureTables{};
+        for (std::uint32_t textureIndex = 0; textureIndex < textureRanges.size(); ++textureIndex)
+        {
+            textureRanges[textureIndex].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            textureRanges[textureIndex].NumDescriptors = 1;
+            textureRanges[textureIndex].BaseShaderRegister = textureIndex;
+            textureRanges[textureIndex].RegisterSpace = 0;
+            textureRanges[textureIndex].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+            textureTables[textureIndex].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            textureTables[textureIndex].DescriptorTable.NumDescriptorRanges = 1;
+            textureTables[textureIndex].DescriptorTable.pDescriptorRanges = &textureRanges[textureIndex];
+            textureTables[textureIndex].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        }
         D3D12_ROOT_PARAMETER bonePalette{};
         bonePalette.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         bonePalette.Descriptor.ShaderRegister = 1;
@@ -539,7 +557,11 @@ namespace Engine
         materialProperties.Constants.RegisterSpace = 0;
         materialProperties.Constants.Num32BitValues = 17;
         materialProperties.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        const std::array rootParameters = { objectConstants, bonePalette, materialConstants, baseColorTable, materialProperties };
+        const std::array rootParameters = {
+            objectConstants, bonePalette, materialConstants,
+            textureTables[0], textureTables[1], textureTables[2], textureTables[3], textureTables[4],
+            materialProperties,
+        };
         const std::array staticSamplers = {
             D3D12_STATIC_SAMPLER_DESC{
                 .Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR,
@@ -679,7 +701,7 @@ namespace Engine
                             .meshID = static_cast<std::uint32_t>(meshIndex),
                             .cameraDepth = (Vector3(meshWorldBounds.Center) - m_cameraPosition).LengthSquared(),
                             .pass = pass,
-                            };
+                        };
                         const bool submitted = m_modelRenderQueue.submit(colorItem, m_frustum ? &*m_frustum : nullptr);
                         if (submitted && pass != RenderPassType::Transparent)
                         {
@@ -739,7 +761,6 @@ namespace Engine
         const DX12UploadBuffer* currentBonePalette = nullptr;
         MaterialHandle currentMaterial;
         MaterialGpuResource* currentMaterialResource = nullptr;
-        TextureHandle currentTexture = TextureHandle::Invalid();
         RenderPassType targetPass = RenderPassType::Opaque;
         bool shadowMapCleared = false;
         nativeCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -808,7 +829,6 @@ namespace Engine
                 currentPipeline = requiredPipeline;
                 currentMaterial = MaterialHandle::Invalid();
                 currentMaterialResource = nullptr;
-                currentTexture = TextureHandle::Invalid();
                 currentBonePalette = nullptr;
                 ++m_frameStatistics.psoSwitchCount;
             }
@@ -830,8 +850,24 @@ namespace Engine
                 if (currentMaterialResource == nullptr || currentMaterialResource->constantBuffer.getGpuVirtualAddress() == 0)
                     return false;
                 nativeCommandList->SetGraphicsRootConstantBufferView(2, currentMaterialResource->constantBuffer.getGpuVirtualAddress());
+                const std::array materialTextures = {
+                    currentMaterialResource->baseColorTexture,
+                    currentMaterialResource->normalTexture,
+                    currentMaterialResource->metallicRoughnessTexture,
+                    currentMaterialResource->ambientOcclusionTexture,
+                    currentMaterialResource->emissiveTexture,
+                };
+                for (std::uint32_t textureIndex = 0; textureIndex < materialTextures.size(); ++textureIndex)
+                {
+                    const Texture* texture = textureManager.get(materialTextures[textureIndex]);
+                    const TextureResourceInfo* textureInfo = texture != nullptr ? texture->getResourceInfo() : nullptr;
+                    if (textureInfo == nullptr)
+                        return false;
+                    nativeCommandList->SetGraphicsRootDescriptorTable(3 + textureIndex, textureInfo->srv);
+                }
                 currentMaterial = item.material;
                 ++m_frameStatistics.materialSwitchCount;
+                m_frameStatistics.textureSwitchCount += static_cast<std::uint32_t>(materialTextures.size());
             }
             if (currentBonePalette != item.bonePaletteBuffer)
             {
@@ -842,25 +878,15 @@ namespace Engine
             }
             if (currentMaterialResource == nullptr)
                 return false;
-            if (currentTexture != currentMaterialResource->baseColorTexture)
-            {
-                const Texture* texture = textureManager.get(currentMaterialResource->baseColorTexture);
-                const TextureResourceInfo* textureInfo = texture != nullptr ? texture->getResourceInfo() : nullptr;
-                if (textureInfo == nullptr)
-                    return false;
-                nativeCommandList->SetGraphicsRootDescriptorTable(3, textureInfo->srv);
-                currentTexture = currentMaterialResource->baseColorTexture;
-                ++m_frameStatistics.textureSwitchCount;
-            }
-
             const Matrix& viewProjection = item.pass == RenderPassType::Shadow && m_shadowViewProjection
                 ? *m_shadowViewProjection : m_viewProjection;
             const Matrix worldViewProjection = item.worldMatrix * viewProjection;
             nativeCommandList->SetGraphicsRoot32BitConstants(0, 16, &worldViewProjection._11, 0);
+            nativeCommandList->SetGraphicsRoot32BitConstants(0, 16, &item.worldMatrix._11, 16);
             const MaterialParameterValues& propertyValues = item.materialProperties.getValues();
-            nativeCommandList->SetGraphicsRoot32BitConstants(4, 16, &propertyValues.baseColor.x, 0);
+            nativeCommandList->SetGraphicsRoot32BitConstants(8, 16, &propertyValues.baseColor.x, 0);
             const std::uint32_t overrideMask = item.materialProperties.getOverrideMask();
-            nativeCommandList->SetGraphicsRoot32BitConstants(4, 1, &overrideMask, 16);
+            nativeCommandList->SetGraphicsRoot32BitConstants(8, 1, &overrideMask, 16);
             nativeCommandList->DrawIndexedInstanced(item.indexCount, 1, item.indexStart, item.baseVertex, 0);
             ++m_frameStatistics.drawCallCount;
             ++m_frameStatistics.instanceCount;

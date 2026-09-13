@@ -1,9 +1,52 @@
 ﻿#include "Pch.h"
 #include "Assets\Material\MaterialManager.h"
 #include "Assets\Material\Serialization\MaterialSerializer.h"
+#include "Graphics\Texture\TextureManager.h"
 
 namespace Engine
 {
+    namespace
+    {
+        struct TextureReferencePair
+        {
+            AssetGUID MaterialTextureReferences::* guid;
+            std::filesystem::path MaterialTextureReferences::* path;
+        };
+
+        constexpr std::array TEXTURE_REFERENCES = {
+            TextureReferencePair{ &MaterialTextureReferences::baseColor, &MaterialTextureReferences::baseColorPath },
+            TextureReferencePair{ &MaterialTextureReferences::normal, &MaterialTextureReferences::normalPath },
+            TextureReferencePair{ &MaterialTextureReferences::metallicRoughness, &MaterialTextureReferences::metallicRoughnessPath },
+            TextureReferencePair{ &MaterialTextureReferences::ambientOcclusion, &MaterialTextureReferences::ambientOcclusionPath },
+            TextureReferencePair{ &MaterialTextureReferences::emissive, &MaterialTextureReferences::emissivePath },
+        };
+
+        void registerTexturePaths(const MaterialTextureReferences& references)
+        {
+            TextureManager& textures = TextureManager::instance();
+            for (const TextureReferencePair& reference : TEXTURE_REFERENCES)
+            {
+                const AssetGUID& guid = references.*reference.guid;
+                const std::filesystem::path& path = references.*reference.path;
+                if (guid.isValid() && !path.empty() && !textures.registerAssetPath(guid, path))
+                {
+                    LOG_WARNING("[MaterialManager] Texture GUID path registration failed: {}", path.string());
+                }
+            }
+        }
+
+        void fillTexturePaths(MaterialTextureReferences& references)
+        {
+            TextureManager& textures = TextureManager::instance();
+            for (const TextureReferencePair& reference : TEXTURE_REFERENCES)
+            {
+                std::filesystem::path& path = references.*reference.path;
+                if (path.empty())
+                    path = textures.getAssetPath(references.*reference.guid);
+            }
+        }
+    }
+
     MaterialManager& MaterialManager::instance() noexcept
     {
         static MaterialManager manager;
@@ -33,6 +76,7 @@ namespace Engine
             LOG_ERROR("[MaterialManager] Materialのロードに失敗しました: {}", normalizedPath.string());
             return MaterialHandle::Invalid();
         }
+        registerTexturePaths(material.textures);
         return create(std::move(material), normalizedPath);
     }
 
@@ -52,6 +96,72 @@ namespace Engine
         if (const auto found = m_guidCache.find(material.guid); found != m_guidCache.end())
             return found->second;
         return addEntry(std::move(material), normalizedKey, false);
+    }
+
+    bool MaterialManager::update(const MaterialHandle handle, MaterialAsset material)
+    {
+        AssetGUID guid;
+        {
+            const std::scoped_lock lock(m_mutex);
+            if (!handle.isValid() || handle.index >= m_entries.size())
+                return false;
+            const Entry& entry = m_entries[handle.index];
+            if (entry.generation != handle.generation || entry.resource == nullptr)
+                return false;
+            guid = entry.resource->guid;
+        }
+
+        material.guid = guid;
+        const std::scoped_lock lock(m_mutex);
+        Entry& entry = m_entries[handle.index];
+        if (entry.generation != handle.generation || entry.resource == nullptr
+            || entry.resource->guid != guid)
+        {
+            return false;
+        }
+        entry.resource = std::make_shared<const MaterialAsset>(std::move(material));
+        return true;
+    }
+
+    bool MaterialManager::save(const MaterialHandle handle, const std::filesystem::path& path)
+    {
+        MaterialAsset material;
+        std::shared_ptr<const MaterialAsset> snapshot;
+        std::filesystem::path currentPath;
+        {
+            const std::scoped_lock lock(m_mutex);
+            if (!handle.isValid() || handle.index >= m_entries.size())
+                return false;
+            const Entry& entry = m_entries[handle.index];
+            if (entry.generation != handle.generation || entry.resource == nullptr)
+                return false;
+            snapshot = entry.resource;
+            material = *snapshot;
+            currentPath = entry.path;
+        }
+
+        const std::filesystem::path targetPath = path.empty() ? currentPath : normalizePath(path);
+        fillTexturePaths(material.textures);
+        if (targetPath.empty() || !Serialization::MaterialSerializer{}.save(targetPath, material))
+            return false;
+        if (path.empty())
+            return true;
+
+        const std::scoped_lock lock(m_mutex);
+        Entry& entry = m_entries[handle.index];
+        if (entry.generation != handle.generation || entry.resource != snapshot)
+            return false;
+        if (const auto conflict = m_pathCache.find(targetPath);
+            conflict != m_pathCache.end() && conflict->second != handle)
+        {
+            return false;
+        }
+        if (!entry.path.empty())
+            m_pathCache.erase(entry.path);
+        entry.path = targetPath;
+        entry.resource = std::make_shared<const MaterialAsset>(std::move(material));
+        m_pathCache[targetPath] = handle;
+        return true;
     }
 
     std::shared_ptr<const MaterialAsset> MaterialManager::get(const MaterialHandle handle) const noexcept
@@ -82,6 +192,15 @@ namespace Engine
                 handles.push_back({ index, entry.generation });
         }
         return handles;
+    }
+
+    std::filesystem::path MaterialManager::getPath(const MaterialHandle handle) const
+    {
+        const std::scoped_lock lock(m_mutex);
+        if (!handle.isValid() || handle.index >= m_entries.size())
+            return {};
+        const Entry& entry = m_entries[handle.index];
+        return entry.generation == handle.generation && entry.resource != nullptr ? entry.path : std::filesystem::path{};
     }
 
     MaterialHandle MaterialManager::getDefaultMaterial() const noexcept

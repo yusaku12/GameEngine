@@ -134,6 +134,13 @@ namespace Engine
         return guid;
     }
 
+    std::filesystem::path TextureManager::getAssetPath(const AssetGUID& guid) const
+    {
+        const std::scoped_lock lock(m_assetPathMutex);
+        const auto found = m_guidToPath.find(guid);
+        return found == m_guidToPath.end() ? std::filesystem::path{} : found->second;
+    }
+
     TextureHandle TextureManager::load(const AssetGUID& guid, const TextureLoadDesc& desc)
     {
         std::filesystem::path path;

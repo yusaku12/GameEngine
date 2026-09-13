@@ -78,5 +78,6 @@ namespace Engine
         DX12Device* m_device = nullptr;                                                      //!< DX12Device参照
         DX12Fence* m_fence = nullptr;                                                        //!< DX12Fence参照
         std::unordered_map<std::uint64_t, std::unique_ptr<MaterialGpuResource>> m_resources; //!< MaterialHandleユニークキー -> MaterialGpuResource
+        std::vector<std::unique_ptr<MaterialGpuResource>> m_retiredResources;                //!< Fence完了待ちの旧Snapshot
     };
 } // namespace Engine
