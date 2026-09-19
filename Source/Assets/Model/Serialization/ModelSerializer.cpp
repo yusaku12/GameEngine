@@ -302,10 +302,17 @@ namespace Engine::Serialization
         for (const ::Engine::ModelNode& node : model.nodes)
             nodes.push_back(createNode(builder, node));
 
+        const AssetGuid skeletonAssetGuid = toFlat(model.skeletonAssetGuid);
+        std::vector<AssetGuid> animationClipGuids;
+        animationClipGuids.reserve(model.animationClipGuids.size());
+        for (const AssetGUID& guid : model.animationClipGuids)
+            animationClipGuids.push_back(toFlat(guid));
+
         const auto root = CreateModelFile(builder, header, builder.CreateVector(meshes), builder.CreateVector(materials),
             model.skeleton ? createSkeleton(builder, *model.skeleton) : 0, builder.CreateVector(animations),
             builder.CreateVector(nodes), createBounds(builder, model.boundingBox, model.boundingSphere),
-            builder.CreateString(model.sourcePath.generic_string()), builder.CreateVector(materialSlots));
+            builder.CreateString(model.sourcePath.generic_string()), builder.CreateVector(materialSlots),
+            &skeletonAssetGuid, builder.CreateVectorOfStructs(animationClipGuids));
         FinishModelFileBuffer(builder, root);
         return FlatBufferWriter{}.saveAtomic(path, std::span<const std::uint8_t>(builder.GetBufferPointer(), builder.GetSize()));
     }
@@ -335,6 +342,13 @@ namespace Engine::Serialization
         if (!readBounds(source->bounds(), model.boundingBox, model.boundingSphere))
             return false;
         model.sourcePath = source->source_path() ? std::filesystem::path(source->source_path()->str()) : std::filesystem::path{};
+        if (source->header()->asset_version() >= 3)
+        {
+            model.skeletonAssetGuid = toEngine(source->skeleton_asset_guid());
+            if (const auto* clipGuids = source->animation_clip_guids())
+                for (const AssetGuid* guid : *clipGuids)
+                    model.animationClipGuids.push_back(toEngine(guid));
+        }
         if (const auto* meshes = source->meshes()) {
             model.meshes.reserve(meshes->size());
             for (const Mesh* mesh : *meshes) {

@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Editor\ImGui\EditorUi.h"
+#include "Core\GameObject\Component\AnimatorComponent.h"
 #include "Core\GameObject\Component\CameraComponent.h"
 #include "Core\GameObject\Component\ModelRendererComponent.h"
 #include "Core\Prefab\PrefabSerializer.h"
@@ -637,6 +638,10 @@ namespace Engine
             {
                 m_selectedObject->addComponent<ModelRendererComponent>();
             }
+            const bool hasModelRenderer = m_selectedObject->hasComponent<ModelRendererComponent>();
+            const bool hasAnimator = m_selectedObject->hasComponent<AnimatorComponent>();
+            if (ImGui::MenuItem("Animator", nullptr, false, hasModelRenderer && !hasAnimator))
+                m_selectedObject->addComponent<AnimatorComponent>();
             if (!m_selectedObject->hasComponent<CameraComponent>()
                 && ImGui::MenuItem("Camera"))
             {

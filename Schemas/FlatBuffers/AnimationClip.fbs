@@ -1,0 +1,39 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+enum AnimationWrapMode:ubyte {
+    Once,
+    Loop,
+    PingPong
+}
+
+table AnimationEvent {
+    normalized_time:float;
+    event_id:uint;
+}
+
+table AnimationClipAssetData {
+    guid:AssetGuid;
+    name:string;
+    skeleton_guid:AssetGuid;
+    signature_high:ulong;
+    signature_low:ulong;
+    duration:float;
+    wrap_mode:AnimationWrapMode = Loop;
+    additive:bool = false;
+    apply_root_motion:bool = false;
+    events:[AnimationEvent];
+    ozz_archive:[ubyte];
+    archive_checksum:ulong;
+    source_path:string;
+    source_clip_name:string;
+}
+
+table AnimationClipFile {
+    header:FileHeader;
+    clip:AnimationClipAssetData;
+}
+
+root_type AnimationClipFile;
+file_identifier "ANIM";

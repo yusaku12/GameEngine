@@ -165,52 +165,57 @@ namespace Engine
          * @param commandList 提出先の Command List
          * @return 提出に成功した場合は true
          */
-        bool renderModelQueue(DX12CommandList& commandList);
+        bool renderModelQueue(DX12CommandList& commandList, std::uint32_t frameIndex);
+
+        DX12UploadBuffer* uploadSkinningPalette(std::uint32_t frameIndex,
+            const SkinningPaletteSnapshot& snapshot);
 
         //! Frame In Flight 数
         static constexpr std::uint32_t FRAME_COUNT = 2;
 
-        DX12Device m_device;                                             //!< DirectX 12 デバイス
-        DX12CommandQueue m_directQueue;                                  //!< 描画コマンドキュー
-        DX12Fence m_directFence;                                         //!< 描画コマンドの完了 Fence
-        DX12SwapChain m_swapChain;                                       //!< 画面出力用 SwapChain
-        DX12DescriptorHeap m_dsvHeap;                                    //!< 深度バッファ用 DSV Heap
-        DX12Resource m_depthBuffer;                                      //!< 画面描画用深度バッファ
-        DX12CpuDescriptorHandle m_depthStencilView;                      //!< 深度バッファの DSV
-        DX12Resource m_shadowMap;                                        //!< ShadowCaster pass用Depth Buffer
-        DX12CpuDescriptorHandle m_shadowDepthStencilView;                //!< Shadow MapのDSV
-        ShaderManager m_shaderManager;                                   //!< Shader のロード・キャッシュ・Hot Reload 管理
-        ShaderID m_modelVertexShaderID = 0;                              //!< Model頂点Shader ID
-        ShaderID m_modelPixelShaderID = 0;                               //!< Model Pixel Shader ID
-        ShaderID m_alphaTestPixelShaderID = 0;                           //!< Alpha Test Pixel Shader ID
-        ShaderID m_depthAlphaTestPixelShaderID = 0;                      //!< Depth Alpha Test Pixel Shader ID
-        ShaderID m_debugVertexShaderID = 0;                              //!< Debug Primitive頂点Shader ID
-        ShaderID m_debugPixelShaderID = 0;                               //!< Debug Primitive Pixel Shader ID
-        bool m_psoRebuildPending = false;                                //!< Shader 更新に伴う Graphics PSO 再生成要求フラグ
-        DX12GraphicsPipeline m_modelPipeline;                            //!< Model描画用Graphics PSO
-        DX12GraphicsPipeline m_alphaTestModelPipeline;                   //!< Alpha Test Model描画用Graphics PSO
-        DX12GraphicsPipeline m_transparentModelPipeline;                 //!< 透明Model描画用Graphics PSO
-        DX12GraphicsPipeline m_depthOnlyModelPipeline;                   //!< Opaque Depth/Shadow描画用Graphics PSO
-        DX12GraphicsPipeline m_depthAlphaTestModelPipeline;              //!< Alpha Test Depth/Shadow描画用Graphics PSO
-        ModelGpuCache m_modelGpuCache;                                   //!< ModelHandle単位のGPU Resource Cache
-        MaterialGpuCache m_materialGpuCache;                             //!< MaterialHandle単位のGPU Resource Cache
-        RenderQueue m_modelRenderQueue;                                  //!< 現在フレームのModel描画Queue
-        std::vector<ModelRenderSubmission> m_modelSubmissions;           //!< Frame間で容量を再利用する提出Buffer
-        Matrix m_viewProjection = Matrix::Identity;                      //!< CameraのView Projection行列
-        Vector3 m_cameraPosition = Vector3::Zero;                        //!< Transparent sort用Camera座標
-        std::optional<Frustum> m_frustum;                                //!< World Space Camera Frustum
-        std::optional<Matrix> m_shadowViewProjection;                    //!< Light View Projection。未設定時はShadow passを省略
-        CameraViewport m_cameraViewport{};                               //!< 描画先に対する正規化Camera Viewport
-        CameraClearMode m_cameraClearMode = CameraClearMode::SolidColor; //!< CameraのClear方式
-        Color m_cameraClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);     //!< Cameraの背景Clear Color
-        std::uint32_t m_cameraCullingMask = UINT32_MAX;                  //!< 描画対象LayerのBit Mask
-        RendererStatistics m_statistics;                                 //!< 現在構築中フレームの描画統計
-        std::array<DX12CommandList, FRAME_COUNT> m_commandLists;         //!< Frame ごとの Command List
-        std::unique_ptr<ImGuiSystem> m_imguiSystem;                      //!< Editor UI のライフサイクル
-        std::array<std::uint64_t, FRAME_COUNT> m_frameFenceValues{};     //!< Frame ごとの提出 Fence 値
-        std::uint64_t m_lastSubmittedFenceValue = 0;                     //!< 直近に提出した Fence 値
-        std::uint32_t m_renderWidth = 0;                                 //!< 現在の描画領域の幅
-        std::uint32_t m_renderHeight = 0;                                //!< 現在の描画領域の高さ
-        RendererStatistics m_frameStatistics;                            //!< 直近フレームの描画統計
+        DX12Device m_device;                                                                              //!< DirectX 12 デバイス
+        DX12CommandQueue m_directQueue;                                                                   //!< 描画コマンドキュー
+        DX12Fence m_directFence;                                                                          //!< 描画コマンドの完了 Fence
+        DX12SwapChain m_swapChain;                                                                        //!< 画面出力用 SwapChain
+        DX12DescriptorHeap m_dsvHeap;                                                                     //!< 深度バッファ用 DSV Heap
+        DX12Resource m_depthBuffer;                                                                       //!< 画面描画用深度バッファ
+        DX12CpuDescriptorHandle m_depthStencilView;                                                       //!< 深度バッファの DSV
+        DX12Resource m_shadowMap;                                                                         //!< ShadowCaster pass用Depth Buffer
+        DX12CpuDescriptorHandle m_shadowDepthStencilView;                                                 //!< Shadow MapのDSV
+        ShaderManager m_shaderManager;                                                                    //!< Shader のロード・キャッシュ・Hot Reload 管理
+        ShaderID m_modelVertexShaderID = 0;                                                               //!< Model頂点Shader ID
+        ShaderID m_modelPixelShaderID = 0;                                                                //!< Model Pixel Shader ID
+        ShaderID m_alphaTestPixelShaderID = 0;                                                            //!< Alpha Test Pixel Shader ID
+        ShaderID m_depthAlphaTestPixelShaderID = 0;                                                       //!< Depth Alpha Test Pixel Shader ID
+        ShaderID m_debugVertexShaderID = 0;                                                               //!< Debug Primitive頂点Shader ID
+        ShaderID m_debugPixelShaderID = 0;                                                                //!< Debug Primitive Pixel Shader ID
+        bool m_psoRebuildPending = false;                                                                 //!< Shader 更新に伴う Graphics PSO 再生成要求フラグ
+        DX12GraphicsPipeline m_modelPipeline;                                                             //!< Model描画用Graphics PSO
+        DX12GraphicsPipeline m_alphaTestModelPipeline;                                                    //!< Alpha Test Model描画用Graphics PSO
+        DX12GraphicsPipeline m_transparentModelPipeline;                                                  //!< 透明Model描画用Graphics PSO
+        DX12GraphicsPipeline m_depthOnlyModelPipeline;                                                    //!< Opaque Depth/Shadow描画用Graphics PSO
+        DX12GraphicsPipeline m_depthAlphaTestModelPipeline;                                               //!< Alpha Test Depth/Shadow描画用Graphics PSO
+        ModelGpuCache m_modelGpuCache;                                                                    //!< ModelHandle単位のGPU Resource Cache
+        MaterialGpuCache m_materialGpuCache;                                                              //!< MaterialHandle単位のGPU Resource Cache
+        RenderQueue m_modelRenderQueue;                                                                   //!< 現在フレームのModel描画Queue
+        std::vector<ModelRenderSubmission> m_modelSubmissions;                                            //!< Frame間で容量を再利用する提出Buffer
+        std::array<std::vector<std::unique_ptr<DX12UploadBuffer>>, FRAME_COUNT> m_skinningPaletteBuffers; //!< Frame間で容量を再利用するSkinning Palette Buffer
+        std::array<std::size_t, FRAME_COUNT> m_skinningPaletteBufferCursors{};                            //!< Frame間で容量を再利用するSkinning Palette Bufferのカーソル
+        Matrix m_viewProjection = Matrix::Identity;                                                       //!< CameraのView Projection行列
+        Vector3 m_cameraPosition = Vector3::Zero;                                                         //!< Transparent sort用Camera座標
+        std::optional<Frustum> m_frustum;                                                                 //!< World Space Camera Frustum
+        std::optional<Matrix> m_shadowViewProjection;                                                     //!< Light View Projection。未設定時はShadow passを省略
+        CameraViewport m_cameraViewport{};                                                                //!< 描画先に対する正規化Camera Viewport
+        CameraClearMode m_cameraClearMode = CameraClearMode::SolidColor;                                  //!< CameraのClear方式
+        Color m_cameraClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);                                      //!< Cameraの背景Clear Color
+        std::uint32_t m_cameraCullingMask = UINT32_MAX;                                                   //!< 描画対象LayerのBit Mask
+        RendererStatistics m_statistics;                                                                  //!< 現在構築中フレームの描画統計
+        std::array<DX12CommandList, FRAME_COUNT> m_commandLists;                                          //!< Frame ごとの Command List
+        std::unique_ptr<ImGuiSystem> m_imguiSystem;                                                       //!< Editor UI のライフサイクル
+        std::array<std::uint64_t, FRAME_COUNT> m_frameFenceValues{};                                      //!< Frame ごとの提出 Fence 値
+        std::uint64_t m_lastSubmittedFenceValue = 0;                                                      //!< 直近に提出した Fence 値
+        std::uint32_t m_renderWidth = 0;                                                                  //!< 現在の描画領域の幅
+        std::uint32_t m_renderHeight = 0;                                                                 //!< 現在の描画領域の高さ
+        RendererStatistics m_frameStatistics;                                                             //!< 直近フレームの描画統計
     };
 } // namespace Engine

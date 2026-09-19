@@ -1,0 +1,65 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+enum AnimatorParameterType:ubyte { Float, Int, Bool, Trigger }
+enum AnimatorConditionMode:ubyte { Greater, Less, Equals, NotEqual, If, IfNot, Triggered }
+enum AnimatorWrapOverride:ubyte { UseClip, Once, Loop, PingPong }
+
+table AnimatorParameterData {
+    id:uint;
+    name:string;
+    type:AnimatorParameterType;
+    default_float:float;
+    default_int:int;
+    default_bool:bool;
+}
+
+table AnimatorStateData {
+    id:uint;
+    name:string;
+    clip_guid:AssetGuid;
+    speed:float = 1.0;
+    wrap_override:AnimatorWrapOverride = UseClip;
+}
+
+table AnimatorConditionData {
+    parameter_id:uint;
+    mode:AnimatorConditionMode;
+    float_threshold:float;
+    int_threshold:int;
+}
+
+table AnimatorTransitionData {
+    id:uint;
+    source_state:uint;
+    destination_state:uint;
+    duration:float;
+    exit_time:float;
+    has_exit_time:bool;
+    any_state:bool;
+    conditions:[AnimatorConditionData];
+}
+
+table AnimatorControllerAssetData {
+    guid:AssetGuid;
+    name:string;
+    skeleton_guid:AssetGuid;
+    signature_high:ulong;
+    signature_low:ulong;
+    layer_id:uint;
+    layer_name:string;
+    default_state:uint;
+    parameters:[AnimatorParameterData];
+    states:[AnimatorStateData];
+    transitions:[AnimatorTransitionData];
+    source_path:string;
+}
+
+table AnimatorControllerFile {
+    header:FileHeader;
+    controller:AnimatorControllerAssetData;
+}
+
+root_type AnimatorControllerFile;
+file_identifier "ACTR";

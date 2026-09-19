@@ -19,11 +19,25 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h" />
+    <ClInclude Include="Generated\FlatBuffers\AnimationClip_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\AnimatorController_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Common_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Material_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Model_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Prefab_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Scene_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\Skeleton_generated.h" />
+    <ClInclude Include="Source\Assets\Animation\AnimationAssetBuilder.h" />
+    <ClInclude Include="Source\Assets\Animation\AnimationAssetManager.h" />
+    <ClInclude Include="Source\Assets\Animation\AnimationClipAsset.h" />
+    <ClInclude Include="Source\Assets\Animation\AnimatorControllerAsset.h" />
+    <ClInclude Include="Source\Assets\Animation\AnimationTypes.h" />
+    <ClInclude Include="Source\Assets\Animation\Serialization\AnimationClipSerializer.h" />
+    <ClInclude Include="Source\Assets\Animation\Serialization\AnimatorControllerSerializer.h" />
+    <ClInclude Include="Source\Assets\Animation\Serialization\OzzArchiveUtils.h" />
+    <ClInclude Include="Source\Assets\Animation\Serialization\SkeletonSerializer.h" />
+    <ClInclude Include="Source\Assets\Animation\SkeletonAsset.h" />
     <ClInclude Include="Source\Assets\Material\MaterialAsset.h" />
     <ClInclude Include="Source\Assets\Material\MaterialInstance.h" />
     <ClInclude Include="Source\Assets\Material\MaterialManager.h" />
@@ -39,6 +53,7 @@
     <ClInclude Include="Source\Assets\Model\Resource\ModelNode.h" />
     <ClInclude Include="Source\Assets\Model\Resource\ModelResource.h" />
     <ClInclude Include="Source\Assets\Model\Resource\SkeletonResource.h" />
+    <ClInclude Include="Source\Core\Containers\BitFlags.h" />
     <ClInclude Include="Source\Core\Serialization\FlatBufferReader.h" />
     <ClInclude Include="Source\Core\Serialization\FlatBufferWriter.h" />
     <ClInclude Include="Source\Core\Serialization\SerializationVersions.h" />
@@ -56,6 +71,7 @@
     <ClInclude Include="Source\Graphics\Renderer\RenderItem.h" />
     <ClInclude Include="Source\Graphics\Renderer\RenderQueue.h" />
     <ClInclude Include="Source\Graphics\Renderer\ModelRenderSubmission.h" />
+    <ClInclude Include="Source\Graphics\Renderer\SkinningPaletteSnapshot.h" />
     <ClInclude Include="Source\Graphics\Camera\CameraData.h" />
     <ClInclude Include="Source\Graphics\Camera\CameraManager.h" />
     <ClInclude Include="Source\Graphics\Camera\CameraRenderSubmission.h" />
@@ -79,6 +95,7 @@
     <ClInclude Include="Source\Graphics\Texture\TextureManager.h" />
     <ClInclude Include="Source\Core\Object\ObjectGUID.h" />
     <ClInclude Include="Source\Core\GameObject\Component.h" />
+    <ClInclude Include="Source\Core\GameObject\Component\AnimatorComponent.h" />
     <ClInclude Include="Source\Core\GameObject\Component\CameraComponent.h" />
     <ClInclude Include="Source\Core\GameObject\Component\TransformComponent.h" />
     <ClInclude Include="Source\Core\GameObject\Component\ModelRendererComponent.h" />
@@ -127,6 +144,14 @@
     <ClInclude Include="Library\ImGuizmo\ImGuizmo.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Source\Animation\Runtime\AnimatorInstance.cpp" />
+    <ClCompile Include="Source\Assets\Animation\AnimatorControllerAsset.cpp" />
+    <ClCompile Include="Source\Assets\Animation\AnimationAssetBuilder.cpp" />
+    <ClCompile Include="Source\Assets\Animation\AnimationAssetManager.cpp" />
+    <ClCompile Include="Source\Assets\Animation\Serialization\AnimationClipSerializer.cpp" />
+    <ClCompile Include="Source\Assets\Animation\Serialization\AnimatorControllerSerializer.cpp" />
+    <ClCompile Include="Source\Assets\Animation\Serialization\OzzArchiveUtils.cpp" />
+    <ClCompile Include="Source\Assets\Animation\Serialization\SkeletonSerializer.cpp" />
     <ClCompile Include="Source\Assets\Material\MaterialInstance.cpp" />
     <ClCompile Include="Source\Assets\Material\MaterialManager.cpp" />
     <ClCompile Include="Source\Assets\Material\Serialization\MaterialSerializer.cpp" />
@@ -161,6 +186,7 @@
     <ClCompile Include="Source\Graphics\Texture\TextureManager.cpp" />
     <ClCompile Include="Source\Core\Object\ObjectGUID.cpp" />
     <ClCompile Include="Source\Core\GameObject\GameObject.cpp" />
+    <ClCompile Include="Source\Core\GameObject\Component\AnimatorComponent.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\CameraComponent.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\TransformComponent.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\ModelRendererComponent.cpp" />
@@ -229,6 +255,10 @@
     <None Include="Schemas\FlatBuffers\Material.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />
     <None Include="Schemas\FlatBuffers\Prefab.fbs" />
+    <None Include="Schemas\FlatBuffers\Scene.fbs" />
+    <None Include="Schemas\FlatBuffers\Skeleton.fbs" />
+    <None Include="Schemas\FlatBuffers\AnimationClip.fbs" />
+    <None Include="Schemas\FlatBuffers\AnimatorController.fbs" />
     <None Include="Tools\FlatBuffers\build_schema.bat" />
     <None Include="Tools\FlatBuffers\build_schema.ps1" />
     <None Include="Tools\Shaders\CompileShaders.bat" />
@@ -367,10 +397,10 @@
       <Command>copy /Y "$(USERPROFILE)\.nuget\packages\assimp_native.redist\4.0.1\build\native\bin\x64\v141\Release\assimp-vc140-mt.dll" "$(TargetDir)assimp-vc140-mt.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
-  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h">
+  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Schemas\FlatBuffers\Skeleton.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimationClip.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorController.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h;$(ProjectDir)Generated\FlatBuffers\Skeleton_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimationClip_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorController_generated.h">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
   </Target>
-  <Target Name="BuildOzzAnimation" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'" Inputs="$(ProjectDir)Library\ozz-animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\build_ozz.ps1;$(ProjectDir)Tests\Animation\OzzRoundTripTests.cpp" Outputs="$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration)\ozz_animation_offline$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\$(Configuration)\AnimationOzzRoundTripTests.exe">
+  <Target Name="BuildOzzAnimation" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'" Inputs="$(ProjectDir)Library\ozz-animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\build_ozz.ps1;$(ProjectDir)Tests\Animation\OzzRoundTripTests.cpp;$(ProjectDir)Tests\Animation\AnimationAssetRoundTripTests.cpp;$(ProjectDir)Source\Animation\Runtime\AnimatorInstance.cpp;$(ProjectDir)Source\Animation\Runtime\AnimatorInstance.h;$(ProjectDir)Source\Assets\Animation\AnimatorControllerAsset.cpp;$(ProjectDir)Source\Assets\Animation\AnimatorControllerAsset.h;$(ProjectDir)Source\Assets\Animation\AnimationAssetBuilder.cpp;$(ProjectDir)Source\Assets\Animation\Serialization\AnimationClipSerializer.cpp;$(ProjectDir)Source\Assets\Animation\Serialization\AnimatorControllerSerializer.cpp;$(ProjectDir)Source\Assets\Animation\Serialization\OzzArchiveUtils.cpp;$(ProjectDir)Source\Assets\Animation\Serialization\SkeletonSerializer.cpp" Outputs="$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration)\ozz_animation_offline$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\$(Configuration)\AnimationOzzRoundTripTests.exe">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Animation\build_ozz.ps1&quot; -Configuration $(Configuration) -RunTests" />
   </Target>
   <Target Name="CompileShaders" BeforeTargets="ClCompile" Condition="Exists('$(ProjectDir)Tools\DXC\dxc.exe')" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso">

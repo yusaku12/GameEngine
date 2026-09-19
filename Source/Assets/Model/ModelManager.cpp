@@ -1,5 +1,7 @@
 ﻿#include "Pch.h"
 #include "Assets\Model\ModelManager.h"
+#include "Assets\Animation\AnimationAssetBuilder.h"
+#include "Assets\Animation\AnimationAssetManager.h"
 #include "Assets\Material\MaterialManager.h"
 #include "Assets\Model\Import\AssimpModelImporter.h"
 #include "Assets\Model\Serialization\ModelSerializer.h"
@@ -62,6 +64,49 @@ namespace Engine
                     slot.defaultMaterialGuid = created->guid;
             }
         }
+
+        /**
+         * @brief ModelResourceのAnimationResourceからAnimationAssetを作成し、GUIDを登録する。
+         * @param model ModelResource
+         * @return 成功した場合はtrue
+         */
+        bool migrateAnimationAssets(ModelResource& model)
+        {
+            if (!model.skeleton)
+                return model.animations.empty();
+
+            AnimationAssetBuilder builder;
+            SkeletonAsset skeleton;
+            if (!builder.buildSkeleton(*model.skeleton, model.sourcePath, skeleton))
+                return false;
+            if (model.skeletonAssetGuid.isValid())
+                skeleton.guid = model.skeletonAssetGuid;
+
+            AnimationAssetManager& manager = AnimationAssetManager::instance();
+            const SkeletonHandle skeletonHandle = manager.createSkeleton(std::move(skeleton));
+            const auto skeletonSnapshot = manager.getSkeleton(skeletonHandle);
+            if (skeletonSnapshot == nullptr)
+                return false;
+            model.skeletonAssetGuid = skeletonSnapshot->guid;
+
+            std::vector<AssetGUID> clipGuids;
+            clipGuids.reserve(model.animations.size());
+            for (std::size_t index = 0; index < model.animations.size(); ++index)
+            {
+                AnimationClipAsset clip;
+                if (!builder.buildClip(model.animations[index], *skeletonSnapshot, model.sourcePath, clip))
+                    return false;
+                if (index < model.animationClipGuids.size() && model.animationClipGuids[index].isValid())
+                    clip.guid = model.animationClipGuids[index];
+                const AnimationClipHandle clipHandle = manager.createClip(std::move(clip));
+                const auto clipSnapshot = manager.getClip(clipHandle);
+                if (clipSnapshot == nullptr)
+                    return false;
+                clipGuids.push_back(clipSnapshot->guid);
+            }
+            model.animationClipGuids = std::move(clipGuids);
+            return true;
+        }
     }
 
     ModelManager& ModelManager::instance() noexcept
@@ -113,16 +158,28 @@ namespace Engine
     ModelHandle ModelManager::create(ModelResource model, const std::filesystem::path& cacheKey)
     {
         const std::filesystem::path normalizedKey = cacheKey.empty() ? std::filesystem::path{} : normalizePath(cacheKey);
+        if (!normalizedKey.empty())
+        {
+            const std::scoped_lock lock(m_mutex);
+            if (const auto found = m_pathCache.find(normalizedKey); found != m_pathCache.end())
+                return found->second;
+        }
+
+        if (!migrateAnimationAssets(model))
+        {
+            LOG_ERROR("[ModelManager] Animation Asset migration failed: {}", model.sourcePath.string());
+            return ModelHandle::Invalid();
+        }
+
+        // モデルのMaterialResourceからMaterialAssetを作成し、ModelMaterialSlotに登録する
+        createMaterialSlots(model);
+
         const std::scoped_lock lock(m_mutex);
         if (!normalizedKey.empty())
         {
             if (const auto found = m_pathCache.find(normalizedKey); found != m_pathCache.end())
                 return found->second;
         }
-
-        // モデルのMaterialResourceからMaterialAssetを作成し、ModelMaterialSlotに登録する
-        createMaterialSlots(model);
-
         if (m_nextGeneration == 0)
             ++m_nextGeneration;
 

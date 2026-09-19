@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <optional>
 #include <vector>
+#include "Assets\Animation\AnimationTypes.h"
 #include "Assets\Material\MaterialTypes.h"
 #include "Assets\Model\Resource\AnimationResource.h"
 #include "Assets\Model\Resource\MaterialResource.h"
@@ -32,6 +33,8 @@ namespace Engine
         std::vector<ModelMaterialSlot> materialSlots; //!< SubMeshが参照するMaterial Slot。
         std::optional<SkeletonResource> skeleton;     //!< スケルトンリソース。
         std::vector<AnimationResource> animations;    //!< アニメーションの配列。
+        AssetGUID skeletonAssetGuid{};                //!< 分離済みSkeleton AssetのGUID。
+        std::vector<AssetGUID> animationClipGuids;    //!< 分離済みAnimation Clip AssetのGUID。
         std::vector<ModelNode> nodes;                 //!< モデルノードの配列。
         AABB boundingBox{};                           //!< バウンディングボックス。
         BoundingSphere boundingSphere{};              //!< バウンディングスフィア。

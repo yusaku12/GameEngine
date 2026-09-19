@@ -54,6 +54,39 @@ namespace Engine
             if (total > EPSILON)
                 vertex.boneWeights /= total;
         }
+
+        bool containsWeightedNode(const aiNode* node, const std::unordered_map<std::string, Matrix>& inverseBindPoses)
+        {
+            if (inverseBindPoses.contains(node->mName.C_Str()))
+                return true;
+            for (unsigned int index = 0; index < node->mNumChildren; ++index)
+                if (containsWeightedNode(node->mChildren[index], inverseBindPoses))
+                    return true;
+            return false;
+        }
+
+        bool appendSkeletonNodes(const aiNode* node, const std::int32_t parentIndex,
+            const std::unordered_map<std::string, Matrix>& inverseBindPoses, SkeletonResource& skeleton)
+        {
+            if (!containsWeightedNode(node, inverseBindPoses))
+                return true;
+            if (skeleton.bones.size() >= MAX_SKINNING_BONES)
+                return false;
+
+            const std::string name = node->mName.C_Str();
+            if (name.empty() || skeleton.boneMap.contains(name))
+                return false;
+            const std::uint32_t index = static_cast<std::uint32_t>(skeleton.bones.size());
+            const auto inverseBind = inverseBindPoses.find(name);
+            skeleton.boneMap.emplace(name, index);
+            skeleton.bones.push_back({ index, name, parentIndex,
+                inverseBind == inverseBindPoses.end() ? Matrix::Identity : inverseBind->second,
+                convertMatrix(node->mTransformation) });
+            for (unsigned int childIndex = 0; childIndex < node->mNumChildren; ++childIndex)
+                if (!appendSkeletonNodes(node->mChildren[childIndex], static_cast<std::int32_t>(index), inverseBindPoses, skeleton))
+                    return false;
+            return true;
+        }
     }
 
     std::shared_ptr<ModelResource> AssimpModelImporter::importModel(const std::filesystem::path& path) const
@@ -85,7 +118,8 @@ namespace Engine
 
         auto model = std::make_shared<ModelResource>();
         model->sourcePath = path;
-        processScene(scene, *model);
+        if (!processScene(scene, *model))
+            return nullptr;
 
         LOG_INFO_CAT("ModelImporter", "Import succeeded. Meshes: {}, Vertices: {}, Indices: {}, Materials: {}, Bones: {}, Animations: {}",
             model->meshes.size(),
@@ -97,13 +131,14 @@ namespace Engine
         return model;
     }
 
-    void AssimpModelImporter::processScene(const aiScene* scene, ModelResource& model) const
+    bool AssimpModelImporter::processScene(const aiScene* scene, ModelResource& model) const
     {
         model.materials.reserve(scene->mNumMaterials);
         for (unsigned int index = 0; index < scene->mNumMaterials; ++index)
             processMaterial(scene->mMaterials[index], model);
 
-        processSkeleton(scene, model);
+        if (!processSkeleton(scene, model))
+            return false;
         processNode(scene->mRootNode, scene, model, Matrix::Identity);
         processAnimations(scene, model);
 
@@ -147,6 +182,7 @@ namespace Engine
         }
         if (hasBounds)
             BoundingSphere::CreateFromBoundingBox(model.boundingSphere, model.boundingBox);
+        return true;
     }
 
     void AssimpModelImporter::processNode(const aiNode* node, const aiScene* scene, ModelResource& model, const Matrix& parentTransform) const
@@ -266,9 +302,9 @@ namespace Engine
         return static_cast<std::uint32_t>(model.materials.size() - 1);
     }
 
-    void AssimpModelImporter::processSkeleton(const aiScene* scene, ModelResource& model) const
+    bool AssimpModelImporter::processSkeleton(const aiScene* scene, ModelResource& model) const
     {
-        SkeletonResource skeleton;
+        std::unordered_map<std::string, Matrix> inverseBindPoses;
         for (unsigned int meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex)
         {
             const aiMesh* mesh = scene->mMeshes[meshIndex];
@@ -276,35 +312,43 @@ namespace Engine
             {
                 const aiBone* sourceBone = mesh->mBones[boneIndex];
                 const std::string name = sourceBone->mName.C_Str();
-                if (skeleton.boneMap.contains(name))
-                    continue;
-
-                if (skeleton.bones.size() >= MAX_SKINNING_BONES)
-                {
-                    LOG_WARNING_CAT("ModelImporter", "GPUスキニング上限を超えたBoneをスキップします: {}", name);
-                    continue;
-                }
-
-                const std::uint32_t index = static_cast<std::uint32_t>(skeleton.bones.size());
-                skeleton.boneMap.emplace(name, index);
-                skeleton.bones.push_back({ index, name, -1, convertMatrix(sourceBone->mOffsetMatrix), Matrix::Identity });
+                inverseBindPoses.try_emplace(name, convertMatrix(sourceBone->mOffsetMatrix));
             }
         }
-        if (skeleton.bones.empty())
-            return;
+        if (inverseBindPoses.empty())
+            return true;
 
+        SkeletonResource skeleton;
+        if (!appendSkeletonNodes(scene->mRootNode, -1, inverseBindPoses, skeleton)
+            || skeleton.bones.size() > MAX_SKINNING_BONES)
+        {
+            LOG_ERROR_CAT("ModelImporter", "Invalid skeleton hierarchy or bone count exceeds {}", MAX_SKINNING_BONES);
+            return false;
+        }
+        for (const auto& [name, unused] : inverseBindPoses)
+            if (!skeleton.boneMap.contains(name))
+            {
+                LOG_ERROR_CAT("ModelImporter", "Weighted bone is missing from the node hierarchy: {}", name);
+                return false;
+            }
         model.skeleton = std::move(skeleton);
+        return true;
     }
 
     void AssimpModelImporter::processAnimations(const aiScene* scene, ModelResource& model) const
     {
         constexpr float defaultTicksPerSecond = 25.0f;
+        std::unordered_map<std::string, std::uint32_t> clipNameCounts;
         model.animations.reserve(scene->mNumAnimations);
         for (unsigned int animationIndex = 0; animationIndex < scene->mNumAnimations; ++animationIndex)
         {
             const aiAnimation* source = scene->mAnimations[animationIndex];
             AnimationResource animation;
-            animation.name = source->mName.C_Str();
+            const std::string sourceName = source->mName.length > 0
+                ? source->mName.C_Str() : "Animation";
+            const std::uint32_t duplicateIndex = clipNameCounts[sourceName]++;
+            animation.name = duplicateIndex == 0 ? sourceName
+                : sourceName + "_" + std::to_string(duplicateIndex);
             animation.ticksPerSecond = source->mTicksPerSecond > 0.0 ? static_cast<float>(source->mTicksPerSecond) : defaultTicksPerSecond;
             animation.duration = static_cast<float>(source->mDuration / animation.ticksPerSecond);
             animation.channels.reserve(source->mNumChannels);

@@ -211,6 +211,14 @@ namespace Engine
             return false;
         if (!m_modelGpuCache.finalize())
             return false;
+        for (auto& frameBuffers : m_skinningPaletteBuffers)
+        {
+            for (auto& buffer : frameBuffers)
+                if (!buffer->finalize())
+                    return false;
+            frameBuffers.clear();
+        }
+        m_skinningPaletteBufferCursors.fill(0);
         if (!m_materialGpuCache.finalize())
             return false;
         if (!TextureManager::instance().finalize())
@@ -342,7 +350,8 @@ namespace Engine
             nativeCommandList->ClearRenderTargetView(renderTargetView, &m_cameraClearColor.x, 0, nullptr);
         nativeCommandList->ClearDepthStencilView(
             m_depthStencilView.native, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-        if (!renderModelQueue(commandList))
+        m_skinningPaletteBufferCursors[frameIndex] = 0;
+        if (!renderModelQueue(commandList, frameIndex))
             return false;
         DebugPrimitive::instance().drawGrid(Vector3::Zero, 20.0f, 20.0f, 1.0f);
         if (!DebugPrimitive::instance().render(commandList, frameIndex, m_viewProjection))
@@ -382,6 +391,11 @@ namespace Engine
         for (const MaterialHandle handle : usedMaterials)
         {
             if (!m_materialGpuCache.markUsed(handle, submittedFenceValue))
+                return false;
+        }
+        for (std::size_t index = 0; index < m_skinningPaletteBufferCursors[frameIndex]; ++index)
+        {
+            if (!m_skinningPaletteBuffers[frameIndex][index]->markUsed(submittedFenceValue))
                 return false;
         }
 
@@ -697,6 +711,7 @@ namespace Engine
                             .surfaceType = gpuMaterial->source->renderState.surfaceType,
                             .materialProperties = submission.materialProperties,
                             .textureID = gpuMaterial->baseColorTexture.index,
+                            .skinningPalette = submission.skinningPalette,
                             .bonePaletteBuffer = &gpuModel->bonePaletteBuffer,
                             .meshID = static_cast<std::uint32_t>(meshIndex),
                             .cameraDepth = (Vector3(meshWorldBounds.Center) - m_cameraPosition).LengthSquared(),
@@ -742,7 +757,7 @@ namespace Engine
         m_frameStatistics.renderItemCount = static_cast<std::uint32_t>(m_modelRenderQueue.getItems().size());
     }
 
-    bool DX12Renderer::renderModelQueue(DX12CommandList& commandList)
+    bool DX12Renderer::renderModelQueue(DX12CommandList& commandList, const std::uint32_t frameIndex)
     {
         const std::span<const RenderItem> items = m_modelRenderQueue.getItems();
         if (items.empty())
@@ -759,6 +774,7 @@ namespace Engine
         const D3D12_VERTEX_BUFFER_VIEW* currentVertexBuffer = nullptr;
         const D3D12_INDEX_BUFFER_VIEW* currentIndexBuffer = nullptr;
         const DX12UploadBuffer* currentBonePalette = nullptr;
+        std::unordered_map<const SkinningPaletteSnapshot*, DX12UploadBuffer*> uploadedPalettes;
         MaterialHandle currentMaterial;
         MaterialGpuResource* currentMaterialResource = nullptr;
         RenderPassType targetPass = RenderPassType::Opaque;
@@ -869,12 +885,29 @@ namespace Engine
                 ++m_frameStatistics.materialSwitchCount;
                 m_frameStatistics.textureSwitchCount += static_cast<std::uint32_t>(materialTextures.size());
             }
-            if (currentBonePalette != item.bonePaletteBuffer)
+            const DX12UploadBuffer* bonePalette = item.bonePaletteBuffer;
+            if (item.skinningPalette != nullptr)
             {
-                if (item.bonePaletteBuffer == nullptr || item.bonePaletteBuffer->getGpuVirtualAddress() == 0)
+                const SkinningPaletteSnapshot* const snapshot = item.skinningPalette.get();
+                if (const auto found = uploadedPalettes.find(snapshot); found != uploadedPalettes.end())
+                {
+                    bonePalette = found->second;
+                }
+                else
+                {
+                    DX12UploadBuffer* const uploaded = uploadSkinningPalette(frameIndex, *snapshot);
+                    if (uploaded == nullptr)
+                        return false;
+                    uploadedPalettes.emplace(snapshot, uploaded);
+                    bonePalette = uploaded;
+                }
+            }
+            if (currentBonePalette != bonePalette)
+            {
+                if (bonePalette == nullptr || bonePalette->getGpuVirtualAddress() == 0)
                     return false;
-                nativeCommandList->SetGraphicsRootConstantBufferView(1, item.bonePaletteBuffer->getGpuVirtualAddress());
-                currentBonePalette = item.bonePaletteBuffer;
+                nativeCommandList->SetGraphicsRootConstantBufferView(1, bonePalette->getGpuVirtualAddress());
+                currentBonePalette = bonePalette;
             }
             if (currentMaterialResource == nullptr)
                 return false;
@@ -893,5 +926,29 @@ namespace Engine
         }
         m_frameStatistics.batchCount = m_frameStatistics.drawCallCount;
         return true;
+    }
+
+    DX12UploadBuffer* DX12Renderer::uploadSkinningPalette(
+        const std::uint32_t frameIndex, const SkinningPaletteSnapshot& snapshot)
+    {
+        if (frameIndex >= FRAME_COUNT || snapshot.jointCount == 0
+            || snapshot.jointCount > MAX_SKINNING_BONES)
+            return nullptr;
+
+        auto& buffers = m_skinningPaletteBuffers[frameIndex];
+        const std::size_t index = m_skinningPaletteBufferCursors[frameIndex];
+        if (index == buffers.size())
+        {
+            auto buffer = std::make_unique<DX12UploadBuffer>();
+            if (!buffer->initialize(*m_device.get(), m_directFence, sizeof(SkinningPaletteConstants)))
+                return nullptr;
+            buffers.push_back(std::move(buffer));
+        }
+
+        DX12UploadBuffer* const buffer = buffers[index].get();
+        if (!buffer->write(std::as_bytes(std::span{ &snapshot.constants, 1 })))
+            return nullptr;
+        ++m_skinningPaletteBufferCursors[frameIndex];
+        return buffer;
     }
 } // namespace Engine

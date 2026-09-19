@@ -2,6 +2,7 @@
 #include "Core\GameObject\Component\ModelRendererComponent.h"
 #include "Assets\Material\MaterialManager.h"
 #include "Assets\Model\ModelManager.h"
+#include "Core\GameObject\Component\AnimatorComponent.h"
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Core\GameObject\GameObject.h"
 #include "Core\Scene\SceneManager.h"
@@ -331,10 +332,16 @@ namespace Engine
             if (materialManager.get(resolvedMaterials[slotIndex]) == nullptr)
                 resolvedMaterials[slotIndex] = materialManager.getDefaultMaterial();
         }
+        const AnimatorComponent* const animator = getGameObject()->getComponent<AnimatorComponent>();
+        auto skinningPalette = animator != nullptr && animator->isEnabled()
+            ? animator->getSkinningSnapshot() : nullptr;
+        if (skinningPalette != nullptr && skinningPalette->skeletonGuid != model->skeletonAssetGuid)
+            skinningPalette.reset();
         ModelRenderSubmissionQueue::instance().submit(ModelRenderSubmission{
             .model = m_model,
             .materials = std::move(resolvedMaterials),
             .materialProperties = m_propertyBlock,
+            .skinningPalette = skinningPalette,
             .worldMatrix = worldMatrix,
             .worldBounds = worldBounds,
             .objectID = m_objectID,

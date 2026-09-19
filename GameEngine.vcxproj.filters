@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <ClCompile Include="Source\Animation\Runtime\AnimatorInstance.cpp" />
+    <ClCompile Include="Source\Assets\Animation\AnimatorControllerAsset.cpp" />
+    <ClCompile Include="Source\Core\GameObject\Component\AnimatorComponent.cpp" />
+    <ClCompile Include="Source\Assets\Animation\AnimationAssetBuilder.cpp" />
+    <ClCompile Include="Source\Assets\Animation\AnimationAssetManager.cpp" />
+    <ClCompile Include="Source\Assets\Animation\Serialization\AnimationClipSerializer.cpp" />
+    <ClCompile Include="Source\Assets\Animation\Serialization\AnimatorControllerSerializer.cpp" />
+    <ClCompile Include="Source\Assets\Animation\Serialization\OzzArchiveUtils.cpp" />
+    <ClCompile Include="Source\Assets\Animation\Serialization\SkeletonSerializer.cpp" />
     <ClCompile Include="Source\Assets\Material\MaterialInstance.cpp" />
     <ClCompile Include="Source\Graphics\Material\MaterialPropertyBlock.cpp" />
     <ClCompile Include="Source\Assets\Material\MaterialManager.cpp" />
@@ -66,6 +75,22 @@
     <ClCompile Include="Source\Core\GameObject\GameObjectManager.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h" />
+    <ClInclude Include="Source\Core\GameObject\Component\AnimatorComponent.h" />
+    <ClInclude Include="Source\Graphics\Renderer\SkinningPaletteSnapshot.h" />
+    <ClInclude Include="Generated\FlatBuffers\AnimationClip_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\AnimatorController_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\Skeleton_generated.h" />
+    <ClInclude Include="Source\Assets\Animation\AnimationAssetBuilder.h" />
+    <ClInclude Include="Source\Assets\Animation\AnimationAssetManager.h" />
+    <ClInclude Include="Source\Assets\Animation\AnimationClipAsset.h" />
+    <ClInclude Include="Source\Assets\Animation\AnimatorControllerAsset.h" />
+    <ClInclude Include="Source\Assets\Animation\AnimationTypes.h" />
+    <ClInclude Include="Source\Assets\Animation\Serialization\AnimationClipSerializer.h" />
+    <ClInclude Include="Source\Assets\Animation\Serialization\AnimatorControllerSerializer.h" />
+    <ClInclude Include="Source\Assets\Animation\Serialization\OzzArchiveUtils.h" />
+    <ClInclude Include="Source\Assets\Animation\Serialization\SkeletonSerializer.h" />
+    <ClInclude Include="Source\Assets\Animation\SkeletonAsset.h" />
     <ClInclude Include="Source\Assets\Material\MaterialAsset.h" />
     <ClInclude Include="Source\Assets\Material\MaterialInstance.h" />
     <ClInclude Include="Source\Assets\Material\MaterialManager.h" />
@@ -184,18 +209,23 @@
     <ClInclude Include="Source\Core\Prefab\PrefabSerializer.h" />
     <ClInclude Include="Source\Core\GameObject\GameObject.h" />
     <ClInclude Include="Source\Core\GameObject\GameObjectManager.h" />
+    <ClInclude Include="Source\Core\Containers\BitFlags.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Shaders\Model.hlsl" />
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
+    <None Include="Schemas\FlatBuffers\AnimationClip.fbs" />
+    <None Include="Schemas\FlatBuffers\AnimatorController.fbs" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
     <None Include="Schemas\FlatBuffers\Material.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />
     <None Include="Schemas\FlatBuffers\Prefab.fbs" />
+    <None Include="Schemas\FlatBuffers\Skeleton.fbs" />
     <None Include="Tools\FlatBuffers\build_schema.bat" />
     <None Include="Tools\FlatBuffers\build_schema.ps1" />
     <None Include="Tools\Shaders\CompileShaders.bat" />
     <None Include="Tools\Shaders\CompileShaders.ps1" />
     <None Include="Tools\Shaders\CleanShaderCache.bat" />
+    <None Include="Schemas\FlatBuffers\Scene.fbs" />
   </ItemGroup>
 </Project>

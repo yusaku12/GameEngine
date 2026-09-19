@@ -119,6 +119,8 @@ table ModelFile {
     bounds:Bounds;
     source_path:string;
     material_slots:[ModelMaterialSlot];
+    skeleton_asset_guid:AssetGuid;
+    animation_clip_guids:[AssetGuid];
 }
 
 root_type ModelFile;

@@ -10,6 +10,7 @@ static const uint MAX_SKINNING_BONES = 256;
 cbuffer SkinningConstants : register(b1)
 {
     row_major float4x4 boneMatrices[MAX_SKINNING_BONES];
+    row_major float4x4 boneNormalMatrices[MAX_SKINNING_BONES];
 };
 
 cbuffer MaterialConstants : register(b2)
@@ -81,23 +82,35 @@ PixelInput vsMain(VertexInput input)
 {
     PixelInput output;
     float4 localPosition = float4(input.position, 1.0f);
+    float3 localNormal = input.normal;
+    float3 localTangent = input.tangent;
+    float3 localBitangent = input.bitangent;
     const float totalWeight = dot(input.boneWeights, 1.0f);
     if (totalWeight > 0.00001f)
     {
         const float4 normalizedWeights = input.boneWeights / totalWeight;
-        localPosition = mul(localPosition, boneMatrices[min(input.boneIndices.x, MAX_SKINNING_BONES - 1)]) * normalizedWeights.x
-            + mul(localPosition, boneMatrices[min(input.boneIndices.y, MAX_SKINNING_BONES - 1)]) * normalizedWeights.y
-            + mul(localPosition, boneMatrices[min(input.boneIndices.z, MAX_SKINNING_BONES - 1)]) * normalizedWeights.z
-            + mul(localPosition, boneMatrices[min(input.boneIndices.w, MAX_SKINNING_BONES - 1)]) * normalizedWeights.w;
+        const uint4 boneIndices = min(input.boneIndices, MAX_SKINNING_BONES - 1);
+        const row_major float4x4 skinMatrix = boneMatrices[boneIndices.x] * normalizedWeights.x
+            + boneMatrices[boneIndices.y] * normalizedWeights.y
+            + boneMatrices[boneIndices.z] * normalizedWeights.z
+            + boneMatrices[boneIndices.w] * normalizedWeights.w;
+        const row_major float3x3 skinNormalMatrix = (float3x3)boneNormalMatrices[boneIndices.x] * normalizedWeights.x
+            + (float3x3)boneNormalMatrices[boneIndices.y] * normalizedWeights.y
+            + (float3x3)boneNormalMatrices[boneIndices.z] * normalizedWeights.z
+            + (float3x3)boneNormalMatrices[boneIndices.w] * normalizedWeights.w;
+        localPosition = mul(localPosition, skinMatrix);
+        localNormal = normalize(mul(localNormal, skinNormalMatrix));
+        localTangent = normalize(mul(localTangent, skinNormalMatrix));
+        localBitangent = normalize(mul(localBitangent, skinNormalMatrix));
     }
     output.position = mul(localPosition, worldViewProjection);
     const float4 resolvedBaseColor = (propertyOverrideMask & PROPERTY_BASE_COLOR) != 0
         ? propertyBaseColor : baseColor;
     output.color = input.color * resolvedBaseColor;
     output.texCoord = input.texCoord;
-    output.normal = normalize(mul(input.normal, (float3x3)worldMatrix));
-    output.tangent = normalize(mul(input.tangent, (float3x3)worldMatrix));
-    output.bitangent = normalize(mul(input.bitangent, (float3x3)worldMatrix));
+    output.normal = normalize(mul(localNormal, (float3x3)worldMatrix));
+    output.tangent = normalize(mul(localTangent, (float3x3)worldMatrix));
+    output.bitangent = normalize(mul(localBitangent, (float3x3)worldMatrix));
     return output;
 }
 

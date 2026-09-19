@@ -2,6 +2,7 @@
 #include "Graphics\Model\ModelGpuCache.h"
 #include "Graphics\DirectX12\Device.h"
 #include "Graphics\DirectX12\Fence.h"
+#include "Graphics\Renderer\SkinningPaletteSnapshot.h"
 
 namespace Engine
 {
@@ -98,10 +99,11 @@ namespace Engine
                 nodeTransforms[nodeIndex] *= nodeTransforms[static_cast<std::size_t>(node.parentIndex)];
         }
 
-        std::array<Matrix, MAX_SKINNING_BONES> bonePalette;
-        bonePalette.fill(Matrix::Identity);
+        SkinningPaletteConstants bonePalette;
+        bonePalette.boneMatrices.fill(Matrix::Identity);
+        bonePalette.boneNormalMatrices.fill(Matrix::Identity);
         if (!resource->bonePaletteBuffer.initialize(*m_device->get(), *m_fence, sizeof(bonePalette))
-            || !resource->bonePaletteBuffer.write(std::as_bytes(std::span{ bonePalette })))
+            || !resource->bonePaletteBuffer.write(std::as_bytes(std::span{ &bonePalette, 1 })))
         {
             LOG_ERROR("[ModelGpuCache] Bone Palette Bufferの作成に失敗しました");
             return nullptr;

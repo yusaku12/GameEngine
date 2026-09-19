@@ -32,7 +32,7 @@ namespace Engine
          * @param scene Assimpのシーン
          * @param model 変換先のModelResource
          */
-        void processScene(const aiScene* scene, ModelResource& model) const;
+        bool processScene(const aiScene* scene, ModelResource& model) const;
 
         /**
          * @brief AssimpのノードをModelResourceへ変換する。
@@ -74,7 +74,7 @@ namespace Engine
          * @param scene Assimpのシーン
          * @param model 変換先のModelResource
          */
-        void processSkeleton(const aiScene* scene, ModelResource& model) const;
+        bool processSkeleton(const aiScene* scene, ModelResource& model) const;
 
         /**
          * @brief AssimpのアニメーションをModelResourceへ変換する。

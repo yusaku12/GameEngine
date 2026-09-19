@@ -1,0 +1,30 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+table SkeletonJoint {
+    name:string;
+    parent_index:int = -1;
+    hierarchy_path:string;
+    inverse_bind_pose:[float];
+    local_bind_transform:[float];
+}
+
+table SkeletonAssetData {
+    guid:AssetGuid;
+    name:string;
+    signature_high:ulong;
+    signature_low:ulong;
+    joints:[SkeletonJoint];
+    ozz_archive:[ubyte];
+    archive_checksum:ulong;
+    source_path:string;
+}
+
+table SkeletonFile {
+    header:FileHeader;
+    skeleton:SkeletonAssetData;
+}
+
+root_type SkeletonFile;
+file_identifier "SKEL";
