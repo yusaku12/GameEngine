@@ -243,6 +243,13 @@ namespace Engine
         bool hasComponent() const noexcept { return getComponent<T>() != nullptr; }
 
         /**
+         * @brief Registry登録名からComponentを生成して追加する。
+         * @param typeName Component登録名
+         * @return 追加または既存Component。未知型の場合はnullptr。
+         */
+        Component* addComponent(std::string_view typeName);
+
+        /**
          * @brief GameObjectから指定した型のComponentを削除する。
          * @tparam T 削除するComponentの型。
          * @return 削除に成功した場合はtrue、削除するComponentが存在しなかった場合はfalse。
@@ -301,6 +308,14 @@ namespace Engine
                 for (auto& component : components)
                     function(*component, type);
             }
+        }
+
+        template <typename Function>
+        void forEachComponent(Function&& function) const
+        {
+            for (const auto& [type, components] : m_components)
+                for (const auto& component : components)
+                    function(*component, type);
         }
 
     private:

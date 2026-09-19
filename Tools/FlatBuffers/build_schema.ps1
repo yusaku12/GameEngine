@@ -24,6 +24,6 @@ if ([string]::IsNullOrWhiteSpace($Flatc)) {
 if (-not (Test-Path $schema -PathType Container)) { throw "Schema directory was not found: $schema" }
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 
-& $Flatc --cpp -o $output -I $schema (Join-Path $schema 'Common.fbs') (Join-Path $schema 'Material.fbs') (Join-Path $schema 'Model.fbs') (Join-Path $schema 'Prefab.fbs') (Join-Path $schema 'Scene.fbs') (Join-Path $schema 'Skeleton.fbs') (Join-Path $schema 'AnimationClip.fbs') (Join-Path $schema 'AnimatorController.fbs')
+& $Flatc --cpp -o $output -I $schema (Join-Path $schema 'Common.fbs') (Join-Path $schema 'Material.fbs') (Join-Path $schema 'Model.fbs') (Join-Path $schema 'Prefab.fbs') (Join-Path $schema 'Scene.fbs') (Join-Path $schema 'Skeleton.fbs') (Join-Path $schema 'AnimationClip.fbs') (Join-Path $schema 'AnimatorController.fbs') (Join-Path $schema 'AnimatorComponent.fbs')
 if ($LASTEXITCODE -ne 0) { throw "FlatBuffers schema generation failed with exit code $LASTEXITCODE." }
 Write-Host 'FlatBuffers schema generation completed successfully.'

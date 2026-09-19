@@ -5,6 +5,7 @@
 #include "Core\Scene\SceneSerializer.h"
 #include "Core\Serialization\FlatBufferReader.h"
 #include "Core\Serialization\FlatBufferWriter.h"
+#include "Core\Serialization\ComponentSerialization.h"
 #include "Core\Serialization\SerializationVersions.h"
 
 namespace Engine::Serialization
@@ -37,6 +38,38 @@ namespace Engine::Serialization
         {
             return source == nullptr ? fallback : Engine::Vector3(source->x(), source->y(), source->z());
         }
+
+        std::vector<flatbuffers::Offset<ComponentData>> createComponents(flatbuffers::FlatBufferBuilder& builder,
+            const std::vector<Engine::ComponentSnapshot>& snapshots)
+        {
+            std::vector<flatbuffers::Offset<ComponentData>> result;
+            result.reserve(snapshots.size());
+            for (const Engine::ComponentSnapshot& snapshot : snapshots)
+                result.push_back(CreateComponentData(builder, builder.CreateString(snapshot.type), snapshot.enabled,
+                    snapshot.payloadVersion, builder.CreateVector(snapshot.payload)));
+            return result;
+        }
+
+        bool readComponents(const flatbuffers::Vector<flatbuffers::Offset<ComponentData>>* source,
+            std::vector<Engine::ComponentSnapshot>& snapshots)
+        {
+            snapshots.clear();
+            if (source == nullptr) return true;
+            snapshots.reserve(source->size());
+            for (const ComponentData* component : *source)
+            {
+                if (component == nullptr || component->type() == nullptr)
+                    return false;
+                Engine::ComponentSnapshot snapshot;
+                snapshot.type = component->type()->str();
+                snapshot.enabled = component->enabled();
+                snapshot.payloadVersion = component->payload_version();
+                if (const auto* payload = component->payload())
+                    snapshot.payload.assign(payload->begin(), payload->end());
+                snapshots.push_back(std::move(snapshot));
+            }
+            return true;
+        }
     }
 
     bool SceneSerializer::save(const std::filesystem::path& path, const Scene& scene) const
@@ -48,6 +81,9 @@ namespace Engine::Serialization
 
         for (const auto& object : scene.getGameObjects())
         {
+            std::vector<Engine::ComponentSnapshot> snapshots;
+            if (!captureComponents(*object, snapshots))
+                return false;
             std::vector<flatbuffers::Offset<flatbuffers::String>> componentTypes;
             const std::vector<std::string_view> typeNames = object->getComponentTypeNames();
             componentTypes.reserve(typeNames.size());
@@ -56,7 +92,8 @@ namespace Engine::Serialization
             objects.push_back(CreateSceneObject(builder, createGuid(builder, object->getGUID()),
                 object->getParent() == nullptr ? 0 : createGuid(builder, object->getParent()->getGUID()),
                 builder.CreateString(object->getName()), object->isActiveSelf(), object->getTag(), object->getLayer(),
-                createTransform(builder, *object->getTransform()), builder.CreateVector(componentTypes)));
+                createTransform(builder, *object->getTransform()), builder.CreateVector(componentTypes),
+                builder.CreateVector(createComponents(builder, snapshots))));
         }
 
         const auto root = CreateSceneFile(builder, header, createGuid(builder, scene.getGUID()),
@@ -76,7 +113,8 @@ namespace Engine::Serialization
         const SceneFile* source = GetSceneFile(reader.data());
         if (source == nullptr || source->header() == nullptr || source->guid() == nullptr || source->name() == nullptr
             || source->header()->schema_version() != CURRENT_SCHEMA_VERSION
-            || source->header()->asset_version() != CURRENT_SCENE_VERSION)
+            || source->header()->asset_version() < MINIMUM_SUPPORTED_SCENE_VERSION
+            || source->header()->asset_version() > CURRENT_SCENE_VERSION)
             return false;
 
         scene.clear();
@@ -104,6 +142,19 @@ namespace Engine::Serialization
                     object->getTransform()->setRotation(rotation == nullptr
                         ? Engine::Quaternion::Identity : Engine::Quaternion(rotation->x(), rotation->y(), rotation->z(), rotation->w()));
                     object->getTransform()->setScale(readVector(transform->scale(), Vector3::One));
+                }
+                std::vector<Engine::ComponentSnapshot> snapshots;
+                if (!readComponents(serialized->components(), snapshots))
+                    return false;
+                if (!snapshots.empty())
+                {
+                    if (!restoreComponents(*object, snapshots))
+                        return false;
+                }
+                else if (const auto* componentTypes = serialized->component_types())
+                {
+                    for (const flatbuffers::String* componentType : *componentTypes)
+                        if (componentType != nullptr) object->addComponent(componentType->string_view());
                 }
                 objects.emplace(guid, object);
             }

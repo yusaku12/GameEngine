@@ -35,6 +35,12 @@ namespace Engine
         return nullptr;
     }
 
+    std::unique_ptr<Component> ComponentRegistry::create(const std::string_view name) const
+    {
+        const ComponentTypeInfo* info = findByName(name);
+        return info == nullptr || info->factory == nullptr ? nullptr : info->factory();
+    }
+
     void ComponentRegistry::clear() noexcept
     {
         m_types.clear();

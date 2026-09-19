@@ -1,18 +1,20 @@
 ﻿#include "Pch.h"
 #include "Core\Prefab\Prefab.h"
+#include "Core\Serialization\ComponentSerialization.h"
 
 namespace Engine
 {
     bool Prefab::capture(const GameObject& root)
     {
-        m_root = captureNode(root);
-        m_valid = m_root.sourceGUID.isValid();
+        PrefabNode captured;
+        m_valid = captureNode(root, captured) && captured.sourceGUID.isValid();
+        if (m_valid)
+            m_root = std::move(captured);
         return m_valid;
     }
 
-    PrefabNode Prefab::captureNode(const GameObject& object)
+    bool Prefab::captureNode(const GameObject& object, PrefabNode& node)
     {
-        PrefabNode node;
         node.sourceGUID = object.getGUID();
         node.name = object.getName();
         node.active = object.isActiveSelf();
@@ -21,10 +23,16 @@ namespace Engine
         node.localTransform = *object.getTransform();
         for (const std::string_view typeName : object.getComponentTypeNames())
             node.componentTypes.emplace_back(typeName);
+        if (!Serialization::captureComponents(object, node.components))
+            return false;
         node.children.reserve(object.getChildCount());
         for (std::size_t index = 0; index < object.getChildCount(); ++index)
-            node.children.push_back(captureNode(*object.getChild(index)));
-        return node;
+        {
+            node.children.emplace_back();
+            if (!captureNode(*object.getChild(index), node.children.back()))
+                return false;
+        }
+        return true;
     }
 
     GameObject* Prefab::instantiate(Scene& scene) const
@@ -46,6 +54,19 @@ namespace Engine
             return nullptr;
         }
         object->setActive(node.active);
+        if (!node.components.empty())
+        {
+            if (!Serialization::restoreComponents(*object, node.components))
+            {
+                object->destroy();
+                return nullptr;
+            }
+        }
+        else
+        {
+            for (const std::string& componentType : node.componentTypes)
+                object->addComponent(componentType);
+        }
         for (const PrefabNode& child : node.children)
         {
             if (instantiateNode(child, scene, object) == nullptr)

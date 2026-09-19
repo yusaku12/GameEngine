@@ -61,3 +61,11 @@
 - Exit time and every condition must pass before a transition starts. Trigger values are consumed only from the selected transition; failed and lower-priority transitions do not consume them.
 - Current and destination states own independent `SamplingJob::Context` and local-pose buffers. Cross fades use two `BlendingJob::Layer` values followed by `LocalToModelJob`.
 - Controller changes allocate and resolve buffers. Normal updates reuse state poses, blend output, model matrices, and the existing snapshot ring without heap allocation or string lookup.
+
+## Phase 4 Persistence
+
+- Scene and Prefab asset versions are 2. Version 1 files remain readable through the legacy `component_types` fallback.
+- Components expose a versioned opaque byte payload contract. Scene and Prefab store type name, enabled state, payload version, and bytes without coupling their schemas to individual Component types.
+- Component serialization order is stable by registered type name. Registry factories restore known Components; unknown types and their payloads are ignored safely.
+- Animator payload version 1 stores Skeleton, Clip, and Controller GUIDs, speed, root-motion and play state, current state/time, and typed parameter overrides.
+- Animator GUIDs and pending playback values remain serializable when referenced assets are missing. Once assets are available, binding resolves GUIDs through `AnimationAssetManager` and applies the saved state.

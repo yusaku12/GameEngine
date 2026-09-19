@@ -1,0 +1,28 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+enum AnimatorParameterValueType:ubyte { Float, Int, Bool, Trigger }
+
+table AnimatorParameterValueData {
+    id:uint;
+    type:AnimatorParameterValueType;
+    float_value:float;
+    int_value:int;
+    bool_value:bool;
+}
+
+table AnimatorComponentPayload {
+    skeleton_guid:AssetGuid;
+    clip_guid:AssetGuid;
+    controller_guid:AssetGuid;
+    speed:float = 1.0;
+    apply_root_motion:bool;
+    playing:bool = true;
+    current_state:uint;
+    normalized_time:float;
+    parameters:[AnimatorParameterValueData];
+}
+
+root_type AnimatorComponentPayload;
+file_identifier "ACMP";

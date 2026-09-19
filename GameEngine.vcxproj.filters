@@ -10,6 +10,7 @@
     <ClCompile Include="Source\Assets\Animation\Serialization\AnimatorControllerSerializer.cpp" />
     <ClCompile Include="Source\Assets\Animation\Serialization\OzzArchiveUtils.cpp" />
     <ClCompile Include="Source\Assets\Animation\Serialization\SkeletonSerializer.cpp" />
+    <ClCompile Include="Source\Core\Serialization\ComponentSerialization.cpp" />
     <ClCompile Include="Source\Assets\Material\MaterialInstance.cpp" />
     <ClCompile Include="Source\Graphics\Material\MaterialPropertyBlock.cpp" />
     <ClCompile Include="Source\Assets\Material\MaterialManager.cpp" />
@@ -80,6 +81,7 @@
     <ClInclude Include="Source\Graphics\Renderer\SkinningPaletteSnapshot.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimationClip_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimatorController_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\AnimatorComponent_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Skeleton_generated.h" />
     <ClInclude Include="Source\Assets\Animation\AnimationAssetBuilder.h" />
     <ClInclude Include="Source\Assets\Animation\AnimationAssetManager.h" />
@@ -90,6 +92,7 @@
     <ClInclude Include="Source\Assets\Animation\Serialization\AnimatorControllerSerializer.h" />
     <ClInclude Include="Source\Assets\Animation\Serialization\OzzArchiveUtils.h" />
     <ClInclude Include="Source\Assets\Animation\Serialization\SkeletonSerializer.h" />
+    <ClInclude Include="Source\Core\Serialization\ComponentSerialization.h" />
     <ClInclude Include="Source\Assets\Animation\SkeletonAsset.h" />
     <ClInclude Include="Source\Assets\Material\MaterialAsset.h" />
     <ClInclude Include="Source\Assets\Material\MaterialInstance.h" />
@@ -216,6 +219,7 @@
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
     <None Include="Schemas\FlatBuffers\AnimationClip.fbs" />
     <None Include="Schemas\FlatBuffers\AnimatorController.fbs" />
+    <None Include="Schemas\FlatBuffers\AnimatorComponent.fbs" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
     <None Include="Schemas\FlatBuffers\Material.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />

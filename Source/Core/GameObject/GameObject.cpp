@@ -24,6 +24,31 @@ namespace Engine
         }
     }
 
+    Component* GameObject::addComponent(const std::string_view typeName)
+    {
+        const ComponentTypeInfo* info = ComponentRegistry::instance().findByName(typeName);
+        if (info == nullptr || info->factory == nullptr)
+            return nullptr;
+        auto type = ComponentRegistry::instance().create(typeName);
+        if (type == nullptr)
+            return nullptr;
+        const std::type_index typeIndex(typeid(*type));
+        auto& components = m_components[typeIndex];
+        if (!info->allowMultiple && !components.empty())
+            return components.front().get();
+        Component* result = type.get();
+        result->setGameObject(this);
+        result->setLifecycleEnabled(info->executeLifecycle);
+        components.push_back(std::move(type));
+        if (m_lifecycleAwake)
+        {
+            result->invokeAwake();
+            if (isActiveInHierarchy() && result->isEnabled())
+                result->invokeEnable();
+        }
+        return result;
+    }
+
     bool GameObject::isActiveInHierarchy() const noexcept
     {
         return m_activeSelf && (m_parent == nullptr || m_parent->isActiveInHierarchy());

@@ -1,6 +1,9 @@
 ﻿#pragma once
 
+#include <cstdint>
+#include <span>
 #include <type_traits>
+#include <vector>
 #include "Core\Math\Transform.h"
 
 namespace Engine
@@ -48,6 +51,31 @@ namespace Engine
          * @details EditorUiが選択中のGameObjectを描画するときに呼ばれる。
          */
         void drawImGui() { onImGui(); }
+
+        /** @brief Component固有payloadのversionを取得する。 */
+        virtual std::uint32_t getPayloadVersion() const noexcept { return 0; }
+
+        /**
+         * @brief Component固有payloadを保存する。空payloadを持つComponentは既定実装を使用できる。
+         * @param payload 保存先
+         * @return 保存に成功した場合はtrue
+         */
+        virtual bool serializePayload(std::vector<std::uint8_t>& payload) const
+        {
+            payload.clear();
+            return true;
+        }
+
+        /**
+         * @brief Component固有payloadを復元する。
+         * @param version payload version
+         * @param payload payload bytes
+         * @return 復元に成功した場合はtrue
+         */
+        virtual bool deserializePayload(std::uint32_t version, std::span<const std::uint8_t> payload)
+        {
+            return version == 0 && payload.empty();
+        }
 
     protected:
 

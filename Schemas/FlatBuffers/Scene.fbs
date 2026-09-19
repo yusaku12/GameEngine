@@ -29,6 +29,7 @@ table SceneObject {
     layer:ubyte;
     transform:TransformData;
     component_types:[string];
+    components:[ComponentData];
 }
 
 table SceneFile {

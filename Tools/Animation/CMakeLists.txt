@@ -50,3 +50,34 @@ if(MSVC)
 endif()
 
 add_test(NAME AnimationOzzRoundTrip COMMAND AnimationOzzRoundTripTests)
+
+add_executable(ComponentSerializationRoundTripTests
+  "${CMAKE_CURRENT_LIST_DIR}/../../Tests/Serialization/ComponentSerializationRoundTripTests.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/GameObject/GameObject.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/GameObject/GameObjectManager.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/GameObject/ComponentRegistry.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/Logging/Logger.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/Math/SimpleMath.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/Math/Transform.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/Object/ObjectGUID.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/Prefab/Prefab.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/Prefab/PrefabSerializer.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/Scene/Scene.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/Scene/SceneSerializer.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/Serialization/ComponentSerialization.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/Serialization/FlatBufferReader.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source/Core/Serialization/FlatBufferWriter.cpp")
+target_compile_features(ComponentSerializationRoundTripTests PRIVATE cxx_std_20)
+target_include_directories(ComponentSerializationRoundTripTests PRIVATE
+  "${CMAKE_CURRENT_LIST_DIR}/../.."
+  "${CMAKE_CURRENT_LIST_DIR}/../../Source"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Library"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Library/DirectXTex-main/Common"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Library/flatbuffers/include"
+  "${CMAKE_CURRENT_LIST_DIR}/../../Library/spdlog/include")
+if(MSVC)
+  target_compile_options(ComponentSerializationRoundTripTests PRIVATE
+    /W4 /WX /utf-8
+    "/FI${CMAKE_CURRENT_LIST_DIR}/../../Source/Pch.h")
+endif()
+add_test(NAME ComponentSerializationRoundTrip COMMAND ComponentSerializationRoundTripTests)

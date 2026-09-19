@@ -23,7 +23,7 @@ if ($LASTEXITCODE -ne 0 -or $actualOzzCommit -ne $expectedOzzCommit) {
 & cmake -S $source -B $build -G "Visual Studio 17 2022" -A x64
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-& cmake --build $build --config $Configuration --target AnimationOzzRoundTripTests --parallel
+& cmake --build $build --config $Configuration --target AnimationOzzRoundTripTests ComponentSerializationRoundTripTests --parallel
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if ($RunTests) {

@@ -2,6 +2,7 @@
 
 #include "Core\GameObject\GameObject.h"
 #include "Core\Scene\Scene.h"
+#include "Core\Serialization\ComponentSerialization.h"
 
 namespace Engine::Serialization
 {
@@ -22,6 +23,7 @@ namespace Engine
         LayerID layer = 0;                       //!< Layer ID
         Transform localTransform;                //!< 親基準のローカルTransform
         std::vector<std::string> componentTypes; //!< 所属Componentの型名
+        std::vector<ComponentSnapshot> components; //!< version付きComponent payload
         std::vector<PrefabNode> children;        //!< 子ノード
     };
 
@@ -73,7 +75,7 @@ namespace Engine
          * @param object キャプチャするGameObject
          * @return 変換されたPrefabNode
          */
-        static PrefabNode captureNode(const GameObject& object);
+        static bool captureNode(const GameObject& object, PrefabNode& node);
 
         /**
          * @brief PrefabNodeをScene上のGameObject階層へ再帰的に変換する。

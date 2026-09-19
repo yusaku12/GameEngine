@@ -28,6 +28,7 @@ table PrefabNodeData {
     layer:ubyte;
     transform:TransformData;
     component_types:[string];
+    components:[ComponentData];
     children:[PrefabNodeData];
 }
 

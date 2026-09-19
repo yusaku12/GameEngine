@@ -25,7 +25,7 @@ if not exist "%SCHEMA%" (
 
 if not exist "%OUTPUT%" mkdir "%OUTPUT%"
 
-"%FLATC%" --cpp -o "%OUTPUT%" -I "%SCHEMA%" "%SCHEMA%\Common.fbs" "%SCHEMA%\Material.fbs" "%SCHEMA%\Model.fbs" "%SCHEMA%\Prefab.fbs" "%SCHEMA%\Scene.fbs" "%SCHEMA%\Skeleton.fbs" "%SCHEMA%\AnimationClip.fbs" "%SCHEMA%\AnimatorController.fbs"
+"%FLATC%" --cpp -o "%OUTPUT%" -I "%SCHEMA%" "%SCHEMA%\Common.fbs" "%SCHEMA%\Material.fbs" "%SCHEMA%\Model.fbs" "%SCHEMA%\Prefab.fbs" "%SCHEMA%\Scene.fbs" "%SCHEMA%\Skeleton.fbs" "%SCHEMA%\AnimationClip.fbs" "%SCHEMA%\AnimatorController.fbs" "%SCHEMA%\AnimatorComponent.fbs"
 if errorlevel 1 (
     echo ERROR: FlatBuffers schema generation failed.
     exit /b 1

@@ -12,8 +12,11 @@ namespace Engine
      */
     struct ComponentTypeInfo
     {
+        using Factory = std::unique_ptr<Component>(*)();
+
         ComponentTypeID id = 0;        //!< Component型ID。ComponentRegistryが自動で割り当てる。
         std::string_view name;         //!< Component型の表示名。Editorで使用される。
+        Factory factory = nullptr;     //!< Component生成関数。
         bool allowMultiple = false;    //!< 同一GameObjectへの複数追加を許可するか
         bool required = false;         //!< 必須Componentか
         bool executeLifecycle = false; //!< Lifecycleを実行するか
@@ -54,6 +57,7 @@ namespace Engine
             const ComponentTypeInfo info{
                 .id = m_nextId++,
                 .name = name,
+                .factory = []() -> std::unique_ptr<Component> { return std::make_unique<T>(); },
                 .allowMultiple = allowMultiple,
                 .required = required,
                 .executeLifecycle = executeLifecycle
@@ -108,6 +112,9 @@ namespace Engine
          * @return 登録済みメタデータ。未登録の場合はnullptr
          */
         const ComponentTypeInfo* findByName(std::string_view name) const noexcept;
+
+        /** @brief 登録名からComponentを生成する。未知型の場合はnullptr。 */
+        std::unique_ptr<Component> create(std::string_view name) const;
 
         /**
          * @brief 登録済みComponent型をすべて削除する。.

@@ -106,6 +106,17 @@ namespace Engine
         /** @brief 設定中のAnimator Controller Handleを取得する。 */
         AnimatorControllerHandle getController() const noexcept { return m_controller; }
 
+        /** @brief 永続化対象Skeleton GUIDを取得する。 */
+        const AssetGUID& getSkeletonGuid() const noexcept { return m_skeletonGuid; }
+        /** @brief 永続化対象Clip GUIDを取得する。 */
+        const AssetGUID& getClipGuid() const noexcept { return m_clipGuid; }
+        /** @brief 永続化対象Controller GUIDを取得する。 */
+        const AssetGUID& getControllerGuid() const noexcept { return m_controllerGuid; }
+
+        std::uint32_t getPayloadVersion() const noexcept override;
+        bool serializePayload(std::vector<std::uint8_t>& payload) const override;
+        bool deserializePayload(std::uint32_t version, std::span<const std::uint8_t> payload) override;
+
         /**
          * @brief Render threadへ提出可能なimmutable Palette Snapshotを取得する。
          * @return immutable Palette Snapshot
@@ -135,6 +146,15 @@ namespace Engine
 
     private:
 
+        struct PersistedParameterValue
+        {
+            AnimatorParameterID id = 0;
+            AnimatorParameterType type = AnimatorParameterType::Float;
+            float floatValue = 0.0f;
+            std::int32_t intValue = 0;
+            bool boolValue = false;
+        };
+
         /**
          * @brief SkeletonとAnimation Clipの互換性を検証し、ozz runtimeに設定する。
          * @return 成功した場合はtrue、失敗した場合はfalse
@@ -145,6 +165,14 @@ namespace Engine
         SkeletonHandle m_skeleton;            //!< Skeleton Handleは再生対象Skeleton Assetを識別するためのハンドル。
         AnimationClipHandle m_clip;           //!< Animation Clip Handleは再生対象Animation Clip Assetを識別するためのハンドル。
         AnimatorControllerHandle m_controller;
+        AssetGUID m_skeletonGuid;
+        AssetGUID m_clipGuid;
+        AssetGUID m_controllerGuid;
+        std::vector<PersistedParameterValue> m_pendingParameters;
+        AnimatorStateID m_pendingState = 0;
+        float m_pendingNormalizedTime = 0.0f;
+        bool m_pendingPlaying = true;
+        bool m_restorePending = false;
         bool m_bindingDirty = false;          //!< SkeletonとAnimation Clipの互換性を検証する必要があるかどうかを示すフラグ。
         bool m_evaluationErrorLogged = false; //!< Animation Clipの評価に失敗した場合にエラーログを出力したかどうかを示すフラグ。
         bool m_applyRootMotion = false;       //!< Root Motionを適用するかどうかを示すフラグ。

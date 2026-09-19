@@ -28,3 +28,10 @@ table FileHeader {
     asset_version:uint;
     flags:uint;
 }
+
+table ComponentData {
+    type:string;
+    enabled:bool = true;
+    payload_version:uint;
+    payload:[ubyte];
+}
