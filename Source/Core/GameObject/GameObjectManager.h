@@ -78,7 +78,6 @@ namespace Engine
          * @return 見つかったGameObjectのポインタ。見つからなかった場合はnullptr。
          */
         GameObject* find(const std::string& name) noexcept;
-        /** @brief 名前でGameObjectをconst検索する。 */
         const GameObject* find(const std::string& name) const noexcept;
 
         /**
@@ -87,7 +86,6 @@ namespace Engine
          * @return 見つかったGameObjectのポインタ。見つからなかった場合はnullptr。
          */
         GameObject* find(const ObjectGUID& guid) noexcept;
-        /** @brief GUIDでGameObjectをconst検索する。 */
         const GameObject* find(const ObjectGUID& guid) const noexcept;
 
         /**

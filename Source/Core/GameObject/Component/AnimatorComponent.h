@@ -26,7 +26,11 @@ namespace Engine
          */
         bool setAnimation(SkeletonHandle skeleton, AnimationClipHandle clip);
 
-        /** @brief SkeletonとAnimator Controllerを設定する。 */
+        /**
+         * @brief SkeletonとAnimator Controllerを設定する。
+         * @param skeleton 再生対象Skeleton Handle
+         * @param controller 再生対象Animator Controller Handle
+         */
         bool setController(SkeletonHandle skeleton, AnimatorControllerHandle controller);
 
         /**
@@ -42,24 +46,43 @@ namespace Engine
          */
         bool play(float normalizedTime = 0.0f) noexcept;
 
-        /** @brief 指定stateを即時再生する。 */
+        /**
+         * @brief 指定stateを即時再生する。
+         * @param stateId 再生するAnimator State ID
+         * @param normalizedTime 再生を開始する正規化時刻
+         * @return 再生に成功した場合はtrue、失敗した場合はfalse
+         */
         bool play(AnimatorStateID stateId, float normalizedTime = 0.0f) noexcept;
 
-        /** @brief 指定stateへcross fadeする。 */
+        /**
+         * @brief 指定stateへcross fadeする。
+         * @param stateId 再生するAnimator State ID
+         * @param duration クロスフェードの時間
+         * @return 再生に成功した場合はtrue、失敗した場合はfalse
+         */
         bool crossFade(AnimatorStateID stateId, float duration) noexcept;
 
-        bool setFloat(AnimatorParameterID parameterId, float value) noexcept
-        { return m_instance.setFloat(parameterId, value); }
-        bool setInt(AnimatorParameterID parameterId, std::int32_t value) noexcept
-        { return m_instance.setInt(parameterId, value); }
-        bool setBool(AnimatorParameterID parameterId, bool value) noexcept
-        { return m_instance.setBool(parameterId, value); }
-        bool setTrigger(AnimatorParameterID parameterId) noexcept
-        { return m_instance.setTrigger(parameterId); }
-        bool resetTrigger(AnimatorParameterID parameterId) noexcept
-        { return m_instance.resetTrigger(parameterId); }
+        /**
+         * @brief Animator Parameterを設定する。
+         * @param parameterId 設定するAnimator Parameter ID
+         * @param value 設定する値
+         * @return 設定に成功した場合はtrue、失敗した場合はfalse
+         */
+        bool setFloat(AnimatorParameterID parameterId, float value) noexcept { return m_instance.setFloat(parameterId, value); }
+        bool setInt(AnimatorParameterID parameterId, std::int32_t value) noexcept { return m_instance.setInt(parameterId, value); }
+        bool setBool(AnimatorParameterID parameterId, bool value) noexcept { return m_instance.setBool(parameterId, value); }
+        bool setTrigger(AnimatorParameterID parameterId) noexcept { return m_instance.setTrigger(parameterId); }
+        bool resetTrigger(AnimatorParameterID parameterId) noexcept { return m_instance.resetTrigger(parameterId); }
 
+        /**
+         * @brief 現在のAnimator State IDを取得する。
+         */
         AnimatorStateID getCurrentState() const noexcept { return m_instance.getCurrentState(); }
+
+        /**
+         * @brief 遷移進捗を0から1で取得する。
+         * @return 遷移進捗
+         */
         float getTransitionProgress() const noexcept { return m_instance.getTransitionProgress(); }
 
         /**
@@ -103,14 +126,24 @@ namespace Engine
          */
         AnimationClipHandle getClip() const noexcept { return m_clip; }
 
-        /** @brief 設定中のAnimator Controller Handleを取得する。 */
+        /**
+         * @brief 設定中のAnimator Controller Handleを取得する。
+         */
         AnimatorControllerHandle getController() const noexcept { return m_controller; }
 
-        /** @brief 永続化対象Skeleton GUIDを取得する。 */
+        /**
+         * @brief 永続化対象Skeleton GUIDを取得する。
+         */
         const AssetGUID& getSkeletonGuid() const noexcept { return m_skeletonGuid; }
-        /** @brief 永続化対象Clip GUIDを取得する。 */
+
+        /**
+         * @brief 永続化対象Clip GUIDを取得する。
+         */
         const AssetGUID& getClipGuid() const noexcept { return m_clipGuid; }
-        /** @brief 永続化対象Controller GUIDを取得する。 */
+
+        /**
+         * @brief 永続化対象Controller GUIDを取得する。
+         */
         const AssetGUID& getControllerGuid() const noexcept { return m_controllerGuid; }
 
         std::uint32_t getPayloadVersion() const noexcept override;
@@ -121,10 +154,7 @@ namespace Engine
          * @brief Render threadへ提出可能なimmutable Palette Snapshotを取得する。
          * @return immutable Palette Snapshot
          */
-        std::shared_ptr<const SkinningPaletteSnapshot> getSkinningSnapshot() const noexcept
-        {
-            return m_instance.getSnapshot();
-        }
+        std::shared_ptr<const SkinningPaletteSnapshot> getSkinningSnapshot() const noexcept { return m_instance.getSnapshot(); }
 
         /**
          * @brief Root Motion適用設定を保持する。評価は将来のRoot Motion段階で行う。
@@ -146,13 +176,16 @@ namespace Engine
 
     private:
 
+        /**
+         * @brief 再生中のAnimator Instanceに適用するために保持されるパラメータ値。
+         */
         struct PersistedParameterValue
         {
-            AnimatorParameterID id = 0;
-            AnimatorParameterType type = AnimatorParameterType::Float;
-            float floatValue = 0.0f;
-            std::int32_t intValue = 0;
-            bool boolValue = false;
+            AnimatorParameterID id = 0;                                //!< parameterのstable ID。AnimatorControllerAsset内で一意。
+            AnimatorParameterType type = AnimatorParameterType::Float; //!< parameterの型。AnimatorControllerAsset内で一意。
+            float floatValue = 0.0f;                                   //!< parameterの値。型に応じてfloatValue/intValue/boolValueのいずれかを使用する。
+            std::int32_t intValue = 0;                                 //!< parameterの値。型に応じてfloatValue/intValue/boolValueのいずれかを使用する。
+            bool boolValue = false;                                    //!< parameterの値。型に応じてfloatValue/intValue/boolValueのいずれかを使用する。
         };
 
         /**
@@ -161,20 +194,20 @@ namespace Engine
          */
         bool bindAssets();
 
-        AnimatorInstance m_instance;          //!< AnimatorInstanceはozz runtimeをラップし、Animation Clipの再生と評価を管理する。
-        SkeletonHandle m_skeleton;            //!< Skeleton Handleは再生対象Skeleton Assetを識別するためのハンドル。
-        AnimationClipHandle m_clip;           //!< Animation Clip Handleは再生対象Animation Clip Assetを識別するためのハンドル。
-        AnimatorControllerHandle m_controller;
-        AssetGUID m_skeletonGuid;
-        AssetGUID m_clipGuid;
-        AssetGUID m_controllerGuid;
-        std::vector<PersistedParameterValue> m_pendingParameters;
-        AnimatorStateID m_pendingState = 0;
-        float m_pendingNormalizedTime = 0.0f;
-        bool m_pendingPlaying = true;
-        bool m_restorePending = false;
-        bool m_bindingDirty = false;          //!< SkeletonとAnimation Clipの互換性を検証する必要があるかどうかを示すフラグ。
-        bool m_evaluationErrorLogged = false; //!< Animation Clipの評価に失敗した場合にエラーログを出力したかどうかを示すフラグ。
-        bool m_applyRootMotion = false;       //!< Root Motionを適用するかどうかを示すフラグ。
+        AnimatorInstance m_instance;                              //!< AnimatorInstanceはozz runtimeをラップし、Animation Clipの再生と評価を管理する。
+        SkeletonHandle m_skeleton;                                //!< Skeleton Handleは再生対象Skeleton Assetを識別するためのハンドル。
+        AnimationClipHandle m_clip;                               //!< Animation Clip Handleは再生対象Animation Clip Assetを識別するためのハンドル。
+        AnimatorControllerHandle m_controller;                    //!< Animator Controller Handleは再生対象Animator Controller Assetを識別するためのハンドル。
+        AssetGUID m_skeletonGuid;                                 //!< 永続化対象SkeletonのGUID。
+        AssetGUID m_clipGuid;                                     //!< 永続化対象Skeleton/ClipのGUID。
+        AssetGUID m_controllerGuid;                               //!< 永続化対象Skeleton/Clip/ControllerのGUID。
+        std::vector<PersistedParameterValue> m_pendingParameters; //!< 再生中のAnimator Instanceに適用するために保持されるパラメータ値のリスト。
+        AnimatorStateID m_pendingState = 0;                       //!< 再生中のAnimator Instanceに適用するために保持される再生対象のAnimator State ID。
+        float m_pendingNormalizedTime = 0.0f;                     //!< 再生中のAnimator Instanceに適用するために保持される再生開始時の正規化時刻。
+        bool m_pendingPlaying = true;                             //!< 再生中のAnimator Instanceに適用するために保持される再生状態。
+        bool m_restorePending = false;                            //!< 再生中のAnimator Instanceに適用するために保持される再生状態を復元する必要があるかどうかを示すフラグ。
+        bool m_bindingDirty = false;                              //!< SkeletonとAnimation Clipの互換性を検証する必要があるかどうかを示すフラグ。
+        bool m_evaluationErrorLogged = false;                     //!< Animation Clipの評価に失敗した場合にエラーログを出力したかどうかを示すフラグ。
+        bool m_applyRootMotion = false;                           //!< Root Motionを適用するかどうかを示すフラグ。
     };
 }

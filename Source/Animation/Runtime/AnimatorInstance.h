@@ -11,7 +11,7 @@
 namespace Engine
 {
     /**
-    * @brief GameObjectごとのController状態とozz評価Bufferを所有する。
+     * @brief GameObjectごとのController状態とozz評価Bufferを所有する。
      * @thread_safety Main thread only. 公開SnapshotだけをRender threadへ渡せる。
      */
     class AnimatorInstance
@@ -42,35 +42,61 @@ namespace Engine
          */
         void clear() noexcept;
 
-        /** @brief 指定正規化時刻から再生を開始する。 */
+        /**
+         * @brief 指定正規化時刻から再生を開始する。
+         * @param normalizedTime 正規化時刻(0.0〜1.0)。負値は逆再生として扱う。
+         */
         bool play(float normalizedTime = 0.0f) noexcept;
 
-        /** @brief 指定stateを即時再生する。 */
+        /**
+         * @brief 指定stateを即時再生する。
+         * @param stateId 再生するstateのID。
+         * @param normalizedTime 正規化時刻(0.0〜1.0)。負値は逆再生として扱う。
+         * @return 再生に成功した場合はtrue、それ以外はfalse。
+         */
         bool play(AnimatorStateID stateId, float normalizedTime = 0.0f) noexcept;
 
-        /** @brief 指定stateへozz BlendingJobによる遷移を開始する。 */
+        /**
+         * @brief 指定stateへozz BlendingJobによる遷移を開始する。
+         * @param stateId 遷移先のstateのID。
+         * @param duration 遷移時間(秒)。0.0f以下は即時遷移として扱う。
+         */
         bool crossFade(AnimatorStateID stateId, float duration) noexcept;
 
-        /** @brief Float parameterを設定する。型不一致ではfalse。 */
+        /**
+         * @brief Float parameterを設定する。型不一致ではfalse。
+         * @param parameterId 設定するparameterのID。
+         * @param value 設定する値。
+         */
         bool setFloat(AnimatorParameterID parameterId, float value) noexcept;
-        /** @brief Int parameterを設定する。型不一致ではfalse。 */
         bool setInt(AnimatorParameterID parameterId, std::int32_t value) noexcept;
-        /** @brief Bool parameterを設定する。型不一致ではfalse。 */
         bool setBool(AnimatorParameterID parameterId, bool value) noexcept;
-        /** @brief Trigger parameterを設定する。型不一致ではfalse。 */
         bool setTrigger(AnimatorParameterID parameterId) noexcept;
-        /** @brief Trigger parameterを解除する。型不一致ではfalse。 */
+
+        /**
+         * @brief Trigger parameterを解除する。型不一致ではfalse。
+         * @param parameterId 解除するparameterのID。
+         */
         bool resetTrigger(AnimatorParameterID parameterId) noexcept;
-        /** @brief Float parameterの現在値を取得する。 */
+
+        /**
+         * @brief Float parameterの現在値を取得する。
+         * @param parameterId 取得するparameterのID。
+         * @param value 取得した値を格納する変数への参照。
+         * @return 取得に成功した場合はtrue、それ以外はfalse。
+         */
         bool getFloat(AnimatorParameterID parameterId, float& value) const noexcept;
-        /** @brief Int parameterの現在値を取得する。 */
         bool getInt(AnimatorParameterID parameterId, std::int32_t& value) const noexcept;
-        /** @brief Bool/Trigger parameterの現在値を取得する。 */
         bool getBool(AnimatorParameterID parameterId, bool& value) const noexcept;
 
-        /** @brief 現在stateのstable IDを返す。 */
+        /**
+         * @brief 現在stateのstable IDを返す。
+         */
         AnimatorStateID getCurrentState() const noexcept;
-        /** @brief 遷移進捗を0から1で返す。 */
+
+        /**
+         * @brief 遷移進捗を0から1で返す。
+         */
         float getTransitionProgress() const noexcept;
 
         /**
@@ -121,45 +147,57 @@ namespace Engine
 
     private:
 
+        /**
+         * @brief 再生中のstateのozz runtime評価に必要な情報を保持する。
+         */
         struct RuntimeParameter
         {
-            AnimatorParameterID id = 0;
-            AnimatorParameterType type = AnimatorParameterType::Float;
-            float floatValue = 0.0f;
-            std::int32_t intValue = 0;
-            bool boolValue = false;
+            AnimatorParameterID id = 0;                                //!< parameterのstable ID。AnimatorControllerAsset内で一意。
+            AnimatorParameterType type = AnimatorParameterType::Float; //!< parameterの型。AnimatorControllerAsset内で一意。
+            float floatValue = 0.0f;                                   //!< parameterの値。型に応じてfloatValue/intValue/boolValueのいずれかを使用する。
+            std::int32_t intValue = 0;                                 //!< parameterの値。型に応じてfloatValue/intValue/boolValueのいずれかを使用する。
+            bool boolValue = false;                                    //!< parameterの値。型に応じてfloatValue/intValue/boolValueのいずれかを使用する。
         };
 
+        /**
+         * @brief 再生中のstateのozz runtime評価に必要な情報を保持する。
+         */
         struct RuntimeState
         {
-            AnimatorStateID id = 0;
-            std::shared_ptr<const AnimationClipAsset> clip;
-            std::unique_ptr<ozz::animation::SamplingJob::Context> context;
-            std::vector<ozz::math::SoaTransform> localTransforms;
-            float speed = 1.0f;
-            float time = 0.0f;
-            std::int64_t loopCount = 0;
-            AnimationWrapMode wrapMode = AnimationWrapMode::Loop;
+            AnimatorStateID id = 0;                                        //!< stateのstable ID。AnimatorControllerAsset内で一意。
+            std::shared_ptr<const AnimationClipAsset> clip;                //!< 再生中のClip。nullptrは未設定状態。
+            std::unique_ptr<ozz::animation::SamplingJob::Context> context; //!< ozz runtimeのSamplingJob用Context。ozz runtimeが必要とする中間バッファを保持する。
+            std::vector<ozz::math::SoaTransform> localTransforms;          //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
+            float speed = 1.0f;                                            //!< 再生速度。負値は逆再生として扱う。
+            float time = 0.0f;                                             //!< 再生中のClipの経過時間(秒)。ClipのWrap Modeに応じてClampまたはWrapされる。
+            std::int64_t loopCount = 0;                                    //!< 再生中のClipの符号付きLoop回数。ClipのWrap Modeに応じて増減する。
+            AnimationWrapMode wrapMode = AnimationWrapMode::Loop;          //!< 再生中のClipのWrap Mode。ClipのWrap Modeに応じてtimeとloopCountが変化する。
         };
 
+        /**
+         * @brief RuntimeTransitionの条件判定に使用する。
+         */
         struct RuntimeCondition
         {
-            std::size_t parameterIndex = 0;
-            AnimatorConditionMode mode = AnimatorConditionMode::Equals;
-            float floatThreshold = 0.0f;
-            std::int32_t intThreshold = 0;
+            std::size_t parameterIndex = 0;                             //!< parameterのインデックス。m_parameters[parameterIndex]が条件判定に使用するparameter。
+            AnimatorConditionMode mode = AnimatorConditionMode::Equals; //!< 条件判定の方法。AnimatorControllerAsset内で一意。
+            float floatThreshold = 0.0f;                                //!< 条件判定の閾値。parameterの型に応じてfloatThreshold/intThresholdのいずれかを使用する。
+            std::int32_t intThreshold = 0;                              //!< 条件判定の閾値。parameterの型に応じてfloatThreshold/intThresholdのいずれかを使用する。
         };
 
+        /**
+         * @brief RuntimeState間の遷移を表す。条件判定とBlendingJobの評価に使用する。
+         */
         struct RuntimeTransition
         {
-            AnimatorTransitionID id = 0;
-            std::size_t sourceStateIndex = 0;
-            std::size_t destinationStateIndex = 0;
-            float duration = 0.0f;
-            float exitTime = 0.0f;
-            bool hasExitTime = false;
-            bool anyState = false;
-            std::vector<RuntimeCondition> conditions;
+            AnimatorTransitionID id = 0;              //!< transitionのstable ID。AnimatorControllerAsset内で一意。
+            std::size_t sourceStateIndex = 0;         //!< 遷移元のstateのインデックス。m_states[sourceStateIndex]が遷移元のstate。
+            std::size_t destinationStateIndex = 0;    //!< 遷移先のstateのインデックス。m_states[destinationStateIndex]が遷移先のstate。
+            float duration = 0.0f;                    //!< 遷移時間(秒)。0.0f以下は即時遷移として扱う。
+            float exitTime = 0.0f;                    //!< 遷移元のstateの正規化時刻。0.0f〜1.0fの範囲で指定する。
+            bool hasExitTime = false;                 //!< 遷移元のstateの正規化時刻を使用するかどうか。trueで使用する、falseで使用しない。
+            bool anyState = false;                    //!< 遷移元のstateがany stateかどうか。trueでany state、falseで特定のstate。
+            std::vector<RuntimeCondition> conditions; //!< 遷移条件のリスト。条件判定に使用する。
         };
 
         /**
@@ -167,14 +205,65 @@ namespace Engine
          * @param ratio 正規化時刻。0.0fでClip開始、1.0fでClip終了。
          */
         bool evaluate(float ratio);
+
+        /**
+         * @brief 現在の正規化時刻でozz runtimeを評価し、Palette Snapshotを生成する。
+         */
         bool evaluateCurrentPose();
+
+        /**
+         * @brief 現在のstateをozz runtimeで評価し、Blended Transformを生成する。
+         * @param state 評価するstate。m_states[m_currentStateIndex]が現在再生中のstate。
+         */
         bool sampleState(RuntimeState& state);
+
+        /**
+         * @brief 現在のstateをozz runtimeで評価し、Blended Transformを生成する。
+         * @param state 評価するstate。m_states[m_currentStateIndex]が現在再生中のstate。
+         * @param ratio 正規化時刻。0.0fでClip開始、1.0fでClip終了。
+         */
         bool beginTransition(std::size_t destinationStateIndex, float duration) noexcept;
+
+        /**
+         * @brief 現在のstateをozz runtimeで評価し、Blended Transformを生成する。
+         * @param state 評価するstate。m_states[m_currentStateIndex]が現在再生中のstate。
+         * @param ratio 正規化時刻。0.0fでClip開始、1.0fでClip終了。
+         */
         bool conditionsPass(const RuntimeTransition& transition) const noexcept;
+
+        /**
+         * @brief 現在のstateをozz runtimeで評価し、Blended Transformを生成する。
+         * @param state 評価するstate。m_states[m_currentStateIndex]が現在再生中のstate。
+         * @param ratio 正規化時刻。0.0fでClip開始、1.0fでClip終了。
+         */
         void consumeTriggers(const RuntimeTransition& transition) noexcept;
+
+        /**
+         * @brief 現在のstateをozz runtimeで評価し、Blended Transformを生成する。
+         * @param state 評価するstate。m_states[m_currentStateIndex]が現在再生中のstate。
+         * @param ratio 正規化時刻。0.0fでClip開始、1.0fでClip終了。
+         */
         void advanceState(RuntimeState& state, float deltaTime) noexcept;
+
+        /**
+         * @brief 現在のstateをozz runtimeで評価し、Blended Transformを生成する。
+         * @param state 評価するstate。m_states[m_currentStateIndex]が現在再生中のstate。
+         * @param ratio 正規化時刻。0.0fでClip開始、1.0fでClip終了。
+         */
         std::size_t findState(AnimatorStateID stateId) const noexcept;
+
+        /**
+         * @brief 現在のstateをozz runtimeで評価し、Blended Transformを生成する。
+         * @param state 評価するstate。m_states[m_currentStateIndex]が現在再生中のstate。
+         * @param ratio 正規化時刻。0.0fでClip開始、1.0fでClip終了。
+         */
         std::size_t findParameter(AnimatorParameterID parameterId) const noexcept;
+
+        /**
+         * @brief 現在のstateをozz runtimeで評価し、Blended Transformを生成する。
+         * @param state 評価するstate。m_states[m_currentStateIndex]が現在再生中のstate。
+         * @param ratio 正規化時刻。0.0fでClip開始、1.0fでClip終了。
+         */
         float normalizedTime(const RuntimeState& state) const noexcept;
 
         /**
@@ -184,16 +273,16 @@ namespace Engine
 
         std::shared_ptr<const SkeletonAsset> m_skeleton;                         //!< 再生対象SkeletonAsset。nullptrは未設定状態。
         std::shared_ptr<const AnimationClipAsset> m_clip;                        //!< 再生対象AnimationClipAsset。nullptrは未設定状態。
-        std::shared_ptr<const AnimatorControllerAsset> m_controller;
-        std::vector<RuntimeState> m_states;
-        std::vector<RuntimeParameter> m_parameters;
-        std::vector<RuntimeTransition> m_transitions;
-        std::vector<ozz::math::SoaTransform> m_blendedTransforms;
-        std::size_t m_currentStateIndex = 0;
-        std::size_t m_destinationStateIndex = 0;
-        float m_transitionTime = 0.0f;
-        float m_transitionDuration = 0.0f;
-        bool m_transitioning = false;
+        std::shared_ptr<const AnimatorControllerAsset> m_controller;             //!< 再生対象AnimatorControllerAsset。nullptrは未設定状態。
+        std::vector<RuntimeState> m_states;                                      //!< 再生中のstateのozz runtime評価に必要な情報を保持する。
+        std::vector<RuntimeParameter> m_parameters;                              //!< 再生中のparameterのozz runtime評価に必要な情報を保持する。
+        std::vector<RuntimeTransition> m_transitions;                            //!< 再生中のstate間の遷移を表す。条件判定とBlendingJobの評価に使用する。
+        std::vector<ozz::math::SoaTransform> m_blendedTransforms;                //!< ozz runtimeのBlendingJob用出力バッファ。ozz runtimeが評価したBlended Transformを保持する。
+        std::size_t m_currentStateIndex = 0;                                     //!< 再生中のstateのインデックス。m_states[m_currentStateIndex]が現在再生中のstate。
+        std::size_t m_destinationStateIndex = 0;                                 //!< 遷移先のstateのインデックス。m_states[m_destinationStateIndex]が遷移先のstate。
+        float m_transitionTime = 0.0f;                                           //!< 遷移開始からの経過時間(秒)。ClipのWrap Modeに応じてClampまたはWrapされる。
+        float m_transitionDuration = 0.0f;                                       //!< 遷移時間(秒)。0.0f以下は即時遷移として扱う。
+        bool m_transitioning = false;                                            //!< 遷移中かどうか。trueで遷移中、falseで遷移中ではない。
         std::unique_ptr<ozz::animation::SamplingJob::Context> m_samplingContext; //!< ozz runtimeのSamplingJob用Context。ozz runtimeが必要とする中間バッファを保持する。
         std::vector<ozz::math::SoaTransform> m_localTransforms;                  //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
         std::vector<ozz::math::Float4x4> m_modelMatrices;                        //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。

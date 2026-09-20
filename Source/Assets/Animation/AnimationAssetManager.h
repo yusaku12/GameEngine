@@ -104,23 +104,46 @@ namespace Engine
          */
         void unloadClip(AnimationClipHandle handle) noexcept;
 
-        /** @brief 指定パスのAnimator Controllerをロードする。 */
+        /**
+         * @brief 指定パスのAnimator Controllerをロードする。
+         * @param path Animator Controllerのパス
+         */
         AnimatorControllerHandle loadController(const std::filesystem::path& path);
 
-        /** @brief Controller assetをimmutable cacheへ登録する。 */
-        AnimatorControllerHandle createController(AnimatorControllerAsset asset,
-            const std::filesystem::path& cacheKey = {});
+        /**
+         * @brief Controller assetをimmutable cacheへ登録する。
+         * @param asset Controller asset
+         * @param cacheKey キャッシュキー (省略時は GUID を使用)
+         * @return AnimatorControllerHandle
+         */
+        AnimatorControllerHandle createController(AnimatorControllerAsset asset, const std::filesystem::path& cacheKey = {});
 
-        /** @brief Controller assetを指定パスへ保存する。 */
+        /**
+         * @brief Controller assetを指定パスへ保存する。
+         * @param handle AnimatorControllerHandle
+         * @param path 保存先のパス
+         * @return 保存に成功した場合は true
+         */
         bool saveController(AnimatorControllerHandle handle, const std::filesystem::path& path) const;
 
-        /** @brief 世代が一致するController snapshotを取得する。 */
+        /**
+         * @brief 世代が一致するController snapshotを取得する。
+         * @param handle AnimatorControllerHandle
+         * @return AnimatorControllerAsset への shared_ptr。無効な handle の場合は nullptr。
+         */
         std::shared_ptr<const AnimatorControllerAsset> getController(AnimatorControllerHandle handle) const noexcept;
 
-        /** @brief GUIDからController handleを検索する。 */
+        /**
+         * @brief GUIDからController handleを検索する。
+         * @param guid AnimatorController の GUID
+         * @return AnimatorControllerHandle。見つからない場合は無効な handle。
+         */
         AnimatorControllerHandle findControllerByGuid(const AssetGUID& guid) const noexcept;
 
-        /** @brief Controllerをcacheから除外する。 */
+        /**
+         * @brief Controllerをcacheから除外する。
+         * @param handle AnimatorControllerHandle
+         */
         void unloadController(AnimatorControllerHandle handle) noexcept;
 
         /**
@@ -152,18 +175,18 @@ namespace Engine
          */
         static std::filesystem::path normalizePath(const std::filesystem::path& path);
 
-        mutable std::mutex m_mutex;                                                     //!< キャッシュの保護用 Mutex
-        std::vector<Entry<SkeletonAsset>> m_skeletons;                                  //!< キャッシュされた SkeletonAsset のリスト
-        std::vector<Entry<AnimationClipAsset>> m_clips;                                 //!< キャッシュされた AnimationClipAsset のリスト
-        std::vector<Entry<AnimatorControllerAsset>> m_controllers;
-        std::unordered_map<std::filesystem::path, SkeletonHandle> m_skeletonPaths;      //!< パスから SkeletonHandle へのマッピング
-        std::unordered_map<std::filesystem::path, AnimationClipHandle> m_clipPaths;     //!< パスから AnimationClipHandle へのマッピング
-        std::unordered_map<std::filesystem::path, AnimatorControllerHandle> m_controllerPaths;
-        std::unordered_map<AssetGUID, SkeletonHandle, ObjectGUIDHash> m_skeletonGuids;  //!< GUID から SkeletonHandle へのマッピング
-        std::unordered_map<AssetGUID, AnimationClipHandle, ObjectGUIDHash> m_clipGuids; //!< GUID から AnimationClipHandle へのマッピング
-        std::unordered_map<AssetGUID, AnimatorControllerHandle, ObjectGUIDHash> m_controllerGuids;
-        std::uint32_t m_nextSkeletonGeneration = 1;                                     //!< SkeletonHandle の世代番号の次の値
-        std::uint32_t m_nextClipGeneration = 1;                                         //!< AnimationClipHandle の世代番号の次の値
-        std::uint32_t m_nextControllerGeneration = 1;
+        mutable std::mutex m_mutex;                                                                //!< キャッシュの保護用 Mutex
+        std::vector<Entry<SkeletonAsset>> m_skeletons;                                             //!< キャッシュされた SkeletonAsset のリスト
+        std::vector<Entry<AnimationClipAsset>> m_clips;                                            //!< キャッシュされた AnimationClipAsset のリスト
+        std::vector<Entry<AnimatorControllerAsset>> m_controllers;                                 //!< キャッシュされた AnimatorControllerAsset のリスト
+        std::unordered_map<std::filesystem::path, SkeletonHandle> m_skeletonPaths;                 //!< パスから SkeletonHandle へのマッピング
+        std::unordered_map<std::filesystem::path, AnimationClipHandle> m_clipPaths;                //!< パスから AnimationClipHandle へのマッピング
+        std::unordered_map<std::filesystem::path, AnimatorControllerHandle> m_controllerPaths;     //!< パスから AnimatorControllerHandle へのマッピング
+        std::unordered_map<AssetGUID, SkeletonHandle, ObjectGUIDHash> m_skeletonGuids;             //!< GUID から SkeletonHandle へのマッピング
+        std::unordered_map<AssetGUID, AnimationClipHandle, ObjectGUIDHash> m_clipGuids;            //!< GUID から AnimationClipHandle へのマッピング
+        std::unordered_map<AssetGUID, AnimatorControllerHandle, ObjectGUIDHash> m_controllerGuids; //!< GUID から AnimatorControllerHandle へのマッピング
+        std::uint32_t m_nextSkeletonGeneration = 1;                                                //!< SkeletonHandle の世代番号の次の値
+        std::uint32_t m_nextClipGeneration = 1;                                                    //!< AnimationClipHandle の世代番号の次の値
+        std::uint32_t m_nextControllerGeneration = 1;                                              //!< AnimatorControllerHandle の世代番号の次の値
     };
 }

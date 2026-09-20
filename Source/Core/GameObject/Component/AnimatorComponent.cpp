@@ -135,8 +135,7 @@ namespace Engine
         return true;
     }
 
-    bool AnimatorComponent::deserializePayload(const std::uint32_t version,
-        const std::span<const std::uint8_t> payload)
+    bool AnimatorComponent::deserializePayload(const std::uint32_t version, const std::span<const std::uint8_t> payload)
     {
         if (version != Serialization::CURRENT_ANIMATOR_COMPONENT_VERSION || payload.empty()
             || !Serialization::AnimatorComponentPayloadBufferHasIdentifier(payload.data()))

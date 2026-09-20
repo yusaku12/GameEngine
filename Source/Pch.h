@@ -28,5 +28,6 @@
 #include <random>
 #include <typeindex>
 #include <array>
+#include <unordered_set>
 
 #include "Core\Core.h"

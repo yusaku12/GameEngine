@@ -24,7 +24,7 @@ namespace Engine
         std::vector<std::string> hierarchyPaths;                    //!< ジョイントの階層パスリスト
         std::vector<Matrix> inverseBindPoses;                       //!< インバースバインドポーズ行列のリスト
         std::vector<Matrix> localBindTransforms;                    //!< ローカルバインド変換行列のリスト
-        SkeletonSignature signature;
-        std::filesystem::path sourcePath;
+        SkeletonSignature signature;                                //!< Skeletonの署名
+        std::filesystem::path sourcePath;                           //!< ソースファイルのパス
     };
 }

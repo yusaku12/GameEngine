@@ -158,8 +158,7 @@ namespace Engine
         return createController(std::move(asset), normalized);
     }
 
-    AnimatorControllerHandle AnimationAssetManager::createController(AnimatorControllerAsset asset,
-        const std::filesystem::path& cacheKey)
+    AnimatorControllerHandle AnimationAssetManager::createController(AnimatorControllerAsset asset, const std::filesystem::path& cacheKey)
     {
         const auto normalized = cacheKey.empty() ? std::filesystem::path{} : normalizePath(cacheKey);
         if (!cacheKey.empty() && normalized.empty()) return AnimatorControllerHandle::Invalid();

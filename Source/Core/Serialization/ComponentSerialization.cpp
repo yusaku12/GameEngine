@@ -1,4 +1,4 @@
-#include "Pch.h"
+﻿#include "Pch.h"
 #include "Core\Serialization\ComponentSerialization.h"
 #include "Core\GameObject\Component\TransformComponent.h"
 #include "Core\GameObject\ComponentRegistry.h"
@@ -11,29 +11,29 @@ namespace Engine::Serialization
         snapshots.clear();
         bool valid = true;
         object.forEachComponent([&](const Component& component, const std::type_index type)
-        {
-            if (!valid || type == std::type_index(typeid(TransformComponent)))
-                return;
-            const ComponentTypeInfo* info = ComponentRegistry::instance().get(type);
-            if (info == nullptr)
-                return;
-            ComponentSnapshot snapshot;
-            snapshot.type = info->name;
-            snapshot.enabled = component.isEnabled();
-            snapshot.payloadVersion = component.getPayloadVersion();
-            valid = component.serializePayload(snapshot.payload);
-            if (valid)
-                snapshots.push_back(std::move(snapshot));
-        });
+            {
+                if (!valid || type == std::type_index(typeid(TransformComponent)))
+                    return;
+                const ComponentTypeInfo* info = ComponentRegistry::instance().get(type);
+                if (info == nullptr)
+                    return;
+                ComponentSnapshot snapshot;
+                snapshot.type = info->name;
+                snapshot.enabled = component.isEnabled();
+                snapshot.payloadVersion = component.getPayloadVersion();
+                valid = component.serializePayload(snapshot.payload);
+                if (valid)
+                    snapshots.push_back(std::move(snapshot));
+            });
         if (!valid)
         {
             snapshots.clear();
             return false;
         }
         std::stable_sort(snapshots.begin(), snapshots.end(), [](const ComponentSnapshot& left, const ComponentSnapshot& right)
-        {
-            return left.type < right.type;
-        });
+            {
+                return left.type < right.type;
+            });
         return true;
     }
 

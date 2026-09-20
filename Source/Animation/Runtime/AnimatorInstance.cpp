@@ -33,7 +33,7 @@ namespace Engine
         {
             if (type == AnimatorParameterType::Float || type == AnimatorParameterType::Int)
                 return mode == AnimatorConditionMode::Greater || mode == AnimatorConditionMode::Less
-                    || mode == AnimatorConditionMode::Equals || mode == AnimatorConditionMode::NotEqual;
+                || mode == AnimatorConditionMode::Equals || mode == AnimatorConditionMode::NotEqual;
             if (type == AnimatorParameterType::Bool)
                 return mode == AnimatorConditionMode::If || mode == AnimatorConditionMode::IfNot;
             return type == AnimatorParameterType::Trigger && mode == AnimatorConditionMode::Triggered;

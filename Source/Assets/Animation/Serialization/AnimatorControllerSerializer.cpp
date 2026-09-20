@@ -1,6 +1,4 @@
 ﻿#include "Pch.h"
-#include <cmath>
-#include <unordered_set>
 #include <flatbuffers/flatbuffers.h>
 #include "Generated\FlatBuffers\AnimatorController_generated.h"
 #include "Assets\Animation\Serialization\AnimatorControllerSerializer.h"

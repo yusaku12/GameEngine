@@ -64,14 +64,21 @@ namespace Engine
         friend bool operator==(const AnimationClipHandle&, const AnimationClipHandle&) = default;
     };
 
-    /** @brief AnimatorControllerを一意に識別する世代付きハンドル。 */
+    /**
+     * @brief AnimatorControllerを一意に識別する世代付きハンドル。
+     */
     struct AnimatorControllerHandle
     {
+        //! AnimatorControllerHandle の無効なインデックス値
         static constexpr std::uint32_t INVALID_INDEX = UINT32_MAX;
 
-        std::uint32_t index = INVALID_INDEX;
-        std::uint32_t generation = 0;
+        std::uint32_t index = INVALID_INDEX; //!< AnimatorController のインデックス
+        std::uint32_t generation = 0;        //!< AnimatorController の世代番号。AnimatorController が破棄されると generation は増加する。
 
+        /**
+         * @brief AnimatorControllerHandle が有効かを判定する
+         * @return 有効な場合は true
+         */
         bool isValid() const noexcept { return index != INVALID_INDEX && generation != 0; }
         static constexpr AnimatorControllerHandle Invalid() noexcept { return {}; }
         friend bool operator==(const AnimatorControllerHandle&, const AnimatorControllerHandle&) = default;
