@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Editor\ImGui\EditorUi.h"
+#include "Assets\Model\ModelManager.h"
 #include "Core\GameObject\Component\AnimatorComponent.h"
 #include "Core\GameObject\Component\CameraComponent.h"
 #include "Core\GameObject\Component\ModelRendererComponent.h"
@@ -9,6 +10,7 @@
 #include "Core\Threading\ThreadDebugStats.h"
 #include "Editor\Camera\FreeCameraController.h"
 #include "Graphics\Camera\CameraManager.h"
+#include "Graphics\Debug\DebugPrimitive.h"
 #include "Graphics\Shader\ShaderManager.h"
 #include <imgui.h>
 #include <ImGuizmo.h>
@@ -173,6 +175,21 @@ namespace Engine
                 m_gizmoOperation = GizmoOperation::Rotate;
             else if (ImGui::IsKeyPressed(ImGuiKey_R))
                 m_gizmoOperation = GizmoOperation::Scale;
+        }
+
+        if (m_selectedObject != nullptr)
+        {
+            const ModelRendererComponent* const modelRenderer = m_selectedObject->getComponent<ModelRendererComponent>();
+            if (modelRenderer != nullptr && modelRenderer->getModel().isValid())
+            {
+                const std::shared_ptr<const ModelResource> model = ModelManager::instance().get(modelRenderer->getModel());
+                if (model != nullptr)
+                {
+                    AABB worldBounds;
+                    model->boundingBox.Transform(worldBounds, m_selectedObject->getWorldMatrix());
+                    DebugPrimitive::instance().drawBox(Matrix::CreateTranslation(worldBounds.Center), worldBounds.Extents);
+                }
+            }
         }
 
         CameraComponent* const camera = CameraManager::instance().getActiveCamera();
