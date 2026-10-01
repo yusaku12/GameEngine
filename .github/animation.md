@@ -33,13 +33,13 @@ agent: "agent"
 - [ModelResource](../../Source/Assets/Model/Resource/ModelResource.h)
 - [AnimationResource](../../Source/Assets/Model/Resource/AnimationResource.h)
 - [SkeletonResource](../../Source/Assets/Model/Resource/SkeletonResource.h)
-- [AssimpModelImporter](../../Source/Assets/Model/Import/AssimpModelImporter.cpp)
+ [FbxModelImporter](../../Source/Assets/Model/Import/FbxModelImporter.cpp)
 - [ModelManager](../../Source/Assets/Model/ModelManager.cpp)
 - [Model schema](../../Schemas/FlatBuffers/Model.fbs)
 - [ModelRendererComponent](../../Source/Core/GameObject/Component/ModelRendererComponent.cpp)
-- [ModelRenderSubmission](../../Source/Graphics/Renderer/ModelRenderSubmission.h)
+ FBX SDK由来の可読な中間データと、ozzの最適化済みRuntime Objectを区別する。Shipping RuntimeでRaw Key配列を保持し続けない。
 - [Model shader](../../Assets/Shaders/Model.hlsl)
-- [Scene schema](../../Schemas/FlatBuffers/Scene.fbs)
+ キー列をRuntimeで独自評価しない。FBX SDKで評価した入力キーをImport時に`ozz::animation::offline::RawAnimation`へ変換し、Validation後に`AnimationBuilder`でRuntime Animationへ変換する。
 - [Prefab schema](../../Schemas/FlatBuffers/Prefab.fbs)
 - [Serialization versions](../../Source/Core/Serialization/SerializationVersions.h)
 - [Visual Studio project](../../GameEngine.vcxproj)
@@ -66,7 +66,7 @@ agent: "agent"
 
 ```text
 FBX / glTF
-    -> Assimp Import Data
+    -> FBX SDK Scene Data
     -> ozz Offline Builder
     -> Skeleton Asset + Animation Clip Asset + Model Asset
 
@@ -137,7 +137,7 @@ ClipはModelから独立して共有・差し替え可能にする。最低限�
 - Asset Version
 - Source Clip名とImport Metadata
 
-キー列をRuntimeで独自評価しない。Assimpの入力キーをImport時に`ozz::animation::offline::RawAnimation`へ変換し、Validation後に`AnimationBuilder`でRuntime Animationへ変換する。
+キー列をRuntimeで独自評価しない。FBX SDKで評価した入力キーをImport時に`ozz::animation::offline::RawAnimation`へ変換し、Validation後に`AnimationBuilder`でRuntime Animationへ変換する。
 
 ### Animator Controller Asset
 
@@ -164,7 +164,7 @@ State、Parameter、Transitionは保存用GUIDまたは安定IDを持たせる�
 
 ### Source DataとRuntime Data
 
-Assimp由来の可読な中間データと、ozzの最適化済みRuntime Objectを区別する。Shipping RuntimeでRaw Key配列を保持し続けない。
+FBX SDK由来の可読な中間データと、ozzの最適化済みRuntime Objectを区別する。Shipping RuntimeでRaw Key配列を保持し続けない。
 
 保存方式は次のどちらかを選び、理由を記録する。
 
@@ -221,7 +221,7 @@ SkeletonまたはController変更時に必要容量を再確保し、通常Frame
 7. Root MotionとEventをMain Thread側で解決する。
 8. 不変SnapshotとしてRender Queueへ提出する。
 
-既存エンジンはrow-major行列と`mul(vector, matrix)`を使用しているため、ozzの列・行規約、Assimp変換、DirectX行列、Inverse Bind Poseの乗算順を推測で決めない。Bind Poseで全頂点が元位置になるテストと、既知の1 Joint回転テストで変換契約を確定する。
+既存エンジンはrow-major行列と`mul(vector, matrix)`を使用しているため、ozzの列・行規約、FBX SDK変換、DirectX行列、Inverse Bind Poseの乗算順を推測で決めない。Bind Poseで全頂点が元位置になるテストと、既知の1 Joint回転テストで変換契約を確定する。
 
 ## GPU Skinningと描画境界
 
@@ -236,8 +236,8 @@ SkeletonまたはController変更時に必要容量を再確保し、通常Frame
 
 ## Import Pipeline
 
-- AssimpのSkeleton階層から`RawSkeleton`を構築し、親子順序、重複名、欠損Joint、複数Rootを検証する。
-- Assimp Animationのtickを秒へ一度だけ変換する。`ticksPerSecond == 0`のFallback規則を固定する。
+- FBX SDKのSkeleton階層から`RawSkeleton`を構築し、親子順序、重複名、欠損Joint、複数Rootを検証する。
+- FBX SDKのAnimation時間を秒へ一度だけ変換し、サンプリングレートのFallback規則を固定する。
 - Translation / Rotation / Scale KeyをJoint Trackへ対応付ける。欠損ChannelはBind Poseを使う。
 - Quaternionを正規化し、座標系・Handedness・単位Scale変換をSkeleton、Mesh、Animationへ一貫して適用する。
 - Clip名が空または重複する場合の安定した命名規則を定める。
@@ -300,7 +300,7 @@ Skeleton、Animation Clip、Animator Controllerは既存のModelManager / Materi
 ### Phase 1: Skeleton / Clip Asset Pipeline
 
 - Skeleton / Clip型、Handle、Manager、Serializer
-- Assimpからozz Offline型への変換
+- FBX SDKからozz Offline型への変換
 - Skeleton Signatureと互換性検証
 - 旧Model内データのMigration Path
 

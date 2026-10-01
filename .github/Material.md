@@ -380,7 +380,7 @@ SubMesh
 
 Import時:
 
-1. AssimpからMaterial情報を読み取る
+1. FBX SDKからMaterial情報を読み取る
 2. Engine Material Assetへ変換する
 3. 必要ならModelのSub Assetとして生成する
 4. Model Material SlotへGUIDを登録する

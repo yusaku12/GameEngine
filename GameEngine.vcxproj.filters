@@ -15,7 +15,7 @@
     <ClCompile Include="Source\Graphics\Material\MaterialPropertyBlock.cpp" />
     <ClCompile Include="Source\Assets\Material\MaterialManager.cpp" />
     <ClCompile Include="Source\Assets\Material\Serialization\MaterialSerializer.cpp" />
-    <ClCompile Include="Source\Assets\Model\Import\AssimpModelImporter.cpp" />
+    <ClCompile Include="Source\Assets\Model\Import\FbxModelImporter.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Command.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Descriptor.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Device.cpp" />
@@ -99,7 +99,7 @@
     <ClInclude Include="Source\Assets\Material\MaterialManager.h" />
     <ClInclude Include="Source\Assets\Material\MaterialTypes.h" />
     <ClInclude Include="Source\Assets\Material\Serialization\MaterialSerializer.h" />
-    <ClInclude Include="Source\Assets\Model\Import\AssimpModelImporter.h" />
+    <ClInclude Include="Source\Assets\Model\Import\FbxModelImporter.h" />
     <ClInclude Include="Source\Assets\Model\Resource\AnimationResource.h" />
     <ClInclude Include="Source\Assets\Model\Resource\MaterialResource.h" />
     <ClInclude Include="Source\Assets\Model\Resource\MeshResource.h" />

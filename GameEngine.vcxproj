@@ -48,7 +48,7 @@
     <ClInclude Include="Source\Assets\Model\Serialization\ModelSerializer.h" />
     <ClInclude Include="Source\Assets\Model\ModelManager.h" />
     <ClInclude Include="Source\Assets\Model\ModelTypes.h" />
-    <ClInclude Include="Source\Assets\Model\Import\AssimpModelImporter.h" />
+    <ClInclude Include="Source\Assets\Model\Import\FbxModelImporter.h" />
     <ClInclude Include="Source\Assets\Model\Resource\AnimationResource.h" />
     <ClInclude Include="Source\Assets\Model\Resource\MaterialResource.h" />
     <ClInclude Include="Source\Assets\Model\Resource\MeshResource.h" />
@@ -162,7 +162,7 @@
     <ClCompile Include="Source\Assets\Model\ModelManager.cpp" />
     <ClCompile Include="Source\Core\Serialization\FlatBufferReader.cpp" />
     <ClCompile Include="Source\Core\Serialization\FlatBufferWriter.cpp" />
-    <ClCompile Include="Source\Assets\Model\Import\AssimpModelImporter.cpp" />
+    <ClCompile Include="Source\Assets\Model\Import\FbxModelImporter.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Command.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Descriptor.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Device.cpp" />
@@ -323,6 +323,9 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <FBXSDKRoot Condition="'$(FBXSDKRoot)' == ''">$(SolutionDir)..\DirectX12\External\FBX SDK\2020.3.9</FBXSDKRoot>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -357,7 +360,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;$(FBXSDKRoot)\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -367,11 +370,11 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;assimp-vc140-mt.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration);$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Debug;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\lib\x64\v141\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;libfbxsdk.lib;wininet.lib;ws2_32.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration);$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Debug;$(FBXSDKRoot)\lib\x64\debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(USERPROFILE)\.nuget\packages\assimp_native.redist\4.0.1\build\native\bin\x64\v141\Debug\assimp-vc140-mt.dll" "$(TargetDir)assimp-vc140-mt.dll"</Command>
+      <Command>copy /Y "$(FBXSDKRoot)\lib\x64\debug\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -384,7 +387,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;$(FBXSDKRoot)\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -394,11 +397,11 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;assimp-vc140-mt.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration);$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Release;$(USERPROFILE)\.nuget\packages\assimp_native\4.0.1\build\native\lib\x64\v141\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;libfbxsdk.lib;wininet.lib;ws2_32.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration);$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Release;$(FBXSDKRoot)\lib\x64\release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(USERPROFILE)\.nuget\packages\assimp_native.redist\4.0.1\build\native\bin\x64\v141\Release\assimp-vc140-mt.dll" "$(TargetDir)assimp-vc140-mt.dll"</Command>
+      <Command>copy /Y "$(FBXSDKRoot)\lib\x64\release\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Schemas\FlatBuffers\Skeleton.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimationClip.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorController.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorComponent.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h;$(ProjectDir)Generated\FlatBuffers\Skeleton_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimationClip_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorController_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorComponent_generated.h">

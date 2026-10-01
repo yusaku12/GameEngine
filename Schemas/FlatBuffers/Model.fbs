@@ -58,6 +58,7 @@ table Mesh {
     indices:[uint];
     sub_meshes:[SubMesh];
     bounds:Bounds;
+    vertices_in_model_space:bool = false;
 }
 
 table Bone {
