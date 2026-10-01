@@ -133,22 +133,12 @@ namespace Engine::Serialization
         loaded.textures.metallicRoughness = toEngine(textures->metallic_roughness());
         loaded.textures.ambientOcclusion = toEngine(textures->ambient_occlusion());
         loaded.textures.emissive = toEngine(textures->emissive());
-        if (file->header()->asset_version() >= 3)
-        {
-            loaded.textures.baseColorPath = textures->base_color_path() ? textures->base_color_path()->str() : "";
-            loaded.textures.normalPath = textures->normal_path() ? textures->normal_path()->str() : "";
-            loaded.textures.metallicRoughnessPath = textures->metallic_roughness_path() ? textures->metallic_roughness_path()->str() : "";
-            loaded.textures.ambientOcclusionPath = textures->ambient_occlusion_path() ? textures->ambient_occlusion_path()->str() : "";
-            loaded.textures.emissivePath = textures->emissive_path() ? textures->emissive_path()->str() : "";
-        }
-        if (file->header()->asset_version() >= 2)
-        {
-            if ((source->keyword_mask() & ~VALID_MATERIAL_KEYWORDS) != 0) {
-                LOG_WARNING("Material contains unsupported shader keyword bits: {}", path.string());
-            }
-            loaded.shaderKeywords = source->keyword_mask() & VALID_MATERIAL_KEYWORDS;
-        }
-        else if (const auto* keywords = source->shader_keywords())
+        loaded.textures.baseColorPath = textures->base_color_path() ? textures->base_color_path()->str() : "";
+        loaded.textures.normalPath = textures->normal_path() ? textures->normal_path()->str() : "";
+        loaded.textures.metallicRoughnessPath = textures->metallic_roughness_path() ? textures->metallic_roughness_path()->str() : "";
+        loaded.textures.ambientOcclusionPath = textures->ambient_occlusion_path() ? textures->ambient_occlusion_path()->str() : "";
+        loaded.textures.emissivePath = textures->emissive_path() ? textures->emissive_path()->str() : "";
+        if (const auto* keywords = source->shader_keywords(); keywords != nullptr && !keywords->empty())
         {
             for (const flatbuffers::String* keyword : *keywords)
             {
@@ -160,6 +150,12 @@ namespace Engine::Serialization
                 else if (keyword->string_view() == "USE_ALPHA_TEST") loaded.shaderKeywords |= toMask(MaterialKeyword::UseAlphaTest);
                 else LOG_WARNING("Ignoring unsupported Material shader keyword '{}': {}", keyword->str(), path.string());
             }
+        }
+        else
+        {
+            if ((source->keyword_mask() & ~VALID_MATERIAL_KEYWORDS) != 0)
+                LOG_WARNING("Material contains unsupported shader keyword bits: {}", path.string());
+            loaded.shaderKeywords = source->keyword_mask() & VALID_MATERIAL_KEYWORDS;
         }
 
         material = std::move(loaded);

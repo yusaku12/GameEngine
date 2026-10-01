@@ -4,6 +4,7 @@
 #include <optional>
 #include <vector>
 #include "Assets\Animation\AnimationTypes.h"
+#include "Assets\Material\MaterialAsset.h"
 #include "Assets\Material\MaterialTypes.h"
 #include "Assets\Model\Resource\AnimationResource.h"
 #include "Assets\Model\Resource\MaterialResource.h"
@@ -18,8 +19,9 @@ namespace Engine
      */
     struct ModelMaterialSlot
     {
-        std::string name;                 //!< 再Import時の対応付けに使用するSlot名
-        AssetGUID defaultMaterialGuid{};  //!< 既定Material AssetのGUID
+        std::string name;                          //!< 再Import時の対応付けに使用するSlot名
+        AssetGUID defaultMaterialGuid{};           //!< 既定Material AssetのGUID
+        std::filesystem::path defaultMaterialPath; //!< 既定Material Assetの保存Path
     };
 
     /**
@@ -28,16 +30,18 @@ namespace Engine
      */
     struct ModelResource
     {
-        std::vector<MeshResource> meshes;             //!< メッシュの配列。
-        std::vector<MaterialResource> materials;      //!< マテリアルの配列。
-        std::vector<ModelMaterialSlot> materialSlots; //!< SubMeshが参照するMaterial Slot。
-        std::optional<SkeletonResource> skeleton;     //!< スケルトンリソース。
-        std::vector<AnimationResource> animations;    //!< アニメーションの配列。
-        AssetGUID skeletonAssetGuid{};                //!< 分離済みSkeleton AssetのGUID。
-        std::vector<AssetGUID> animationClipGuids;    //!< 分離済みAnimation Clip AssetのGUID。
-        std::vector<ModelNode> nodes;                 //!< モデルノードの配列。
-        AABB boundingBox{};                           //!< バウンディングボックス。
-        BoundingSphere boundingSphere{};              //!< バウンディングスフィア。
-        std::filesystem::path sourcePath;             //!< モデルのソースファイルパス。
+        std::vector<MeshResource> meshes;                      //!< メッシュの配列。
+        std::vector<MaterialResource> materials;               //!< マテリアルの配列。
+        std::vector<ModelMaterialSlot> materialSlots;          //!< SubMeshが参照するMaterial Slot。
+        std::vector<MaterialAsset> embeddedMaterials;          //!< Model Asset内に保存するSlot別Material。
+        std::optional<SkeletonResource> skeleton;              //!< スケルトンリソース。
+        std::vector<AnimationResource> animations;             //!< アニメーションの配列。
+        AssetGUID skeletonAssetGuid{};                         //!< 分離済みSkeleton AssetのGUID。
+        std::vector<AssetGUID> animationClipGuids;             //!< 分離済みAnimation Clip AssetのGUID。
+        std::vector<std::filesystem::path> animationClipPaths; //!< 外部Animation ClipのAsset Path。
+        std::vector<ModelNode> nodes;                          //!< モデルノードの配列。
+        AABB boundingBox{};                                    //!< バウンディングボックス。
+        BoundingSphere boundingSphere{};                       //!< バウンディングスフィア。
+        std::filesystem::path sourcePath;                      //!< モデルのソースファイルパス。
     };
 } // namespace Engine

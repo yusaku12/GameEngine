@@ -39,7 +39,7 @@ namespace Engine
          * @param path 保存先のパス
          * @return 保存に成功した場合は true
          */
-        bool saveSkeleton(SkeletonHandle handle, const std::filesystem::path& path) const;
+        bool saveSkeleton(SkeletonHandle handle, const std::filesystem::path& path);
 
         /**
          * @brief SkeletonHandle に対応する SkeletonAsset を取得する。
@@ -47,6 +47,13 @@ namespace Engine
          * @return SkeletonAsset への shared_ptr。無効な handle の場合は nullptr。
          */
         std::shared_ptr<const SkeletonAsset> getSkeleton(SkeletonHandle handle) const noexcept;
+
+        /**
+         * @brief Skeletonの保存Pathを取得する。
+         * @param handle 取得するSkeleton Handle
+         * @return 保存Path。メモリ上のSkeletonは空Pathを返す
+         */
+        std::filesystem::path getSkeletonPath(SkeletonHandle handle) const;
 
         /**
          * @brief Skeleton の GUID から SkeletonHandle を検索する。
@@ -90,7 +97,7 @@ namespace Engine
          * @param path 保存先のパス
          * @return 保存に成功した場合は true
          */
-        bool saveClip(AnimationClipHandle handle, const std::filesystem::path& path) const;
+        bool saveClip(AnimationClipHandle handle, const std::filesystem::path& path);
 
         /**
          * @brief AnimationClipHandle に対応する AnimationClipAsset を取得する。
@@ -98,6 +105,13 @@ namespace Engine
          * @return AnimationClipAsset への shared_ptr。無効な handle の場合は nullptr。
          */
         std::shared_ptr<const AnimationClipAsset> getClip(AnimationClipHandle handle) const noexcept;
+
+        /**
+         * @brief AnimationClipの保存Pathを取得する。
+         * @param handle 取得するAnimationClip Handle
+         * @return 保存Path。メモリ上のClipは空Pathを返す
+         */
+        std::filesystem::path getClipPath(AnimationClipHandle handle) const;
 
         /**
          * @brief AnimationClip の GUID から AnimationClipHandle を検索する。
@@ -132,7 +146,7 @@ namespace Engine
          * @param path 保存先のパス
          * @return 保存に成功した場合は true
          */
-        bool saveController(AnimatorControllerHandle handle, const std::filesystem::path& path) const;
+        bool saveController(AnimatorControllerHandle handle, const std::filesystem::path& path);
 
         /**
          * @brief 世代が一致するController snapshotを取得する。
@@ -140,6 +154,13 @@ namespace Engine
          * @return AnimatorControllerAsset への shared_ptr。無効な handle の場合は nullptr。
          */
         std::shared_ptr<const AnimatorControllerAsset> getController(AnimatorControllerHandle handle) const noexcept;
+
+        /**
+         * @brief Animator Controllerの保存Pathを取得する。
+         * @param handle 取得するController Handle
+         * @return 保存Path。メモリ上のControllerは空Pathを返す
+         */
+        std::filesystem::path getControllerPath(AnimatorControllerHandle handle) const;
 
         /**
          * @brief GUIDからController handleを検索する。

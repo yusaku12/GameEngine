@@ -42,13 +42,45 @@ namespace Engine
          * @param path 保存先のアセットパス
          * @return 保存に成功した場合はtrue
          */
-        bool save(ModelHandle handle, const std::filesystem::path& path) const;
+        bool save(ModelHandle handle, const std::filesystem::path& path = {});
+
+        /**
+         * @brief Animation Clipをモデルの関連Animation一覧へ追加する。
+         * @param model 対象Model Handle
+         * @param clip 関連付けるAnimation Clip Handle
+         * @return 関連付けに成功した場合はtrue
+         */
+        bool associateAnimationClip(ModelHandle model, AnimationClipHandle clip);
+
+        /**
+         * @brief MaterialをModel Slotのローカル既定値として設定する。
+         * @param model 対象Model Handle
+         * @param slotIndex 対象Material Slot
+         * @param material 適用するMaterial snapshot
+         * @return 登録したローカルMaterial Handle。失敗時は無効Handle
+         */
+        MaterialHandle setMaterialSlotMaterial(ModelHandle model, std::size_t slotIndex, MaterialAsset material);
+
+        /**
+         * @brief 外部ファイルのAnimationをModelに埋め込み、runtime Clipとして登録する。
+         * @param model 対象Model Handle
+         * @param path Animationを含むFBX等のファイルPath
+         * @return 登録したClip Handle。失敗時は空
+         */
+        std::vector<AnimationClipHandle> importAnimationClips(ModelHandle model, const std::filesystem::path& path);
 
         /**
          * @brief Handleに対応するResourceの共有参照を取得する。
          * @param handle 取得するResourceのHandle
          */
         std::shared_ptr<const ModelResource> get(ModelHandle handle) const noexcept;
+
+        /**
+         * @brief Handleに対応するモデルアセットの保存Pathを取得する。
+         * @param handle 取得するモデルHandle
+         * @return 保存Path。メモリ上のモデルは空Pathを返す
+         */
+        std::filesystem::path getPath(ModelHandle handle) const;
 
         /**
          * @brief Handleに対応するResourceを管理対象から外す。

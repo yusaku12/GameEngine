@@ -12,6 +12,11 @@ table AnimatorParameterValueData {
     bool_value:bool;
 }
 
+table AnimatorClipReference {
+    guid:AssetGuid;
+    path:string;
+}
+
 table AnimatorComponentPayload {
     skeleton_guid:AssetGuid;
     clip_guid:AssetGuid;
@@ -22,6 +27,10 @@ table AnimatorComponentPayload {
     current_state:uint;
     normalized_time:float;
     parameters:[AnimatorParameterValueData];
+    skeleton_path:string;
+    clip_path:string;
+    controller_path:string;
+    controller_clips:[AnimatorClipReference];
 }
 
 root_type AnimatorComponentPayload;

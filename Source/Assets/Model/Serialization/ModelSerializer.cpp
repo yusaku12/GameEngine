@@ -16,6 +16,99 @@ namespace Engine::Serialization
         Vec4 toFlat(const Vector4& value) { return Vec4(value.x, value.y, value.z, value.w); }
         AssetGuid toFlat(const AssetGUID& value) { return AssetGuid(value.high, value.low); }
 
+        Vector3 toEngine(const Vec3* value);
+        Vector4 toEngine(const Vec4* value);
+        AssetGUID toEngine(const AssetGuid* value);
+
+        flatbuffers::Offset<MaterialAssetData> createEmbeddedMaterial(flatbuffers::FlatBufferBuilder& builder,
+            const Engine::MaterialAsset& material)
+        {
+            const AssetGuid guid = toFlat(material.guid);
+            const AssetGuid shaderGuid = toFlat(material.shaderGuid);
+            const AssetGuid baseColorTexture = toFlat(material.textures.baseColor);
+            const AssetGuid normalTexture = toFlat(material.textures.normal);
+            const AssetGuid metallicRoughnessTexture = toFlat(material.textures.metallicRoughness);
+            const AssetGuid ambientOcclusionTexture = toFlat(material.textures.ambientOcclusion);
+            const AssetGuid emissiveTexture = toFlat(material.textures.emissive);
+            const Vec4 baseColor = toFlat(material.baseColor);
+            const Vec3 emissiveColor = toFlat(material.emissiveColor);
+            const auto renderState = CreateMaterialRenderState(builder,
+                static_cast<Engine::Serialization::MaterialSurfaceType>(material.renderState.surfaceType),
+                static_cast<Engine::Serialization::MaterialCullMode>(material.renderState.cullMode),
+                static_cast<Engine::Serialization::MaterialDepthTest>(material.renderState.depthTest),
+                static_cast<Engine::Serialization::MaterialBlendMode>(material.renderState.blendMode),
+                material.renderState.depthWrite, material.renderState.renderQueueOffset);
+            const auto textures = CreateMaterialTextureReferences(builder, &baseColorTexture, &normalTexture,
+                &metallicRoughnessTexture, &ambientOcclusionTexture, &emissiveTexture,
+                builder.CreateString(material.textures.baseColorPath.generic_string()),
+                builder.CreateString(material.textures.normalPath.generic_string()),
+                builder.CreateString(material.textures.metallicRoughnessPath.generic_string()),
+                builder.CreateString(material.textures.ambientOcclusionPath.generic_string()),
+                builder.CreateString(material.textures.emissivePath.generic_string()));
+            return CreateMaterialAssetData(builder, &guid, builder.CreateString(material.name), &shaderGuid,
+                renderState, &baseColor, material.metallic, material.roughness, &emissiveColor,
+                material.emissiveIntensity, material.normalScale, material.occlusionStrength,
+                material.alphaCutoff, textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS);
+        }
+
+        bool readEmbeddedMaterial(const MaterialAssetData* source, Engine::MaterialAsset& material)
+        {
+            if (source == nullptr || source->guid() == nullptr)
+                return false;
+            material = Engine::MaterialAsset{};
+            if (!toEngine(source->guid()).isValid())
+                return true;
+            if (source->name() == nullptr
+                || source->render_state() == nullptr || source->base_color() == nullptr
+                || source->emissive_color() == nullptr || source->textures() == nullptr
+                || !std::isfinite(source->metallic()) || !std::isfinite(source->roughness())
+                || !std::isfinite(source->emissive_intensity()) || !std::isfinite(source->normal_scale())
+                || !std::isfinite(source->occlusion_strength()) || !std::isfinite(source->alpha_cutoff()))
+                return false;
+            const MaterialRenderState* renderState = source->render_state();
+            if (renderState->surface_type() > Engine::Serialization::MaterialSurfaceType_Transparent
+                || renderState->cull_mode() > Engine::Serialization::MaterialCullMode_Back
+                || renderState->depth_test() > Engine::Serialization::MaterialDepthTest_Always
+                || renderState->blend_mode() > Engine::Serialization::MaterialBlendMode_Additive
+                || (source->keyword_mask() & ~VALID_MATERIAL_KEYWORDS) != 0)
+                return false;
+
+            material.guid = toEngine(source->guid());
+            if (!material.guid.isValid())
+                return false;
+            material.name = source->name()->str();
+            material.shaderGuid = toEngine(source->shader_guid());
+            material.renderState.surfaceType = static_cast<Engine::MaterialSurfaceType>(renderState->surface_type());
+            material.renderState.cullMode = static_cast<Engine::MaterialCullMode>(renderState->cull_mode());
+            material.renderState.depthTest = static_cast<Engine::MaterialDepthTest>(renderState->depth_test());
+            material.renderState.blendMode = static_cast<Engine::MaterialBlendMode>(renderState->blend_mode());
+            material.renderState.depthWrite = renderState->depth_write();
+            material.renderState.renderQueueOffset = renderState->render_queue_offset();
+            material.baseColor = toEngine(source->base_color());
+            material.metallic = source->metallic();
+            material.roughness = source->roughness();
+            material.emissiveColor = toEngine(source->emissive_color());
+            material.emissiveIntensity = source->emissive_intensity();
+            material.normalScale = source->normal_scale();
+            material.occlusionStrength = source->occlusion_strength();
+            material.alphaCutoff = source->alpha_cutoff();
+            const MaterialTextureReferences* textures = source->textures();
+            material.textures.baseColor = toEngine(textures->base_color());
+            material.textures.normal = toEngine(textures->normal());
+            material.textures.metallicRoughness = toEngine(textures->metallic_roughness());
+            material.textures.ambientOcclusion = toEngine(textures->ambient_occlusion());
+            material.textures.emissive = toEngine(textures->emissive());
+            material.textures.baseColorPath = textures->base_color_path() != nullptr ? textures->base_color_path()->str() : "";
+            material.textures.normalPath = textures->normal_path() != nullptr ? textures->normal_path()->str() : "";
+            material.textures.metallicRoughnessPath = textures->metallic_roughness_path() != nullptr
+                ? textures->metallic_roughness_path()->str() : "";
+            material.textures.ambientOcclusionPath = textures->ambient_occlusion_path() != nullptr
+                ? textures->ambient_occlusion_path()->str() : "";
+            material.textures.emissivePath = textures->emissive_path() != nullptr ? textures->emissive_path()->str() : "";
+            material.shaderKeywords = source->keyword_mask();
+            return true;
+        }
+
         Vector2 toEngine(const Vec2* value) { return value ? Vector2(value->x(), value->y()) : Vector2::Zero; }
         Vector3 toEngine(const Vec3* value) { return value ? Vector3(value->x(), value->y(), value->z()) : Vector3::Zero; }
         Vector4 toEngine(const Vec4* value) { return value ? Vector4(value->x(), value->y(), value->z(), value->w()) : Vector4::Zero; }
@@ -68,7 +161,8 @@ namespace Engine::Serialization
             const Engine::ModelMaterialSlot& slot)
         {
             const AssetGuid materialGuid = toFlat(slot.defaultMaterialGuid);
-            return CreateModelMaterialSlot(builder, builder.CreateString(slot.name), &materialGuid);
+            return CreateModelMaterialSlot(builder, builder.CreateString(slot.name), &materialGuid,
+                builder.CreateString(slot.defaultMaterialPath.generic_string()));
         }
 
         flatbuffers::Offset<ModelVertex> createVertex(flatbuffers::FlatBufferBuilder& builder, const Engine::ModelVertex& vertex)
@@ -286,10 +380,18 @@ namespace Engine::Serialization
         meshes.reserve(model.meshes.size());
         for (const MeshResource& mesh : model.meshes)
             meshes.push_back(createMesh(builder, mesh));
+        bool hasCompleteMaterialBundle = model.materialSlots.size() >= model.materials.size()
+            && model.embeddedMaterials.size() == model.materialSlots.size();
+        for (std::size_t index = 0; hasCompleteMaterialBundle && index < model.materialSlots.size(); ++index)
+            hasCompleteMaterialBundle = model.embeddedMaterials[index].guid.isValid()
+            || !model.materialSlots[index].defaultMaterialPath.empty();
         std::vector<flatbuffers::Offset<Material>> materials;
-        materials.reserve(model.materials.size());
-        for (const MaterialResource& material : model.materials)
-            materials.push_back(createMaterial(builder, material));
+        if (!hasCompleteMaterialBundle)
+        {
+            materials.reserve(model.materials.size());
+            for (const MaterialResource& material : model.materials)
+                materials.push_back(createMaterial(builder, material));
+        }
         std::vector<flatbuffers::Offset<ModelMaterialSlot>> materialSlots;
         materialSlots.reserve(model.materialSlots.size());
         for (const Engine::ModelMaterialSlot& slot : model.materialSlots)
@@ -308,12 +410,21 @@ namespace Engine::Serialization
         animationClipGuids.reserve(model.animationClipGuids.size());
         for (const AssetGUID& guid : model.animationClipGuids)
             animationClipGuids.push_back(toFlat(guid));
+        std::vector<flatbuffers::Offset<flatbuffers::String>> animationClipPaths;
+        animationClipPaths.reserve(model.animationClipPaths.size());
+        for (const std::filesystem::path& clipPath : model.animationClipPaths)
+            animationClipPaths.push_back(builder.CreateString(clipPath.generic_string()));
+        std::vector<flatbuffers::Offset<MaterialAssetData>> embeddedMaterials;
+        embeddedMaterials.reserve(model.embeddedMaterials.size());
+        for (const Engine::MaterialAsset& material : model.embeddedMaterials)
+            embeddedMaterials.push_back(createEmbeddedMaterial(builder, material));
 
         const auto root = CreateModelFile(builder, header, builder.CreateVector(meshes), builder.CreateVector(materials),
             model.skeleton ? createSkeleton(builder, *model.skeleton) : 0, builder.CreateVector(animations),
             builder.CreateVector(nodes), createBounds(builder, model.boundingBox, model.boundingSphere),
             builder.CreateString(model.sourcePath.generic_string()), builder.CreateVector(materialSlots),
-            &skeletonAssetGuid, builder.CreateVectorOfStructs(animationClipGuids));
+            &skeletonAssetGuid, builder.CreateVectorOfStructs(animationClipGuids),
+            builder.CreateVector(animationClipPaths), builder.CreateVector(embeddedMaterials));
         FinishModelFileBuffer(builder, root);
         return FlatBufferWriter{}.saveAtomic(path, std::span<const std::uint8_t>(builder.GetBufferPointer(), builder.GetSize()));
     }
@@ -343,12 +454,20 @@ namespace Engine::Serialization
         if (!readBounds(source->bounds(), model.boundingBox, model.boundingSphere))
             return false;
         model.sourcePath = source->source_path() ? std::filesystem::path(source->source_path()->str()) : std::filesystem::path{};
-        if (source->header()->asset_version() >= 3)
-        {
+        if (source->skeleton_asset_guid() != nullptr)
             model.skeletonAssetGuid = toEngine(source->skeleton_asset_guid());
-            if (const auto* clipGuids = source->animation_clip_guids())
-                for (const AssetGuid* guid : *clipGuids)
-                    model.animationClipGuids.push_back(toEngine(guid));
+        if (const auto* clipGuids = source->animation_clip_guids())
+            for (const AssetGuid* guid : *clipGuids)
+                model.animationClipGuids.push_back(toEngine(guid));
+        if (const auto* clipPaths = source->animation_clip_paths())
+        {
+            model.animationClipPaths.reserve(clipPaths->size());
+            for (const flatbuffers::String* clipPath : *clipPaths)
+            {
+                if (clipPath == nullptr)
+                    return false;
+                model.animationClipPaths.emplace_back(clipPath->str());
+            }
         }
         if (const auto* meshes = source->meshes()) {
             model.meshes.reserve(meshes->size());
@@ -388,7 +507,19 @@ namespace Engine::Serialization
             for (const ModelMaterialSlot* sourceSlot : *materialSlots) {
                 if (sourceSlot == nullptr || sourceSlot->name() == nullptr)
                     return false;
-                model.materialSlots.push_back({ sourceSlot->name()->str(), toEngine(sourceSlot->default_material_guid()) });
+                model.materialSlots.push_back({ sourceSlot->name()->str(), toEngine(sourceSlot->default_material_guid()),
+                    sourceSlot->default_material_path() != nullptr
+                        ? std::filesystem::path(sourceSlot->default_material_path()->str()) : std::filesystem::path{} });
+            }
+        }
+        if (const auto* embeddedMaterials = source->embedded_materials())
+        {
+            model.embeddedMaterials.reserve(embeddedMaterials->size());
+            for (const MaterialAssetData* embeddedMaterial : *embeddedMaterials)
+            {
+                model.embeddedMaterials.emplace_back();
+                if (!readEmbeddedMaterial(embeddedMaterial, model.embeddedMaterials.back()))
+                    return false;
             }
         }
         if (source->skeleton() != nullptr) {
@@ -420,6 +551,9 @@ namespace Engine::Serialization
                     return false;
             }
         }
+        if ((!model.embeddedMaterials.empty() && model.embeddedMaterials.size() != model.materialSlots.size())
+            || (!model.animationClipPaths.empty() && model.animationClipPaths.size() != model.animationClipGuids.size()))
+            return false;
         for (const Engine::ModelNode& node : model.nodes) {
             if (node.parentIndex >= static_cast<std::int32_t>(model.nodes.size()))
                 return false;

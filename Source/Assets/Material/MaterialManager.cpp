@@ -77,7 +77,29 @@ namespace Engine
             return MaterialHandle::Invalid();
         }
         registerTexturePaths(material.textures);
-        return create(std::move(material), normalizedPath);
+        const AssetGUID guid = material.guid;
+        const std::scoped_lock lock(m_mutex);
+        if (const auto found = m_pathCache.find(normalizedPath); found != m_pathCache.end())
+            return found->second;
+        if (const auto found = m_guidCache.find(guid); found != m_guidCache.end())
+        {
+            const MaterialHandle handle = found->second;
+            if (!handle.isValid() || handle.index >= m_entries.size())
+                return MaterialHandle::Invalid();
+            Entry& entry = m_entries[handle.index];
+            if (entry.generation != handle.generation || entry.resource == nullptr)
+                return MaterialHandle::Invalid();
+            if (const auto conflict = m_pathCache.find(normalizedPath);
+                conflict != m_pathCache.end() && conflict->second != handle)
+                return MaterialHandle::Invalid();
+            if (!entry.path.empty())
+                m_pathCache.erase(entry.path);
+            entry.resource = std::make_shared<const MaterialAsset>(std::move(material));
+            entry.path = normalizedPath;
+            m_pathCache[normalizedPath] = handle;
+            return handle;
+        }
+        return addEntry(std::move(material), normalizedPath, false);
     }
 
     MaterialHandle MaterialManager::create(MaterialAsset material, const std::filesystem::path& cacheKey)

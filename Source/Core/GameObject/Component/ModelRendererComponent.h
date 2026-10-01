@@ -57,6 +57,10 @@ namespace Engine
         MaterialPropertyBlock& getMaterialPropertyBlock() noexcept { return m_propertyBlock; }
         const MaterialPropertyBlock& getMaterialPropertyBlock() const noexcept { return m_propertyBlock; }
 
+        std::uint32_t getPayloadVersion() const noexcept override;
+        bool serializePayload(std::vector<std::uint8_t>& payload) const override;
+        bool deserializePayload(std::uint32_t version, std::span<const std::uint8_t> payload) override;
+
         /**
          * @brief Shadow Passへ登録するかを設定する。
          * @param castShadows Shadow Passへ登録するかどうか。
@@ -76,12 +80,22 @@ namespace Engine
 
     private:
 
-        ModelHandle m_model;                             //!< 表示するモデルHandle。
-        std::vector<MaterialHandle> m_materialOverrides; //!< Model Material Slotと同じIndexのOverride。
-        MaterialPropertyBlock m_propertyBlock;           //!< Draw単位の数値Parameter Override。
-        MaterialHandle m_inspectedMaterial;              //!< Inspectorで表示中の共有Material。
-        std::uint32_t m_objectID = 0;                    //!< 描画用のオブジェクトID。0は無効。
-        bool m_castShadows = true;                       //!< Shadow Passへ登録するかどうか。
-        std::string m_loadStatus;                        //!< モデルのロード状態を表示する文字列。
+        /**
+         * @brief 他Assetのロード待ちMaterial参照。
+         */
+        struct PendingMaterialOverride
+        {
+            std::size_t slotIndex = 0; //!< Model Material SlotのIndex
+            AssetGUID materialGuid{};  //!< Material AssetのGUID
+        };
+
+        ModelHandle m_model;                                             //!< 表示するモデルHandle。
+        std::vector<MaterialHandle> m_materialOverrides;                 //!< Model Material Slotと同じIndexのOverride。
+        std::vector<PendingMaterialOverride> m_pendingMaterialOverrides; //!< 他Assetのロード待ちMaterial参照。
+        MaterialPropertyBlock m_propertyBlock;                           //!< Draw単位の数値Parameter Override。
+        MaterialHandle m_inspectedMaterial;                              //!< Inspectorで表示中の共有Material。
+        std::uint32_t m_objectID = 0;                                    //!< 描画用のオブジェクトID。0は無効。
+        bool m_castShadows = true;                                       //!< Shadow Passへ登録するかどうか。
+        std::string m_loadStatus;                                        //!< モデルのロード状態を表示する文字列。
     };
 } // namespace Engine

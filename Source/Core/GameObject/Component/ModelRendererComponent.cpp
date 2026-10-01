@@ -1,4 +1,6 @@
 ﻿#include "Pch.h"
+#include <flatbuffers/flatbuffers.h>
+#include "Generated\FlatBuffers\ModelRendererComponent_generated.h"
 #include "Core\GameObject\Component\ModelRendererComponent.h"
 #include "Assets\Material\MaterialManager.h"
 #include "Assets\Model\ModelManager.h"
@@ -6,6 +8,7 @@
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Core\GameObject\GameObject.h"
 #include "Core\Scene\SceneManager.h"
+#include "Core\Serialization\SerializationVersions.h"
 #include "Core\System\Dialog.h"
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Graphics\Renderer\ModelRenderSubmission.h"
@@ -162,6 +165,36 @@ namespace Engine
                 });
         }
 
+        void requestMaterialLoad(const ObjectGUID objectGuid, const std::size_t slotIndex)
+        {
+            const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+            MainThreadDispatcher::instance().post([objectGuid, slotIndex, ownerWindow]
+                {
+                    static constexpr std::array filters = {
+                        FileDialogFilter{ L"GameEngine Material", L"*.material;*.mat" },
+                        FileDialogFilter{ L"All Files", L"*.*" },
+                    };
+                    std::vector<std::filesystem::path> paths;
+                    if (Dialog::openFile(paths, L"Materialを読み込む", "Assets/Materials", filters, false, ownerWindow)
+                        != DialogResult::Ok || paths.empty())
+                        return;
+
+                    SceneManager& sceneManager = SceneManager::instance();
+                    GameObject* object = nullptr;
+                    if (Scene* scene = sceneManager.getActiveScene())
+                        object = scene->find(objectGuid);
+                    if (object == nullptr)
+                        object = sceneManager.getPersistentScene()->find(objectGuid);
+                    ModelRendererComponent* component = object != nullptr
+                        ? object->getComponent<ModelRendererComponent>() : nullptr;
+                    if (component == nullptr)
+                        return;
+                    const MaterialHandle material = MaterialManager::instance().load(paths.front());
+                    if (!material.isValid() || !component->setMaterialOverride(slotIndex, material))
+                        LOG_ERROR("[ModelRenderer] Materialの割り当てに失敗しました: {}", paths.front().string());
+                });
+        }
+
         void requestModelSaveAs(const ModelHandle handle)
         {
             const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
@@ -243,13 +276,18 @@ namespace Engine
             }
 
             const std::filesystem::path materialPath = manager.getPath(handle);
-            ImGui::BeginDisabled(materialPath.empty());
-            if (ImGui::Button("Save") && !manager.save(handle))
-                LOG_ERROR("[MaterialEditor] Material Save failed: {}", materialPath.string());
-            ImGui::EndDisabled();
-            ImGui::SameLine();
-            if (ImGui::Button("Save As..."))
-                requestMaterialSaveAs(handle);
+            if (materialPath.empty())
+            {
+                ImGui::TextDisabled("Stored in Model. Save the Model to persist changes.");
+            }
+            else
+            {
+                if (ImGui::Button("Save") && !manager.save(handle))
+                    LOG_ERROR("[MaterialEditor] Material Save failed: {}", materialPath.string());
+                ImGui::SameLine();
+                if (ImGui::Button("Save As..."))
+                    requestMaterialSaveAs(handle);
+            }
         }
     }
 
@@ -282,6 +320,7 @@ namespace Engine
 
         m_model = model;
         m_materialOverrides = std::move(nextOverrides);
+        m_pendingMaterialOverrides.clear();
     }
 
     bool ModelRendererComponent::setMaterialOverride(const std::size_t slotIndex, const MaterialHandle material) noexcept
@@ -303,6 +342,196 @@ namespace Engine
             m_materialOverrides[slotIndex] = MaterialHandle::Invalid();
     }
 
+    std::uint32_t ModelRendererComponent::getPayloadVersion() const noexcept
+    {
+        return Serialization::CURRENT_MODEL_RENDERER_COMPONENT_VERSION;
+    }
+
+    bool ModelRendererComponent::serializePayload(std::vector<std::uint8_t>& payload) const
+    {
+        flatbuffers::FlatBufferBuilder builder(256);
+        const std::filesystem::path modelPath = ModelManager::instance().getPath(m_model);
+        std::string modelExtension = modelPath.extension().string();
+        std::transform(modelExtension.begin(), modelExtension.end(), modelExtension.begin(),
+            [](const unsigned char character) { return static_cast<char>(std::tolower(character)); });
+        if (m_model.isValid() && modelExtension != ".model" && modelExtension != ".mdl")
+        {
+            LOG_ERROR("[ModelRenderer] Scene保存前にモデルをModel Assetとして保存してください");
+            return false;
+        }
+
+        std::vector<flatbuffers::Offset<Serialization::ModelMaterialOverride>> overrides;
+        std::vector<flatbuffers::Offset<flatbuffers::String>> defaultMaterialPaths;
+        const std::shared_ptr<const ModelResource> model = ModelManager::instance().get(m_model);
+        if (model != nullptr)
+        {
+            MaterialManager& materials = MaterialManager::instance();
+            overrides.reserve(m_materialOverrides.size());
+            defaultMaterialPaths.reserve(model->materialSlots.size());
+            for (const ModelMaterialSlot& slot : model->materialSlots)
+            {
+                std::filesystem::path materialPath = slot.defaultMaterialPath;
+                if (materialPath.empty())
+                    materialPath = materials.getPath(materials.findByGuid(slot.defaultMaterialGuid));
+                defaultMaterialPaths.push_back(builder.CreateString(materialPath.generic_string()));
+            }
+            for (std::size_t slotIndex = 0; slotIndex < m_materialOverrides.size(); ++slotIndex)
+            {
+                const MaterialHandle handle = m_materialOverrides[slotIndex];
+                const std::shared_ptr<const MaterialAsset> material = materials.get(handle);
+                if (material == nullptr || slotIndex >= model->materialSlots.size())
+                    continue;
+                const std::filesystem::path materialPath = materials.getPath(handle);
+                const AssetGUID& defaultGuid = model->materialSlots[slotIndex].defaultMaterialGuid;
+                const bool isModelDefault = material->guid == defaultGuid;
+                const bool isBuiltIn = handle == materials.getDefaultMaterial() || handle == materials.getErrorMaterial();
+                if (materialPath.empty() && isModelDefault)
+                    continue;
+                if (materialPath.empty() && !isModelDefault && !isBuiltIn)
+                {
+                    LOG_ERROR("[ModelRenderer] Scene保存前にOverride MaterialをAssetとして保存してください: {}",
+                        material->name);
+                    return false;
+                }
+
+                const Serialization::AssetGuid guid(material->guid.high, material->guid.low);
+                overrides.push_back(Serialization::CreateModelMaterialOverride(builder,
+                    builder.CreateString(model->materialSlots[slotIndex].name),
+                    static_cast<std::uint32_t>(slotIndex), &guid,
+                    builder.CreateString(materialPath.generic_string())));
+            }
+            for (const PendingMaterialOverride& pending : m_pendingMaterialOverrides)
+            {
+                if (pending.slotIndex >= model->materialSlots.size() || !pending.materialGuid.isValid())
+                    return false;
+                const Serialization::AssetGuid guid(pending.materialGuid.high, pending.materialGuid.low);
+                overrides.push_back(Serialization::CreateModelMaterialOverride(builder,
+                    builder.CreateString(model->materialSlots[pending.slotIndex].name),
+                    static_cast<std::uint32_t>(pending.slotIndex), &guid, builder.CreateString("")));
+            }
+        }
+
+        const auto root = Serialization::CreateModelRendererComponentPayload(builder,
+            builder.CreateString(modelPath.generic_string()), builder.CreateVector(overrides),
+            builder.CreateVector(defaultMaterialPaths), m_castShadows);
+        Serialization::FinishModelRendererComponentPayloadBuffer(builder, root);
+        payload.assign(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
+        return true;
+    }
+
+    bool ModelRendererComponent::deserializePayload(const std::uint32_t version,
+        const std::span<const std::uint8_t> payload)
+    {
+        if (version < Serialization::MINIMUM_SUPPORTED_MODEL_RENDERER_COMPONENT_VERSION
+            || version > Serialization::CURRENT_MODEL_RENDERER_COMPONENT_VERSION || payload.empty()
+            || !Serialization::ModelRendererComponentPayloadBufferHasIdentifier(payload.data()))
+            return false;
+        flatbuffers::Verifier verifier(payload.data(), payload.size());
+        if (!Serialization::VerifyModelRendererComponentPayloadBuffer(verifier))
+            return false;
+        const Serialization::ModelRendererComponentPayload* source =
+            Serialization::GetModelRendererComponentPayload(payload.data());
+        if (source == nullptr || source->model_path() == nullptr)
+            return false;
+
+        const std::string modelPath = source->model_path()->str();
+        ModelHandle model = ModelHandle::Invalid();
+        if (!modelPath.empty())
+        {
+            model = ModelManager::instance().load(std::filesystem::path(modelPath));
+            if (!model.isValid())
+            {
+                LOG_ERROR("[ModelRenderer] Modelの復元に失敗しました: {}", modelPath);
+                return false;
+            }
+        }
+        setModel(model);
+        m_castShadows = source->cast_shadows();
+        m_pendingMaterialOverrides.clear();
+
+        const std::shared_ptr<const ModelResource> modelResource = ModelManager::instance().get(m_model);
+        const auto* overrides = source->material_overrides();
+        const auto* defaultMaterialPaths = source->default_material_paths();
+        if (modelResource == nullptr && ((overrides != nullptr && !overrides->empty())
+            || (defaultMaterialPaths != nullptr && !defaultMaterialPaths->empty())))
+            return false;
+        if (modelResource != nullptr && defaultMaterialPaths != nullptr
+            && defaultMaterialPaths->size() != modelResource->materialSlots.size())
+            return false;
+
+        MaterialManager& materials = MaterialManager::instance();
+        if (modelResource != nullptr && defaultMaterialPaths != nullptr)
+        {
+            const std::size_t count = std::min(modelResource->materialSlots.size(),
+                static_cast<std::size_t>(defaultMaterialPaths->size()));
+            for (std::size_t slotIndex = 0; slotIndex < count; ++slotIndex)
+            {
+                const flatbuffers::String* savedPath = defaultMaterialPaths->Get(static_cast<flatbuffers::uoffset_t>(slotIndex));
+                const ModelMaterialSlot& slot = modelResource->materialSlots[slotIndex];
+                if (savedPath == nullptr || savedPath->size() == 0 || !slot.defaultMaterialGuid.isValid())
+                    continue;
+                const MaterialHandle material = materials.load(std::filesystem::path(savedPath->str()));
+                const std::shared_ptr<const MaterialAsset> loaded = materials.get(material);
+                if (loaded == nullptr || loaded->guid != slot.defaultMaterialGuid)
+                {
+                    LOG_ERROR("[ModelRenderer] Default Materialの復元に失敗しました: {}", savedPath->str());
+                    return false;
+                }
+            }
+        }
+
+        if (overrides == nullptr)
+            return true;
+        std::vector<bool> restoredSlots(modelResource->materialSlots.size(), false);
+        for (const Serialization::ModelMaterialOverride* savedOverride : *overrides)
+        {
+            if (savedOverride == nullptr || savedOverride->slot_name() == nullptr
+                || savedOverride->material_guid() == nullptr)
+                return false;
+            const std::string slotName = savedOverride->slot_name()->str();
+            std::size_t slotIndex = savedOverride->slot_index();
+            if (slotIndex >= modelResource->materialSlots.size()
+                || modelResource->materialSlots[slotIndex].name != slotName)
+            {
+                const auto match = std::find_if(modelResource->materialSlots.begin(), modelResource->materialSlots.end(),
+                    [&slotName](const ModelMaterialSlot& slot) { return slot.name == slotName; });
+                if (match == modelResource->materialSlots.end())
+                    continue;
+                if (std::find_if(std::next(match), modelResource->materialSlots.end(),
+                    [&slotName](const ModelMaterialSlot& slot) { return slot.name == slotName; })
+                    != modelResource->materialSlots.end())
+                    continue;
+                slotIndex = static_cast<std::size_t>(match - modelResource->materialSlots.begin());
+            }
+            if (restoredSlots[slotIndex])
+                return false;
+            restoredSlots[slotIndex] = true;
+
+            const AssetGUID materialGuid{ savedOverride->material_guid()->high(), savedOverride->material_guid()->low() };
+            MaterialHandle material = MaterialHandle::Invalid();
+            if (savedOverride->material_path() != nullptr && !savedOverride->material_path()->str().empty())
+            {
+                material = materials.load(std::filesystem::path(savedOverride->material_path()->str()));
+                const std::shared_ptr<const MaterialAsset> loaded = materials.get(material);
+                if (loaded == nullptr || loaded->guid != materialGuid)
+                {
+                    LOG_ERROR("[ModelRenderer] Override Materialの復元に失敗しました: {}",
+                        savedOverride->material_path()->str());
+                    return false;
+                }
+            }
+            else
+            {
+                material = materials.findByGuid(materialGuid);
+            }
+            if (material.isValid())
+                setMaterialOverride(slotIndex, material);
+            else
+                m_pendingMaterialOverrides.push_back({ slotIndex, materialGuid });
+        }
+        return true;
+    }
+
     void ModelRendererComponent::onLateUpdate([[maybe_unused]] const float deltaTime)
     {
         if (!m_model.isValid() || getGameObject() == nullptr)
@@ -311,6 +540,15 @@ namespace Engine
         const std::shared_ptr<const ModelResource> model = ModelManager::instance().get(m_model);
         if (model == nullptr)
             return;
+
+        for (auto pending = m_pendingMaterialOverrides.begin(); pending != m_pendingMaterialOverrides.end();)
+        {
+            const MaterialHandle material = MaterialManager::instance().findByGuid(pending->materialGuid);
+            if (material.isValid() && setMaterialOverride(pending->slotIndex, material))
+                pending = m_pendingMaterialOverrides.erase(pending);
+            else
+                ++pending;
+        }
 
         const Matrix worldMatrix = getGameObject()->getWorldMatrix();
         AABB worldBounds;
@@ -418,6 +656,17 @@ namespace Engine
         ImGui::SameLine();
         ImGui::BeginDisabled(model == nullptr);
         if (ImGui::Button("Save Model"))
+        {
+            std::string extension = ModelManager::instance().getPath(m_model).extension().string();
+            std::transform(extension.begin(), extension.end(), extension.begin(),
+                [](const unsigned char character) { return static_cast<char>(std::tolower(character)); });
+            if (extension != ".model" && extension != ".mdl")
+                requestModelSaveAs(m_model);
+            else if (!ModelManager::instance().save(m_model))
+                LOG_ERROR("[ModelEditor] Model Save failed");
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Save Model As..."))
             requestModelSaveAs(m_model);
         ImGui::EndDisabled();
         ImGui::SameLine();
@@ -460,8 +709,36 @@ namespace Engine
                     }
                     ImGui::EndCombo();
                 }
+                ImGui::SameLine();
+                if (ImGui::Button("Load Material..."))
+                {
+                    const GameObject* const gameObject = getGameObject();
+                    if (gameObject != nullptr)
+                        requestMaterialLoad(gameObject->getGUID(), slotIndex);
+                }
                 if (ImGui::Button("Open Material"))
                     m_inspectedMaterial = resolvedMaterial;
+                const MaterialHandle modelMaterial = overridden != nullptr ? overrideMaterial : resolvedMaterial;
+                const std::shared_ptr<const MaterialAsset> modelMaterialAsset = materials.get(modelMaterial);
+                if (modelMaterialAsset != nullptr
+                    && (!materials.getPath(modelMaterial).empty() || overridden != nullptr))
+                {
+                    if (ImGui::Button("Make Model Default"))
+                    {
+                        const MaterialHandle embedded = ModelManager::instance().setMaterialSlotMaterial(
+                            m_model, slotIndex, *modelMaterialAsset);
+                        if (embedded.isValid())
+                        {
+                            clearMaterialOverride(slotIndex);
+                            m_inspectedMaterial = embedded;
+                        }
+                        else
+                        {
+                            LOG_ERROR("[ModelRenderer] MaterialをModelへ取り込めませんでした: {}",
+                                modelMaterialAsset->name);
+                        }
+                    }
+                }
                 ImGui::Separator();
                 ImGui::PopID();
             }

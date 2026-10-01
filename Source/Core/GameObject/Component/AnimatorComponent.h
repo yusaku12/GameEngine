@@ -196,26 +196,39 @@ namespace Engine
         };
 
         /**
+         * @brief Controllerが参照するClip Asset情報。
+         */
+        struct PersistedClipReference
+        {
+            AssetGUID guid{};           //!< Clip AssetのGUID。
+            std::filesystem::path path; //!< Clip Assetの永続化Path。
+        };
+
+        /**
          * @brief SkeletonとAnimation Clipの互換性を検証し、ozz runtimeに設定する。
          * @return 成功した場合はtrue、失敗した場合はfalse
          */
         bool bindAssets();
 
-        AnimatorInstance m_instance;                              //!< AnimatorInstanceはozz runtimeをラップし、Animation Clipの再生と評価を管理する。
-        SkeletonHandle m_skeleton;                                //!< Skeleton Handleは再生対象Skeleton Assetを識別するためのハンドル。
-        AnimationClipHandle m_clip;                               //!< Animation Clip Handleは再生対象Animation Clip Assetを識別するためのハンドル。
-        AnimatorControllerHandle m_controller;                    //!< Animator Controller Handleは再生対象Animator Controller Assetを識別するためのハンドル。
-        AssetGUID m_skeletonGuid;                                 //!< 永続化対象SkeletonのGUID。
-        AssetGUID m_clipGuid;                                     //!< 永続化対象Skeleton/ClipのGUID。
-        AssetGUID m_controllerGuid;                               //!< 永続化対象Skeleton/Clip/ControllerのGUID。
-        std::vector<PersistedParameterValue> m_pendingParameters; //!< 再生中のAnimator Instanceに適用するために保持されるパラメータ値のリスト。
-        AnimatorStateID m_pendingState = 0;                       //!< 再生中のAnimator Instanceに適用するために保持される再生対象のAnimator State ID。
-        float m_pendingNormalizedTime = 0.0f;                     //!< 再生中のAnimator Instanceに適用するために保持される再生開始時の正規化時刻。
-        bool m_pendingPlaying = true;                             //!< 再生中のAnimator Instanceに適用するために保持される再生状態。
-        bool m_restorePending = false;                            //!< 再生中のAnimator Instanceに適用するために保持される再生状態を復元する必要があるかどうかを示すフラグ。
-        bool m_bindingDirty = false;                              //!< SkeletonとAnimation Clipの互換性を検証する必要があるかどうかを示すフラグ。
-        bool m_evaluationErrorLogged = false;                     //!< Animation Clipの評価に失敗した場合にエラーログを出力したかどうかを示すフラグ。
-        bool m_applyRootMotion = false;                           //!< Root Motionを適用するかどうかを示すフラグ。
-        std::vector<AnimationClipHandle> m_availableClips;        //!< 再生可能なAnimation Clip Handleのリスト。Animator Controllerが設定されている場合に使用される。
+        AnimatorInstance m_instance;                                    //!< AnimatorInstanceはozz runtimeをラップし、Animation Clipの再生と評価を管理する。
+        SkeletonHandle m_skeleton;                                      //!< Skeleton Handleは再生対象Skeleton Assetを識別するためのハンドル。
+        AnimationClipHandle m_clip;                                     //!< Animation Clip Handleは再生対象Animation Clip Assetを識別するためのハンドル。
+        AnimatorControllerHandle m_controller;                          //!< Animator Controller Handleは再生対象Animator Controller Assetを識別するためのハンドル。
+        AssetGUID m_skeletonGuid;                                       //!< 永続化対象SkeletonのGUID。
+        AssetGUID m_clipGuid;                                           //!< 永続化対象Skeleton/ClipのGUID。
+        AssetGUID m_controllerGuid;                                     //!< 永続化対象Skeleton/Clip/ControllerのGUID。
+        std::filesystem::path m_skeletonPath;                           //!< Skeletonの永続化Path。
+        std::filesystem::path m_clipPath;                               //!< Animation Clipの永続化Path。
+        std::filesystem::path m_controllerPath;                         //!< Animator Controllerの永続化Path。
+        std::vector<PersistedParameterValue> m_pendingParameters;       //!< 再生中のAnimator Instanceに適用するために保持されるパラメータ値のリスト。
+        std::vector<PersistedClipReference> m_controllerClipReferences; //!< Controllerが参照するClip Asset情報。
+        AnimatorStateID m_pendingState = 0;                             //!< 再生中のAnimator Instanceに適用するために保持される再生対象のAnimator State ID。
+        float m_pendingNormalizedTime = 0.0f;                           //!< 再生中のAnimator Instanceに適用するために保持される再生開始時の正規化時刻。
+        bool m_pendingPlaying = true;                                   //!< 再生中のAnimator Instanceに適用するために保持される再生状態。
+        bool m_restorePending = false;                                  //!< 再生中のAnimator Instanceに適用するために保持される再生状態を復元する必要があるかどうかを示すフラグ。
+        bool m_bindingDirty = false;                                    //!< SkeletonとAnimation Clipの互換性を検証する必要があるかどうかを示すフラグ。
+        bool m_evaluationErrorLogged = false;                           //!< Animation Clipの評価に失敗した場合にエラーログを出力したかどうかを示すフラグ。
+        bool m_applyRootMotion = false;                                 //!< Root Motionを適用するかどうかを示すフラグ。
+        std::vector<AnimationClipHandle> m_availableClips;              //!< 再生可能なAnimation Clip Handleのリスト。Animator Controllerが設定されている場合に使用される。
     };
 }

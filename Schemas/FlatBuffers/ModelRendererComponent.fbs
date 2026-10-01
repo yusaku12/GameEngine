@@ -1,0 +1,20 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+table ModelMaterialOverride {
+    slot_name:string;
+    slot_index:uint;
+    material_guid:AssetGuid;
+    material_path:string;
+}
+
+table ModelRendererComponentPayload {
+    model_path:string;
+    material_overrides:[ModelMaterialOverride];
+    default_material_paths:[string];
+    cast_shadows:bool = true;
+}
+
+root_type ModelRendererComponentPayload;
+file_identifier "MRCP";

@@ -53,10 +53,27 @@ namespace Engine
         return handle;
     }
 
-    bool AnimationAssetManager::saveSkeleton(const SkeletonHandle handle, const std::filesystem::path& path) const
+    bool AnimationAssetManager::saveSkeleton(const SkeletonHandle handle, const std::filesystem::path& path)
     {
-        const auto asset = getSkeleton(handle);
-        return asset != nullptr && Serialization::SkeletonSerializer{}.save(path, *asset);
+        const std::filesystem::path normalized = normalizePath(path);
+        if (normalized.empty())
+            return false;
+        const std::scoped_lock lock(m_mutex);
+        if (!handle.isValid() || handle.index >= m_skeletons.size())
+            return false;
+        Entry<SkeletonAsset>& entry = m_skeletons[handle.index];
+        if (entry.generation != handle.generation || entry.resource == nullptr)
+            return false;
+        if (const auto conflict = m_skeletonPaths.find(normalized);
+            conflict != m_skeletonPaths.end() && conflict->second != handle)
+            return false;
+        if (!Serialization::SkeletonSerializer{}.save(normalized, *entry.resource))
+            return false;
+        if (!entry.path.empty())
+            m_skeletonPaths.erase(entry.path);
+        entry.path = normalized;
+        m_skeletonPaths[normalized] = handle;
+        return true;
     }
 
     std::shared_ptr<const SkeletonAsset> AnimationAssetManager::getSkeleton(const SkeletonHandle handle) const noexcept
@@ -65,6 +82,16 @@ namespace Engine
         if (!handle.isValid() || handle.index >= m_skeletons.size()) return nullptr;
         const auto& entry = m_skeletons[handle.index];
         return entry.generation == handle.generation ? entry.resource : nullptr;
+    }
+
+    std::filesystem::path AnimationAssetManager::getSkeletonPath(const SkeletonHandle handle) const
+    {
+        const std::scoped_lock lock(m_mutex);
+        if (!handle.isValid() || handle.index >= m_skeletons.size())
+            return {};
+        const Entry<SkeletonAsset>& entry = m_skeletons[handle.index];
+        return entry.generation == handle.generation && entry.resource != nullptr
+            ? entry.path : std::filesystem::path{};
     }
 
     SkeletonHandle AnimationAssetManager::findSkeletonByGuid(const AssetGUID& guid) const noexcept
@@ -149,10 +176,28 @@ namespace Engine
         return handle;
     }
 
-    bool AnimationAssetManager::saveClip(const AnimationClipHandle handle, const std::filesystem::path& path) const
+    bool AnimationAssetManager::saveClip(const AnimationClipHandle handle, const std::filesystem::path& path)
     {
-        const auto asset = getClip(handle);
-        return asset != nullptr && Serialization::AnimationClipSerializer{}.save(path, *asset);
+        const std::filesystem::path normalized = normalizePath(path);
+        if (normalized.empty())
+            return false;
+
+        const std::scoped_lock lock(m_mutex);
+        if (!handle.isValid() || handle.index >= m_clips.size())
+            return false;
+        Entry<AnimationClipAsset>& entry = m_clips[handle.index];
+        if (entry.generation != handle.generation || entry.resource == nullptr)
+            return false;
+        if (const auto conflict = m_clipPaths.find(normalized);
+            conflict != m_clipPaths.end() && conflict->second != handle)
+            return false;
+        if (!Serialization::AnimationClipSerializer{}.save(normalized, *entry.resource))
+            return false;
+        if (!entry.path.empty())
+            m_clipPaths.erase(entry.path);
+        entry.path = normalized;
+        m_clipPaths[normalized] = handle;
+        return true;
     }
 
     std::shared_ptr<const AnimationClipAsset> AnimationAssetManager::getClip(const AnimationClipHandle handle) const noexcept
@@ -161,6 +206,16 @@ namespace Engine
         if (!handle.isValid() || handle.index >= m_clips.size()) return nullptr;
         const auto& entry = m_clips[handle.index];
         return entry.generation == handle.generation ? entry.resource : nullptr;
+    }
+
+    std::filesystem::path AnimationAssetManager::getClipPath(const AnimationClipHandle handle) const
+    {
+        const std::scoped_lock lock(m_mutex);
+        if (!handle.isValid() || handle.index >= m_clips.size())
+            return {};
+        const Entry<AnimationClipAsset>& entry = m_clips[handle.index];
+        return entry.generation == handle.generation && entry.resource != nullptr
+            ? entry.path : std::filesystem::path{};
     }
 
     AnimationClipHandle AnimationAssetManager::findClipByGuid(const AssetGUID& guid) const noexcept
@@ -212,10 +267,27 @@ namespace Engine
     }
 
     bool AnimationAssetManager::saveController(const AnimatorControllerHandle handle,
-        const std::filesystem::path& path) const
+        const std::filesystem::path& path)
     {
-        const auto asset = getController(handle);
-        return asset != nullptr && Serialization::AnimatorControllerSerializer{}.save(path, *asset);
+        const std::filesystem::path normalized = normalizePath(path);
+        if (normalized.empty())
+            return false;
+        const std::scoped_lock lock(m_mutex);
+        if (!handle.isValid() || handle.index >= m_controllers.size())
+            return false;
+        Entry<AnimatorControllerAsset>& entry = m_controllers[handle.index];
+        if (entry.generation != handle.generation || entry.resource == nullptr)
+            return false;
+        if (const auto conflict = m_controllerPaths.find(normalized);
+            conflict != m_controllerPaths.end() && conflict->second != handle)
+            return false;
+        if (!Serialization::AnimatorControllerSerializer{}.save(normalized, *entry.resource))
+            return false;
+        if (!entry.path.empty())
+            m_controllerPaths.erase(entry.path);
+        entry.path = normalized;
+        m_controllerPaths[normalized] = handle;
+        return true;
     }
 
     std::shared_ptr<const AnimatorControllerAsset> AnimationAssetManager::getController(
@@ -225,6 +297,16 @@ namespace Engine
         if (!handle.isValid() || handle.index >= m_controllers.size()) return nullptr;
         const auto& entry = m_controllers[handle.index];
         return entry.generation == handle.generation ? entry.resource : nullptr;
+    }
+
+    std::filesystem::path AnimationAssetManager::getControllerPath(const AnimatorControllerHandle handle) const
+    {
+        const std::scoped_lock lock(m_mutex);
+        if (!handle.isValid() || handle.index >= m_controllers.size())
+            return {};
+        const Entry<AnimatorControllerAsset>& entry = m_controllers[handle.index];
+        return entry.generation == handle.generation && entry.resource != nullptr
+            ? entry.path : std::filesystem::path{};
     }
 
     AnimatorControllerHandle AnimationAssetManager::findControllerByGuid(const AssetGUID& guid) const noexcept
