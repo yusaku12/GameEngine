@@ -22,8 +22,8 @@ namespace Engine
         GE_DISABLE_COPY_AND_MOVE(ModelManager);
 
         /**
-         * @brief FlatBuffersモデルまたはAssimp対応形式を読み込み、同じパスのResourceを共有する。
-         * @param path 読み込むモデルアセット。.model/.mdlはSerializer、それ以外はAssimpを使用する
+         * @brief FlatBuffersモデルまたはFBX SDK対応形式を読み込み、同じパスのResourceを共有する。
+         * @param path 読み込むモデルアセット。.model/.mdlはSerializer、それ以外はFBX SDKを使用する
          * @return 成功時は有効なModelHandle
          */
         ModelHandle load(const std::filesystem::path& path);

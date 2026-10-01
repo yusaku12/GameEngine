@@ -286,6 +286,7 @@ namespace Engine
         std::unique_ptr<ozz::animation::SamplingJob::Context> m_samplingContext; //!< ozz runtimeのSamplingJob用Context。ozz runtimeが必要とする中間バッファを保持する。
         std::vector<ozz::math::SoaTransform> m_localTransforms;                  //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
         std::vector<ozz::math::Float4x4> m_modelMatrices;                        //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。
+        std::vector<Matrix> m_bindPoseCorrections;                               //!< Import時の逆バインド行列とOzzレスト姿勢の差分補正。
         std::array<std::shared_ptr<SkinningPaletteSnapshot>, 3> m_snapshotRing;  //!< Ring Bufferとして保持するPalette Snapshot。Game threadが評価中のSnapshotとRender threadが参照中のSnapshotを分離する。
         std::shared_ptr<const SkinningPaletteSnapshot> m_publishedSnapshot;      //!< Render threadが参照中のPalette Snapshot。Game threadはこのSnapshotを更新しない。
         std::size_t m_nextSnapshot = 0;                                          //!< Ring Bufferの次に使用するSnapshotのインデックス。Game threadが評価中のSnapshotを指す。

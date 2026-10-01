@@ -3,7 +3,7 @@
 #include "Assets\Animation\AnimationAssetBuilder.h"
 #include "Assets\Animation\AnimationAssetManager.h"
 #include "Assets\Material\MaterialManager.h"
-#include "Assets\Model\Import\AssimpModelImporter.h"
+#include "Assets\Model\Import\FbxModelImporter.h"
 #include "Assets\Model\Serialization\ModelSerializer.h"
 #include "Graphics\Texture\TextureManager.h"
 
@@ -146,7 +146,7 @@ namespace Engine
         }
         else
         {
-            std::shared_ptr<ModelResource> imported = AssimpModelImporter{}.importModel(normalizedPath);
+            std::shared_ptr<ModelResource> imported = FbxModelImporter{}.importModel(normalizedPath);
             if (imported == nullptr)
                 return ModelHandle::Invalid();
             model = std::move(*imported);

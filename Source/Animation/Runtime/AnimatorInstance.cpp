@@ -60,6 +60,19 @@ namespace Engine
         m_samplingContext = std::make_unique<ozz::animation::SamplingJob::Context>(jointCount);
         m_localTransforms.resize(static_cast<std::size_t>(m_skeleton->skeleton.num_soa_joints()));
         m_modelMatrices.resize(static_cast<std::size_t>(jointCount));
+        m_bindPoseCorrections.resize(static_cast<std::size_t>(jointCount));
+        ozz::animation::LocalToModelJob restPoseJob;
+        restPoseJob.skeleton = &m_skeleton->skeleton;
+        restPoseJob.input = m_skeleton->skeleton.joint_rest_poses();
+        restPoseJob.output = ozz::make_span(m_modelMatrices);
+        if (!restPoseJob.Run())
+        {
+            clear();
+            return false;
+        }
+        for (std::size_t index = 0; index < m_bindPoseCorrections.size(); ++index)
+            m_bindPoseCorrections[index] = (m_skeleton->inverseBindPoses[index]
+                * toEngineMatrix(m_modelMatrices[index])).Invert();
         for (auto& snapshot : m_snapshotRing)
         {
             snapshot = std::make_shared<SkinningPaletteSnapshot>();
@@ -191,6 +204,19 @@ namespace Engine
         m_localTransforms.resize(soaJointCount);
         m_blendedTransforms.resize(soaJointCount);
         m_modelMatrices.resize(static_cast<std::size_t>(jointCount));
+        m_bindPoseCorrections.resize(static_cast<std::size_t>(jointCount));
+        ozz::animation::LocalToModelJob restPoseJob;
+        restPoseJob.skeleton = &m_skeleton->skeleton;
+        restPoseJob.input = m_skeleton->skeleton.joint_rest_poses();
+        restPoseJob.output = ozz::make_span(m_modelMatrices);
+        if (!restPoseJob.Run())
+        {
+            clear();
+            return false;
+        }
+        for (std::size_t index = 0; index < m_bindPoseCorrections.size(); ++index)
+            m_bindPoseCorrections[index] = (m_skeleton->inverseBindPoses[index]
+                * toEngineMatrix(m_modelMatrices[index])).Invert();
         for (auto& snapshot : m_snapshotRing)
         {
             snapshot = std::make_shared<SkinningPaletteSnapshot>();
@@ -211,6 +237,7 @@ namespace Engine
         for (auto& snapshot : m_snapshotRing)
             snapshot.reset();
         m_modelMatrices.clear();
+        m_bindPoseCorrections.clear();
         m_blendedTransforms.clear();
         m_localTransforms.clear();
         m_samplingContext.reset();
@@ -591,7 +618,8 @@ namespace Engine
         for (std::size_t index = 0; index < m_modelMatrices.size(); ++index)
         {
             const Matrix modelMatrix = toEngineMatrix(m_modelMatrices[index]);
-            const Matrix skinningMatrix = m_skeleton->inverseBindPoses[index] * modelMatrix;
+            const Matrix skinningMatrix = m_bindPoseCorrections[index]
+                * m_skeleton->inverseBindPoses[index] * modelMatrix;
             snapshot->constants.boneMatrices[index] = skinningMatrix;
             snapshot->constants.boneNormalMatrices[index] = skinningMatrix.Invert().Transpose();
         }
@@ -626,7 +654,8 @@ namespace Engine
         for (std::size_t index = 0; index < m_modelMatrices.size(); ++index)
         {
             const Matrix modelMatrix = toEngineMatrix(m_modelMatrices[index]);
-            const Matrix skinningMatrix = m_skeleton->inverseBindPoses[index] * modelMatrix;
+            const Matrix skinningMatrix = m_bindPoseCorrections[index]
+                * m_skeleton->inverseBindPoses[index] * modelMatrix;
             snapshot->constants.boneMatrices[index] = skinningMatrix;
             snapshot->constants.boneNormalMatrices[index] = skinningMatrix.Invert().Transpose();
         }

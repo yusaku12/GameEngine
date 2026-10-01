@@ -68,6 +68,21 @@ namespace Engine
             }
             return true;
         }
+
+        bool sameJointName(const std::string_view left, const std::string_view right)
+        {
+            const std::size_t leftSeparator = left.find_last_of(":|/");
+            const std::size_t rightSeparator = right.find_last_of(":|/");
+            const std::string_view leftLeaf = left.substr(leftSeparator == std::string_view::npos ? 0 : leftSeparator + 1);
+            const std::string_view rightLeaf = right.substr(rightSeparator == std::string_view::npos ? 0 : rightSeparator + 1);
+            if (leftLeaf.size() != rightLeaf.size())
+                return false;
+            for (std::size_t index = 0; index < leftLeaf.size(); ++index)
+                if (std::tolower(static_cast<unsigned char>(leftLeaf[index]))
+                    != std::tolower(static_cast<unsigned char>(rightLeaf[index])))
+                    return false;
+            return true;
+        }
     }
 
     SkeletonSignature AnimationAssetBuilder::calculateSignature(const std::span<const std::string> hierarchyPaths, const std::span<const std::int32_t> parentIndices) noexcept
@@ -178,27 +193,47 @@ namespace Engine
             }
 
             auto& track = rawAnimation.tracks[index];
+            const auto pathFound = channels.find(skeleton.hierarchyPaths[index]);
             const auto found = channels.find(skeleton.jointNames[index]);
-            const AnimationChannel* channel = found == channels.end() ? nullptr : found->second;
+            const AnimationChannel* channel = pathFound != channels.end() ? pathFound->second
+                : found == channels.end() ? nullptr : found->second;
+            if (channel == nullptr)
+                for (const auto& [channelName, candidate] : channels)
+                    if (sameJointName(channelName, skeleton.jointNames[index]))
+                    {
+                        if (channel != nullptr)
+                            return false;
+                        channel = candidate;
+                    }
             if (channel == nullptr || channel->positions.empty())
                 track.translations.push_back({ 0.0f, { bindTranslation.x, bindTranslation.y, bindTranslation.z } });
             else
+            {
                 for (const AnimationKeyPosition& key : channel->positions)
+                {
                     track.translations.push_back({ key.time, { key.value.x, key.value.y, key.value.z } });
+                }
+            }
             if (channel == nullptr || channel->rotations.empty())
                 track.rotations.push_back({ 0.0f, { bindRotation.x, bindRotation.y, bindRotation.z, bindRotation.w } });
             else
+            {
                 for (const AnimationKeyRotation& key : channel->rotations)
                 {
                     Quaternion rotation = key.value;
                     rotation.Normalize();
                     track.rotations.push_back({ key.time, { rotation.x, rotation.y, rotation.z, rotation.w } });
                 }
+            }
             if (channel == nullptr || channel->scales.empty())
                 track.scales.push_back({ 0.0f, { bindScale.x, bindScale.y, bindScale.z } });
             else
+            {
                 for (const AnimationKeyScale& key : channel->scales)
+                {
                     track.scales.push_back({ key.time, { key.value.x, key.value.y, key.value.z } });
+                }
+            }
         }
         if (!rawAnimation.Validate())
             return false;

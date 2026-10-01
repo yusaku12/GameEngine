@@ -98,7 +98,7 @@ namespace Engine::Serialization
 
             return CreateMesh(builder, builder.CreateString(mesh.name), builder.CreateVector(vertices),
                 builder.CreateVector(mesh.indices), builder.CreateVector(subMeshes),
-                createBounds(builder, mesh.boundingBox, mesh.boundingSphere));
+                createBounds(builder, mesh.boundingBox, mesh.boundingSphere), mesh.verticesInModelSpace);
         }
 
         flatbuffers::Offset<Bone> createBone(flatbuffers::FlatBufferBuilder& builder, const Engine::Bone& bone)
@@ -168,6 +168,7 @@ namespace Engine::Serialization
             if (source == nullptr || source->name() == nullptr || !readBounds(source->bounds(), mesh.boundingBox, mesh.boundingSphere))
                 return false;
             mesh.name = source->name()->str();
+            mesh.verticesInModelSpace = source->vertices_in_model_space();
             if (const auto* indices = source->indices())
                 mesh.indices.assign(indices->begin(), indices->end());
             if (const auto* subMeshes = source->sub_meshes()) {

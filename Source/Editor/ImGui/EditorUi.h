@@ -138,8 +138,8 @@ namespace Engine
          */
         void drawThreadDebug();
 
-        bool m_showShaderManager = true;                                          //!< Shader Managerパネルの表示フラグ
-        bool m_showThreadDebug = true;                                            //!< Thread Debugパネルの表示フラグ
+        bool m_showShaderManager = false;                                         //!< Shader Managerパネルの表示フラグ
+        bool m_showThreadDebug = false;                                           //!< Thread Debugパネルの表示フラグ
         GameObject* m_selectedObject = nullptr;                                   //!< Inspectorで選択中のGameObject
         GameObject* m_hierarchyCreateParent = nullptr;                            //!< 作成するGameObjectの親。nullptrならRoot
         GameObject* m_hierarchyDeleteTarget = nullptr;                            //!< フレーム末尾に削除するGameObject

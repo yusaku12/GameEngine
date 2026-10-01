@@ -146,7 +146,8 @@ namespace Engine
                 const ModelNode& node = resource->source->nodes[nodeIndex];
                 if (std::find(node.meshIndices.begin(), node.meshIndices.end(), meshIndex) != node.meshIndices.end())
                 {
-                    mesh->nodeTransform = nodeTransforms[nodeIndex];
+                    mesh->nodeTransform = sourceMesh.verticesInModelSpace
+                        ? Matrix::Identity : nodeTransforms[nodeIndex];
                     break;
                 }
             }

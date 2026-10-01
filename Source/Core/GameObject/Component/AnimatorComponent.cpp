@@ -7,6 +7,9 @@
 #include "Core\GameObject\Component\ModelRendererComponent.h"
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Core\GameObject\GameObject.h"
+#include "Core\Scene\SceneManager.h"
+#include "Core\System\Dialog.h"
+#include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Serialization\SerializationVersions.h"
 #include <imgui.h>
 
@@ -26,18 +29,45 @@ namespace Engine
     bool AnimatorComponent::setAnimation(const SkeletonHandle skeleton, const AnimationClipHandle clip)
     {
         AnimationAssetManager& assets = AnimationAssetManager::instance();
+        const auto skeletonAsset = assets.getSkeleton(skeleton);
+        const auto clipAsset = assets.getClip(clip);
+        if (skeletonAsset == nullptr || clipAsset == nullptr
+            || clipAsset->skeletonGuid != skeletonAsset->guid
+            || clipAsset->skeletonSignature != skeletonAsset->signature
+            || clipAsset->animation.num_tracks() != skeletonAsset->skeleton.num_joints())
+            return false;
+
+        const SkeletonHandle previousSkeleton = m_skeleton;
+        const AnimationClipHandle previousClip = m_clip;
+        const AnimatorControllerHandle previousController = m_controller;
+        const AssetGUID previousSkeletonGuid = m_skeletonGuid;
+        const AssetGUID previousClipGuid = m_clipGuid;
+        const AssetGUID previousControllerGuid = m_controllerGuid;
         m_skeleton = skeleton;
         m_clip = clip;
         m_controller = AnimatorControllerHandle::Invalid();
-        const auto skeletonAsset = assets.getSkeleton(skeleton);
-        const auto clipAsset = assets.getClip(clip);
         m_skeletonGuid = skeletonAsset == nullptr ? AssetGUID{} : skeletonAsset->guid;
         m_clipGuid = clipAsset == nullptr ? AssetGUID{} : clipAsset->guid;
         m_controllerGuid = {};
         m_restorePending = false;
         m_bindingDirty = true;
         m_evaluationErrorLogged = false;
-        return bindAssets();
+        if (bindAssets())
+        {
+            if (std::find(m_availableClips.begin(), m_availableClips.end(), clip) == m_availableClips.end())
+                m_availableClips.push_back(clip);
+            return true;
+        }
+
+        m_skeleton = previousSkeleton;
+        m_clip = previousClip;
+        m_controller = previousController;
+        m_skeletonGuid = previousSkeletonGuid;
+        m_clipGuid = previousClipGuid;
+        m_controllerGuid = previousControllerGuid;
+        m_bindingDirty = true;
+        bindAssets();
+        return false;
     }
 
     bool AnimatorComponent::setController(const SkeletonHandle skeleton, const AnimatorControllerHandle controller)
@@ -70,6 +100,31 @@ namespace Engine
         AnimationAssetManager& assets = AnimationAssetManager::instance();
         return setAnimation(assets.findSkeletonByGuid(model->skeletonAssetGuid),
             assets.findClipByGuid(model->animationClipGuids.front()));
+    }
+
+    bool AnimatorComponent::importAnimation(const std::filesystem::path& path)
+    {
+        const GameObject* const gameObject = getGameObject();
+        const ModelRendererComponent* const renderer = gameObject != nullptr
+            ? gameObject->getComponent<ModelRendererComponent>() : nullptr;
+        const std::shared_ptr<const ModelResource> model = renderer != nullptr
+            ? ModelManager::instance().get(renderer->getModel()) : nullptr;
+        if (model == nullptr || !model->skeletonAssetGuid.isValid())
+            return false;
+        AnimationAssetManager& assets = AnimationAssetManager::instance();
+        const SkeletonHandle skeleton = assets.findSkeletonByGuid(model->skeletonAssetGuid);
+        if (!skeleton.isValid())
+            return false;
+
+        const std::vector<AnimationClipHandle> clips = assets.importClips(path, skeleton);
+        if (clips.empty())
+            return false;
+        if (!setAnimation(skeleton, clips.front()))
+            return false;
+        for (const AnimationClipHandle clip : clips)
+            if (std::find(m_availableClips.begin(), m_availableClips.end(), clip) == m_availableClips.end())
+                m_availableClips.push_back(clip);
+        return true;
     }
 
     bool AnimatorComponent::play(const float normalizedTime) noexcept
@@ -191,6 +246,8 @@ namespace Engine
 
     void AnimatorComponent::onUpdate(const float deltaTime)
     {
+        if (!m_restorePending && !m_skeleton.isValid() && !m_clip.isValid() && !m_controller.isValid())
+            useModelDefaultAnimation();
         if (m_bindingDirty && !bindAssets())
             return;
         if (!m_skeleton.isValid() || (!m_clip.isValid() && !m_controller.isValid()))
@@ -204,8 +261,54 @@ namespace Engine
 
     void AnimatorComponent::onImGui()
     {
+        if (ImGui::Button("Import FBX Animation..."))
+        {
+            const GameObject* const gameObject = getGameObject();
+            if (gameObject != nullptr)
+            {
+                const ObjectGUID objectGuid = gameObject->getGUID();
+                const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+                MainThreadDispatcher::instance().post([objectGuid, ownerWindow]
+                    {
+                        SceneManager& sceneManager = SceneManager::instance();
+                        GameObject* object = nullptr;
+                        if (Scene* scene = sceneManager.getActiveScene())
+                            object = scene->find(objectGuid);
+                        if (object == nullptr)
+                            object = sceneManager.getPersistentScene()->find(objectGuid);
+                        AnimatorComponent* component = object != nullptr
+                            ? object->getComponent<AnimatorComponent>() : nullptr;
+                        if (component == nullptr)
+                            return;
+
+                        static constexpr std::array filters = {
+                            FileDialogFilter{ L"FBX Animation", L"*.fbx;*.dae;*.gltf;*.glb" },
+                            FileDialogFilter{ L"All Files", L"*.*" },
+                        };
+                        std::vector<std::filesystem::path> paths;
+                        const DialogResult result = Dialog::openFile(
+                            paths, L"アニメーションを追加", "Assets/Model", filters, false, ownerWindow);
+                        if (result != DialogResult::Ok || paths.empty() || !component->importAnimation(paths.front()))
+                            LOG_ERROR("[Animator] 外部アニメーションの読み込みに失敗しました: {}", paths.empty() ? "" : paths.front().string());
+                    });
+            }
+        }
         ImGui::Text("Playing: %s", isPlaying() ? "Yes" : "No");
         ImGui::Text("Normalized Time: %.3f", getNormalizedTime());
+        if (!m_availableClips.empty() && ImGui::TreeNode("Animation Clips"))
+        {
+            AnimationAssetManager& assets = AnimationAssetManager::instance();
+            for (const AnimationClipHandle clip : m_availableClips)
+            {
+                const auto asset = assets.getClip(clip);
+                if (asset == nullptr)
+                    continue;
+                const bool selected = clip == m_clip;
+                if (ImGui::Selectable(asset->name.c_str(), selected) && !selected)
+                    setAnimation(m_skeleton, clip);
+            }
+            ImGui::TreePop();
+        }
         if (m_controller.isValid())
         {
             ImGui::Text("Current State: %u", getCurrentState());

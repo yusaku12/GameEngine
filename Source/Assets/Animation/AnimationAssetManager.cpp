@@ -1,8 +1,10 @@
 ﻿#include "Pch.h"
+#include "Assets\Animation\AnimationAssetBuilder.h"
 #include "Assets\Animation\AnimationAssetManager.h"
 #include "Assets\Animation\Serialization\AnimationClipSerializer.h"
 #include "Assets\Animation\Serialization\AnimatorControllerSerializer.h"
 #include "Assets\Animation\Serialization\SkeletonSerializer.h"
+#include "Assets\Model\Import\FbxModelImporter.h"
 
 namespace Engine
 {
@@ -94,6 +96,40 @@ namespace Engine
         AnimationClipAsset asset;
         if (!Serialization::AnimationClipSerializer{}.load(normalized, asset)) return AnimationClipHandle::Invalid();
         return createClip(std::move(asset), normalized);
+    }
+
+    std::vector<AnimationClipHandle> AnimationAssetManager::importClips(const std::filesystem::path& path, const SkeletonHandle skeleton)
+    {
+        const std::shared_ptr<const SkeletonAsset> skeletonAsset = getSkeleton(skeleton);
+        if (skeletonAsset == nullptr)
+        {
+            LOG_ERROR("[Animation] 外部アニメーションの対象Skeletonが見つかりません: {}", path.string());
+            return {};
+        }
+
+        const std::vector<AnimationResource> animations = FbxModelImporter{}.importAnimations(path);
+        if (animations.empty())
+        {
+            LOG_ERROR("[Animation] 外部ファイルにアニメーションがありません: {}", path.string());
+            return {};
+        }
+        AnimationAssetBuilder builder;
+        std::vector<AnimationClipHandle> handles;
+        handles.reserve(animations.size());
+        for (const AnimationResource& animation : animations)
+        {
+            AnimationClipAsset clip;
+            if (!builder.buildClip(animation, *skeletonAsset, path, clip))
+            {
+                LOG_ERROR("[Animation] Clip変換に失敗しました: {} (duration={}, channels={})",
+                    animation.name, animation.duration, animation.channels.size());
+                continue;
+            }
+            const AnimationClipHandle handle = createClip(std::move(clip));
+            if (handle.isValid())
+                handles.push_back(handle);
+        }
+        return handles;
     }
 
     AnimationClipHandle AnimationAssetManager::createClip(AnimationClipAsset asset, const std::filesystem::path& cacheKey)

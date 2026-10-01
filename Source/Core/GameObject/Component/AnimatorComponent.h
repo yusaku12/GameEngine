@@ -40,6 +40,13 @@ namespace Engine
         bool useModelDefaultAnimation();
 
         /**
+         * @brief 外部ファイルからアニメーションを読み込み、最初のClipを再生対象にする。
+         * @param path アニメーションを含むFBX等のファイルパス
+         * @return 読み込みと設定に成功した場合はtrue
+         */
+        bool importAnimation(const std::filesystem::path& path);
+
+        /**
          * @brief 指定正規化時刻から再生する。
          * @param normalizedTime 再生を開始する正規化時刻
          * @return 再生に成功した場合はtrue、失敗した場合はfalse
@@ -209,5 +216,6 @@ namespace Engine
         bool m_bindingDirty = false;                              //!< SkeletonとAnimation Clipの互換性を検証する必要があるかどうかを示すフラグ。
         bool m_evaluationErrorLogged = false;                     //!< Animation Clipの評価に失敗した場合にエラーログを出力したかどうかを示すフラグ。
         bool m_applyRootMotion = false;                           //!< Root Motionを適用するかどうかを示すフラグ。
+        std::vector<AnimationClipHandle> m_availableClips;        //!< 再生可能なAnimation Clip Handleのリスト。Animator Controllerが設定されている場合に使用される。
     };
 }

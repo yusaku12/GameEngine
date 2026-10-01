@@ -136,7 +136,6 @@ namespace Engine
                     openScene();
                 if (ImGui::MenuItem("シーンを保存"))
                     saveScene();
-                ImGui::Separator();
                 if (!m_sceneDocument.status().empty())
                 {
                     ImGui::Separator();
@@ -442,8 +441,6 @@ namespace Engine
             ImGui::End();
             return;
         }
-        if (ImGui::Button("+"))
-            ImGui::OpenPopup("CreateGameObjectPopup");
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Create GameObject");
         if (ImGui::BeginPopup("CreateGameObjectPopup"))

@@ -69,6 +69,14 @@ namespace Engine
         AnimationClipHandle loadClip(const std::filesystem::path& path);
 
         /**
+         * @brief 既存Skeletonに適合する外部ファイルのアニメーションをClipとして登録する。
+         * @param path アニメーションを含むFBX等のファイルパス
+         * @param skeleton 適用先SkeletonのHandle
+         * @return 登録されたClipのHandle配列。失敗時は空の配列
+         */
+        std::vector<AnimationClipHandle> importClips(const std::filesystem::path& path, SkeletonHandle skeleton);
+
+        /**
          * @brief AnimationClipAsset から AnimationClip を作成する。既に同じ GUID の AnimationClip が存在する場合はキャッシュを返す。
          * @param asset AnimationClipAsset
          * @param cacheKey キャッシュキー (省略時は GUID を使用)

@@ -24,7 +24,7 @@ namespace Engine
 
     /**
      * @brief モデル全体のCPU側リソース。
-     * AssimpおよびDirectX 12の型を保持せず、シリアライズ可能な独自データだけを管理する。
+     * FBX SDKおよびDirectX 12の型を保持せず、シリアライズ可能な独自データだけを管理する。
      */
     struct ModelResource
     {

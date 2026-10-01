@@ -12,12 +12,12 @@ namespace Engine
     /**
      * @brief スキニングに使う最大ボーン影響数。
      */
-    inline constexpr std::size_t MAX_BONE_INFLUENCES = 4;
+    inline static constexpr std::size_t MAX_BONE_INFLUENCES = 4;
 
     /**
      * @brief 1モデルでGPUスキニングに使用できる最大ボーン数。
      */
-    inline constexpr std::size_t MAX_SKINNING_BONES = 256;
+    inline static constexpr std::size_t MAX_SKINNING_BONES = 256;
 
     /**
      * @brief モデル頂点のCPU側データ。
@@ -50,6 +50,7 @@ namespace Engine
     struct MeshResource
     {
         std::string name;                       //!< メッシュ名
+        bool verticesInModelSpace = false;      //!< Skinned頂点がModel root空間に焼き込まれているか
         std::vector<ModelVertex> vertices;      //!< 頂点バッファ
         std::vector<std::uint32_t> indices;     //!< インデックスバッファ
         std::vector<SubMeshResource> subMeshes; //!< サブメッシュ情報
