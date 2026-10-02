@@ -1,5 +1,7 @@
 ﻿#include "Pch.h"
 #include "Core\GameObject\GameObjectManager.h"
+#include "Core\GameObject\Component\AnimatorComponent.h"
+#include "Core\Threading\JobSystem.h"
 
 namespace Engine
 {
@@ -76,6 +78,29 @@ namespace Engine
         for (const auto& object : m_objects)
             if (object->getParent() == nullptr)
                 object->updateLifecycle(deltaTime);
+
+        m_animatorsToUpdate.clear();
+        for (const auto& object : m_objects)
+        {
+            AnimatorComponent* const animator = object->getComponent<AnimatorComponent>();
+            if (animator != nullptr && animator->m_lifecycleEnabled
+                && animator->m_lifecycleActive && animator->m_started)
+                m_animatorsToUpdate.push_back(animator);
+        }
+
+        if (m_animatorsToUpdate.size() == 1)
+        {
+            m_animatorsToUpdate.front()->evaluatePendingUpdate(deltaTime);
+        }
+        else if (m_animatorsToUpdate.size() > 1)
+        {
+            JobSystem::instance().parallelFor(m_animatorsToUpdate.size(),
+                [this, deltaTime](const std::size_t index)
+                {
+                    m_animatorsToUpdate[index]->evaluatePendingUpdate(deltaTime);
+                });
+        }
+        m_animatorsToUpdate.clear();
     }
 
     void GameObjectManager::fixedUpdate(const float fixedDeltaTime) noexcept

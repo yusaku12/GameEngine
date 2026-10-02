@@ -8,7 +8,8 @@ namespace Engine
 {
     /**
      * @brief GameObjectごとの単一Animation Clip再生を管理するComponent。
-     * @thread_safety Main thread only. Render threadにはimmutable Snapshotを渡す。
+     * @thread_safety Lifecycle準備はGame update threadで行い、Animation評価はJobSystem workerで行う。
+     * 同一Componentへ評価中にアクセスしてはならない。Render threadにはimmutable Snapshotを渡す。
      */
     class AnimatorComponent final : public Component
     {
@@ -183,6 +184,8 @@ namespace Engine
 
     private:
 
+        friend class GameObjectManager;
+
         /**
          * @brief 再生中のAnimator Instanceに適用するために保持されるパラメータ値。
          */
@@ -210,6 +213,12 @@ namespace Engine
          */
         bool bindAssets();
 
+        /**
+         * @brief 通常更新で準備したAnimationを評価する。
+         * @details GameObjectManagerが全Componentの通常更新を終えた後に呼び出す。
+         */
+        void evaluatePendingUpdate(float deltaTime);
+
         AnimatorInstance m_instance;                                    //!< AnimatorInstanceはozz runtimeをラップし、Animation Clipの再生と評価を管理する。
         SkeletonHandle m_skeleton;                                      //!< Skeleton Handleは再生対象Skeleton Assetを識別するためのハンドル。
         AnimationClipHandle m_clip;                                     //!< Animation Clip Handleは再生対象Animation Clip Assetを識別するためのハンドル。
@@ -228,6 +237,7 @@ namespace Engine
         bool m_restorePending = false;                                  //!< 再生中のAnimator Instanceに適用するために保持される再生状態を復元する必要があるかどうかを示すフラグ。
         bool m_bindingDirty = false;                                    //!< SkeletonとAnimation Clipの互換性を検証する必要があるかどうかを示すフラグ。
         bool m_evaluationErrorLogged = false;                           //!< Animation Clipの評価に失敗した場合にエラーログを出力したかどうかを示すフラグ。
+        bool m_evaluationPending = false;                               //!< 通常更新でAnimation評価の準備が完了したかどうかを示すフラグ。
         bool m_applyRootMotion = false;                                 //!< Root Motionを適用するかどうかを示すフラグ。
         std::vector<AnimationClipHandle> m_availableClips;              //!< 再生可能なAnimation Clip Handleのリスト。Animator Controllerが設定されている場合に使用される。
     };

@@ -12,7 +12,8 @@ namespace Engine
 {
     /**
      * @brief GameObjectごとのController状態とozz評価Bufferを所有する。
-     * @thread_safety Main thread only. 公開SnapshotだけをRender threadへ渡せる。
+     * @thread_safety Thread-safeではない。同一Instanceへのアクセスは直列化すること。
+     * Engineでは評価をJobSystem workerで実行し、同時アクセスがないように同期する。
      */
     class AnimatorInstance
     {
@@ -106,6 +107,7 @@ namespace Engine
 
         /**
          * @brief 時間を進め、ozz runtimeで新しいPalette Snapshotを生成する。
+         * @details 同一Instanceへの他のアクセスと並行して呼び出してはならない。
          * @param deltaTime 前回updateからの経過時間(秒)。負値は逆再生として扱う。
          */
         bool update(float deltaTime);

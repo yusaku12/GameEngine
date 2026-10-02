@@ -5,9 +5,12 @@
 
 namespace Engine
 {
+    class AnimatorComponent;
+
     /**
      * @brief GameObjectの生成・GUID検索・遅延破棄を管理するクラス。
-     * @thread_safety Main thread only. Worker threadからの構造変更は禁止します。
+     * @thread_safety Lifecycleと構造変更はGame update threadから直列に行うこと。
+     * Animator評価だけはGameObjectManagerの構造を変更せずJobSystem workerで実行する。
      */
     class GameObjectManager
     {
@@ -56,6 +59,7 @@ namespace Engine
 
         /**
          * @brief 全てのGameObjectを更新する。
+         * @details 通常更新後、Animatorの評価を並列実行して完了を待つ。
          * @param deltaTime 前フレームからの経過時間（秒）。
          */
         void update(float deltaTime) noexcept;
@@ -126,5 +130,6 @@ namespace Engine
         std::vector<std::unique_ptr<GameObject>> m_objects;                      //!< 管理しているGameObjectの配列
         std::vector<GameObject*> m_destroyQueue;                                 //!< 破棄キューに溜まったGameObjectの配列
         std::unordered_map<ObjectGUID, GameObject*, ObjectGUIDHash> m_guidIndex; //!< GUIDでGameObjectを検索するためのインデックス
+        std::vector<AnimatorComponent*> m_animatorsToUpdate;                      //!< 並列評価するAnimatorの一時一覧。所有権は持たない。
     };
 } // namespace Engine

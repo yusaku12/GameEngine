@@ -389,8 +389,10 @@ namespace Engine
             useModelDefaultAnimation();
     }
 
-    void AnimatorComponent::onUpdate(const float deltaTime)
+    void AnimatorComponent::onUpdate([[maybe_unused]] const float deltaTime)
     {
+        m_evaluationPending = false;
+
         if (!m_restorePending && !m_skeleton.isValid() && !m_clip.isValid() && !m_controller.isValid())
             useModelDefaultAnimation();
         if (m_restorePending)
@@ -441,6 +443,16 @@ namespace Engine
             useModelDefaultAnimation();
         if (!m_skeleton.isValid() || (!m_clip.isValid() && !m_controller.isValid()))
             return;
+
+        m_evaluationPending = true;
+    }
+
+    void AnimatorComponent::evaluatePendingUpdate(const float deltaTime)
+    {
+        if (!m_evaluationPending)
+            return;
+
+        m_evaluationPending = false;
         if (!m_instance.update(deltaTime) && !m_evaluationErrorLogged)
         {
             LOG_ERROR("[Animator] Animation evaluation failed");
