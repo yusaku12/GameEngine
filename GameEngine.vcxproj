@@ -71,6 +71,7 @@
     <ClInclude Include="Source\Graphics\DirectX12\Queue.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Resource.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Renderer.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\OcclusionQueries.h" />
     <ClInclude Include="Source\Graphics\Renderer\RenderItem.h" />
     <ClInclude Include="Source\Graphics\Renderer\RenderQueue.h" />
     <ClInclude Include="Source\Graphics\Renderer\ModelRenderSubmission.h" />
@@ -172,6 +173,7 @@
     <ClCompile Include="Source\Graphics\DirectX12\Queue.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Resource.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Renderer.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\OcclusionQueries.cpp" />
     <ClCompile Include="Source\Graphics\Renderer\RenderQueue.cpp" />
     <ClCompile Include="Source\Graphics\Renderer\ModelRenderSubmission.cpp" />
     <ClCompile Include="Source\Graphics\Camera\CameraManager.cpp" />
@@ -255,6 +257,7 @@
   <ItemGroup>
     <None Include="Assets\Shaders\Model.hlsl" />
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
+    <None Include="Assets\Shaders\Occlusion.hlsl" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
     <None Include="Schemas\FlatBuffers\Material.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />
@@ -412,7 +415,7 @@
   <Target Name="BuildOzzAnimation" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'" Inputs="$(ProjectDir)Library\ozz-animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\build_ozz.ps1;$(ProjectDir)Tests\Animation\OzzRoundTripTests.cpp;$(ProjectDir)Tests\Animation\AnimationAssetRoundTripTests.cpp;$(ProjectDir)Tests\Serialization\ComponentSerializationRoundTripTests.cpp;$(ProjectDir)Source\Animation\Runtime\AnimatorInstance.cpp;$(ProjectDir)Source\Animation\Runtime\AnimatorInstance.h;$(ProjectDir)Source\Assets\Animation\AnimatorControllerAsset.cpp;$(ProjectDir)Source\Assets\Animation\AnimatorControllerAsset.h;$(ProjectDir)Source\Assets\Animation\AnimationAssetBuilder.cpp;$(ProjectDir)Source\Assets\Animation\Serialization\AnimationClipSerializer.cpp;$(ProjectDir)Source\Assets\Animation\Serialization\AnimatorControllerSerializer.cpp;$(ProjectDir)Source\Assets\Animation\Serialization\OzzArchiveUtils.cpp;$(ProjectDir)Source\Assets\Animation\Serialization\SkeletonSerializer.cpp;$(ProjectDir)Source\Core\Serialization\ComponentSerialization.cpp;$(ProjectDir)Source\Core\Scene\SceneSerializer.cpp;$(ProjectDir)Source\Core\Prefab\PrefabSerializer.cpp" Outputs="$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration)\ozz_animation_offline$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\$(Configuration)\AnimationOzzRoundTripTests.exe;$(ProjectDir)Build\ozz-animation\$(Configuration)\ComponentSerializationRoundTripTests.exe">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Animation\build_ozz.ps1&quot; -Configuration $(Configuration) -RunTests" />
   </Target>
-  <Target Name="CompileShaders" BeforeTargets="ClCompile" Condition="Exists('$(ProjectDir)Tools\DXC\dxc.exe')" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso">
+  <Target Name="CompileShaders" BeforeTargets="ClCompile" Condition="Exists('$(ProjectDir)Tools\DXC\dxc.exe')" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Assets\Shaders\DebugPrimitive.hlsl;$(ProjectDir)Assets\Shaders\Occlusion.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Occlusion_vsMain_vs.cso">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

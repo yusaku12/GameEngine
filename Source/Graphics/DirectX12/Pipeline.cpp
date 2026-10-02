@@ -92,7 +92,7 @@ namespace Engine
 
         description.SampleMask = UINT_MAX;
         description.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-        description.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+        description.RasterizerState.CullMode = config.cullMode;
         description.RasterizerState.FrontCounterClockwise = FALSE;
         description.RasterizerState.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
         description.RasterizerState.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;

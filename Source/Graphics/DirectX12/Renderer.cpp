@@ -184,6 +184,10 @@ namespace Engine
         };
         m_debugVertexShaderID = m_shaderManager.registerShader(debugVertexShaderDesc);
         m_debugPixelShaderID = m_shaderManager.registerShader(debugPixelShaderDesc);
+        ShaderCompileDesc occlusionVertexShaderDesc = debugVertexShaderDesc;
+        occlusionVertexShaderDesc.sourcePath = "Assets/Shaders/Occlusion.hlsl";
+        occlusionVertexShaderDesc.outputPath = "Assets/Shaders/Compiled/Occlusion_vsMain_vs.cso";
+        m_occlusionVertexShaderID = m_shaderManager.registerShader(occlusionVertexShaderDesc);
 
         if (!m_shaderManager.loadAll())
         {
@@ -248,6 +252,9 @@ namespace Engine
             if (!buffer.finalize())
                 return false;
         m_modelInstanceConstants.clear();
+        for (DX12OcclusionQueries& queries : m_occlusionQueries)
+            if (!queries.finalize())
+                return false;
         if (!m_materialGpuCache.finalize())
             return false;
         if (!TextureManager::instance().finalize())
@@ -258,6 +265,7 @@ namespace Engine
         m_depthOnlyModelPipeline.finalize();
         m_depthAlphaTestModelPipeline.finalize();
         m_modelPipeline.finalize();
+        m_occlusionPipeline.finalize();
         m_shaderManager.shutdown();
         m_modelVertexShaderID = 0;
         m_modelPixelShaderID = 0;
@@ -265,6 +273,7 @@ namespace Engine
         m_depthAlphaTestPixelShaderID = 0;
         m_debugVertexShaderID = 0;
         m_debugPixelShaderID = 0;
+        m_occlusionVertexShaderID = 0;
         m_psoRebuildPending = false;
         for (DX12CommandList& commandList : m_commandLists)
             commandList.finalize();
@@ -352,10 +361,18 @@ namespace Engine
                     ImGui::Text("Visible Objects: %u", m_statistics.visibleObjects);
                     ImGui::Text("Culled Objects: %u", m_statistics.culledObjects);
                     ImGui::Text("Render Items: %u", m_statistics.renderItemCount);
-                    ImGui::Text("Draw Calls: %u", m_statistics.drawCallCount);
-                    ImGui::Text("Batches: %u", m_statistics.batchCount);
-                    ImGui::Text("Drawn Instances (all passes): %u", m_statistics.instanceCount);
+                    ImGui::Text("Submitted Model Draw Calls: %u", m_statistics.drawCallCount);
+                    ImGui::Text("Submitted Model Batches: %u", m_statistics.batchCount);
+                    ImGui::Text("Submitted Model Instances (all passes): %u", m_statistics.instanceCount);
                     ImGui::Checkbox("Model Instancing", &m_enableModelInstancing);
+                    ImGui::Checkbox("GPU Occlusion Culling", &m_enableOcclusionCulling);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Same-frame color-pass culling. Tests batches with at least 256 indices; up to 4096 queries per frame. Compare GPU performance with this disabled.");
+                    ImGui::Text("Occlusion Queries (last submitted frame): %u", m_statistics.occlusionQueryCount);
+                    ImGui::Text("Occluded Batches (completed slot): %u / %u",
+                        m_statistics.occludedBatches, m_statistics.completedOcclusionQueries);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Completed GPU results are statistics only. Color draws use same-frame predicates; depth and shadows always draw.");
                     ImGui::Text("PSO Switches: %u", m_statistics.psoSwitchCount);
                     ImGui::Text("Material Switches: %u", m_statistics.materialSwitchCount);
                     ImGui::Text("Vertex Buffer Switches: %u", m_statistics.vertexBufferSwitchCount);
@@ -376,6 +393,9 @@ namespace Engine
         {
             return false;
         }
+        if (!m_occlusionQueries[frameIndex].collectCompletedResults(
+            m_frameStatistics.completedOcclusionQueries, m_frameStatistics.occludedBatches))
+            return false;
 
         DX12CommandList& commandList = m_commandLists[frameIndex];
         DX12Resource* const backBuffer = m_swapChain.getCurrentBackBuffer();
@@ -465,6 +485,8 @@ namespace Engine
         }
         if (!m_modelRenderQueue.getItems().empty()
             && !m_modelInstanceBuffers[frameIndex].markUsed(submittedFenceValue))
+            return false;
+        if (!m_occlusionQueries[frameIndex].markSubmitted(submittedFenceValue))
             return false;
 
         m_frameFenceValues[frameIndex] = submittedFenceValue;
@@ -632,11 +654,13 @@ namespace Engine
         const auto depthAlphaTestPixelShader = m_shaderManager.get(m_depthAlphaTestPixelShaderID);
         const auto debugVertexShader = m_shaderManager.get(m_debugVertexShaderID);
         const auto debugPixelShader = m_shaderManager.get(m_debugPixelShaderID);
+        const auto occlusionVertexShader = m_shaderManager.get(m_occlusionVertexShaderID);
         if (!modelVertexShader || !modelPixelShader || !alphaTestPixelShader || !depthAlphaTestPixelShader
-            || !debugVertexShader || !debugPixelShader
+            || !debugVertexShader || !debugPixelShader || !occlusionVertexShader
             || !modelVertexShader->isCompiled() || !modelPixelShader->isCompiled()
             || !alphaTestPixelShader->isCompiled() || !depthAlphaTestPixelShader->isCompiled()
-            || !debugVertexShader->isCompiled() || !debugPixelShader->isCompiled())
+            || !debugVertexShader->isCompiled() || !debugPixelShader->isCompiled()
+            || !occlusionVertexShader->isCompiled())
         {
             LOG_ERROR("[DX12] 有効なModel Shaderがロードされていません");
             return false;
@@ -728,11 +752,27 @@ namespace Engine
         DX12GraphicsPipeline nextTransparentModelPipeline;
         DX12GraphicsPipeline nextDepthOnlyModelPipeline;
         DX12GraphicsPipeline nextDepthAlphaTestModelPipeline;
+        D3D12_ROOT_PARAMETER queryConstants{};
+        queryConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        queryConstants.Constants.Num32BitValues = 5;
+        queryConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+        const std::array queryParameters = { queryConstants };
+        const DX12GraphicsPipelineConfig occlusionConfig{
+            .vertexShader = occlusionVertexShader.get(),
+            .rootParameters = queryParameters,
+            .renderTargetFormat = DXGI_FORMAT_UNKNOWN,
+            .depthStencilFormat = DXGI_FORMAT_D32_FLOAT,
+            .depthComparison = D3D12_COMPARISON_FUNC_LESS_EQUAL,
+            .enableDepthWrite = false,
+            .cullMode = D3D12_CULL_MODE_NONE,
+        };
+        DX12GraphicsPipeline nextOcclusionPipeline;
         if (!nextModelPipeline.initialize(*m_device.get(), opaqueModelConfig)
             || !nextAlphaTestModelPipeline.initialize(*m_device.get(), alphaTestModelConfig)
             || !nextTransparentModelPipeline.initialize(*m_device.get(), transparentModelConfig)
             || !nextDepthOnlyModelPipeline.initialize(*m_device.get(), depthOnlyModelConfig)
             || !nextDepthAlphaTestModelPipeline.initialize(*m_device.get(), depthAlphaTestModelConfig)
+            || !nextOcclusionPipeline.initialize(*m_device.get(), occlusionConfig)
             || !DebugPrimitive::instance().rebuildPipeline(*debugVertexShader, *debugPixelShader)
             || !m_materialGpuCache.rebuildAll())
         {
@@ -743,6 +783,7 @@ namespace Engine
         m_transparentModelPipeline.swap(nextTransparentModelPipeline);
         m_depthOnlyModelPipeline.swap(nextDepthOnlyModelPipeline);
         m_depthAlphaTestModelPipeline.swap(nextDepthAlphaTestModelPipeline);
+        m_occlusionPipeline.swap(nextOcclusionPipeline);
         return true;
     }
 
@@ -916,6 +957,23 @@ namespace Engine
         MaterialGpuResource* currentMaterialResource = nullptr;
         RenderPassType targetPass = RenderPassType::Opaque;
         bool shadowMapCleared = false;
+        bool occlusionRecorded = false;
+        DX12OcclusionQueries& queries = m_occlusionQueries[frameIndex];
+        const auto setCameraViewport = [&]
+            {
+                const D3D12_VIEWPORT viewport{
+                    m_cameraViewport.x * static_cast<float>(m_renderWidth),
+                    m_cameraViewport.y * static_cast<float>(m_renderHeight),
+                    m_cameraViewport.width * static_cast<float>(m_renderWidth),
+                    m_cameraViewport.height * static_cast<float>(m_renderHeight), 0.0f, 1.0f };
+                const D3D12_RECT scissor{
+                    static_cast<LONG>(viewport.TopLeftX), static_cast<LONG>(viewport.TopLeftY),
+                    static_cast<LONG>(viewport.TopLeftX + viewport.Width),
+                    static_cast<LONG>(viewport.TopLeftY + viewport.Height) };
+                nativeCommandList->RSSetViewports(1, &viewport);
+                nativeCommandList->RSSetScissorRects(1, &scissor);
+            };
+        nativeCommandList->SetPredication(nullptr, 0, D3D12_PREDICATION_OP_EQUAL_ZERO);
         nativeCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
         for (std::size_t itemIndex = 0; itemIndex < items.size();)
@@ -923,7 +981,26 @@ namespace Engine
             const RenderItem& item = items[itemIndex];
             const std::size_t batchSize = m_enableModelInstancing
                 ? m_modelRenderQueue.getInstanceBatchSize(itemIndex) : 1;
-            if (item.pass != targetPass)
+            bool restoreColorTarget = false;
+            if (!occlusionRecorded && item.pass >= RenderPassType::Opaque)
+            {
+                occlusionRecorded = true;
+                if (m_enableOcclusionCulling)
+                {
+                    nativeCommandList->OMSetRenderTargets(0, nullptr, FALSE, &m_depthStencilView.native);
+                    setCameraViewport();
+                    const Vector2 viewportSize(
+                        m_cameraViewport.width * static_cast<float>(m_renderWidth),
+                        m_cameraViewport.height * static_cast<float>(m_renderHeight));
+                    if (!queries.record(commandList, *m_device.get(), m_directFence, m_occlusionPipeline,
+                        m_modelRenderQueue, m_viewProjection, viewportSize, m_enableModelInstancing))
+                        return false;
+                    m_frameStatistics.occlusionQueryCount = queries.getQueryCount();
+                    currentPipeline = nullptr;
+                    restoreColorTarget = true;
+                }
+            }
+            if (item.pass != targetPass || restoreColorTarget)
             {
                 if (item.pass == RenderPassType::DepthOnly)
                 {
@@ -948,18 +1025,7 @@ namespace Engine
                 {
                     const D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_gameRenderTargetView.native;
                     nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
-                    const float viewportX = m_cameraViewport.x * static_cast<float>(m_renderWidth);
-                    const float viewportY = m_cameraViewport.y * static_cast<float>(m_renderHeight);
-                    const D3D12_VIEWPORT viewport{
-                        viewportX, viewportY,
-                        m_cameraViewport.width * static_cast<float>(m_renderWidth),
-                        m_cameraViewport.height * static_cast<float>(m_renderHeight), 0.0f, 1.0f };
-                    const D3D12_RECT scissor{
-                        static_cast<LONG>(viewport.TopLeftX), static_cast<LONG>(viewport.TopLeftY),
-                        static_cast<LONG>(viewport.TopLeftX + viewport.Width),
-                        static_cast<LONG>(viewport.TopLeftY + viewport.Height) };
-                    nativeCommandList->RSSetViewports(1, &viewport);
-                    nativeCommandList->RSSetScissorRects(1, &scissor);
+                    setCameraViewport();
                 }
                 targetPass = item.pass;
             }
@@ -1057,12 +1123,15 @@ namespace Engine
             nativeCommandList->SetGraphicsRoot32BitConstants(8, 16, &propertyValues.baseColor.x, 0);
             const std::uint32_t overrideMask = item.materialProperties.getOverrideMask();
             nativeCommandList->SetGraphicsRoot32BitConstants(8, 1, &overrideMask, 16);
+            if (queries.getQueryCount() != 0 && item.pass >= RenderPassType::Opaque)
+                queries.setPredicate(*nativeCommandList, itemIndex);
             nativeCommandList->DrawIndexedInstanced(item.indexCount, static_cast<UINT>(batchSize),
                 item.indexStart, item.baseVertex, 0);
             ++m_frameStatistics.drawCallCount;
             m_frameStatistics.instanceCount += static_cast<std::uint32_t>(batchSize);
             itemIndex += batchSize;
         }
+        nativeCommandList->SetPredication(nullptr, 0, D3D12_PREDICATION_OP_EQUAL_ZERO);
         m_frameStatistics.batchCount = m_frameStatistics.drawCallCount;
         return true;
     }

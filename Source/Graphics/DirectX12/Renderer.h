@@ -8,6 +8,7 @@
 #include "Graphics\DirectX12\Pipeline.h"
 #include "Graphics\DirectX12\Queue.h"
 #include "Graphics\DirectX12\Resource.h"
+#include "Graphics\DirectX12\OcclusionQueries.h"
 #include "Graphics\Shader\ShaderManager.h"
 #include "Graphics\DirectX12\SwapChain.h"
 #include "Graphics\Camera\CameraData.h"
@@ -35,6 +36,9 @@ namespace Engine
         std::uint32_t textureSwitchCount = 0;      //!< 直近フレームのTexture切り替え回数
         std::uint32_t vertexBufferSwitchCount = 0; //!< 直近フレームのVertex Buffer切り替え回数
         std::uint32_t indexBufferSwitchCount = 0;  //!< 直近フレームのIndex Buffer切り替え回数
+        std::uint32_t occlusionQueryCount = 0;     //!< 現在Frameで記録したOcclusionバッチクエリ数
+        std::uint32_t completedOcclusionQueries = 0; //!< 再利用したFrame slotのGPU完了済みクエリ数
+        std::uint32_t occludedBatches = 0;         //!< GPU完了済み結果で色描画を省略したバッチ数
     };
 
     /**
@@ -150,6 +154,14 @@ namespace Engine
          */
         void setModelInstancingEnabled(bool enabled) noexcept { m_enableModelInstancing = enabled; }
 
+        /**
+         * @brief 同一Frameの深度に基づくGPU条件付き色描画を有効化する。
+         * @param enabled 有効時は完全に隠れた非透明バッチの色描画を省略する。
+         * @details 深度と影は省略しない。透明、変形中、近クリップ交差、小規模バッチは判定しない。
+         * @thread_safety Render threadのみ。フレーム開始前に設定すること。
+         */
+        void setOcclusionCullingEnabled(bool enabled) noexcept { m_enableOcclusionCulling = enabled; }
+
     private:
 
         /**
@@ -233,12 +245,16 @@ namespace Engine
         ShaderID m_depthAlphaTestPixelShaderID = 0;                                                       //!< Depth Alpha Test Pixel Shader ID
         ShaderID m_debugVertexShaderID = 0;                                                               //!< Debug Primitive頂点Shader ID
         ShaderID m_debugPixelShaderID = 0;                                                                //!< Debug Primitive Pixel Shader ID
+        ShaderID m_occlusionVertexShaderID = 0;                                                           //!< 可視判定用Vertex Shader ID
         bool m_psoRebuildPending = false;                                                                 //!< Shader 更新に伴う Graphics PSO 再生成要求フラグ
         DX12GraphicsPipeline m_modelPipeline;                                                             //!< Model描画用Graphics PSO
         DX12GraphicsPipeline m_alphaTestModelPipeline;                                                    //!< Alpha Test Model描画用Graphics PSO
         DX12GraphicsPipeline m_transparentModelPipeline;                                                  //!< 透明Model描画用Graphics PSO
         DX12GraphicsPipeline m_depthOnlyModelPipeline;                                                    //!< Opaque Depth/Shadow描画用Graphics PSO
         DX12GraphicsPipeline m_depthAlphaTestModelPipeline;                                               //!< Alpha Test Depth/Shadow描画用Graphics PSO
+        DX12GraphicsPipeline m_occlusionPipeline;                                                         //!< 深度・色を書き込まない可視判定用PSO
+        std::array<DX12OcclusionQueries, FRAME_COUNT> m_occlusionQueries;                                 //!< GPU完了後に再利用するFrame別クエリ
+        bool m_enableOcclusionCulling = true;                                                            //!< 同一FrameでのGPU条件付き色描画
         ModelGpuCache m_modelGpuCache;                                                                    //!< ModelHandle単位のGPU Resource Cache
         MaterialGpuCache m_materialGpuCache;                                                              //!< MaterialHandle単位のGPU Resource Cache
         RenderQueue m_modelRenderQueue;                                                                   //!< 現在フレームのModel描画Queue

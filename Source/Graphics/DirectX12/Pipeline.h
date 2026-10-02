@@ -23,6 +23,7 @@ namespace Engine
         D3D12_COMPARISON_FUNC depthComparison = D3D12_COMPARISON_FUNC_LESS;                       //!< 深度比較関数
         bool enableAlphaBlend = false;                                                            //!< SrcAlphaによる透過Blendを有効にするか
         bool enableDepthWrite = true;                                                             //!< Depth Bufferへの書き込みを有効にするか
+        D3D12_CULL_MODE cullMode = D3D12_CULL_MODE_BACK;                                           //!< Rasterizerの面Culling設定
     };
 
     /**

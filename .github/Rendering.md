@@ -315,6 +315,30 @@ GPU State変更を可能な限り削減する。
 
 # 14. Render Pass
 
+## 現在のGPU Occlusion Culling
+
+`DX12Renderer`はCameraのDepth Pre-Pass完了後、非透明Modelバッチを
+`DX12OcclusionQueries`で判定し、同じFrameの結果で色DrawをGPU Predicationする。
+過去Frameの結果を可視判定に使わないため、Camera移動や遮蔽物の移動に対して
+前Frameの不可視状態を引き継がない。深度と影のDrawは常に実行する。
+
+- 判定はWorld AABBの投影矩形と、そのAABBの最も手前の深度を使う。
+  矩形を1ピクセル広げ、深度をCamera側へ補正する保守的な方式。
+- GPU Instancing有効時はバッチ全体のBoundsで判定する。
+  1つでも見えるInstanceがあるバッチは全体を描画する。
+- 透明、Skinning Snapshot付き、近クリップ面と交差、無効Boundsは無条件描画。
+  256 Index未満の小規模バッチもクエリのコストを避けて無条件描画する。
+- クエリはFrameあたり最大4096個。上限を超えたバッチは無条件描画する。
+- Frame別Query Heap、結果Buffer、ReadbackをFence完了後に再利用する。
+  結果BufferはResolve用COPY_DEST、統計Copy用COPY_SOURCE、PREDICATIONへ遷移する。
+- `Renderer Statistics`の`GPU Occlusion Culling`で比較用に無効化できる。
+  完了済みクエリの統計はFrame slot再利用時に回収し、カリングには使わない。
+  Draw Calls / InstancesはCPUが記録したModel Draw数であり、GPUで省略された数を
+  差し引かない。クエリ用の矩形DrawもこれらのModel統計には含めない。
+
+開けた地形や広いInstanceバッチではクエリ追加コストが上回る場合がある。
+ON/OFFでGPU処理時間を比較すること。区画Streaming、LOD、Shadow Occlusionは別機能。
+
 Rendering処理をRender Pass単位に分割する。
 
 例:
