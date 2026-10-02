@@ -113,6 +113,25 @@ namespace Engine
 
     void GameObjectManager::lateUpdate(const float deltaTime) noexcept
     {
+        m_transformRootsToUpdate.clear();
+        for (const auto& object : m_objects)
+            if (object->getParent() == nullptr)
+                m_transformRootsToUpdate.push_back(object.get());
+
+        if (m_transformRootsToUpdate.size() == 1)
+        {
+            m_transformRootsToUpdate.front()->updateWorldTransformHierarchy();
+        }
+        else if (m_transformRootsToUpdate.size() > 1)
+        {
+            JobSystem::instance().parallelFor(m_transformRootsToUpdate.size(),
+                [this](const std::size_t index)
+                {
+                    m_transformRootsToUpdate[index]->updateWorldTransformHierarchy();
+                });
+        }
+        m_transformRootsToUpdate.clear();
+
         for (const auto& object : m_objects)
             if (object->getParent() == nullptr)
                 object->lateUpdateLifecycle(deltaTime);

@@ -350,6 +350,12 @@ namespace Engine
         void updateWorldTransform() const noexcept;
 
         /**
+         * @brief 自身と子孫のワールド変換キャッシュを親から順に更新する。
+         * @details 異なるルート階層は互いに独立して並列実行できる。
+         */
+        void updateWorldTransformHierarchy() const noexcept;
+
+        /**
          * @brief GameObjectのLifecycleを初期化する。
          * @details GameObjectManagerが管理するGameObjectのAwake時に呼ばれる。
          */

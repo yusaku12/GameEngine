@@ -310,6 +310,13 @@ namespace Engine
         ++m_worldRevision;
     }
 
+    void GameObject::updateWorldTransformHierarchy() const noexcept
+    {
+        updateWorldTransform();
+        for (const GameObject* const child : m_children)
+            child->updateWorldTransformHierarchy();
+    }
+
     Transform* Component::getTransform() noexcept
     {
         return m_gameObject != nullptr ? m_gameObject->getTransform() : nullptr;
