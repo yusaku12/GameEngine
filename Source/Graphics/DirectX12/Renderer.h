@@ -142,6 +142,14 @@ namespace Engine
          */
         const RendererStatistics& getStatistics() const noexcept { return m_statistics; }
 
+        /**
+         * @brief 互換性のある非透明Model描画をGPU Instance Drawへまとめるか設定する。
+         * @param enabled 有効時は同一Geometry、Material、PassのDrawを統合する。
+         * @details 透明物、Skinning Snapshot、Material Parameter Overrideは個別描画を維持する。
+         * @thread_safety Render threadのみ。フレーム開始前に設定すること。
+         */
+        void setModelInstancingEnabled(bool enabled) noexcept { m_enableModelInstancing = enabled; }
+
     private:
 
         /**
@@ -188,6 +196,13 @@ namespace Engine
         DX12UploadBuffer* uploadSkinningPalette(std::uint32_t frameIndex,
             const SkinningPaletteSnapshot& snapshot);
 
+        struct ModelInstanceConstants
+        {
+            Matrix worldViewProjection;
+            Matrix worldMatrix;
+        };
+        static_assert(sizeof(ModelInstanceConstants) == sizeof(float) * 32);
+
         //! Frame In Flight 数
         static constexpr std::uint32_t FRAME_COUNT = 2;
 
@@ -222,6 +237,9 @@ namespace Engine
         std::vector<ModelRenderSubmission> m_modelSubmissions;                                            //!< Frame間で容量を再利用する提出Buffer
         std::array<std::vector<std::unique_ptr<DX12UploadBuffer>>, FRAME_COUNT> m_skinningPaletteBuffers; //!< Frame間で容量を再利用するSkinning Palette Buffer
         std::array<std::size_t, FRAME_COUNT> m_skinningPaletteBufferCursors{};                            //!< Frame間で容量を再利用するSkinning Palette Bufferのカーソル
+        std::array<DX12UploadBuffer, FRAME_COUNT> m_modelInstanceBuffers;                                 //!< Fence完了後に再利用するInstance Buffer
+        std::vector<ModelInstanceConstants> m_modelInstanceConstants;                                    //!< CPU側のInstance転送データ。容量を再利用する
+        bool m_enableModelInstancing = true;                                                             //!< 非透明Modelの互換Drawをまとめる
         Matrix m_viewProjection = Matrix::Identity;                                                       //!< CameraのView Projection行列
         Vector3 m_cameraPosition = Vector3::Zero;                                                         //!< Transparent sort用Camera座標
         std::optional<Frustum> m_frustum;                                                                 //!< World Space Camera Frustum
