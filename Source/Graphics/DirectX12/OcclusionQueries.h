@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Graphics\DirectX12\Resource.h"
 #include "Core\Math\MathTypes.h"
@@ -51,36 +51,53 @@ namespace Engine
          */
         void setPredicate(ID3D12GraphicsCommandList& commandList, std::size_t itemIndex) const noexcept;
 
-        /** @brief クエリ結果のCopyを提出したFence値を記録する。 */
+        /**
+         * @brief クエリ結果のCopyを提出したFence値を記録する。
+         * @param fenceValue 提出したFence値。
+         */
         bool markSubmitted(std::uint64_t fenceValue);
 
-        /** @brief GPU完了後にResourceとCPU側状態を解放する。 */
+        /**
+         * @brief GPU完了後にResourceとCPU側状態を解放する。
+         */
         bool finalize();
 
-        /** @brief 現在記録したバッチクエリ数を取得する。 */
+        /**
+         * @brief 現在記録したバッチクエリ数を取得する。
+         * @return 現在記録したバッチクエリ数
+         */
         std::uint32_t getQueryCount() const noexcept { return static_cast<std::uint32_t>(m_queries.size()); }
 
     private:
 
+        /**
+         * @brief バッチの可視判定に必要な情報を格納する構造体。
+         */
         struct Query
         {
-            Vector4 rectangle;
-            float nearestDepth = 0.0f;
+            Vector4 rectangle;         //!< バッチのスクリーン座標矩形。左上(x,y)、右下(z,w)。
+            float nearestDepth = 0.0f; //!< バッチの最も近い深度値。0.0f～1.0f。
         };
         static_assert(sizeof(Query) == sizeof(float) * 5);
 
+        /**
+         * @brief クエリの容量を確保する。必要に応じてQueryHeapとReadbackBufferを再作成する。
+         * @param device Resource作成用Device。
+         * @param fence このFrameの完了を追跡するFence。
+         * @param count 確保するクエリ数。
+         */
         bool ensureCapacity(ID3D12Device& device, const DX12Fence& fence, std::uint32_t count);
 
-        static constexpr std::uint32_t MAX_QUERIES = 4096;
-        static constexpr std::uint32_t MIN_BATCH_INDICES = 256;
+        static constexpr std::uint32_t MAX_QUERIES = 4096;      //!< 最大クエリ数。QueryHeapの最大数はD3D12_REQ_OCCLUSION_QUERY_COUNT_PER_PIPELINEステージで定義される。
+        static constexpr std::uint32_t MIN_BATCH_INDICES = 256; //!< バッチ分割の最小インデックス数。これ未満のバッチはクエリを行わず無条件描画する。
 
-        Microsoft::WRL::ComPtr<ID3D12QueryHeap> m_heap;
-        DX12Resource m_results;
-        DX12ReadbackBuffer m_readback;
-        std::vector<Query> m_queries;
-        std::vector<std::uint32_t> m_itemQueries;
-        std::vector<std::uint64_t> m_completedResults;
-        std::uint32_t m_capacity = 0;
-        std::uint32_t m_pendingCount = 0;
+        Microsoft::WRL::ComPtr<ID3D12QueryHeap> m_heap; //!< クエリ結果を格納するQueryHeap。D3D12_QUERY_HEAP_TYPE_OCCLUSION。
+        DX12Resource m_results;                         //!< DirectX 12 Resource。QueryHeapの結果をResolveするためのReadback Heap上のBuffer。
+        DX12ReadbackBuffer m_readback;                  //!< Readback Heap上のBuffer。GPU完了後にCPU側へ読み取る。
+        std::vector<Query> m_queries;                   //!< バッチの可視判定に必要な情報。スクリーン座標矩形と最も近い深度値を格納する。
+        std::vector<std::uint32_t> m_itemQueries;       //!< バッチの先頭Indexに対応するクエリのインデックス。未判定バッチはUINT32_MAX。
+        std::vector<std::uint64_t> m_completedResults;  //!< Fence完了済みFrameのResolve結果。各クエリの描画ピクセル数を格納する。
+        std::uint32_t m_capacity = 0;                   //!< 現在のQueryHeapとReadbackBufferに格納できるクエリの最大数。
+        std::uint32_t m_pendingCount = 0;               //!< 現在記録中のクエリ数。QueryHeapとReadbackBufferに格納される。
     };
 } // namespace Engine

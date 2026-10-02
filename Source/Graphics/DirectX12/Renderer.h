@@ -25,20 +25,20 @@ namespace Engine
      */
     struct RendererStatistics
     {
-        std::uint32_t visibleObjects = 0;          //!< 直近フレームの視錐台内に存在するModelHandle数
-        std::uint32_t culledObjects = 0;           //!< 直近フレームの視錐台外に存在するModelHandle数
-        std::uint32_t renderItemCount = 0;         //!< 直近フレームの描画対象となるModelRenderSubmission数
-        std::uint32_t drawCallCount = 0;           //!< 直近フレームの描画コール数
-        std::uint32_t batchCount = 0;              //!< 直近フレームの描画バッチ数
-        std::uint32_t instanceCount = 0;           //!< 直近フレームの描画インスタンス数
-        std::uint32_t psoSwitchCount = 0;          //!< 直近フレームのGraphics PSO切り替え回数
-        std::uint32_t materialSwitchCount = 0;     //!< 直近フレームのMaterial切り替え回数
-        std::uint32_t textureSwitchCount = 0;      //!< 直近フレームのTexture切り替え回数
-        std::uint32_t vertexBufferSwitchCount = 0; //!< 直近フレームのVertex Buffer切り替え回数
-        std::uint32_t indexBufferSwitchCount = 0;  //!< 直近フレームのIndex Buffer切り替え回数
-        std::uint32_t occlusionQueryCount = 0;     //!< 現在Frameで記録したOcclusionバッチクエリ数
+        std::uint32_t visibleObjects = 0;            //!< 直近フレームの視錐台内に存在するModelHandle数
+        std::uint32_t culledObjects = 0;             //!< 直近フレームの視錐台外に存在するModelHandle数
+        std::uint32_t renderItemCount = 0;           //!< 直近フレームの描画対象となるModelRenderSubmission数
+        std::uint32_t drawCallCount = 0;             //!< 直近フレームの描画コール数
+        std::uint32_t batchCount = 0;                //!< 直近フレームの描画バッチ数
+        std::uint32_t instanceCount = 0;             //!< 直近フレームの描画インスタンス数
+        std::uint32_t psoSwitchCount = 0;            //!< 直近フレームのGraphics PSO切り替え回数
+        std::uint32_t materialSwitchCount = 0;       //!< 直近フレームのMaterial切り替え回数
+        std::uint32_t textureSwitchCount = 0;        //!< 直近フレームのTexture切り替え回数
+        std::uint32_t vertexBufferSwitchCount = 0;   //!< 直近フレームのVertex Buffer切り替え回数
+        std::uint32_t indexBufferSwitchCount = 0;    //!< 直近フレームのIndex Buffer切り替え回数
+        std::uint32_t occlusionQueryCount = 0;       //!< 現在Frameで記録したOcclusionバッチクエリ数
         std::uint32_t completedOcclusionQueries = 0; //!< 再利用したFrame slotのGPU完了済みクエリ数
-        std::uint32_t occludedBatches = 0;         //!< GPU完了済み結果で色描画を省略したバッチ数
+        std::uint32_t occludedBatches = 0;           //!< GPU完了済み結果で色描画を省略したバッチ数
     };
 
     /**
@@ -254,7 +254,7 @@ namespace Engine
         DX12GraphicsPipeline m_depthAlphaTestModelPipeline;                                               //!< Alpha Test Depth/Shadow描画用Graphics PSO
         DX12GraphicsPipeline m_occlusionPipeline;                                                         //!< 深度・色を書き込まない可視判定用PSO
         std::array<DX12OcclusionQueries, FRAME_COUNT> m_occlusionQueries;                                 //!< GPU完了後に再利用するFrame別クエリ
-        bool m_enableOcclusionCulling = true;                                                            //!< 同一FrameでのGPU条件付き色描画
+        bool m_enableOcclusionCulling = true;                                                             //!< 同一FrameでのGPU条件付き色描画
         ModelGpuCache m_modelGpuCache;                                                                    //!< ModelHandle単位のGPU Resource Cache
         MaterialGpuCache m_materialGpuCache;                                                              //!< MaterialHandle単位のGPU Resource Cache
         RenderQueue m_modelRenderQueue;                                                                   //!< 現在フレームのModel描画Queue
