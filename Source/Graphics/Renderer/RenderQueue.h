@@ -47,6 +47,13 @@ namespace Engine
         void sort();
 
         /**
+         * @brief 指定位置から連続する互換性のある非透明描画の数を取得する。
+         * @param first 先頭ItemのIndex。範囲外の場合は0。
+         * @return 同一DrawへまとめられるItem数。SkinningとParameter Overrideはまとめない。
+         */
+        std::size_t getInstanceBatchSize(std::size_t first) const noexcept;
+
+        /**
          * @brief Queue内のItemを取得する。
          * @return Queue内のItem
          */

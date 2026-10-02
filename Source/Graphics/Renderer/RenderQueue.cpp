@@ -41,11 +41,49 @@ namespace Engine
                 {
                     if (left.cameraDepth != right.cameraDepth)
                         return left.cameraDepth > right.cameraDepth;
+                    return std::tie(left.pipelineID, left.shaderVariantID, left.material.index, left.material.generation,
+                        left.textureID, left.meshID, left.objectID)
+                        < std::tie(right.pipelineID, right.shaderVariantID, right.material.index, right.material.generation,
+                            right.textureID, right.meshID, right.objectID);
                 }
-                return std::tie(left.pipelineID, left.shaderVariantID, left.material.index, left.material.generation,
-                    left.textureID, left.meshID, left.objectID)
-                    < std::tie(right.pipelineID, right.shaderVariantID, right.material.index, right.material.generation,
-                        right.textureID, right.meshID, right.objectID);
+                const auto leftState = std::tie(left.pipelineID, left.shaderVariantID, left.material.index,
+                    left.material.generation, left.textureID);
+                const auto rightState = std::tie(right.pipelineID, right.shaderVariantID, right.material.index,
+                    right.material.generation, right.textureID);
+                if (leftState != rightState)
+                    return leftState < rightState;
+                if (left.vertexBuffer != right.vertexBuffer)
+                    return std::less<const D3D12_VERTEX_BUFFER_VIEW*>{}(left.vertexBuffer, right.vertexBuffer);
+                if (left.indexBuffer != right.indexBuffer)
+                    return std::less<const D3D12_INDEX_BUFFER_VIEW*>{}(left.indexBuffer, right.indexBuffer);
+                return std::tie(left.indexStart, left.indexCount, left.baseVertex, left.meshID, left.objectID)
+                    < std::tie(right.indexStart, right.indexCount, right.baseVertex, right.meshID, right.objectID);
             });
+    }
+
+    std::size_t RenderQueue::getInstanceBatchSize(const std::size_t first) const noexcept
+    {
+        if (first >= m_items.size())
+            return 0;
+
+        const RenderItem& item = m_items[first];
+        if (item.pass == RenderPassType::Transparent || item.skinningPalette != nullptr
+            || !item.materialProperties.empty())
+            return 1;
+
+        std::size_t end = first + 1;
+        for (; end < m_items.size(); ++end)
+        {
+            const RenderItem& candidate = m_items[end];
+            if (candidate.pass != item.pass || candidate.pipelineID != item.pipelineID
+                || candidate.shaderVariantID != item.shaderVariantID || candidate.material != item.material
+                || candidate.surfaceType != item.surfaceType || candidate.textureID != item.textureID
+                || candidate.vertexBuffer != item.vertexBuffer || candidate.indexBuffer != item.indexBuffer
+                || candidate.indexStart != item.indexStart || candidate.indexCount != item.indexCount
+                || candidate.baseVertex != item.baseVertex || candidate.bonePaletteBuffer != item.bonePaletteBuffer
+                || candidate.skinningPalette != nullptr || !candidate.materialProperties.empty())
+                break;
+        }
+        return end - first;
     }
 } // namespace Engine

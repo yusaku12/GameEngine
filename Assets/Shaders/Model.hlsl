@@ -1,9 +1,11 @@
 // Compiled by DXC with Shader Model 6.x and HLSL 2021.
-cbuffer ObjectConstants : register(b0)
+struct ObjectConstants
 {
     row_major float4x4 worldViewProjection;
     row_major float4x4 worldMatrix;
 };
+
+StructuredBuffer<ObjectConstants> objectInstances : register(t5);
 
 static const uint MAX_SKINNING_BONES = 256;
 
@@ -78,8 +80,9 @@ struct PixelInput
     float3 bitangent : BITANGENT;
 };
 
-PixelInput vsMain(VertexInput input)
+PixelInput vsMain(VertexInput input, uint instanceID : SV_InstanceID)
 {
+    const ObjectConstants object = objectInstances[instanceID];
     PixelInput output;
     float4 localPosition = float4(input.position, 1.0f);
     float3 localNormal = input.normal;
@@ -103,14 +106,14 @@ PixelInput vsMain(VertexInput input)
         localTangent = normalize(mul(localTangent, skinNormalMatrix));
         localBitangent = normalize(mul(localBitangent, skinNormalMatrix));
     }
-    output.position = mul(localPosition, worldViewProjection);
+    output.position = mul(localPosition, object.worldViewProjection);
     const float4 resolvedBaseColor = (propertyOverrideMask & PROPERTY_BASE_COLOR) != 0
         ? propertyBaseColor : baseColor;
     output.color = input.color * resolvedBaseColor;
     output.texCoord = input.texCoord;
-    output.normal = normalize(mul(localNormal, (float3x3)worldMatrix));
-    output.tangent = normalize(mul(localTangent, (float3x3)worldMatrix));
-    output.bitangent = normalize(mul(localBitangent, (float3x3)worldMatrix));
+    output.normal = normalize(mul(localNormal, (float3x3)object.worldMatrix));
+    output.tangent = normalize(mul(localTangent, (float3x3)object.worldMatrix));
+    output.bitangent = normalize(mul(localBitangent, (float3x3)object.worldMatrix));
     return output;
 }
 

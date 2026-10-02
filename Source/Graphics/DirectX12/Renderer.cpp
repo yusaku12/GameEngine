@@ -244,6 +244,10 @@ namespace Engine
             frameBuffers.clear();
         }
         m_skinningPaletteBufferCursors.fill(0);
+        for (DX12UploadBuffer& buffer : m_modelInstanceBuffers)
+            if (!buffer.finalize())
+                return false;
+        m_modelInstanceConstants.clear();
         if (!m_materialGpuCache.finalize())
             return false;
         if (!TextureManager::instance().finalize())
@@ -349,6 +353,9 @@ namespace Engine
                     ImGui::Text("Culled Objects: %u", m_statistics.culledObjects);
                     ImGui::Text("Render Items: %u", m_statistics.renderItemCount);
                     ImGui::Text("Draw Calls: %u", m_statistics.drawCallCount);
+                    ImGui::Text("Batches: %u", m_statistics.batchCount);
+                    ImGui::Text("Drawn Instances (all passes): %u", m_statistics.instanceCount);
+                    ImGui::Checkbox("Model Instancing", &m_enableModelInstancing);
                     ImGui::Text("PSO Switches: %u", m_statistics.psoSwitchCount);
                     ImGui::Text("Material Switches: %u", m_statistics.materialSwitchCount);
                     ImGui::Text("Vertex Buffer Switches: %u", m_statistics.vertexBufferSwitchCount);
@@ -456,6 +463,9 @@ namespace Engine
             if (!m_skinningPaletteBuffers[frameIndex][index]->markUsed(submittedFenceValue))
                 return false;
         }
+        if (!m_modelRenderQueue.getItems().empty()
+            && !m_modelInstanceBuffers[frameIndex].markUsed(submittedFenceValue))
+            return false;
 
         m_frameFenceValues[frameIndex] = submittedFenceValue;
         m_lastSubmittedFenceValue = submittedFenceValue;
@@ -633,11 +643,10 @@ namespace Engine
         }
 
         D3D12_ROOT_PARAMETER objectConstants{};
-        objectConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        objectConstants.Constants.ShaderRegister = 0;
-        objectConstants.Constants.RegisterSpace = 0;
-        objectConstants.Constants.Num32BitValues = 32;
-        objectConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        objectConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+        objectConstants.Descriptor.ShaderRegister = 5;
+        objectConstants.Descriptor.RegisterSpace = 0;
+        objectConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
         std::array<D3D12_DESCRIPTOR_RANGE, 5> textureRanges{};
         std::array<D3D12_ROOT_PARAMETER, 5> textureTables{};
         for (std::uint32_t textureIndex = 0; textureIndex < textureRanges.size(); ++textureIndex)
@@ -860,6 +869,37 @@ namespace Engine
         if (items.empty())
             return true;
 
+        if (frameIndex >= FRAME_COUNT || items.size() > UINT32_MAX)
+        {
+            LOG_ERROR("[Renderer] Invalid instance buffer frame or item count.");
+            return false;
+        }
+        m_modelInstanceConstants.resize(items.size());
+        for (std::size_t index = 0; index < items.size(); ++index)
+        {
+            const RenderItem& item = items[index];
+            const Matrix& viewProjection = item.pass == RenderPassType::Shadow && m_shadowViewProjection
+                ? *m_shadowViewProjection : m_viewProjection;
+            m_modelInstanceConstants[index] = { item.worldMatrix * viewProjection, item.worldMatrix };
+        }
+        DX12UploadBuffer& instanceBuffer = m_modelInstanceBuffers[frameIndex];
+        const auto instanceBytes = std::as_bytes(std::span<const ModelInstanceConstants>(m_modelInstanceConstants));
+        if (instanceBuffer.getSize() < instanceBytes.size())
+        {
+            const std::uint64_t capacity = std::max<std::uint64_t>(instanceBytes.size(),
+                std::max<std::uint64_t>(sizeof(ModelInstanceConstants) * 256, instanceBuffer.getSize() * 2));
+            if (!instanceBuffer.initialize(*m_device.get(), m_directFence, capacity))
+            {
+                LOG_ERROR("[Renderer] Failed to allocate model instance buffer.");
+                return false;
+            }
+        }
+        if (!instanceBuffer.write(instanceBytes))
+        {
+            LOG_ERROR("[Renderer] Failed to upload model instances.");
+            return false;
+        }
+
         ID3D12GraphicsCommandList* const nativeCommandList = commandList.getForRecording();
         TextureManager& textureManager = TextureManager::instance();
         ID3D12DescriptorHeap* const descriptorHeap = textureManager.getDescriptorHeap().get();
@@ -878,8 +918,11 @@ namespace Engine
         bool shadowMapCleared = false;
         nativeCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-        for (const RenderItem& item : items)
+        for (std::size_t itemIndex = 0; itemIndex < items.size();)
         {
+            const RenderItem& item = items[itemIndex];
+            const std::size_t batchSize = m_enableModelInstancing
+                ? m_modelRenderQueue.getInstanceBatchSize(itemIndex) : 1;
             if (item.pass != targetPass)
             {
                 if (item.pass == RenderPassType::DepthOnly)
@@ -1008,18 +1051,17 @@ namespace Engine
             }
             if (currentMaterialResource == nullptr)
                 return false;
-            const Matrix& viewProjection = item.pass == RenderPassType::Shadow && m_shadowViewProjection
-                ? *m_shadowViewProjection : m_viewProjection;
-            const Matrix worldViewProjection = item.worldMatrix * viewProjection;
-            nativeCommandList->SetGraphicsRoot32BitConstants(0, 16, &worldViewProjection._11, 0);
-            nativeCommandList->SetGraphicsRoot32BitConstants(0, 16, &item.worldMatrix._11, 16);
+            nativeCommandList->SetGraphicsRootShaderResourceView(0, instanceBuffer.getGpuVirtualAddress()
+                + itemIndex * sizeof(ModelInstanceConstants));
             const MaterialParameterValues& propertyValues = item.materialProperties.getValues();
             nativeCommandList->SetGraphicsRoot32BitConstants(8, 16, &propertyValues.baseColor.x, 0);
             const std::uint32_t overrideMask = item.materialProperties.getOverrideMask();
             nativeCommandList->SetGraphicsRoot32BitConstants(8, 1, &overrideMask, 16);
-            nativeCommandList->DrawIndexedInstanced(item.indexCount, 1, item.indexStart, item.baseVertex, 0);
+            nativeCommandList->DrawIndexedInstanced(item.indexCount, static_cast<UINT>(batchSize),
+                item.indexStart, item.baseVertex, 0);
             ++m_frameStatistics.drawCallCount;
-            ++m_frameStatistics.instanceCount;
+            m_frameStatistics.instanceCount += static_cast<std::uint32_t>(batchSize);
+            itemIndex += batchSize;
         }
         m_frameStatistics.batchCount = m_frameStatistics.drawCallCount;
         return true;
