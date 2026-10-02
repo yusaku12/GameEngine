@@ -4,13 +4,17 @@
 #include "Assets\Model\ModelTypes.h"
 #include "Core\GameObject\Component.h"
 #include "Graphics\Material\MaterialPropertyBlock.h"
+#include "Graphics\Renderer\ModelRenderSubmission.h"
 
 namespace Engine
 {
+    struct ModelResource;
+
     /**
      * @brief GameObjectへモデル表示情報を付与するComponent。
      * @details DX12 APIを呼ばず、Render thread向けの描画Snapshotだけを提出する。
-     * @thread_safety Main thread only.
+     * @thread_safety Snapshot inputs are prepared on the Game update thread and consumed by JobSystem workers
+     * before the Game update completes. External access must be synchronized.
      */
     class ModelRendererComponent final : public Component
     {
@@ -80,6 +84,8 @@ namespace Engine
 
     private:
 
+        friend class GameObjectManager;
+
         /**
          * @brief 他Assetのロード待ちMaterial参照。
          */
@@ -89,6 +95,11 @@ namespace Engine
             AssetGUID materialGuid{};  //!< Material AssetのGUID
         };
 
+        /**
+         * @brief LateUpdateで準備し、GameObjectManagerから提出する。
+         */
+        void submitPendingRender();
+
         ModelHandle m_model;                                             //!< 表示するモデルHandle。
         std::vector<MaterialHandle> m_materialOverrides;                 //!< Model Material Slotと同じIndexのOverride。
         std::vector<PendingMaterialOverride> m_pendingMaterialOverrides; //!< 他Assetのロード待ちMaterial参照。
@@ -97,5 +108,9 @@ namespace Engine
         std::uint32_t m_objectID = 0;                                    //!< 描画用のオブジェクトID。0は無効。
         bool m_castShadows = true;                                       //!< Shadow Passへ登録するかどうか。
         std::string m_loadStatus;                                        //!< モデルのロード状態を表示する文字列。
+        ModelRenderSubmission m_pendingSubmission;                       //!< Render threadへ提出する準備中Snapshot。
+        std::shared_ptr<const ModelResource> m_pendingModelResource;     //!< boundsとmaterial slotsの読み取り元。
+        std::vector<MaterialHandle> m_submissionMaterialOverrides;       //!< 提出時に解決するOverrideのSnapshot。
+        bool m_submissionPending = false;                                //!< 並列提出待ちかどうか。
     };
 } // namespace Engine

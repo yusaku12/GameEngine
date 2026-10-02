@@ -1,6 +1,7 @@
 ﻿#include "Pch.h"
 #include "Core\GameObject\GameObjectManager.h"
 #include "Core\GameObject\Component\AnimatorComponent.h"
+#include "Core\GameObject\Component\ModelRendererComponent.h"
 #include "Core\Threading\JobSystem.h"
 
 namespace Engine
@@ -115,6 +116,30 @@ namespace Engine
         for (const auto& object : m_objects)
             if (object->getParent() == nullptr)
                 object->lateUpdateLifecycle(deltaTime);
+
+        m_modelRenderersToSubmit.clear();
+        for (const auto& object : m_objects)
+        {
+            ModelRendererComponent* const renderer = object->getComponent<ModelRendererComponent>();
+            if (renderer != nullptr && renderer->m_lifecycleEnabled
+                && renderer->m_lifecycleActive && renderer->m_started
+                && renderer->m_submissionPending)
+                m_modelRenderersToSubmit.push_back(renderer);
+        }
+
+        if (m_modelRenderersToSubmit.size() == 1)
+        {
+            m_modelRenderersToSubmit.front()->submitPendingRender();
+        }
+        else if (m_modelRenderersToSubmit.size() > 1)
+        {
+            JobSystem::instance().parallelFor(m_modelRenderersToSubmit.size(),
+                [this](const std::size_t index)
+                {
+                    m_modelRenderersToSubmit[index]->submitPendingRender();
+                });
+        }
+        m_modelRenderersToSubmit.clear();
     }
 
     void GameObjectManager::processDestroyQueue() noexcept

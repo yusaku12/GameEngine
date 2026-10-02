@@ -9,10 +9,10 @@ namespace Engine
         return queue;
     }
 
-    void ModelRenderSubmissionQueue::submit(const ModelRenderSubmission& submission)
+    void ModelRenderSubmissionQueue::submit(ModelRenderSubmission submission)
     {
         const std::scoped_lock lock(m_mutex);
-        m_pending.push_back(submission);
+        m_pending.push_back(std::move(submission));
     }
 
     void ModelRenderSubmissionQueue::consume(std::vector<ModelRenderSubmission>& destination)

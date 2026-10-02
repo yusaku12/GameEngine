@@ -40,9 +40,9 @@ namespace Engine
 
         /**
          * @brief Game update側から描画Snapshotを提出する。
-         * @param submission 提出する描画Snapshot
+         * @param submission 提出する描画Snapshot。値渡し後にQueueへ移動する
          */
-        void submit(const ModelRenderSubmission& submission);
+        void submit(ModelRenderSubmission submission);
 
         /**
          * @brief 現在までの提出結果をRender側の再利用可能なBufferへ移動する。

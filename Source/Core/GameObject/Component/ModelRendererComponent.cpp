@@ -534,6 +534,10 @@ namespace Engine
 
     void ModelRendererComponent::onLateUpdate([[maybe_unused]] const float deltaTime)
     {
+        m_submissionPending = false;
+        m_pendingModelResource.reset();
+        m_submissionMaterialOverrides.clear();
+
         if (!m_model.isValid() || getGameObject() == nullptr)
             return;
 
@@ -551,41 +555,54 @@ namespace Engine
         }
 
         const Matrix worldMatrix = getGameObject()->getWorldMatrix();
-        AABB worldBounds;
-        model->boundingBox.Transform(worldBounds, worldMatrix);
-        MaterialManager& materialManager = MaterialManager::instance();
-        std::vector<MaterialHandle> resolvedMaterials(model->materialSlots.size());
-        for (std::size_t slotIndex = 0; slotIndex < model->materialSlots.size(); ++slotIndex)
-        {
-            if (slotIndex < m_materialOverrides.size()
-                && materialManager.get(m_materialOverrides[slotIndex]) != nullptr)
-            {
-                resolvedMaterials[slotIndex] = m_materialOverrides[slotIndex];
-            }
-            else
-            {
-                resolvedMaterials[slotIndex] = materialManager.findByGuid(
-                    model->materialSlots[slotIndex].defaultMaterialGuid);
-            }
-            if (materialManager.get(resolvedMaterials[slotIndex]) == nullptr)
-                resolvedMaterials[slotIndex] = materialManager.getDefaultMaterial();
-        }
         const AnimatorComponent* const animator = getGameObject()->getComponent<AnimatorComponent>();
         auto skinningPalette = animator != nullptr && animator->isEnabled()
             ? animator->getSkinningSnapshot() : nullptr;
         if (skinningPalette != nullptr && skinningPalette->skeletonGuid != model->skeletonAssetGuid)
             skinningPalette.reset();
-        ModelRenderSubmissionQueue::instance().submit(ModelRenderSubmission{
-            .model = m_model,
-            .materials = std::move(resolvedMaterials),
-            .materialProperties = m_propertyBlock,
-            .skinningPalette = skinningPalette,
-            .worldMatrix = worldMatrix,
-            .worldBounds = worldBounds,
-            .objectID = m_objectID,
-            .layer = getGameObject()->getLayer(),
-            .castShadows = m_castShadows,
-            });
+
+        m_pendingModelResource = model;
+        m_submissionMaterialOverrides = m_materialOverrides;
+        m_pendingSubmission.model = m_model;
+        m_pendingSubmission.materials.clear();
+        m_pendingSubmission.materialProperties = m_propertyBlock;
+        m_pendingSubmission.skinningPalette = std::move(skinningPalette);
+        m_pendingSubmission.worldMatrix = worldMatrix;
+        m_pendingSubmission.objectID = m_objectID;
+        m_pendingSubmission.layer = getGameObject()->getLayer();
+        m_pendingSubmission.castShadows = m_castShadows;
+        m_submissionPending = true;
+    }
+
+    void ModelRendererComponent::submitPendingRender()
+    {
+        if (!m_submissionPending || m_pendingModelResource == nullptr)
+            return;
+
+        const ModelResource& model = *m_pendingModelResource;
+        MaterialManager& materialManager = MaterialManager::instance();
+        m_pendingSubmission.materials.resize(model.materialSlots.size());
+        for (std::size_t slotIndex = 0; slotIndex < model.materialSlots.size(); ++slotIndex)
+        {
+            if (slotIndex < m_submissionMaterialOverrides.size()
+                && materialManager.get(m_submissionMaterialOverrides[slotIndex]) != nullptr)
+            {
+                m_pendingSubmission.materials[slotIndex] = m_submissionMaterialOverrides[slotIndex];
+            }
+            else
+            {
+                m_pendingSubmission.materials[slotIndex] = materialManager.findByGuid(
+                    model.materialSlots[slotIndex].defaultMaterialGuid);
+            }
+            if (materialManager.get(m_pendingSubmission.materials[slotIndex]) == nullptr)
+                m_pendingSubmission.materials[slotIndex] = materialManager.getDefaultMaterial();
+        }
+
+        model.boundingBox.Transform(m_pendingSubmission.worldBounds, m_pendingSubmission.worldMatrix);
+        ModelRenderSubmissionQueue::instance().submit(std::move(m_pendingSubmission));
+        m_submissionMaterialOverrides.clear();
+        m_pendingModelResource.reset();
+        m_submissionPending = false;
     }
 
     void ModelRendererComponent::onImGui()
