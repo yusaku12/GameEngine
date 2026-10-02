@@ -67,7 +67,7 @@ namespace Engine
         bool finalize();
 
         /**
-         * @brief 現在の Back Buffer を Clear して Present する
+         * @brief Game ViewとImGuiを描画して Back Buffer を Present する
          * @return 描画と Present に成功した場合は true
          */
         bool render();
@@ -79,6 +79,16 @@ namespace Engine
          * @return リサイズに成功した場合は true
          */
         bool resize(std::uint32_t width, std::uint32_t height);
+
+        /**
+         * @brief ImGui Game Viewの描画ピクセル寸法を取得する。
+         * @return 幅と高さ。Game View未表示時は直近の有効寸法。
+         * @thread_safety Render frame完了後にMain threadから呼び出すこと。
+         */
+        std::array<std::uint32_t, 2> getGameViewSize() const noexcept
+        {
+            return { m_requestedGameWidth, m_requestedGameHeight };
+        }
 
         /**
          * @brief Win32メッセージをImGuiへ転送する
@@ -143,6 +153,14 @@ namespace Engine
         bool createDepthBuffer(std::uint32_t width, std::uint32_t height);
 
         /**
+         * @brief ImGui Game Viewへ表示するScene Render Targetを作成する。
+         * @param width Texture幅。
+         * @param height Texture高さ。
+         * @return 作成に成功した場合はtrue。
+         */
+        bool createGameRenderTarget(std::uint32_t width, std::uint32_t height, const Color& clearColor);
+
+        /**
          * @brief ShadowCaster pass用Depth Bufferを作成する。
          * @return 作成に成功した場合は true
          */
@@ -177,6 +195,9 @@ namespace Engine
         DX12CommandQueue m_directQueue;                                                                   //!< 描画コマンドキュー
         DX12Fence m_directFence;                                                                          //!< 描画コマンドの完了 Fence
         DX12SwapChain m_swapChain;                                                                        //!< 画面出力用 SwapChain
+        DX12DescriptorHeap m_gameRtvHeap;                                                                 //!< Game Texture用 RTV Heap
+        DX12Resource m_gameRenderTarget;                                                                  //!< ImGui Game Viewへ表示するScene描画Texture
+        DX12CpuDescriptorHandle m_gameRenderTargetView;                                                   //!< Game TextureのRTV
         DX12DescriptorHeap m_dsvHeap;                                                                     //!< 深度バッファ用 DSV Heap
         DX12Resource m_depthBuffer;                                                                       //!< 画面描画用深度バッファ
         DX12CpuDescriptorHandle m_depthStencilView;                                                       //!< 深度バッファの DSV
@@ -208,14 +229,17 @@ namespace Engine
         CameraViewport m_cameraViewport{};                                                                //!< 描画先に対する正規化Camera Viewport
         CameraClearMode m_cameraClearMode = CameraClearMode::SolidColor;                                  //!< CameraのClear方式
         Color m_cameraClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);                                      //!< Cameraの背景Clear Color
+        Color m_gameRenderTargetClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);                           //!< Game RT作成時の最適化Clear Color
         std::uint32_t m_cameraCullingMask = UINT32_MAX;                                                   //!< 描画対象LayerのBit Mask
         RendererStatistics m_statistics;                                                                  //!< 現在構築中フレームの描画統計
         std::array<DX12CommandList, FRAME_COUNT> m_commandLists;                                          //!< Frame ごとの Command List
         std::unique_ptr<ImGuiSystem> m_imguiSystem;                                                       //!< Editor UI のライフサイクル
         std::array<std::uint64_t, FRAME_COUNT> m_frameFenceValues{};                                      //!< Frame ごとの提出 Fence 値
         std::uint64_t m_lastSubmittedFenceValue = 0;                                                      //!< 直近に提出した Fence 値
-        std::uint32_t m_renderWidth = 0;                                                                  //!< 現在の描画領域の幅
-        std::uint32_t m_renderHeight = 0;                                                                 //!< 現在の描画領域の高さ
+        std::uint32_t m_renderWidth = 0;                                                                  //!< Game Render Targetの幅
+        std::uint32_t m_renderHeight = 0;                                                                 //!< Game Render Targetの高さ
+        std::uint32_t m_requestedGameWidth = 0;                                                           //!< ImGui Game Viewが要求する描画幅
+        std::uint32_t m_requestedGameHeight = 0;                                                          //!< ImGui Game Viewが要求する描画高さ
         RendererStatistics m_frameStatistics;                                                             //!< 直近フレームの描画統計
     };
 } // namespace Engine

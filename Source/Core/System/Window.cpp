@@ -108,8 +108,6 @@ namespace Engine
                 const std::uint32_t height = HIWORD(lparam);
                 if (!m_renderer.resize(width, height))
                     LOG_ERROR("[Window] 描画領域のリサイズに失敗しました");
-                else
-                    CameraManager::instance().setRenderTargetSize(width, height);
             }
             break;
 
@@ -150,6 +148,8 @@ namespace Engine
         JobCounter renderCounter;
         jobSystem.schedule([this] { runRenderUpdateJob(); }, &renderCounter);
         waitForFrameJobs(renderCounter);
+        const std::array<std::uint32_t, 2> gameViewSize = m_renderer.getGameViewSize();
+        CameraManager::instance().setRenderTargetSize(gameViewSize[0], gameViewSize[1]);
         TimeManager::instance().endFrame();
     }
 

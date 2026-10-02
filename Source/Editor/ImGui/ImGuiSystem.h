@@ -41,9 +41,28 @@ namespace Engine
         /**
          * @brief ImGuiのフレームを開始し、Editor UIを生成する
          * @param shaderManager ShaderManager オブジェクトのポインタ (省略可能)
+         * @param gameTextureId Game Viewに表示するImGui Texture Descriptor。
+         * @param gameWidth Game Viewの物理ピクセル幅。描画後に必要寸法へ更新する。
+         * @param gameHeight Game Viewの物理ピクセル高さ。描画後に必要寸法へ更新する。
          * @param drawAdditionalUi Editor UIの後、ImGui::Render前に追加UIを生成するCallback
          */
-        void beginFrame(ShaderManager* shaderManager = nullptr, const std::function<void()>& drawAdditionalUi = {});
+        void beginFrame(ShaderManager* shaderManager, std::uint64_t gameTextureId,
+            std::uint32_t& gameWidth, std::uint32_t& gameHeight,
+            const std::function<void()>& drawAdditionalUi = {});
+
+        /**
+         * @brief Game Texture用のSRVを作成または更新する。
+         * @param device Descriptor作成に使用するDirectX 12 Device。
+         * @param resource 表示するTexture。
+         * @return 成功した場合はtrue。
+         */
+        bool updateGameTextureView(ID3D12Device& device, ID3D12Resource& resource);
+
+        /**
+         * @brief Game TextureのImGui Descriptor IDを取得する。
+         * @return ImGui Imageに渡すDescriptor ID。
+         */
+        std::uint64_t getGameTextureId() const noexcept { return m_gameTextureId; }
 
         /**
          * @brief 記録中のCommandListへImGuiを描画する
@@ -93,10 +112,13 @@ namespace Engine
          */
         std::wstring findJapaneseFont(const std::wstring& requestedPath) const;
 
-        ImGuiContext* m_context = nullptr;    //!< ImGuiのContext
-        DX12DescriptorHeap m_srvHeap;         //!< ImGuiが使用するShader VisibleなSRV Descriptor Heap
-        std::recursive_mutex m_contextMutex;  //!< WndProc再入を許容するImGui Contextアクセス保護
-        bool m_initialized = false;           //!< 初期化済みか
-        std::unique_ptr<EditorUi> m_editorUi; //!< Editor UIの描画を担当するクラス
+        ImGuiContext* m_context = nullptr;                //!< ImGuiのContext
+        DX12DescriptorHeap m_srvHeap;                     //!< ImGuiが使用するShader VisibleなSRV Descriptor Heap
+        DX12CpuDescriptorHandle m_gameTextureCpuHandle{}; //!< Game TextureのSRV CPU Handle
+        DX12GpuDescriptorHandle m_gameTextureGpuHandle{}; //!< Game TextureのSRV GPU Handle
+        std::uint64_t m_gameTextureId = 0;                //!< ImGui Image用Game Texture Descriptor ID
+        std::recursive_mutex m_contextMutex;              //!< WndProc再入を許容するImGui Contextアクセス保護
+        bool m_initialized = false;                       //!< 初期化済みか
+        std::unique_ptr<EditorUi> m_editorUi;             //!< Editor UIの描画を担当するクラス
     };
 } // namespace Engine

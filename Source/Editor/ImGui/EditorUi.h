@@ -2,6 +2,8 @@
 
 #include "Editor\Scene\SceneDocument.h"
 
+struct ImVec2;
+
 namespace Engine
 {
     class GameObject;
@@ -24,8 +26,12 @@ namespace Engine
         /**
          * @brief Editorのメニューバー、DockSpace、標準Panelを描画する
          * @param shaderManager ShaderManager オブジェクトのポインタ (省略可能)
+         * @param gameTextureId Game Viewに表示するImGui Texture Descriptor。
+         * @param gameWidth Game Viewの物理ピクセル幅。描画後に必要寸法へ更新する。
+         * @param gameHeight Game Viewの物理ピクセル高さ。描画後に必要寸法へ更新する。
          */
-        void draw(ShaderManager* shaderManager = nullptr);
+        void draw(ShaderManager* shaderManager, std::uint64_t gameTextureId,
+            std::uint32_t& gameWidth, std::uint32_t& gameHeight);
 
     private:
 
@@ -109,7 +115,15 @@ namespace Engine
         /**
          * @brief 選択中GameObjectのTransform Gizmoを描画する。
          */
-        void drawSelectedObjectGizmo();
+        void drawSelectedObjectGizmo(const ImVec2& imagePosition, const ImVec2& imageSize);
+
+        /**
+         * @brief RendererのGame Textureを表示する。
+         * @param textureId ImGuiで参照するTexture Descriptor。
+         * @param width Texture幅。
+         * @param height Texture高さ。
+         */
+        void drawGameView(std::uint64_t textureId, std::uint32_t& width, std::uint32_t& height);
 
         /**
          * @brief Hierarchy内のGameObjectノードを再帰的に描画する

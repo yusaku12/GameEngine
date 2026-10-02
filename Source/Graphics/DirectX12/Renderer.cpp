@@ -32,6 +32,12 @@ namespace Engine
             D3D12_INPUT_ELEMENT_DESC{ "BLENDINDICES", 0, DXGI_FORMAT_R16G16B16A16_UINT, 0, static_cast<UINT>(offsetof(ModelVertex, boneIndices)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
             D3D12_INPUT_ELEMENT_DESC{ "BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, boneWeights)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         };
+
+        bool colorsEqual(const Color& left, const Color& right) noexcept
+        {
+            return left.x == right.x && left.y == right.y
+                && left.z == right.z && left.w == right.w;
+        }
     }
 
     bool DX12Renderer::initialize(const HWND hwnd, const std::uint32_t width, const std::uint32_t height)
@@ -77,11 +83,17 @@ namespace Engine
             return false;
         }
 
-        if (!m_dsvHeap.initialize(*m_device.get(), {
+        if (!m_gameRtvHeap.initialize(*m_device.get(), {
+                .type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
+                .capacity = 1,
+                .shaderVisible = false,
+            })
+            || !m_dsvHeap.initialize(*m_device.get(), {
                 .type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
                 .capacity = 2,
                 .shaderVisible = false,
-            })
+                })
+                || !createGameRenderTarget(width, height, m_cameraClearColor)
             || !createDepthBuffer(width, height)
             || !createShadowMap())
         {
@@ -100,6 +112,11 @@ namespace Engine
 
         m_imguiSystem = std::make_unique<ImGuiSystem>();
         if (!m_imguiSystem->initialize(*m_device.get(), *m_directQueue.get(), hwnd))
+        {
+            finalize();
+            return false;
+        }
+        if (!m_imguiSystem->updateGameTextureView(*m_device.get(), *m_gameRenderTarget.get()))
         {
             finalize();
             return false;
@@ -185,11 +202,16 @@ namespace Engine
         m_lastSubmittedFenceValue = 0;
         m_renderWidth = width;
         m_renderHeight = height;
+        m_requestedGameWidth = width;
+        m_requestedGameHeight = height;
         return true;
     }
 
     bool DX12Renderer::finalize()
     {
+        if (m_lastSubmittedFenceValue != 0 && !m_directFence.waitOnCpu(m_lastSubmittedFenceValue))
+            return false;
+
         if (m_imguiSystem != nullptr)
         {
             m_imguiSystem->finalize();
@@ -200,8 +222,11 @@ namespace Engine
             return false;
 
         m_depthBuffer.finalize();
+        m_gameRenderTarget.finalize();
         m_shadowMap.finalize();
+        m_gameRtvHeap.finalize();
         m_dsvHeap.finalize();
+        m_gameRenderTargetView = {};
         m_depthStencilView = {};
         m_shadowDepthStencilView = {};
 
@@ -251,6 +276,7 @@ namespace Engine
         m_cameraViewport = {};
         m_cameraClearMode = CameraClearMode::SolidColor;
         m_cameraClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);
+        m_gameRenderTargetClearColor = m_cameraClearColor;
         m_cameraCullingMask = UINT32_MAX;
         CameraRenderSubmissionQueue::instance().clear();
         m_statistics = {};
@@ -269,6 +295,27 @@ namespace Engine
         RenderView submittedView;
         if (CameraRenderSubmissionQueue::instance().consume(submittedView))
             setRenderView(submittedView);
+
+        const bool clearsColor = m_cameraClearMode == CameraClearMode::SolidColor
+            || m_cameraClearMode == CameraClearMode::Skybox;
+        const bool renderTargetNeedsResize = m_requestedGameWidth != 0 && m_requestedGameHeight != 0
+            && (m_requestedGameWidth != m_renderWidth || m_requestedGameHeight != m_renderHeight);
+        const bool clearValueNeedsUpdate = clearsColor
+            && !colorsEqual(m_cameraClearColor, m_gameRenderTargetClearColor);
+        if (renderTargetNeedsResize || clearValueNeedsUpdate)
+        {
+            if (m_lastSubmittedFenceValue != 0 && !m_directFence.waitOnCpu(m_lastSubmittedFenceValue))
+                return false;
+            if (!createGameRenderTarget(m_requestedGameWidth, m_requestedGameHeight, m_cameraClearColor)
+                || !m_imguiSystem->updateGameTextureView(*m_device.get(), *m_gameRenderTarget.get()))
+            {
+                return false;
+            }
+            if (renderTargetNeedsResize && !createDepthBuffer(m_requestedGameWidth, m_requestedGameHeight))
+                return false;
+            m_renderWidth = m_requestedGameWidth;
+            m_renderHeight = m_requestedGameHeight;
+        }
 
         m_shaderManager.processHotReload();
         m_materialGpuCache.collectGarbage();
@@ -293,7 +340,8 @@ namespace Engine
         std::vector<ModelHandle> usedModels;
         std::vector<MaterialHandle> usedMaterials;
         buildModelRenderQueue(usedModels, usedMaterials);
-        m_imguiSystem->beginFrame(&m_shaderManager, [this]
+        m_imguiSystem->beginFrame(&m_shaderManager,
+            m_imguiSystem->getGameTextureId(), m_requestedGameWidth, m_requestedGameHeight, [this]
             {
                 if (ImGui::Begin("Renderer Statistics"))
                 {
@@ -325,13 +373,14 @@ namespace Engine
         DX12CommandList& commandList = m_commandLists[frameIndex];
         DX12Resource* const backBuffer = m_swapChain.getCurrentBackBuffer();
         if (backBuffer == nullptr || !commandList.begin(m_directFence)
-            || !backBuffer->transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET))
+            || !backBuffer->transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET)
+            || !m_gameRenderTarget.transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET))
         {
             return false;
         }
 
         ID3D12GraphicsCommandList* const nativeCommandList = commandList.getForRecording();
-        const D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_swapChain.getCurrentRtv().native;
+        const D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_gameRenderTargetView.native;
         const float viewportX = m_cameraViewport.x * static_cast<float>(m_renderWidth);
         const float viewportY = m_cameraViewport.y * static_cast<float>(m_renderHeight);
         const float viewportWidth = m_cameraViewport.width * static_cast<float>(m_renderWidth);
@@ -353,10 +402,19 @@ namespace Engine
         m_skinningPaletteBufferCursors[frameIndex] = 0;
         if (!renderModelQueue(commandList, frameIndex))
             return false;
+
+        nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
+        nativeCommandList->RSSetViewports(1, &viewport);
+        nativeCommandList->RSSetScissorRects(1, &scissorRect);
         DebugPrimitive::instance().drawGrid(Vector3::Zero, 20.0f, 20.0f, 1.0f);
         if (!DebugPrimitive::instance().render(commandList, frameIndex, m_viewProjection))
             return false;
 
+        if (!m_gameRenderTarget.transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
+            return false;
+
+        const D3D12_CPU_DESCRIPTOR_HANDLE backBufferView = m_swapChain.getCurrentRtv().native;
+        nativeCommandList->OMSetRenderTargets(1, &backBufferView, FALSE, nullptr);
         m_imguiSystem->render(*nativeCommandList);
 
         if (!backBuffer->transition(commandList, D3D12_RESOURCE_STATE_PRESENT) || !commandList.close())
@@ -413,13 +471,52 @@ namespace Engine
         if (!m_swapChain.resize(*m_device.get(), m_directFence, m_lastSubmittedFenceValue, width, height))
             return false;
 
-        if (!createDepthBuffer(width, height))
-            return false;
-
         m_frameFenceValues.fill(0);
         m_lastSubmittedFenceValue = 0;
-        m_renderWidth = width;
-        m_renderHeight = height;
+        return true;
+    }
+
+    bool DX12Renderer::createGameRenderTarget(
+        const std::uint32_t width, const std::uint32_t height, const Color& clearColor)
+    {
+        if (m_device.get() == nullptr || m_gameRtvHeap.get() == nullptr || width == 0 || height == 0)
+            return false;
+
+        m_gameRenderTarget.finalize();
+        D3D12_RESOURCE_DESC description{};
+        description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        description.Width = width;
+        description.Height = height;
+        description.DepthOrArraySize = 1;
+        description.MipLevels = 1;
+        description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        description.SampleDesc = { 1, 0 };
+        description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+        D3D12_CLEAR_VALUE optimizedClearValue{};
+        optimizedClearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        optimizedClearValue.Color[0] = clearColor.x;
+        optimizedClearValue.Color[1] = clearColor.y;
+        optimizedClearValue.Color[2] = clearColor.z;
+        optimizedClearValue.Color[3] = clearColor.w;
+        const DX12ResourceConfig config{
+            .description = description,
+            .initialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            .clearValue = &optimizedClearValue,
+        };
+        if (!m_gameRenderTarget.initialize(*m_device.get(), config))
+            return false;
+
+        if (m_gameRtvHeap.getAllocatedCount() == 0)
+        {
+            const std::optional<DX12DescriptorAllocation> allocation = m_gameRtvHeap.allocate();
+            if (!allocation)
+                return false;
+            m_gameRenderTargetView = allocation->cpu;
+        }
+        m_device.get()->CreateRenderTargetView(
+            m_gameRenderTarget.get(), nullptr, m_gameRenderTargetView.native);
+        m_gameRenderTargetClearColor = clearColor;
         return true;
     }
 
@@ -806,7 +903,7 @@ namespace Engine
                 }
                 else
                 {
-                    const D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_swapChain.getCurrentRtv().native;
+                    const D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_gameRenderTargetView.native;
                     nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
                     const float viewportX = m_cameraViewport.x * static_cast<float>(m_renderWidth);
                     const float viewportY = m_cameraViewport.y * static_cast<float>(m_renderHeight);

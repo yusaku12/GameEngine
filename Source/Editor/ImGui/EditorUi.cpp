@@ -108,12 +108,16 @@ namespace Engine
         }
     }
 
-    void EditorUi::draw(ShaderManager* shaderManager)
+    void EditorUi::draw(ShaderManager* shaderManager, const std::uint64_t gameTextureId,
+        std::uint32_t& gameWidth, std::uint32_t& gameHeight)
     {
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->WorkPos);
         ImGui::SetNextWindowSize(viewport->WorkSize);
         ImGui::SetNextWindowViewport(viewport->ID);
+        const ImVec2 viewportEnd(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y);
+        ImGui::GetBackgroundDrawList()->AddRectFilled(
+            viewport->Pos, viewportEnd, ImGui::GetColorU32(ImGuiCol_WindowBg));
         constexpr ImGuiWindowFlags rootFlags = ImGuiWindowFlags_NoDocking
             | ImGuiWindowFlags_NoTitleBar
             | ImGuiWindowFlags_NoCollapse
@@ -123,7 +127,6 @@ namespace Engine
             | ImGuiWindowFlags_NoNavFocus
             | ImGuiWindowFlags_NoBackground;
         ImGui::Begin("##EditorRoot", nullptr, rootFlags);
-        drawSelectedObjectGizmo();
         const ImGuiID dockspaceId = ImGui::GetID("GameEngineDockSpace");
         ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
         ImGui::End();
@@ -157,12 +160,37 @@ namespace Engine
         }
 
         drawHierarchy();
+        drawGameView(gameTextureId, gameWidth, gameHeight);
         drawInspector();
         drawShaderManager(shaderManager);
         drawThreadDebug();
     }
 
-    void EditorUi::drawSelectedObjectGizmo()
+    void EditorUi::drawGameView(const std::uint64_t textureId, std::uint32_t& width, std::uint32_t& height)
+    {
+        if (!ImGui::Begin("Game"))
+        {
+            ImGui::End();
+            return;
+        }
+
+        const ImVec2 availableSize = ImGui::GetContentRegionAvail();
+        if (textureId != 0 && width != 0 && height != 0 && availableSize.x > 0.0f && availableSize.y > 0.0f)
+        {
+            const ImVec2 cursorPosition = ImGui::GetCursorScreenPos();
+            const ImVec2 framebufferScale = ImGui::GetIO().DisplayFramebufferScale;
+            width = static_cast<std::uint32_t>(std::clamp(
+                std::lround(availableSize.x * framebufferScale.x), 1l, 16384l));
+            height = static_cast<std::uint32_t>(std::clamp(
+                std::lround(availableSize.y * framebufferScale.y), 1l, 16384l));
+            ImGui::Image(static_cast<ImTextureID>(textureId), availableSize);
+            drawSelectedObjectGizmo(cursorPosition, availableSize);
+        }
+
+        ImGui::End();
+    }
+
+    void EditorUi::drawSelectedObjectGizmo(const ImVec2& imagePosition, const ImVec2& imageSize)
     {
         const bool acceptsShortcuts = !ImGui::GetIO().WantTextInput
             && !ImGui::IsMouseDown(ImGuiMouseButton_Right)
@@ -203,12 +231,11 @@ namespace Engine
         else if (m_gizmoOperation == GizmoOperation::Scale)
             operation = ImGuizmo::SCALE;
 
-        ImGuiViewport* const viewport = ImGui::GetMainViewport();
         Matrix worldMatrix = m_selectedObject->getWorldMatrix();
         const Matrix& viewMatrix = camera->getViewMatrix();
         const Matrix& projectionMatrix = camera->getProjectionMatrix();
         ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
-        ImGuizmo::SetRect(viewport->Pos.x, viewport->Pos.y, viewport->Size.x, viewport->Size.y);
+        ImGuizmo::SetRect(imagePosition.x, imagePosition.y, imageSize.x, imageSize.y);
         ImGuizmo::SetOrthographic(camera->getProjectionMode() == CameraProjectionMode::Orthographic);
 
         const ImGuizmo::MODE mode = m_gizmoOperation == GizmoOperation::Scale

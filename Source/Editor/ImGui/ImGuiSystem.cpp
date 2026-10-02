@@ -101,11 +101,40 @@ namespace Engine
             m_context = nullptr;
         }
         m_editorUi.reset();
+        m_gameTextureCpuHandle = {};
+        m_gameTextureGpuHandle = {};
+        m_gameTextureId = 0;
         m_srvHeap.finalize();
         m_initialized = false;
     }
 
-    void ImGuiSystem::beginFrame(ShaderManager* shaderManager, const std::function<void()>& drawAdditionalUi)
+    bool ImGuiSystem::updateGameTextureView(ID3D12Device& device, ID3D12Resource& resource)
+    {
+        if (!m_initialized)
+            return false;
+
+        if (m_gameTextureId == 0)
+        {
+            const std::optional<DX12DescriptorAllocation> allocation = m_srvHeap.allocate();
+            if (!allocation || !allocation->gpu.has_value())
+                return false;
+            m_gameTextureCpuHandle = allocation->cpu;
+            m_gameTextureGpuHandle = *allocation->gpu;
+            m_gameTextureId = static_cast<std::uint64_t>(m_gameTextureGpuHandle.native.ptr);
+        }
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC description{};
+        description.Format = resource.GetDesc().Format;
+        description.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        description.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        description.Texture2D.MipLevels = 1;
+        device.CreateShaderResourceView(&resource, &description, m_gameTextureCpuHandle.native);
+        return true;
+    }
+
+    void ImGuiSystem::beginFrame(ShaderManager* shaderManager, const std::uint64_t gameTextureId,
+        std::uint32_t& gameWidth, std::uint32_t& gameHeight,
+        const std::function<void()>& drawAdditionalUi)
     {
         const std::scoped_lock lock(m_contextMutex);
         if (!m_initialized || m_context == nullptr)
@@ -116,7 +145,7 @@ namespace Engine
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
-        m_editorUi->draw(shaderManager);
+        m_editorUi->draw(shaderManager, gameTextureId, gameWidth, gameHeight);
         if (drawAdditionalUi)
             drawAdditionalUi();
         ImGui::Render();
