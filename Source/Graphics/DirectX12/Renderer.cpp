@@ -1067,8 +1067,7 @@ namespace Engine
         return true;
     }
 
-    DX12UploadBuffer* DX12Renderer::uploadSkinningPalette(
-        const std::uint32_t frameIndex, const SkinningPaletteSnapshot& snapshot)
+    DX12UploadBuffer* DX12Renderer::uploadSkinningPalette(const std::uint32_t frameIndex, const SkinningPaletteSnapshot& snapshot)
     {
         if (frameIndex >= FRAME_COUNT || snapshot.jointCount == 0
             || snapshot.jointCount > MAX_SKINNING_BONES)

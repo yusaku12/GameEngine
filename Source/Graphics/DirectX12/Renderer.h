@@ -193,13 +193,21 @@ namespace Engine
          */
         bool renderModelQueue(DX12CommandList& commandList, std::uint32_t frameIndex);
 
-        DX12UploadBuffer* uploadSkinningPalette(std::uint32_t frameIndex,
-            const SkinningPaletteSnapshot& snapshot);
+        /**
+         * @brief 現在フレームの Model 描画 Queue を GPU に提出する際に、Skinning Palette Snapshot を Upload Buffer に転送する
+         * @param frameIndex 現在フレームのインデックス
+         * @param snapshot 転送する Skinning Palette Snapshot
+         * @return 転送に成功した場合は Upload Buffer への非所有参照。失敗時は nullptr。
+         */
+        DX12UploadBuffer* uploadSkinningPalette(std::uint32_t frameIndex, const SkinningPaletteSnapshot& snapshot);
 
+        /**
+         * @brief Model 描画の Instance Buffer に転送するデータ構造
+         */
         struct ModelInstanceConstants
         {
-            Matrix worldViewProjection;
-            Matrix worldMatrix;
+            Matrix worldViewProjection; //!< World View Projection行列
+            Matrix worldMatrix;         //!< World行列
         };
         static_assert(sizeof(ModelInstanceConstants) == sizeof(float) * 32);
 
@@ -238,8 +246,8 @@ namespace Engine
         std::array<std::vector<std::unique_ptr<DX12UploadBuffer>>, FRAME_COUNT> m_skinningPaletteBuffers; //!< Frame間で容量を再利用するSkinning Palette Buffer
         std::array<std::size_t, FRAME_COUNT> m_skinningPaletteBufferCursors{};                            //!< Frame間で容量を再利用するSkinning Palette Bufferのカーソル
         std::array<DX12UploadBuffer, FRAME_COUNT> m_modelInstanceBuffers;                                 //!< Fence完了後に再利用するInstance Buffer
-        std::vector<ModelInstanceConstants> m_modelInstanceConstants;                                    //!< CPU側のInstance転送データ。容量を再利用する
-        bool m_enableModelInstancing = true;                                                             //!< 非透明Modelの互換Drawをまとめる
+        std::vector<ModelInstanceConstants> m_modelInstanceConstants;                                     //!< CPU側のInstance転送データ。容量を再利用する
+        bool m_enableModelInstancing = true;                                                              //!< 非透明Modelの互換Drawをまとめる
         Matrix m_viewProjection = Matrix::Identity;                                                       //!< CameraのView Projection行列
         Vector3 m_cameraPosition = Vector3::Zero;                                                         //!< Transparent sort用Camera座標
         std::optional<Frustum> m_frustum;                                                                 //!< World Space Camera Frustum
@@ -247,7 +255,7 @@ namespace Engine
         CameraViewport m_cameraViewport{};                                                                //!< 描画先に対する正規化Camera Viewport
         CameraClearMode m_cameraClearMode = CameraClearMode::SolidColor;                                  //!< CameraのClear方式
         Color m_cameraClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);                                      //!< Cameraの背景Clear Color
-        Color m_gameRenderTargetClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);                           //!< Game RT作成時の最適化Clear Color
+        Color m_gameRenderTargetClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);                            //!< Game RT作成時の最適化Clear Color
         std::uint32_t m_cameraCullingMask = UINT32_MAX;                                                   //!< 描画対象LayerのBit Mask
         RendererStatistics m_statistics;                                                                  //!< 現在構築中フレームの描画統計
         std::array<DX12CommandList, FRAME_COUNT> m_commandLists;                                          //!< Frame ごとの Command List
