@@ -113,7 +113,7 @@ namespace Engine
         void drawHierarchy();
 
         /**
-         * @brief 選択中GameObjectのTransform Gizmoを描画する。
+         * @brief 選択中GameObject群のTransform Gizmoを描画する。
          */
         void drawSelectedObjectGizmo(const ImVec2& imagePosition, const ImVec2& imageSize);
 
@@ -137,6 +137,23 @@ namespace Engine
         void selectObject(GameObject* object);
 
         /**
+         * @brief Hierarchyの複数選択状態を切り替える。
+         * @param object 選択状態を切り替えるGameObject。
+         */
+        void toggleObjectSelection(GameObject& object);
+
+        /**
+         * @brief 複数選択されたGameObjectのうち、選択済み祖先を持たないものを取得する。
+         * @return 選択階層のルートGameObject。
+         */
+        std::vector<GameObject*> getSelectedRoots() const;
+
+        /**
+         * @brief 選択中のGameObject階層を複製する。
+         */
+        void duplicateSelectedObjects();
+
+        /**
          * @brief EditorのDockSpaceを描画する
          */
         void drawInspector();
@@ -155,14 +172,19 @@ namespace Engine
         bool m_showShaderManager = false;                                         //!< Shader Managerパネルの表示フラグ
         bool m_showThreadDebug = false;                                           //!< Thread Debugパネルの表示フラグ
         GameObject* m_selectedObject = nullptr;                                   //!< Inspectorで選択中のGameObject
+        std::vector<GameObject*> m_selectedObjects;                               //!< Hierarchyで選択中のGameObject
         GameObject* m_hierarchyCreateParent = nullptr;                            //!< 作成するGameObjectの親。nullptrならRoot
-        GameObject* m_hierarchyDeleteTarget = nullptr;                            //!< フレーム末尾に削除するGameObject
         std::array<char, 128> m_hierarchySearch{};                                //!< Hierarchyの検索文字列
         std::array<char, 128> m_objectName{};                                     //!< Inspectorで編集中のGameObject名
         Editor::SceneDocument m_sceneDocument;                                    //!< 編集中Sceneのファイル状態
         std::string m_prefabStatus;                                               //!< 直近のPrefab保存結果
+        std::string m_hierarchyStatus;                                            //!< Hierarchy操作の結果
         GameObjectCreateType m_hierarchyCreateType = GameObjectCreateType::Empty; //!< 生成予定のGameObject種別
         GizmoOperation m_gizmoOperation = GizmoOperation::Translate;              //!< Transform Gizmo操作
+        float m_gridSnapStep = 1.0f;                                              //!< 移動スナップ間隔
         bool m_hierarchyCreateRequested = false;                                  //!< GameObject作成要求
+        bool m_hierarchyDuplicateRequested = false;                               //!< GameObject複製要求
+        bool m_hierarchyDeleteRequested = false;                                  //!< GameObject削除要求
+        bool m_gridSnapEnabled = false;                                           //!< Transform Gizmoのスナップ有効状態
     };
 } // namespace Engine

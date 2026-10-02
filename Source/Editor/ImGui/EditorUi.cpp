@@ -4,6 +4,7 @@
 #include "Core\GameObject\Component\AnimatorComponent.h"
 #include "Core\GameObject\Component\CameraComponent.h"
 #include "Core\GameObject\Component\ModelRendererComponent.h"
+#include "Core\Prefab\Prefab.h"
 #include "Core\Prefab\PrefabSerializer.h"
 #include "Core\System\Dialog.h"
 #include "Core\Threading\MainThreadDispatcher.h"
@@ -56,24 +57,6 @@ namespace Engine
             for (std::size_t index = 0; index < object.getChildCount(); ++index)
             {
                 if (hierarchyMatches(*object.getChild(index), query))
-                    return true;
-            }
-            return false;
-        }
-
-        /**
-         * @brief GameObjectの階層構造を再帰的に検索し、指定したGameObjectが含まれているかを判定する。
-         * @param root 検索対象のGameObject
-         * @param object 検索するGameObject
-         * @return 含まれている場合はtrue、含まれていない場合はfalse
-         */
-        bool containsObject(const GameObject& root, const GameObject* object)
-        {
-            if (&root == object)
-                return true;
-            for (std::size_t index = 0; index < root.getChildCount(); ++index)
-            {
-                if (containsObject(*root.getChild(index), object))
                     return true;
             }
             return false;
@@ -174,6 +157,13 @@ namespace Engine
             return;
         }
 
+        ImGui::Checkbox("Grid Snap", &m_gridSnapEnabled);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Move uses the configured step; rotation snaps to 15 degrees and scale to 0.1.");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(100.0f);
+        ImGui::DragFloat("Move Step", &m_gridSnapStep, 0.05f, 0.01f, 100.0f, "%.2f");
+
         const ImVec2 availableSize = ImGui::GetContentRegionAvail();
         if (textureId != 0 && width != 0 && height != 0 && availableSize.x > 0.0f && availableSize.y > 0.0f)
         {
@@ -205,24 +195,24 @@ namespace Engine
                 m_gizmoOperation = GizmoOperation::Scale;
         }
 
-        if (m_selectedObject != nullptr)
+        const std::vector<GameObject*> selectedRoots = getSelectedRoots();
+        for (const GameObject* const selectedObject : selectedRoots)
         {
-            const ModelRendererComponent* const modelRenderer = m_selectedObject->getComponent<ModelRendererComponent>();
+            const ModelRendererComponent* const modelRenderer = selectedObject->getComponent<ModelRendererComponent>();
             if (modelRenderer != nullptr && modelRenderer->getModel().isValid())
             {
                 const std::shared_ptr<const ModelResource> model = ModelManager::instance().get(modelRenderer->getModel());
                 if (model != nullptr)
                 {
                     AABB worldBounds;
-                    model->boundingBox.Transform(worldBounds, m_selectedObject->getWorldMatrix());
+                    model->boundingBox.Transform(worldBounds, selectedObject->getWorldMatrix());
                     DebugPrimitive::instance().drawBox(Matrix::CreateTranslation(worldBounds.Center), worldBounds.Extents);
                 }
             }
         }
 
         CameraComponent* const camera = CameraManager::instance().getActiveCamera();
-        Transform* const localTransform = m_selectedObject == nullptr ? nullptr : m_selectedObject->getTransform();
-        if (camera == nullptr || localTransform == nullptr)
+        if (camera == nullptr || selectedRoots.empty() || m_selectedObject == nullptr)
             return;
 
         ImGuizmo::OPERATION operation = ImGuizmo::TRANSLATE;
@@ -231,7 +221,12 @@ namespace Engine
         else if (m_gizmoOperation == GizmoOperation::Scale)
             operation = ImGuizmo::SCALE;
 
-        Matrix worldMatrix = m_selectedObject->getWorldMatrix();
+        Vector3 pivotPosition = Vector3::Zero;
+        for (const GameObject* const selectedObject : selectedRoots)
+            pivotPosition += selectedObject->getWorldPosition();
+        pivotPosition /= static_cast<float>(selectedRoots.size());
+        Matrix worldMatrix = Matrix::CreateFromQuaternion(m_selectedObject->getWorldRotation())
+            * Matrix::CreateTranslation(pivotPosition);
         const Matrix& viewMatrix = camera->getViewMatrix();
         const Matrix& projectionMatrix = camera->getProjectionMatrix();
         ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
@@ -240,15 +235,29 @@ namespace Engine
 
         const ImGuizmo::MODE mode = m_gizmoOperation == GizmoOperation::Scale
             ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
-        if (ImGuizmo::Manipulate(&viewMatrix._11, &projectionMatrix._11, operation, mode, &worldMatrix._11))
+        Vector3 snapValues(m_gridSnapStep, m_gridSnapStep, m_gridSnapStep);
+        if (m_gizmoOperation == GizmoOperation::Rotate)
+            snapValues = Vector3(15.0f, 15.0f, 15.0f);
+        else if (m_gizmoOperation == GizmoOperation::Scale)
+            snapValues = Vector3(0.1f, 0.1f, 0.1f);
+        const float* const snap = m_gridSnapEnabled ? &snapValues.x : nullptr;
+        if (ImGuizmo::Manipulate(&viewMatrix._11, &projectionMatrix._11, operation, mode, &worldMatrix._11,
+            nullptr, snap))
         {
-            const GameObject* const parent = m_selectedObject->getParent();
-            const Matrix localMatrix = parent == nullptr
-                ? worldMatrix : worldMatrix * parent->getWorldMatrix().Invert();
-            const Transform manipulatedTransform = Transform::fromMatrix(localMatrix);
-            localTransform->setPosition(manipulatedTransform.getPosition());
-            localTransform->setRotation(manipulatedTransform.getRotation());
-            localTransform->setScale(manipulatedTransform.getScale());
+            const Matrix worldToPivot = (Matrix::CreateFromQuaternion(m_selectedObject->getWorldRotation())
+                * Matrix::CreateTranslation(pivotPosition)).Invert();
+            for (GameObject* const selectedObject : selectedRoots)
+            {
+                const Matrix targetWorld = selectedObject->getWorldMatrix() * worldToPivot * worldMatrix;
+                const GameObject* const parent = selectedObject->getParent();
+                const Matrix localMatrix = parent == nullptr
+                    ? targetWorld : targetWorld * parent->getWorldMatrix().Invert();
+                const Transform manipulatedTransform = Transform::fromMatrix(localMatrix);
+                Transform* const localTransform = selectedObject->getTransform();
+                localTransform->setPosition(manipulatedTransform.getPosition());
+                localTransform->setRotation(manipulatedTransform.getRotation());
+                localTransform->setScale(manipulatedTransform.getScale());
+            }
         }
     }
 
@@ -260,8 +269,10 @@ namespace Engine
                 {
                     selectObject(nullptr);
                     m_hierarchyCreateParent = nullptr;
-                    m_hierarchyDeleteTarget = nullptr;
                     m_hierarchyCreateRequested = false;
+                    m_hierarchyDuplicateRequested = false;
+                    m_hierarchyDeleteRequested = false;
+                    m_hierarchyStatus.clear();
                     scene->clear();
                     m_sceneDocument.reset();
                 }
@@ -289,8 +300,10 @@ namespace Engine
 
                 selectObject(nullptr);
                 m_hierarchyCreateParent = nullptr;
-                m_hierarchyDeleteTarget = nullptr;
                 m_hierarchyCreateRequested = false;
+                m_hierarchyDuplicateRequested = false;
+                m_hierarchyDeleteRequested = false;
+                m_hierarchyStatus.clear();
                 static_cast<void>(m_sceneDocument.load(*scene, paths.front()));
             });
     }
@@ -495,6 +508,9 @@ namespace Engine
         ImGui::SameLine();
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint("##HierarchySearch", "Search", m_hierarchySearch.data(), m_hierarchySearch.size());
+        ImGui::TextDisabled("Ctrl-click: multi-select | Ctrl+D: duplicate | Delete: delete");
+        if (!m_hierarchyStatus.empty())
+            ImGui::TextDisabled("%s", m_hierarchyStatus.c_str());
         ImGui::Separator();
         Scene* scene = SceneManager::instance().getActiveScene();
         if (scene != nullptr)
@@ -526,8 +542,14 @@ namespace Engine
             }
 
             if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
-                && ImGui::IsKeyPressed(ImGuiKey_Delete) && !ImGui::GetIO().WantTextInput)
-                m_hierarchyDeleteTarget = m_selectedObject;
+                && !ImGui::GetIO().WantTextInput)
+            {
+                if (ImGui::IsKeyPressed(ImGuiKey_Delete) && !m_selectedObjects.empty())
+                    m_hierarchyDeleteRequested = true;
+                if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D)
+                    && !m_selectedObjects.empty())
+                    m_hierarchyDuplicateRequested = true;
+            }
 
             if (m_hierarchyCreateRequested)
             {
@@ -538,12 +560,17 @@ namespace Engine
                 m_hierarchyCreateParent = nullptr;
                 m_hierarchyCreateType = GameObjectCreateType::Empty;
             }
-            if (m_hierarchyDeleteTarget != nullptr)
+            if (m_hierarchyDuplicateRequested)
             {
-                if (containsObject(*m_hierarchyDeleteTarget, m_selectedObject))
-                    selectObject(nullptr);
-                scene->destroyGameObject(m_hierarchyDeleteTarget);
-                m_hierarchyDeleteTarget = nullptr;
+                duplicateSelectedObjects();
+                m_hierarchyDuplicateRequested = false;
+            }
+            if (m_hierarchyDeleteRequested)
+            {
+                for (GameObject* const selectedRoot : getSelectedRoots())
+                    scene->destroyGameObject(selectedRoot);
+                selectObject(nullptr);
+                m_hierarchyDeleteRequested = false;
             }
         }
         ImGui::End();
@@ -552,7 +579,7 @@ namespace Engine
     void EditorUi::drawGameObjectNode(GameObject& object)
     {
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
-        if (m_selectedObject == &object)
+        if (std::find(m_selectedObjects.begin(), m_selectedObjects.end(), &object) != m_selectedObjects.end())
             flags |= ImGuiTreeNodeFlags_Selected;
         if (object.getChildCount() == 0)
             flags |= ImGuiTreeNodeFlags_Leaf;
@@ -560,7 +587,12 @@ namespace Engine
         ImGui::PushID(&object);
         const bool open = ImGui::TreeNodeEx(object.getName().c_str(), flags);
         if (ImGui::IsItemClicked())
-            selectObject(&object);
+        {
+            if (ImGui::GetIO().KeyCtrl)
+                toggleObjectSelection(object);
+            else if (m_selectedObjects.size() != 1 || m_selectedObjects.front() != &object)
+                selectObject(&object);
+        }
         if (ImGui::BeginDragDropSource())
         {
             GameObject* payloadObject = &object;
@@ -585,7 +617,17 @@ namespace Engine
                 ImGui::EndMenu();
             }
             if (ImGui::MenuItem("Delete"))
-                m_hierarchyDeleteTarget = &object;
+            {
+                if (std::find(m_selectedObjects.begin(), m_selectedObjects.end(), &object) == m_selectedObjects.end())
+                    selectObject(&object);
+                m_hierarchyDeleteRequested = true;
+            }
+            if (ImGui::MenuItem("Duplicate"))
+            {
+                if (std::find(m_selectedObjects.begin(), m_selectedObjects.end(), &object) == m_selectedObjects.end())
+                    selectObject(&object);
+                m_hierarchyDuplicateRequested = true;
+            }
             if (ImGui::MenuItem("Save as Prefab..."))
             {
                 selectObject(&object);
@@ -609,15 +651,118 @@ namespace Engine
     void EditorUi::selectObject(GameObject* object)
     {
         m_selectedObject = object;
+        m_selectedObjects.clear();
+        if (object != nullptr)
+            m_selectedObjects.push_back(object);
         m_objectName.fill('\0');
         if (object != nullptr)
             std::snprintf(m_objectName.data(), m_objectName.size(), "%s", object->getName().c_str());
+    }
+
+    void EditorUi::toggleObjectSelection(GameObject& object)
+    {
+        const auto selected = std::find(m_selectedObjects.begin(), m_selectedObjects.end(), &object);
+        if (selected == m_selectedObjects.end())
+        {
+            m_selectedObjects.push_back(&object);
+            m_selectedObject = &object;
+        }
+        else
+        {
+            m_selectedObjects.erase(selected);
+            m_selectedObject = m_selectedObjects.empty() ? nullptr : m_selectedObjects.back();
+        }
+
+        m_objectName.fill('\0');
+        if (m_selectedObject != nullptr)
+            std::snprintf(m_objectName.data(), m_objectName.size(), "%s", m_selectedObject->getName().c_str());
+    }
+
+    std::vector<GameObject*> EditorUi::getSelectedRoots() const
+    {
+        std::vector<GameObject*> roots;
+        roots.reserve(m_selectedObjects.size());
+        for (GameObject* const object : m_selectedObjects)
+        {
+            if (object == nullptr)
+                continue;
+
+            bool hasSelectedAncestor = false;
+            for (const GameObject* parent = object->getParent(); parent != nullptr; parent = parent->getParent())
+            {
+                if (std::find(m_selectedObjects.begin(), m_selectedObjects.end(), parent) != m_selectedObjects.end())
+                {
+                    hasSelectedAncestor = true;
+                    break;
+                }
+            }
+            if (!hasSelectedAncestor)
+                roots.push_back(object);
+        }
+        return roots;
+    }
+
+    void EditorUi::duplicateSelectedObjects()
+    {
+        Scene* const scene = SceneManager::instance().getActiveScene();
+        const std::vector<GameObject*> selectedRoots = getSelectedRoots();
+        if (scene == nullptr)
+        {
+            m_hierarchyStatus = "Duplicate failed: no active scene.";
+            return;
+        }
+        if (selectedRoots.empty())
+            return;
+
+        std::vector<Prefab> prefabs(selectedRoots.size());
+        for (std::size_t index = 0; index < selectedRoots.size(); ++index)
+        {
+            if (!prefabs[index].capture(*selectedRoots[index]))
+            {
+                m_hierarchyStatus = "Duplicate failed: could not capture " + selectedRoots[index]->getName() + ".";
+                return;
+            }
+        }
+
+        std::vector<GameObject*> duplicates;
+        duplicates.reserve(prefabs.size());
+        bool instantiationFailed = false;
+        for (const Prefab& prefab : prefabs)
+        {
+            GameObject* const duplicate = prefab.instantiate(*scene);
+            if (duplicate == nullptr)
+            {
+                m_hierarchyStatus = "Duplicate partially failed: a selected object could not be instantiated.";
+                instantiationFailed = true;
+                break;
+            }
+
+            duplicate->getTransform()->translate(Vector3(m_gridSnapStep, 0.0f, 0.0f));
+            duplicates.push_back(duplicate);
+        }
+
+        if (duplicates.empty())
+            return;
+
+        m_selectedObjects = std::move(duplicates);
+        m_selectedObject = m_selectedObjects.back();
+        m_objectName.fill('\0');
+        std::snprintf(m_objectName.data(), m_objectName.size(), "%s", m_selectedObject->getName().c_str());
+        if (!instantiationFailed)
+            m_hierarchyStatus = "Duplicated " + std::to_string(m_selectedObjects.size()) + " object(s).";
     }
 
     void EditorUi::drawInspector()
     {
         if (!ImGui::Begin("Inspector"))
         {
+            ImGui::End();
+            return;
+        }
+        if (m_selectedObjects.size() > 1)
+        {
+            ImGui::Text("%zu objects selected", m_selectedObjects.size());
+            ImGui::TextDisabled("Use the Game view gizmo to transform the selection together.");
             ImGui::End();
             return;
         }
