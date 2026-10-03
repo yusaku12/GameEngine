@@ -11,7 +11,8 @@ namespace Engine
     /**
      * @brief 同じフレームの深度を使った非透明ModelバッチのGPU可視判定。
      * @details CPUへ戻した結果は統計にのみ使用する。描画判定には過去フレームの結果を使わない。
-     * @thread_safety Render threadのみ。再利用とfinalizeの前に、このFrameのFence完了を待つこと。
+     * @thread_safety MutationはRender threadのみ。record完了後のsetPredicateは別々のCommand Listで並列呼び出し可能。
+     * 再利用とfinalizeの前に、記録JobのjoinとこのFrameのFence完了を待つこと。
      */
     class DX12OcclusionQueries
     {

@@ -101,9 +101,11 @@ namespace Engine
             return false;
         }
 
-        for (DX12CommandList& commandList : m_commandLists)
+        for (std::uint32_t frame = 0; frame < FRAME_COUNT; ++frame)
         {
-            if (!commandList.initialize(*m_device.get(), DX12CommandQueueType::DIRECT))
+            if (!m_commandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT)
+                || !m_finishCommandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT)
+                || !m_queryCommandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT))
             {
                 finalize();
                 return false;
@@ -277,6 +279,15 @@ namespace Engine
         m_psoRebuildPending = false;
         for (DX12CommandList& commandList : m_commandLists)
             commandList.finalize();
+        for (DX12CommandList& commandList : m_finishCommandLists)
+            commandList.finalize();
+        for (DX12CommandList& commandList : m_queryCommandLists)
+            commandList.finalize();
+        for (DX12ModelCommandRecorder& recorder : m_modelCommandRecorders)
+            recorder.finalize();
+        m_preparedModelDraws.clear();
+        m_executionLists.clear();
+        m_renderFailed = false;
 
         m_frameFenceValues.fill(0);
         m_lastSubmittedFenceValue = 0;
@@ -301,6 +312,19 @@ namespace Engine
     }
 
     bool DX12Renderer::render()
+    {
+        if (m_renderFailed)
+        {
+            LOG_ERROR("[Renderer] Rendering stopped after a failed frame; reinitialize the renderer before reuse.");
+            return false;
+        }
+        m_renderFailed = true;
+        const bool succeeded = renderFrame();
+        m_renderFailed = !succeeded;
+        return succeeded;
+    }
+
+    bool DX12Renderer::renderFrame()
     {
         if (m_imguiSystem == nullptr || !m_imguiSystem->isInitialized())
             return false;
@@ -335,10 +359,8 @@ namespace Engine
 
         if (m_psoRebuildPending)
         {
-            if (m_lastSubmittedFenceValue != 0)
-            {
-                m_directFence.waitOnCpu(m_lastSubmittedFenceValue);
-            }
+            if (m_lastSubmittedFenceValue != 0 && !m_directFence.waitOnCpu(m_lastSubmittedFenceValue))
+                return false;
             if (rebuildGraphicsPipelines())
             {
                 LOG_INFO("[Renderer] Graphics Pipelines and Material GPU Cache successfully rebuilt via Shader Hot Reload.");
@@ -365,6 +387,9 @@ namespace Engine
                     ImGui::Text("Submitted Model Batches: %u", m_statistics.batchCount);
                     ImGui::Text("Submitted Model Instances (all passes): %u", m_statistics.instanceCount);
                     ImGui::Checkbox("Model Instancing", &m_enableModelInstancing);
+                    ImGui::Checkbox("Parallel Model Recording", &m_enableParallelModelRecording);
+                    ImGui::Text("Model Command Lists: %u", m_statistics.modelCommandListCount);
+                    ImGui::Text("Model Recording Threads: %u", m_statistics.modelRecordingThreadCount);
                     ImGui::Checkbox("GPU Occlusion Culling", &m_enableOcclusionCulling);
                     if (ImGui::IsItemHovered())
                         ImGui::SetTooltip("Same-frame color-pass culling. Tests batches with at least 256 indices; up to 4096 queries per frame. Compare GPU performance with this disabled.");
@@ -406,7 +431,7 @@ namespace Engine
             return false;
         }
 
-        ID3D12GraphicsCommandList* const nativeCommandList = commandList.getForRecording();
+        ID3D12GraphicsCommandList* nativeCommandList = commandList.getForRecording();
         const D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_gameRenderTargetView.native;
         const float viewportX = m_cameraViewport.x * static_cast<float>(m_renderWidth);
         const float viewportY = m_cameraViewport.y * static_cast<float>(m_renderHeight);
@@ -430,29 +455,33 @@ namespace Engine
         if (!renderModelQueue(commandList, frameIndex))
             return false;
 
+        DX12CommandList& finishList = m_finishCommandLists[frameIndex];
+        if (!finishList.begin(m_directFence))
+            return false;
+        nativeCommandList = finishList.getForRecording();
         nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
         nativeCommandList->RSSetViewports(1, &viewport);
         nativeCommandList->RSSetScissorRects(1, &scissorRect);
         DebugPrimitive::instance().drawGrid(Vector3::Zero, 20.0f, 20.0f, 1.0f);
-        if (!DebugPrimitive::instance().render(commandList, frameIndex, m_viewProjection))
+        if (!DebugPrimitive::instance().render(finishList, frameIndex, m_viewProjection))
             return false;
 
-        if (!m_gameRenderTarget.transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
+        if (!m_gameRenderTarget.transition(finishList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
             return false;
 
         const D3D12_CPU_DESCRIPTOR_HANDLE backBufferView = m_swapChain.getCurrentRtv().native;
         nativeCommandList->OMSetRenderTargets(1, &backBufferView, FALSE, nullptr);
         m_imguiSystem->render(*nativeCommandList);
 
-        if (!backBuffer->transition(commandList, D3D12_RESOURCE_STATE_PRESENT) || !commandList.close())
+        if (!backBuffer->transition(finishList, D3D12_RESOURCE_STATE_PRESENT) || !finishList.close())
             return false;
 
-        ID3D12CommandList* const nativeExecutionList = commandList.getForExecution();
+        ID3D12CommandList* const nativeExecutionList = finishList.getForExecution();
         if (nativeExecutionList == nullptr)
             return false;
 
-        const std::array<ID3D12CommandList*, 1> commandLists = { nativeExecutionList };
-        m_directQueue.execute(commandLists);
+        m_executionLists.push_back(nativeExecutionList);
+        m_directQueue.execute(m_executionLists);
         const bool presentSucceeded = m_swapChain.present(true);
         if (!presentSucceeded)
             m_device.logDeviceRemovedReason();
@@ -464,7 +493,14 @@ namespace Engine
             return false;
         }
 
-        if (!commandList.markSubmitted(submittedFenceValue))
+        // Keep shutdown safe even if resource bookkeeping below fails.
+        m_frameFenceValues[frameIndex] = submittedFenceValue;
+        m_lastSubmittedFenceValue = submittedFenceValue;
+        if (!commandList.markSubmitted(submittedFenceValue)
+            || !finishList.markSubmitted(submittedFenceValue)
+            || !m_modelCommandRecorders[frameIndex].markSubmitted(submittedFenceValue)
+            || (m_frameStatistics.occlusionQueryCount != 0
+                && !m_queryCommandLists[frameIndex].markSubmitted(submittedFenceValue)))
             return false;
         if (!DebugPrimitive::instance().markFrameUsed(frameIndex, submittedFenceValue))
             return false;
@@ -489,8 +525,6 @@ namespace Engine
         if (!m_occlusionQueries[frameIndex].markSubmitted(submittedFenceValue))
             return false;
 
-        m_frameFenceValues[frameIndex] = submittedFenceValue;
-        m_lastSubmittedFenceValue = submittedFenceValue;
         m_statistics = m_frameStatistics;
         return presentSucceeded;
     }
@@ -906,6 +940,99 @@ namespace Engine
 
     bool DX12Renderer::renderModelQueue(DX12CommandList& commandList, const std::uint32_t frameIndex)
     {
+        m_executionLists.clear();
+        if (!prepareModelDraws(frameIndex))
+            return false;
+        const bool hasShadow = std::any_of(m_preparedModelDraws.begin(), m_preparedModelDraws.end(),
+            [](const DX12PreparedModelDraw& draw) { return draw.item->pass == RenderPassType::Shadow; });
+        if (hasShadow)
+            commandList.getForRecording()->ClearDepthStencilView(
+                m_shadowDepthStencilView.native, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+        if (!commandList.close())
+            return false;
+        m_executionLists.push_back(commandList.getForExecution());
+
+        DX12ModelRecordingState state{
+            .textureHeap = TextureManager::instance().getDescriptorHeap().get(),
+            .colorTarget = m_gameRenderTargetView.native,
+            .depthTarget = m_depthStencilView.native,
+            .shadowTarget = m_shadowDepthStencilView.native,
+            .viewport = {
+                m_cameraViewport.x * static_cast<float>(m_renderWidth),
+                m_cameraViewport.y * static_cast<float>(m_renderHeight),
+                m_cameraViewport.width * static_cast<float>(m_renderWidth),
+                m_cameraViewport.height * static_cast<float>(m_renderHeight), 0.0f, 1.0f },
+        };
+        state.scissor = {
+            static_cast<LONG>(state.viewport.TopLeftX), static_cast<LONG>(state.viewport.TopLeftY),
+            static_cast<LONG>(state.viewport.TopLeftX + state.viewport.Width),
+            static_cast<LONG>(state.viewport.TopLeftY + state.viewport.Height) };
+        const D3D12_RESOURCE_DESC& shadowDescription = m_shadowMap.getDescription();
+        state.shadowViewport = { 0.0f, 0.0f, static_cast<float>(shadowDescription.Width),
+            static_cast<float>(shadowDescription.Height), 0.0f, 1.0f };
+        state.shadowScissor = { 0, 0, static_cast<LONG>(shadowDescription.Width),
+            static_cast<LONG>(shadowDescription.Height) };
+
+        const bool hasColor = std::any_of(m_preparedModelDraws.begin(), m_preparedModelDraws.end(),
+            [](const DX12PreparedModelDraw& draw) { return draw.item->pass >= RenderPassType::Opaque; });
+        DX12CommandList& queryList = m_queryCommandLists[frameIndex];
+        if (hasColor && m_enableOcclusionCulling)
+        {
+            if (!queryList.begin(m_directFence))
+                return false;
+            ID3D12GraphicsCommandList& native = *queryList.getForRecording();
+            native.OMSetRenderTargets(0, nullptr, FALSE, &state.depthTarget);
+            native.RSSetViewports(1, &state.viewport);
+            native.RSSetScissorRects(1, &state.scissor);
+            DX12OcclusionQueries& queries = m_occlusionQueries[frameIndex];
+            if (!queries.record(queryList, *m_device.get(), m_directFence, m_occlusionPipeline,
+                m_modelRenderQueue, m_viewProjection, Vector2(state.viewport.Width, state.viewport.Height),
+                m_enableModelInstancing) || !queryList.close())
+                return false;
+            m_frameStatistics.occlusionQueryCount = queries.getQueryCount();
+            if (queries.getQueryCount() != 0)
+                state.queries = &queries;
+        }
+
+        DX12ModelCommandRecorder& recorder = m_modelCommandRecorders[frameIndex];
+        if (!recorder.record(*m_device.get(), m_directFence, m_preparedModelDraws,
+            state, m_enableParallelModelRecording))
+            return false;
+        bool queryInserted = state.queries == nullptr;
+        const auto ranges = recorder.getRanges();
+        for (std::size_t index = 0; index < ranges.size(); ++index)
+        {
+            const RenderPassType pass = m_preparedModelDraws[ranges[index].first].item->pass;
+            if (!queryInserted && pass >= RenderPassType::Opaque)
+            {
+                m_executionLists.push_back(queryList.getForExecution());
+                queryInserted = true;
+            }
+            ID3D12CommandList* const native = recorder.getForExecution(index);
+            if (native == nullptr)
+            {
+                LOG_ERROR("[Renderer] Model command list {} was not closed.", index);
+                return false;
+            }
+            m_executionLists.push_back(native);
+        }
+        const auto& statistics = recorder.getStatistics();
+        m_frameStatistics.drawCallCount = statistics.drawCallCount;
+        m_frameStatistics.batchCount = statistics.drawCallCount;
+        m_frameStatistics.instanceCount = statistics.instanceCount;
+        m_frameStatistics.psoSwitchCount = statistics.psoSwitchCount;
+        m_frameStatistics.materialSwitchCount = statistics.materialSwitchCount;
+        m_frameStatistics.textureSwitchCount = statistics.textureSwitchCount;
+        m_frameStatistics.vertexBufferSwitchCount = statistics.vertexBufferSwitchCount;
+        m_frameStatistics.indexBufferSwitchCount = statistics.indexBufferSwitchCount;
+        m_frameStatistics.modelCommandListCount = static_cast<std::uint32_t>(ranges.size());
+        m_frameStatistics.modelRecordingThreadCount = statistics.recordingThreadCount;
+        return true;
+    }
+
+    bool DX12Renderer::prepareModelDraws(const std::uint32_t frameIndex)
+    {
+        m_preparedModelDraws.clear();
         const std::span<const RenderItem> items = m_modelRenderQueue.getItems();
         if (items.empty())
             return true;
@@ -941,95 +1068,18 @@ namespace Engine
             return false;
         }
 
-        ID3D12GraphicsCommandList* const nativeCommandList = commandList.getForRecording();
         TextureManager& textureManager = TextureManager::instance();
-        ID3D12DescriptorHeap* const descriptorHeap = textureManager.getDescriptorHeap().get();
-        if (nativeCommandList == nullptr || descriptorHeap == nullptr)
-            return false;
-        nativeCommandList->SetDescriptorHeaps(1, &descriptorHeap);
-
-        const DX12GraphicsPipeline* currentPipeline = nullptr;
-        const D3D12_VERTEX_BUFFER_VIEW* currentVertexBuffer = nullptr;
-        const D3D12_INDEX_BUFFER_VIEW* currentIndexBuffer = nullptr;
-        const DX12UploadBuffer* currentBonePalette = nullptr;
         std::unordered_map<const SkinningPaletteSnapshot*, DX12UploadBuffer*> uploadedPalettes;
         MaterialHandle currentMaterial;
-        MaterialGpuResource* currentMaterialResource = nullptr;
-        RenderPassType targetPass = RenderPassType::Opaque;
-        bool shadowMapCleared = false;
-        bool occlusionRecorded = false;
-        DX12OcclusionQueries& queries = m_occlusionQueries[frameIndex];
-        const auto setCameraViewport = [&]
-            {
-                const D3D12_VIEWPORT viewport{
-                    m_cameraViewport.x * static_cast<float>(m_renderWidth),
-                    m_cameraViewport.y * static_cast<float>(m_renderHeight),
-                    m_cameraViewport.width * static_cast<float>(m_renderWidth),
-                    m_cameraViewport.height * static_cast<float>(m_renderHeight), 0.0f, 1.0f };
-                const D3D12_RECT scissor{
-                    static_cast<LONG>(viewport.TopLeftX), static_cast<LONG>(viewport.TopLeftY),
-                    static_cast<LONG>(viewport.TopLeftX + viewport.Width),
-                    static_cast<LONG>(viewport.TopLeftY + viewport.Height) };
-                nativeCommandList->RSSetViewports(1, &viewport);
-                nativeCommandList->RSSetScissorRects(1, &scissor);
-            };
-        nativeCommandList->SetPredication(nullptr, 0, D3D12_PREDICATION_OP_EQUAL_ZERO);
-        nativeCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        D3D12_GPU_VIRTUAL_ADDRESS materialAddress = 0;
+        std::array<D3D12_GPU_DESCRIPTOR_HANDLE, 5> textures{};
+        m_preparedModelDraws.reserve(items.size());
 
         for (std::size_t itemIndex = 0; itemIndex < items.size();)
         {
             const RenderItem& item = items[itemIndex];
             const std::size_t batchSize = m_enableModelInstancing
                 ? m_modelRenderQueue.getInstanceBatchSize(itemIndex) : 1;
-            bool restoreColorTarget = false;
-            if (!occlusionRecorded && item.pass >= RenderPassType::Opaque)
-            {
-                occlusionRecorded = true;
-                if (m_enableOcclusionCulling)
-                {
-                    nativeCommandList->OMSetRenderTargets(0, nullptr, FALSE, &m_depthStencilView.native);
-                    setCameraViewport();
-                    const Vector2 viewportSize(
-                        m_cameraViewport.width * static_cast<float>(m_renderWidth),
-                        m_cameraViewport.height * static_cast<float>(m_renderHeight));
-                    if (!queries.record(commandList, *m_device.get(), m_directFence, m_occlusionPipeline,
-                        m_modelRenderQueue, m_viewProjection, viewportSize, m_enableModelInstancing))
-                        return false;
-                    m_frameStatistics.occlusionQueryCount = queries.getQueryCount();
-                    currentPipeline = nullptr;
-                    restoreColorTarget = true;
-                }
-            }
-            if (item.pass != targetPass || restoreColorTarget)
-            {
-                if (item.pass == RenderPassType::DepthOnly)
-                {
-                    nativeCommandList->OMSetRenderTargets(0, nullptr, FALSE, &m_depthStencilView.native);
-                }
-                else if (item.pass == RenderPassType::Shadow)
-                {
-                    nativeCommandList->OMSetRenderTargets(0, nullptr, FALSE, &m_shadowDepthStencilView.native);
-                    if (!shadowMapCleared)
-                    {
-                        nativeCommandList->ClearDepthStencilView(
-                            m_shadowDepthStencilView.native, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-                        shadowMapCleared = true;
-                    }
-                    constexpr float shadowMapSize = 2048.0f;
-                    const D3D12_VIEWPORT shadowViewport{ 0.0f, 0.0f, shadowMapSize, shadowMapSize, 0.0f, 1.0f };
-                    const D3D12_RECT shadowScissor{ 0, 0, 2048, 2048 };
-                    nativeCommandList->RSSetViewports(1, &shadowViewport);
-                    nativeCommandList->RSSetScissorRects(1, &shadowScissor);
-                }
-                else
-                {
-                    const D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_gameRenderTargetView.native;
-                    nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
-                    setCameraViewport();
-                }
-                targetPass = item.pass;
-            }
-
             const DX12GraphicsPipeline* requiredPipeline = &m_modelPipeline;
             if (item.pass == RenderPassType::DepthOnly || item.pass == RenderPassType::Shadow)
             {
@@ -1044,34 +1094,15 @@ namespace Engine
             {
                 requiredPipeline = &m_transparentModelPipeline;
             }
-            if (currentPipeline != requiredPipeline)
-            {
-                if (!requiredPipeline->bind(commandList))
-                    return false;
-                currentPipeline = requiredPipeline;
-                currentMaterial = MaterialHandle::Invalid();
-                currentMaterialResource = nullptr;
-                currentBonePalette = nullptr;
-                ++m_frameStatistics.psoSwitchCount;
-            }
-            if (currentVertexBuffer != item.vertexBuffer)
-            {
-                nativeCommandList->IASetVertexBuffers(0, 1, item.vertexBuffer);
-                currentVertexBuffer = item.vertexBuffer;
-                ++m_frameStatistics.vertexBufferSwitchCount;
-            }
-            if (currentIndexBuffer != item.indexBuffer)
-            {
-                nativeCommandList->IASetIndexBuffer(item.indexBuffer);
-                currentIndexBuffer = item.indexBuffer;
-                ++m_frameStatistics.indexBufferSwitchCount;
-            }
             if (currentMaterial != item.material)
             {
-                currentMaterialResource = m_materialGpuCache.getOrCreate(item.material);
+                const MaterialGpuResource* const currentMaterialResource = m_materialGpuCache.getOrCreate(item.material);
                 if (currentMaterialResource == nullptr || currentMaterialResource->constantBuffer.getGpuVirtualAddress() == 0)
+                {
+                    LOG_ERROR("[Renderer] Failed to resolve material for draw {}.", itemIndex);
                     return false;
-                nativeCommandList->SetGraphicsRootConstantBufferView(2, currentMaterialResource->constantBuffer.getGpuVirtualAddress());
+                }
+                materialAddress = currentMaterialResource->constantBuffer.getGpuVirtualAddress();
                 const std::array materialTextures = {
                     currentMaterialResource->baseColorTexture,
                     currentMaterialResource->normalTexture,
@@ -1084,12 +1115,13 @@ namespace Engine
                     const Texture* texture = textureManager.get(materialTextures[textureIndex]);
                     const TextureResourceInfo* textureInfo = texture != nullptr ? texture->getResourceInfo() : nullptr;
                     if (textureInfo == nullptr)
+                    {
+                        LOG_ERROR("[Renderer] Failed to resolve texture {} for draw {}.", textureIndex, itemIndex);
                         return false;
-                    nativeCommandList->SetGraphicsRootDescriptorTable(3 + textureIndex, textureInfo->srv);
+                    }
+                    textures[textureIndex] = textureInfo->srv;
                 }
                 currentMaterial = item.material;
-                ++m_frameStatistics.materialSwitchCount;
-                m_frameStatistics.textureSwitchCount += static_cast<std::uint32_t>(materialTextures.size());
             }
             const DX12UploadBuffer* bonePalette = item.bonePaletteBuffer;
             if (item.skinningPalette != nullptr)
@@ -1108,31 +1140,23 @@ namespace Engine
                     bonePalette = uploaded;
                 }
             }
-            if (currentBonePalette != bonePalette)
+            if (bonePalette == nullptr || bonePalette->getGpuVirtualAddress() == 0 || materialAddress == 0)
             {
-                if (bonePalette == nullptr || bonePalette->getGpuVirtualAddress() == 0)
-                    return false;
-                nativeCommandList->SetGraphicsRootConstantBufferView(1, bonePalette->getGpuVirtualAddress());
-                currentBonePalette = bonePalette;
-            }
-            if (currentMaterialResource == nullptr)
+                LOG_ERROR("[Renderer] Invalid resolved GPU bindings for draw {}.", itemIndex);
                 return false;
-            nativeCommandList->SetGraphicsRootShaderResourceView(0, instanceBuffer.getGpuVirtualAddress()
-                + itemIndex * sizeof(ModelInstanceConstants));
-            const MaterialParameterValues& propertyValues = item.materialProperties.getValues();
-            nativeCommandList->SetGraphicsRoot32BitConstants(8, 16, &propertyValues.baseColor.x, 0);
-            const std::uint32_t overrideMask = item.materialProperties.getOverrideMask();
-            nativeCommandList->SetGraphicsRoot32BitConstants(8, 1, &overrideMask, 16);
-            if (queries.getQueryCount() != 0 && item.pass >= RenderPassType::Opaque)
-                queries.setPredicate(*nativeCommandList, itemIndex);
-            nativeCommandList->DrawIndexedInstanced(item.indexCount, static_cast<UINT>(batchSize),
-                item.indexStart, item.baseVertex, 0);
-            ++m_frameStatistics.drawCallCount;
-            m_frameStatistics.instanceCount += static_cast<std::uint32_t>(batchSize);
+            }
+            m_preparedModelDraws.push_back({
+                .item = &item,
+                .pipeline = requiredPipeline,
+                .itemIndex = itemIndex,
+                .instanceCount = static_cast<std::uint32_t>(batchSize),
+                .instances = instanceBuffer.getGpuVirtualAddress() + itemIndex * sizeof(ModelInstanceConstants),
+                .material = materialAddress,
+                .bones = bonePalette->getGpuVirtualAddress(),
+                .textures = textures,
+            });
             itemIndex += batchSize;
         }
-        nativeCommandList->SetPredication(nullptr, 0, D3D12_PREDICATION_OP_EQUAL_ZERO);
-        m_frameStatistics.batchCount = m_frameStatistics.drawCallCount;
         return true;
     }
 
@@ -1140,7 +1164,11 @@ namespace Engine
     {
         if (frameIndex >= FRAME_COUNT || snapshot.jointCount == 0
             || snapshot.jointCount > MAX_SKINNING_BONES)
+        {
+            LOG_ERROR("[Renderer] Invalid skinning palette frame or joint count (frame: {}, joints: {}).",
+                frameIndex, snapshot.jointCount);
             return nullptr;
+        }
 
         auto& buffers = m_skinningPaletteBuffers[frameIndex];
         const std::size_t index = m_skinningPaletteBufferCursors[frameIndex];

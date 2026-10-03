@@ -9,6 +9,7 @@
 #include "Graphics\DirectX12\Queue.h"
 #include "Graphics\DirectX12\Resource.h"
 #include "Graphics\DirectX12\OcclusionQueries.h"
+#include "Graphics\DirectX12\ModelCommandRecorder.h"
 #include "Graphics\Shader\ShaderManager.h"
 #include "Graphics\DirectX12\SwapChain.h"
 #include "Graphics\Camera\CameraData.h"
@@ -39,11 +40,13 @@ namespace Engine
         std::uint32_t occlusionQueryCount = 0;       //!< 現在Frameで記録したOcclusionバッチクエリ数
         std::uint32_t completedOcclusionQueries = 0; //!< 再利用したFrame slotのGPU完了済みクエリ数
         std::uint32_t occludedBatches = 0;           //!< GPU完了済み結果で色描画を省略したバッチ数
+        std::uint32_t modelCommandListCount = 0;     //!< Model描画を記録した独立Command List数
+        std::uint32_t modelRecordingThreadCount = 0; //!< 実際にModelコマンド記録を実行したThread数
     };
 
     /**
      * @brief DirectX 12 の初期フレーム描画を管理するクラス
-     * @details 2 Frame In Flight で Back Buffer の Clear と Present を実行する。
+     * @details 2 Frame In Flight。Model command recordingをJobSystemへ分散し、Pass順に提出する。
      * @thread_safety Not thread-safe. Access must be synchronized externally.
      */
     class DX12Renderer
@@ -162,7 +165,18 @@ namespace Engine
          */
         void setOcclusionCullingEnabled(bool enabled) noexcept { m_enableOcclusionCulling = enabled; }
 
+        /**
+         * @brief Model描画のCommand List記録を既存JobSystemへ分散する。
+         * @param enabled 無効時も同じ準備済みDrawをPass順に同期記録する。
+         * @thread_safety Render threadのみ。フレーム開始前に設定すること。
+         */
+        void setParallelModelRecordingEnabled(bool enabled) noexcept { m_enableParallelModelRecording = enabled; }
+
     private:
+
+        bool renderFrame();
+
+        bool prepareModelDraws(std::uint32_t frameIndex);
 
         /**
          * @brief 描画領域に対応する深度バッファとDSVを作成する。
@@ -199,9 +213,10 @@ namespace Engine
         void buildModelRenderQueue(std::vector<ModelHandle>& usedModels, std::vector<MaterialHandle>& usedMaterials);
 
         /**
-         * @brief 現在フレームの Model 描画 Queue を GPU に提出する
-         * @param commandList 提出先の Command List
-         * @return 提出に成功した場合は true
+         * @brief Model描画を準備・並列記録し、GPU提出順のCommand List配列を構築する。
+         * @param commandList ClearとResource Barrierを記録済みのFrame開始List。ここでCloseする。
+         * @param frameIndex Fence完了済みのFrame slot。
+         * @return 全記録に成功した場合はtrue。GPUへの提出はrenderFrameが行う。
          */
         bool renderModelQueue(DX12CommandList& commandList, std::uint32_t frameIndex);
 
@@ -275,6 +290,13 @@ namespace Engine
         std::uint32_t m_cameraCullingMask = UINT32_MAX;                                                   //!< 描画対象LayerのBit Mask
         RendererStatistics m_statistics;                                                                  //!< 現在構築中フレームの描画統計
         std::array<DX12CommandList, FRAME_COUNT> m_commandLists;                                          //!< Frame ごとの Command List
+        std::array<DX12CommandList, FRAME_COUNT> m_finishCommandLists;
+        std::array<DX12CommandList, FRAME_COUNT> m_queryCommandLists;
+        std::array<DX12ModelCommandRecorder, FRAME_COUNT> m_modelCommandRecorders;
+        std::vector<DX12PreparedModelDraw> m_preparedModelDraws;
+        std::vector<ID3D12CommandList*> m_executionLists;
+        bool m_enableParallelModelRecording = true;
+        bool m_renderFailed = false;
         std::unique_ptr<ImGuiSystem> m_imguiSystem;                                                       //!< Editor UI のライフサイクル
         std::array<std::uint64_t, FRAME_COUNT> m_frameFenceValues{};                                      //!< Frame ごとの提出 Fence 値
         std::uint64_t m_lastSubmittedFenceValue = 0;                                                      //!< 直近に提出した Fence 値

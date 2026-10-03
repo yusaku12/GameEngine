@@ -29,7 +29,8 @@ namespace Engine
     /**
      * @brief Root Signature と Graphics Pipeline State をキャッシュするクラス
      * @details 初期化後は PSO を再作成せず、記録中の Command List へ bind する。
-     * @thread_safety Not thread-safe. Access must be synchronized externally.
+     * @thread_safety initialize/finalize/swap require external synchronization. After initialization,
+     * bind may run concurrently on distinct Command Lists while the Pipeline remains immutable.
      */
     class DX12GraphicsPipeline
     {

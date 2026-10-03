@@ -64,6 +64,8 @@
     <ClInclude Include="Source\Core\Containers\String.h" />
     <ClInclude Include="Source\Core\Input\InputManager.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Command.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\ModelCommandRecorder.h" />
+    <ClInclude Include="Source\Graphics\Renderer\CommandRecordingRange.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Descriptor.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Device.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Fence.h" />
@@ -166,6 +168,7 @@
     <ClCompile Include="Source\Core\Serialization\FlatBufferWriter.cpp" />
     <ClCompile Include="Source\Assets\Model\Import\FbxModelImporter.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Command.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\ModelCommandRecorder.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Descriptor.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Device.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Fence.cpp" />
@@ -208,7 +211,9 @@
     <ClCompile Include="Source\Core\GameObject\GameObjectManager.cpp" />
     <ClCompile Include="Source\Core\Containers\String.cpp" />
     <ClCompile Include="Source\Core\Input\InputManager.cpp" />
-    <ClCompile Include="Source\Main.cpp" />
+    <ClCompile Include="Source\Main.cpp" Condition="'$(RenderingTests)' != 'true'" />
+    <ClCompile Include="Tools\Rendering\CommandRecordingRangeTests.cpp" Condition="'$(RenderingTests)' == 'true'" />
+    <ClCompile Include="Tools\Rendering\RenderingIntegrationTests.cpp" Condition="'$(RenderingTests)' == 'true'" />
     <ClCompile Include="Source\Core\Logging\Assert.cpp" />
     <ClCompile Include="Source\Core\Logging\Logger.cpp" />
     <ClCompile Include="Source\Core\Math\Random.cpp" />
@@ -258,6 +263,7 @@
     <None Include="Assets\Shaders\Model.hlsl" />
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
     <None Include="Assets\Shaders\Occlusion.hlsl" />
+    <None Include="Tools\Rendering\RecordingTest.hlsl" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
     <None Include="Schemas\FlatBuffers\Material.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />
@@ -328,6 +334,11 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(RenderingTests)' == 'true'">
+    <TargetName>RenderingIntegrationTests</TargetName>
+    <OutDir>$(ProjectDir)x64\$(Configuration)\RenderingTests\</OutDir>
+    <IntDir>$(ProjectDir)GameEngine\x64\$(Configuration)\RenderingTests\</IntDir>
+  </PropertyGroup>
   <PropertyGroup>
     <FBXSDKRoot Condition="'$(FBXSDKRoot)' == ''">$(SolutionDir)..\DirectX12\External\FBX SDK\2020.3.9</FBXSDKRoot>
   </PropertyGroup>
@@ -409,6 +420,14 @@
       <Command>copy /Y "$(FBXSDKRoot)\lib\x64\release\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(RenderingTests)' == 'true'">
+    <ClCompile>
+      <PreprocessorDefinitions>GE_RENDERING_INTEGRATION_TESTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
   <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Schemas\FlatBuffers\Skeleton.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimationClip.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorController.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\ModelRendererComponent.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h;$(ProjectDir)Generated\FlatBuffers\Skeleton_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimationClip_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorController_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\ModelRendererComponent_generated.h">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
   </Target>
@@ -419,6 +438,11 @@
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Target Name="CompileRecordingTestShaders" BeforeTargets="ClCompile" Condition="'$(RenderingTests)' == 'true'">
+    <MakeDir Directories="$(OutDir)" />
+    <Exec Command="&quot;$(ProjectDir)Tools\DXC\dxc.exe&quot; -T vs_6_0 -E vsMain -Fo &quot;$(OutDir)Recording_vs.cso&quot; &quot;$(ProjectDir)Tools\Rendering\RecordingTest.hlsl&quot;" />
+    <Exec Command="&quot;$(ProjectDir)Tools\DXC\dxc.exe&quot; -T ps_6_0 -E psMain -Fo &quot;$(OutDir)Recording_ps.cso&quot; &quot;$(ProjectDir)Tools\Rendering\RecordingTest.hlsl&quot;" />
+  </Target>
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>

@@ -17,6 +17,9 @@
     <ClCompile Include="Source\Assets\Material\Serialization\MaterialSerializer.cpp" />
     <ClCompile Include="Source\Assets\Model\Import\FbxModelImporter.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Command.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\ModelCommandRecorder.cpp" />
+    <ClCompile Include="Tools\Rendering\CommandRecordingRangeTests.cpp" />
+    <ClCompile Include="Tools\Rendering\RenderingIntegrationTests.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Descriptor.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Device.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Fence.cpp" />
@@ -78,6 +81,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\ModelCommandRecorder.h" />
+    <ClInclude Include="Source\Graphics\Renderer\CommandRecordingRange.h" />
     <ClInclude Include="Source\Core\GameObject\Component\AnimatorComponent.h" />
     <ClInclude Include="Source\Graphics\Renderer\SkinningPaletteSnapshot.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimationClip_generated.h" />

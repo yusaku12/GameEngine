@@ -6,7 +6,8 @@ namespace Engine
 {
     /**
      * @brief GPU コマンドの完了を追跡する DirectX 12 Fence
-     * @thread_safety Not thread-safe. Access must be synchronized externally.
+     * @thread_safety Mutation and CPU event waits require external synchronization.
+     * isComplete/getCompletedValue may run concurrently while the Fence remains initialized.
      */
     class DX12Fence
     {

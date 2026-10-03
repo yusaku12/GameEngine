@@ -108,16 +108,14 @@ namespace Engine
         if (cancellationToken != nullptr && cancellationToken->isCancelled())
             return;
 
-        if (counter != nullptr)
-            counter->increment();
-
-        m_pendingCount.fetch_add(1, std::memory_order_relaxed);
-
         Job job{ std::move(function), counter, cancellationToken, nullptr };
 
         if (!m_running.load(std::memory_order_acquire))
         {
             // 初期化前・終了後は呼び出し元で同期的に実行する
+            if (counter != nullptr)
+                counter->increment();
+            m_pendingCount.fetch_add(1, std::memory_order_relaxed);
             executeJob(job);
             return;
         }
@@ -125,6 +123,10 @@ namespace Engine
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_jobs.push_back(std::move(job));
+            // A failed allocation must not leave an unfulfillable completion counter.
+            if (counter != nullptr)
+                counter->increment();
+            m_pendingCount.fetch_add(1, std::memory_order_relaxed);
         }
 
         m_condition.notify_one();

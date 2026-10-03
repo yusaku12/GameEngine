@@ -32,6 +32,73 @@ Rendering Systemは以下を担当する。
 
 # 2. Architecture
 
+## 現在のDX12マルチスレッド描画
+
+`DX12Renderer`は、既存`JobSystem`を使用してModelのCommand Listを並列記録する。
+`Parallel Model Recording`はRenderer Statisticsウィンドウで切り替え可能。
+APIでは`setParallelModelRecordingEnabled`をフレーム開始前に設定する。
+無効時も同一の準備済みDrawを使用して同期記録する。
+
+CPU側の処理:
+
+1. Scene/Camera snapshotを回収し、可視判定・Sort・Instance batch構築を行う。
+2. Render threadでMaterial/Texture参照を解決し、Instance/Skinning Uploadを完了する。
+3. ImmutableなDraw batchをPass境界とInstance batch境界を維持して分割する。
+4. `DX12ModelCommandRecorder`が各range専用のAllocator/Listで記録する。
+5. 全Jobをjoinし、Thread-local統計を集約してからGPUへ提出する。
+
+GPU実行順序:
+
+```text
+Barrier / Clear
+  -> DepthOnly ranges
+  -> Shadow ranges
+  -> Occlusion queries / Resolve / Predication barrier
+  -> Opaque ranges
+  -> AlphaTest ranges
+  -> Transparent ranges (sorted back-to-front)
+  -> Debug primitives / Game View transition / ImGui / Present transition
+```
+
+複数のCommand Listはこの順序の配列を一度の`ExecuteCommandLists`で提出する。
+透明rangeも連続範囲のまま提出し、Jobの完了順では提出しない。
+Occlusionは同一Frameの深度を使用し、CPU readbackは統計用途に限定する。
+
+Allocator/Listは2 Frame In Flightのslotごとに保持し、そのslotのFence完了後だけ再利用する。
+GPU使用中のModel/Material、Instance/Skinning Buffer、Query結果も提出Fenceで保護する。
+WorkerはCache、Descriptor allocation、Upload、Resource state、Clear、Presentを変更しない。
+Exceptionによる中断でも既に投入した記録JobをjoinしてからFrame dataを解放する。
+準備・記録が失敗したFrameは提出せず、Rendererは再初期化されるまで追加描画を停止する。
+通常の`JobSystem::schedule`はQueueへの追加成功後にCounterを増やすため、
+投入時のallocation失敗でも完了不能なCounterを残さない。
+
+分割は64 Drawを目安に、各Pass最大8 Task。Render job自身がWorker上ならそのWorkerも
+既存Worker数の内数として扱う。小さいPassは分割せず、単一Workerでは同期記録し、
+JobSystemが未初期化でも同期経路を使用する。
+Instance化でDraw数が減ったSceneでは並列化の効果が小さい場合がある。
+`Model Command Lists`と`Model Recording Threads`は直近Frameの実測値。
+非同期Compute、複数GPU Queue、Game/Render Frameのパイプライン化は本変更の範囲外。
+
+### 再現可能な検証
+
+Visual Studio Developer PowerShellから、Repository rootで実行する:
+
+```powershell
+msbuild GameEngine.vcxproj /t:Build /p:Configuration=Debug /p:Platform=x64 /p:RenderingTests=true /m
+.\x64\Debug\RenderingTests\RenderingIntegrationTests.exe
+.\x64\Debug\RenderingTests\RenderingIntegrationTests.exe --warp
+```
+
+Releaseも`Configuration=Release`と対応する実行Pathで検証できる。
+通常のEngineとTestは別の中間/出力Directoryを使用する。
+TestにはWindows Graphics Tools (D3D12 Debug Layer)、DXC、通常のEngine build依存が必要。
+`--warp`は専用GPU image testをWARPで実行し、Editor/SwapChain regressionはEngine既定Deviceで実行する。
+分割289ケース、実測複数Thread、同期/並列GPU画像のbyte一致、透明順序、Instance数、
+同一Frame Predicateと完了Query結果、2 Frame slot再利用、JobSystem未初期化、
+単一/複数Workerからの入れ子描画、Skinning snapshot、Property override、Occlusion切替、
+resize、空Frame、失敗Frameの再利用拒否、finalize/reinitializeを確認する。
+GPU image testとEngine regressionはD3D12 InfoQueueのWarning/Errorも検査する。
+
 基本Architecture:
 
 ```text
