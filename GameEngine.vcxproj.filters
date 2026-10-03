@@ -18,8 +18,6 @@
     <ClCompile Include="Source\Assets\Model\Import\FbxModelImporter.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Command.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\ModelCommandRecorder.cpp" />
-    <ClCompile Include="Tools\Rendering\CommandRecordingRangeTests.cpp" />
-    <ClCompile Include="Tools\Rendering\RenderingIntegrationTests.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Descriptor.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Device.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Fence.cpp" />

@@ -79,26 +79,6 @@ Instance化でDraw数が減ったSceneでは並列化の効果が小さい場合
 `Model Command Lists`と`Model Recording Threads`は直近Frameの実測値。
 非同期Compute、複数GPU Queue、Game/Render Frameのパイプライン化は本変更の範囲外。
 
-### 再現可能な検証
-
-Visual Studio Developer PowerShellから、Repository rootで実行する:
-
-```powershell
-msbuild GameEngine.vcxproj /t:Build /p:Configuration=Debug /p:Platform=x64 /p:RenderingTests=true /m
-.\x64\Debug\RenderingTests\RenderingIntegrationTests.exe
-.\x64\Debug\RenderingTests\RenderingIntegrationTests.exe --warp
-```
-
-Releaseも`Configuration=Release`と対応する実行Pathで検証できる。
-通常のEngineとTestは別の中間/出力Directoryを使用する。
-TestにはWindows Graphics Tools (D3D12 Debug Layer)、DXC、通常のEngine build依存が必要。
-`--warp`は専用GPU image testをWARPで実行し、Editor/SwapChain regressionはEngine既定Deviceで実行する。
-分割289ケース、実測複数Thread、同期/並列GPU画像のbyte一致、透明順序、Instance数、
-同一Frame Predicateと完了Query結果、2 Frame slot再利用、JobSystem未初期化、
-単一/複数Workerからの入れ子描画、Skinning snapshot、Property override、Occlusion切替、
-resize、空Frame、失敗Frameの再利用拒否、finalize/reinitializeを確認する。
-GPU image testとEngine regressionはD3D12 InfoQueueのWarning/Errorも検査する。
-
 基本Architecture:
 
 ```text
