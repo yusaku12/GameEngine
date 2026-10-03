@@ -165,36 +165,6 @@ namespace Engine
                 });
         }
 
-        void requestMaterialLoad(const ObjectGUID objectGuid, const std::size_t slotIndex)
-        {
-            const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
-            MainThreadDispatcher::instance().post([objectGuid, slotIndex, ownerWindow]
-                {
-                    static constexpr std::array filters = {
-                        FileDialogFilter{ L"GameEngine Material", L"*.material;*.mat" },
-                        FileDialogFilter{ L"All Files", L"*.*" },
-                    };
-                    std::vector<std::filesystem::path> paths;
-                    if (Dialog::openFile(paths, L"Materialを読み込む", "Assets/Materials", filters, false, ownerWindow)
-                        != DialogResult::Ok || paths.empty())
-                        return;
-
-                    SceneManager& sceneManager = SceneManager::instance();
-                    GameObject* object = nullptr;
-                    if (Scene* scene = sceneManager.getActiveScene())
-                        object = scene->find(objectGuid);
-                    if (object == nullptr)
-                        object = sceneManager.getPersistentScene()->find(objectGuid);
-                    ModelRendererComponent* component = object != nullptr
-                        ? object->getComponent<ModelRendererComponent>() : nullptr;
-                    if (component == nullptr)
-                        return;
-                    const MaterialHandle material = MaterialManager::instance().load(paths.front());
-                    if (!material.isValid() || !component->setMaterialOverride(slotIndex, material))
-                        LOG_ERROR("[ModelRenderer] Materialの割り当てに失敗しました: {}", paths.front().string());
-                });
-        }
-
         void requestModelSaveAs(const ModelHandle handle)
         {
             const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
@@ -727,12 +697,6 @@ namespace Engine
                     ImGui::EndCombo();
                 }
                 ImGui::SameLine();
-                if (ImGui::Button("Load Material..."))
-                {
-                    const GameObject* const gameObject = getGameObject();
-                    if (gameObject != nullptr)
-                        requestMaterialLoad(gameObject->getGUID(), slotIndex);
-                }
                 if (ImGui::Button("Open Material"))
                     m_inspectedMaterial = resolvedMaterial;
                 const MaterialHandle modelMaterial = overridden != nullptr ? overrideMaterial : resolvedMaterial;
