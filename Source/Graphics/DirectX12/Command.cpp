@@ -37,7 +37,6 @@ namespace Engine
             return false;
         }
 
-        m_type = type;
         m_state = DX12CommandListState::CLOSED;
         return true;
     }
@@ -46,7 +45,6 @@ namespace Engine
     {
         m_commandList.Reset();
         m_allocator.Reset();
-        m_type = DX12CommandQueueType::DIRECT;
         m_state = DX12CommandListState::CLOSED;
         m_lastSubmittedFenceValue = 0;
     }

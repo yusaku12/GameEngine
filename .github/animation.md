@@ -28,6 +28,15 @@ agent: "agent"
 
 ## 作業開始前の必須調査
 
+### 現在の依存ライブラリビルド
+
+`GameEngine.vcxproj`の`BuildOzzAnimation`は、ozzの固定Submoduleと
+`Tools/Animation`のCMake設定・Build Scriptを入力として、
+`ozz_animation_offline`、`ozz_animation`、`ozz_base`の3 Libraryを生成する。
+Engine側のSourceや削除済みテストは、この依存Libraryの入力・出力に含めない。
+`build_ozz.ps1`の引数は`-Configuration Debug`または`-Configuration Release`。
+Libraryのテストは無効であり、通常Buildからテスト実行を要求しない。
+
 実装前に、以下とその呼び出し元を確認し、現在のコードを正として設計を調整すること。
 
 - [ModelResource](../../Source/Assets/Model/Resource/ModelResource.h)

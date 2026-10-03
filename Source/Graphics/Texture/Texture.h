@@ -7,7 +7,6 @@
 
 namespace Engine
 {
-    class DX12CommandList;
     class DX12CommandQueue;
     class DX12Fence;
 
@@ -15,7 +14,6 @@ namespace Engine
      * @brief GPU テクスチャリソースの管理クラス
      * @details
      * - DirectX 12 Resource と SRV を所有・管理
-     * - リソース状態の追跡
      * - ファイルパスなどのメタデータ保持
      * - アップロード後の状態管理
      * @thread_safety Not thread-safe. Access must be synchronized externally.
@@ -145,14 +143,6 @@ namespace Engine
         DXGI_FORMAT determineFormat(const DirectX::TexMetadata& metadata, TextureColorSpace colorSpace);
 
         /**
-         * @brief ミップマップを生成する
-         * @param scratchImage 元画像
-         * @param generateMips ミップマップ生成フラグ
-         * @return ミップマップ生成後の ScratchImage
-         */
-        DirectX::ScratchImage generateMipmaps(const DirectX::ScratchImage& scratchImage, bool generateMips);
-
-        /**
          * @brief GPU リソースを作成して Upload する
          * @param device DirectX 12 デバイス
          * @param descriptorHeap Descriptor Heap
@@ -183,7 +173,6 @@ namespace Engine
         std::filesystem::path m_path;                                        //!< ファイルパス（正規化済み）
         TextureResourceInfo m_info;                                          //!< GPU リソース情報
         TextureState m_state = TextureState::Unloaded;                       //!< ロード状態
-        D3D12_RESOURCE_STATES m_resourceState = D3D12_RESOURCE_STATE_COMMON; //!< 現在の Resource State
 
         // Upload 追跡
         const DX12Fence* m_uploadFence = nullptr; //!< Upload 完了確認用 Fence（非所有）

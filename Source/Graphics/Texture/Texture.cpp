@@ -185,17 +185,6 @@ namespace Engine
         return format;
     }
 
-    DirectX::ScratchImage Texture::generateMipmaps(const DirectX::ScratchImage& scratchImage, bool generateMips)
-    {
-        if (!generateMips || scratchImage.GetMetadata().mipLevels > 1)
-            return {};
-        DirectX::ScratchImage result;
-        if (FAILED(DirectX::GenerateMipMaps(scratchImage.GetImages(), scratchImage.GetImageCount(),
-            scratchImage.GetMetadata(), DirectX::TEX_FILTER_DEFAULT, 0, result)))
-            return {};
-        return result;
-    }
-
     bool Texture::createGpuResource(
         ID3D12Device& device,
         DX12DescriptorHeap& descriptorHeap,
@@ -251,7 +240,6 @@ namespace Engine
         m_gpuResource = resource;
         m_uploadFence = &fence;
         m_uploadFenceValue = fenceValue;
-        m_resourceState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         m_info.resource = m_gpuResource.Get();
         m_info.width = static_cast<std::uint32_t>(metadata.width);
         m_info.height = static_cast<std::uint32_t>(metadata.height);
