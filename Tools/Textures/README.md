@@ -12,8 +12,8 @@ Run from the repository root with Visual Studio C++ tools and a Windows SDK:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Textures\BuildTexconv.ps1
 ```
 
-The execution-policy override applies only to this process. Both build and test
-scripts accept `-MSBuild <path>` for an explicit MSBuild installation.
+The execution-policy override applies only to this process. The build script
+accepts `-MSBuild <path>` for an explicit MSBuild installation.
 
 ## Convert
 
@@ -96,25 +96,3 @@ than a PNG. Inspect gradients, text, transparency and normal-map shading in the
 actual game. Alpha is also lossy, even on some opaque BC7 blocks; use UI when
 exact color/alpha bytes are required. Neither conversion nor packaging prevents
 asset extraction.
-
-## Regression tests
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Textures\TestTextures.ps1 -Configuration Debug
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Textures\TestTextures.ps1 -Configuration Release
-```
-
-Tests build the vendored codec and the standalone
-[texture test project](./Tests/TextureTests.vcxproj), generate synthetic fixtures
-under the ignored build directory, and exercise the real converter and runtime.
-They need a D3D12 adapter and the Windows Graphics Tools debug layer; absence is
-a test failure, not a silent skip. No third-party test framework is required.
-
-Coverage includes formats/mips, gamma-correct filtering, compressed-byte
-preservation, decompression, cube/BC-tail accounting, synthetic BC7 PSNR
-of at least 35 dB for an opaque RGBA gradient and 25 dB
-for a high-frequency alpha checkerboard (exact binary alpha), source/output
-preservation after conversion failures,
-option-sensitive caching, PNG compatibility, and real GPU resource/SRV creation
-with no D3D12 debug-layer errors. The synthetic quality threshold is a regression
-check, not a guarantee for every production image.
