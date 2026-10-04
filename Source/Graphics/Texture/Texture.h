@@ -175,7 +175,7 @@ namespace Engine
         // リソース
         Microsoft::WRL::ComPtr<ID3D12Resource> m_gpuResource;  //!< GPU テクスチャリソース
         Microsoft::WRL::ComPtr<ID3D12Resource> m_uploadBuffer; //!< Upload 用バッファ（完了後解放）
-        std::unique_ptr<DX12CommandList> m_uploadCommandList; //!< Fence完了までAllocatorとCommand Listを保持
+        std::unique_ptr<DX12CommandList> m_uploadCommandList;  //!< Fence完了までAllocatorとCommand Listを保持
 
         // メタデータ
         std::filesystem::path m_path;                  //!< ファイルパス（正規化済み）

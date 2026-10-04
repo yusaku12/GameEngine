@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <cstring>
@@ -10,12 +10,10 @@
 namespace Engine::TextureImageUtils
 {
     /**
-     * @brief Prepare a 2D texture or a single cubemap for upload without runtime compression.
-     * @param image Loaded pixels; replaced only after successful processing.
-     * @param desc Color-space, decompression and mip-generation settings.
-     * @return S_OK on success, S_FALSE if compressed single-level pixels retain no mips,
-     *         or a failed HRESULT. S_FALSE is not returned for a 1x1 texture.
-     * @thread_safety Independent images may be processed concurrently.
+     * @brief テクスチャ画像をロード設定に従って準備する
+     * @param image テクスチャ画像
+     * @param desc テクスチャロード設定
+     * @return S_OK: そのまま使用可能、S_FALSE: ミップマップ生成が必要、E_INVALIDARG: 引数不正、その他: DirectXTex のエラーコード
      */
     inline HRESULT prepare(DirectX::ScratchImage& image, const TextureLoadDesc& desc) noexcept
     {
@@ -98,11 +96,10 @@ namespace Engine::TextureImageUtils
     }
 
     /**
-     * @brief Calculate pixel payload size, including complete BC blocks, slices and mips.
-     * @param metadata Metadata of a supported 2D texture or cubemap.
-     * @param size Receives bytes on success; not the GPU allocation or upload-buffer size.
-     * @return S_OK or a failed HRESULT for invalid metadata/pitch.
-     * @thread_safety Thread-safe.
+     * @brief テクスチャ画像のデータサイズを取得する
+     * @param metadata テクスチャメタデータ
+     * @param size データサイズの格納先
+     * @return S_OK: 成功、E_INVALIDARG: 引数不正、その他: DirectXTex のエラーコード
      */
     inline HRESULT dataSize(const DirectX::TexMetadata& metadata, std::uint64_t& size) noexcept
     {
