@@ -17,6 +17,31 @@ accepts `-MSBuild <path>` for an explicit MSBuild installation.
 
 ## Convert
 
+### Batch-file entry point
+
+Double-click [ConvertTexture.bat](./ConvertTexture.bat), or drag **one** source
+image onto it. Enter the source path (if not dropped), a usage number, and an
+output path. Press Enter at the output prompt to use `Cooked\<source-name>.dds`
+beside the source. Existing outputs require explicit confirmation; declining
+cancels without modifying them. The console stays open to show success/errors.
+Usage is mandatory: numerical images must not be treated as sRGB color.
+
+For unattended conversion, pass the existing converter's named arguments:
+
+```powershell
+.\Tools\Textures\ConvertTexture.bat -Source ".\Assets\Textures\albedo.png" -Output ".\Assets\Textures\Cooked\albedo.dds" -Usage Color
+```
+
+Argument mode does not pause and returns a nonzero exit code on failure.
+Quote paths containing spaces. Multiple-file drag-and-drop is not supported.
+If texconv is missing, run [BuildTexconv.bat](./BuildTexconv.bat) first; this
+requires Visual Studio C++ tools and the Windows SDK.
+
+The batch files reuse the PowerShell scripts below. They do not automatically
+switch the game's texture references to DDS.
+
+### PowerShell entry point
+
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Textures\ConvertTexture.ps1 `
     -Source .\Assets\Textures\albedo.png -Output .\Assets\Textures\Cooked\albedo.dds -Usage Color
