@@ -1,7 +1,4 @@
-#pragma once
-
-#include <array>
-#include <memory>
+﻿#pragma once
 
 #include "Graphics\DirectX12\Command.h"
 #include "Graphics\Renderer\CommandRecordingRange.h"
@@ -13,51 +10,57 @@ namespace Engine
     class DX12GraphicsPipeline;
     class DX12OcclusionQueries;
 
-    /** @brief Fully resolved draw batch. Referenced resources remain alive until frame completion. */
+    /**
+     * @brief 描画コマンド記録のために準備されたモデル描画データ
+     * @details GPUリソースを所有せず、1フレーム内だけ有効な参照と描画状態を保持する。
+     */
     struct DX12PreparedModelDraw
     {
-        const RenderItem* item = nullptr;
-        const DX12GraphicsPipeline* pipeline = nullptr;
-        std::size_t itemIndex = 0;
-        std::uint32_t instanceCount = 0;
-        D3D12_GPU_VIRTUAL_ADDRESS instances = 0;
-        D3D12_GPU_VIRTUAL_ADDRESS material = 0;
-        D3D12_GPU_VIRTUAL_ADDRESS bones = 0;
-        std::array<D3D12_GPU_DESCRIPTOR_HANDLE, 5> textures{};
-    };
-
-    /** @brief Immutable frame state shared by command recording tasks. */
-    struct DX12ModelRecordingState
-    {
-        ID3D12DescriptorHeap* textureHeap = nullptr;
-        D3D12_CPU_DESCRIPTOR_HANDLE colorTarget{};
-        D3D12_CPU_DESCRIPTOR_HANDLE depthTarget{};
-        D3D12_CPU_DESCRIPTOR_HANDLE shadowTarget{};
-        D3D12_VIEWPORT viewport{};
-        D3D12_RECT scissor{};
-        D3D12_VIEWPORT shadowViewport{};
-        D3D12_RECT shadowScissor{};
-        const DX12OcclusionQueries* queries = nullptr;
-    };
-
-    /** @brief Recording statistics reduced only after every task has completed. */
-    struct DX12ModelRecordingStatistics
-    {
-        std::uint32_t drawCallCount = 0;
-        std::uint32_t instanceCount = 0;
-        std::uint32_t psoSwitchCount = 0;
-        std::uint32_t materialSwitchCount = 0;
-        std::uint32_t textureSwitchCount = 0;
-        std::uint32_t vertexBufferSwitchCount = 0;
-        std::uint32_t indexBufferSwitchCount = 0;
-        std::uint32_t recordingThreadCount = 0;
+        const RenderItem* item = nullptr;                      //!< 描画対象の RenderItem への非所有参照
+        const DX12GraphicsPipeline* pipeline = nullptr;        //!< 描画対象の PSO への非所有参照
+        std::size_t itemIndex = 0;                             //!< 描画対象の RenderItem のインデックス
+        std::uint32_t instanceCount = 0;                       //!< 描画対象の RenderItem のインスタンス数
+        D3D12_GPU_VIRTUAL_ADDRESS instances = 0;               //!< 描画対象の RenderItem のインスタンスデータへの GPU 仮想アドレス
+        D3D12_GPU_VIRTUAL_ADDRESS material = 0;                //!< 描画対象の RenderItem の MaterialPropertyBlock への GPU 仮想アドレス
+        D3D12_GPU_VIRTUAL_ADDRESS bones = 0;                   //!< 描画対象の RenderItem のボーンデータへの GPU 仮想アドレス
+        std::array<D3D12_GPU_DESCRIPTOR_HANDLE, 5> textures{}; //!< 描画対象の RenderItem のテクスチャへの GPU ディスクリプタハンドル
     };
 
     /**
-     * @brief Frame-local pool of independently owned allocators and command lists.
-     * @details Workers only read prepared draws and write their own context. No cache, upload,
-     * descriptor allocation, resource transition, clear or GPU submission occurs on workers.
-     * @thread_safety Render thread only. record joins all tasks before returning or unwinding.
+     * @brief 描画コマンド記録のための状態
+     * @details GPUリソースを所有せず、1フレーム内だけ有効な参照と描画状態を保持する。
+     */
+    struct DX12ModelRecordingState
+    {
+        ID3D12DescriptorHeap* textureHeap = nullptr;   //!< 描画対象の RenderItem のテクスチャ用ディスクリプタヒープへの非所有参照
+        D3D12_CPU_DESCRIPTOR_HANDLE colorTarget{};     //!< 描画対象の RenderItem のカラーレンダーターゲットへの CPU ディスクリプタハンドル
+        D3D12_CPU_DESCRIPTOR_HANDLE depthTarget{};     //!< 描画対象の RenderItem の深度レンダーターゲットへの CPU ディスクリプタハンドル
+        D3D12_CPU_DESCRIPTOR_HANDLE shadowTarget{};    //!< 描画対象の RenderItem のシャドウレンダーターゲットへの CPU ディスクリプタハンドル
+        D3D12_VIEWPORT viewport{};                     //!< 描画対象の RenderItem のビューポート
+        D3D12_RECT scissor{};                          //!< 描画対象の RenderItem のシザー矩形
+        D3D12_VIEWPORT shadowViewport{};               //!< 描画対象の RenderItem のシャドウマップ用ビューポート
+        D3D12_RECT shadowScissor{};                    //!< 描画対象の RenderItem のシャドウマップ用シザー矩形
+        const DX12OcclusionQueries* queries = nullptr; //!< 描画対象の RenderItem のオクルージョンクエリへの非所有参照
+    };
+
+    /**
+     * @brief 描画コマンド記録の統計情報
+     */
+    struct DX12ModelRecordingStatistics
+    {
+        std::uint32_t drawCallCount = 0;           //!< 描画コール数
+        std::uint32_t instanceCount = 0;           //!< インスタンス描画数
+        std::uint32_t psoSwitchCount = 0;          //!< パイプラインステート切り替え数
+        std::uint32_t materialSwitchCount = 0;     //!< マテリアル切り替え数
+        std::uint32_t textureSwitchCount = 0;      //!< テクスチャ切り替え数
+        std::uint32_t vertexBufferSwitchCount = 0; //!< Vertex Buffer 切り替え数
+        std::uint32_t indexBufferSwitchCount = 0;  //!< Index Buffer 切り替え数
+        std::uint32_t recordingThreadCount = 0;    //!< 描画コマンド記録に使用したスレッド数
+    };
+
+    /**
+     * @brief モデル描画コマンド記録を行うクラス
+     * @details GPUリソースを所有せず、1フレーム内だけ有効な参照と描画状態を保持する。
      */
     class DX12ModelCommandRecorder
     {
@@ -66,57 +69,78 @@ namespace Engine
         GE_DISABLE_COPY_AND_MOVE(DX12ModelCommandRecorder);
 
         /**
-         * @brief Record contiguous pass ranges in parallel, preserving their submission order.
-         * @param device Device used to grow the persistent context pool.
-         * @param fence Fence guarding allocator reuse.
-         * @param draws Immutable, sorted draw batches.
-         * @param state Immutable render targets, viewport and query bindings.
-         * @param parallel Enable JobSystem recording; disabled records one list per pass.
-         * @return True only when every range was successfully closed.
+         * @brief 描画コマンド記録を行う
+         * @param device コマンド記録に使用する DirectX 12 デバイス
+         * @param fence コマンド記録の完了を追跡するフェンス
+         * @param draws 描画対象の準備済みモデル描画データの範囲
+         * @param state 描画コマンド記録の状態
+         * @param parallel 並列記録を有効にするかどうか
+         * @return 記録に成功した場合は true
          */
         bool record(ID3D12Device& device, const DX12Fence& fence,
             std::span<const DX12PreparedModelDraw> draws, const DX12ModelRecordingState& state, bool parallel);
 
-        /** @brief Release the pool after the owning frame's GPU fence has completed. */
+        /**
+         * @brief GPU 完了後にリソースと CPU 側状態を解放する
+         */
         void finalize();
 
         /**
-         * @brief Mark every list recorded this frame with its submission fence.
-         * @param fenceValue Nonzero fence signaled after GPU submission.
-         * @return True when all recorded lists accepted the fence value.
+         * @brief コマンド記録を GPU に提出したフェンス値を記録する
+         * @param fenceValue 提出後に通知されたフェンス値
+         * @return 提出状態を記録できた場合は true
          */
         bool markSubmitted(std::uint64_t fenceValue);
 
-        /** @brief Return recorded ranges in GPU order. Valid until the next record or finalize. */
+        /**
+         * @brief コマンド記録範囲を取得する
+         * @return コマンド記録範囲のスパン
+         */
         std::span<const CommandRecordingRange> getRanges() const noexcept { return m_ranges; }
 
         /**
-         * @brief Return a closed, non-owning command list for a valid range index.
-         * @param index Index in getRanges().
-         * @return Closed list, or nullptr for an invalid index or unclosed list.
+         * @brief 実行可能な Close 済み Command List を取得する
+         * @param index コマンドリストのインデックス
+         * @return 非所有の Command List 参照。記録中または未初期化時は nullptr
          */
         ID3D12CommandList* getForExecution(std::size_t index) const noexcept;
 
-        /** @brief Return the sum of the task-local recording statistics. */
+        /**
+         * @brief 記録中の Graphics Command List を取得する
+         * @param index コマンドリストのインデックス
+         * @return 非所有の Graphics Command List 参照。Close 済みまたは未初期化時は nullptr
+         */
         const DX12ModelRecordingStatistics& getStatistics() const noexcept { return m_statistics; }
 
     private:
-        static constexpr std::size_t MAX_TASKS_PER_PASS = 8;
-        static constexpr std::size_t MIN_DRAWS_PER_TASK = 64;
 
+        static constexpr std::size_t MAX_TASKS_PER_PASS = 8;  //!< パスごとの最大タスク数
+        static constexpr std::size_t MIN_DRAWS_PER_TASK = 64; //!< タスクごとの最小ターゲット描画数
+
+        /**
+         * @brief 描画コマンド記録のためのコンテキスト
+         */
         struct Context
         {
-            DX12CommandList commandList;
-            DX12ModelRecordingStatistics statistics;
-            bool succeeded = false;
-            std::uint32_t threadId = 0;
+            DX12CommandList commandList;             //!< 描画コマンド記録用の DirectX 12 コマンドリスト
+            DX12ModelRecordingStatistics statistics; //!< 描画コマンド記録の統計情報
+            bool succeeded = false;                  //!< 描画コマンド記録が成功したかどうか
+            std::uint32_t threadId = 0;              //!< 描画コマンド記録を実行したスレッドの ID
         };
 
+        /**
+         * @brief 描画コマンド記録のための範囲を記録する
+         * @param context 描画コマンド記録のコンテキスト
+         * @param fence コマンド記録の完了を追跡するフェンス
+         * @param draws 描画対象の準備済みモデル描画データの範囲
+         * @param state 描画コマンド記録の状態
+         * @return 記録に成功した場合は true
+         */
         bool recordRange(Context& context, const DX12Fence& fence,
             std::span<const DX12PreparedModelDraw> draws, const DX12ModelRecordingState& state);
 
-        std::vector<std::unique_ptr<Context>> m_contexts;
-        std::vector<CommandRecordingRange> m_ranges;
-        DX12ModelRecordingStatistics m_statistics;
+        std::vector<std::unique_ptr<Context>> m_contexts; //!< 描画コマンド記録のコンテキストの配列
+        std::vector<CommandRecordingRange> m_ranges;      //!< 描画コマンド記録の範囲の配列
+        DX12ModelRecordingStatistics m_statistics;        //!< 描画コマンド記録の統計情報
     };
 } // namespace Engine

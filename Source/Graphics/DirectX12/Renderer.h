@@ -174,8 +174,17 @@ namespace Engine
 
     private:
 
+        /**
+         * @brief 現在フレームの描画を構築してGPUへ提出する。
+         * @return 描画に成功した場合は true
+         */
         bool renderFrame();
 
+        /**
+         * @brief 現在フレームの描画を構築する。
+         * @param frameIndex Fence完了済みのFrame slot。
+         * @return 構築に成功した場合は true
+         */
         bool prepareModelDraws(std::uint32_t frameIndex);
 
         /**
@@ -290,13 +299,13 @@ namespace Engine
         std::uint32_t m_cameraCullingMask = UINT32_MAX;                                                   //!< 描画対象LayerのBit Mask
         RendererStatistics m_statistics;                                                                  //!< 現在構築中フレームの描画統計
         std::array<DX12CommandList, FRAME_COUNT> m_commandLists;                                          //!< Frame ごとの Command List
-        std::array<DX12CommandList, FRAME_COUNT> m_finishCommandLists;
-        std::array<DX12CommandList, FRAME_COUNT> m_queryCommandLists;
-        std::array<DX12ModelCommandRecorder, FRAME_COUNT> m_modelCommandRecorders;
-        std::vector<DX12PreparedModelDraw> m_preparedModelDraws;
-        std::vector<ID3D12CommandList*> m_executionLists;
-        bool m_enableParallelModelRecording = true;
-        bool m_renderFailed = false;
+        std::array<DX12CommandList, FRAME_COUNT> m_finishCommandLists;                                    //!< Frame ごとの Command List
+        std::array<DX12CommandList, FRAME_COUNT> m_queryCommandLists;                                     //!< Frame ごとの Command List
+        std::array<DX12ModelCommandRecorder, FRAME_COUNT> m_modelCommandRecorders;                        //!< Frame ごとの Model Command Recorder
+        std::vector<DX12PreparedModelDraw> m_preparedModelDraws;                                          //!< 構築済みの Model Draw
+        std::vector<ID3D12CommandList*> m_executionLists;                                                 //!< 実行用 Command List
+        bool m_enableParallelModelRecording = true;                                                       //!< モデルの並列記録を有効にするか
+        bool m_renderFailed = false;                                                                      //!< 現在フレームの描画が失敗したか
         std::unique_ptr<ImGuiSystem> m_imguiSystem;                                                       //!< Editor UI のライフサイクル
         std::array<std::uint64_t, FRAME_COUNT> m_frameFenceValues{};                                      //!< Frame ごとの提出 Fence 値
         std::uint64_t m_lastSubmittedFenceValue = 0;                                                      //!< 直近に提出した Fence 値

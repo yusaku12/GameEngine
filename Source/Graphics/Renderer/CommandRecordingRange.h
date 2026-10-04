@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <cstddef>
@@ -7,22 +7,24 @@
 
 namespace Engine
 {
-    /** @brief Contiguous, batch-aligned range assigned to one recording task. */
+    /*
+    * @brief コマンド記録範囲を表す構造体
+    */
     struct CommandRecordingRange
     {
-        std::size_t first = 0;
-        std::size_t count = 0;
+        std::size_t first = 0; //!< コマンド記録範囲の最初のインデックス
+        std::size_t count = 0; //!< コマンド記録範囲の要素数
     };
 
-    /**
-     * @brief Partition sorted draws without splitting batches or crossing pass boundaries.
-     * @param draws Sorted, immutable draw batches.
-     * @param concurrency Maximum tasks per pass; zero is treated as one.
-     * @param grain Minimum target draws per task; zero is treated as one.
-     * @param passOf Projection returning a draw's pass.
-     * @param ranges Output in GPU execution order; capacity is reused.
-     * @thread_safety Thread-safe for disjoint output vectors and immutable input.
-     */
+    /*
+    * @brief コマンド記録範囲を構築する
+    * @param draws ソート済みの描画バッチ
+    * @param concurrency パスごとの最大タスク数。ゼロは 1 とみなされる
+    * @param grain タスクごとの最小ターゲット描画数。ゼロは 1 とみなされる
+    * @param passOf 描画のパスを返す射影
+    * @param ranges 出力（GPU 実行順）。容量は再利用される
+    * @thread_safety 不変の入力に対して、異なる出力ベクターに対してスレッドセーフ
+    */
     template<class Draw, class PassProjection>
     void buildCommandRecordingRanges(const std::span<const Draw> draws, std::size_t concurrency,
         std::size_t grain, PassProjection passOf, std::vector<CommandRecordingRange>& ranges)

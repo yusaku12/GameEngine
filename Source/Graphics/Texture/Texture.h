@@ -44,6 +44,15 @@ namespace Engine
             const std::filesystem::path& path,
             const TextureLoadDesc& desc = TextureLoadDesc{});
 
+        /**
+         * @brief 単色テクスチャを初期化する
+         * @param device DirectX 12 デバイス
+         * @param descriptorHeap SRV 割り当て先の Descriptor Heap
+         * @param fence Upload コマンドの完了確認用 Fence
+         * @param color 単色の RGBA 値
+         * @param colorSpace 色空間
+         * @return 初期化に成功した場合は true
+         */
         bool initializeSolidColor(
             ID3D12Device& device,
             DX12DescriptorHeap& descriptorHeap,
@@ -170,9 +179,9 @@ namespace Engine
         Microsoft::WRL::ComPtr<ID3D12Resource> m_uploadBuffer; //!< Upload 用バッファ（完了後解放）
 
         // メタデータ
-        std::filesystem::path m_path;                                        //!< ファイルパス（正規化済み）
-        TextureResourceInfo m_info;                                          //!< GPU リソース情報
-        TextureState m_state = TextureState::Unloaded;                       //!< ロード状態
+        std::filesystem::path m_path;                  //!< ファイルパス（正規化済み）
+        TextureResourceInfo m_info;                    //!< GPU リソース情報
+        TextureState m_state = TextureState::Unloaded; //!< ロード状態
 
         // Upload 追跡
         const DX12Fence* m_uploadFence = nullptr; //!< Upload 完了確認用 Fence（非所有）

@@ -1154,7 +1154,7 @@ namespace Engine
                 .material = materialAddress,
                 .bones = bonePalette->getGpuVirtualAddress(),
                 .textures = textures,
-            });
+                });
             itemIndex += batchSize;
         }
         return true;

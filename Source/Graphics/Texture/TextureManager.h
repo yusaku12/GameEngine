@@ -141,8 +141,8 @@ namespace Engine
 
         /**
          * @brief TextureHandleに対応するBindless用SRV indexを取得する.
-         * \param handle テクスチャハンドル
-         * \return SRV index. 無効なハンドルの場合は UINT32_MAX
+         * @param handle テクスチャハンドル
+         * @return SRV index. 無効なハンドルの場合は UINT32_MAX
          */
         std::uint32_t getSRVIndex(TextureHandle handle) const noexcept;
 

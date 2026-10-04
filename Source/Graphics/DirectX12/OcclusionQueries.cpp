@@ -1,4 +1,4 @@
-#include "Pch.h"
+﻿#include "Pch.h"
 #include "Graphics\DirectX12\OcclusionQueries.h"
 #include "Graphics\DirectX12\Command.h"
 #include "Graphics\DirectX12\Pipeline.h"
