@@ -97,6 +97,7 @@
     <ClInclude Include="Source\Graphics\Shader\ShaderManager.h" />
     <ClInclude Include="Source\Graphics\DirectX12\SwapChain.h" />
     <ClInclude Include="Source\Graphics\Texture\TextureTypes.h" />
+    <ClInclude Include="Source\Graphics\Texture\TextureImageUtils.h" />
     <ClInclude Include="Source\Graphics\Texture\Texture.h" />
     <ClInclude Include="Source\Graphics\Texture\TextureManager.h" />
     <ClInclude Include="Source\Core\Object\ObjectGUID.h" />

@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <DirectXTex.h>
+#include <memory>
 #include "Graphics\DirectX12\Device.h"
 #include "Graphics\DirectX12\Descriptor.h"
 #include "Graphics\Texture\TextureTypes.h"
@@ -9,6 +10,7 @@ namespace Engine
 {
     class DX12CommandQueue;
     class DX12Fence;
+    class DX12CommandList;
 
     /**
      * @brief GPU テクスチャリソースの管理クラス
@@ -22,8 +24,10 @@ namespace Engine
     {
     public:
 
-        Texture() = default;
-        ~Texture() = default;
+        /** @brief 未ロードのテクスチャを作成する。 */
+        Texture();
+        /** @brief Upload Fence完了を確認し、リソースを解放する。 */
+        ~Texture();
 
         GE_DISABLE_COPY_AND_MOVE(Texture);
 
@@ -34,6 +38,7 @@ namespace Engine
          * @param fence Upload コマンドの完了確認用 Fence
          * @param path テクスチャファイルのパス
          * @param desc テクスチャロード設定
+         * @warning fenceはTextureの破棄またはfinalizeまで生存する必要がある
          * @return 初期化に成功した場合は true
          */
         bool initialize(
@@ -51,6 +56,7 @@ namespace Engine
          * @param fence Upload コマンドの完了確認用 Fence
          * @param color 単色の RGBA 値
          * @param colorSpace 色空間
+         * @warning fenceはTextureの破棄またはfinalizeまで生存する必要がある
          * @return 初期化に成功した場合は true
          */
         bool initializeSolidColor(
@@ -128,7 +134,7 @@ namespace Engine
         TextureColorSpace getColorSpace() const noexcept { return m_info.colorSpace; }
 
         /**
-         * @brief GPU メモリ使用量を取得する（推定）
+         * @brief 全ミップ・面の画素データ量を取得する（BCブロック単位。GPU割り当て量ではない）
          * @return バイト単位のメモリ使用量。未初期化時は 0
          */
         uint64_t getGPUMemorySize() const noexcept;
@@ -142,14 +148,6 @@ namespace Engine
          * @return 成功時は DirectXTex::ScratchImage、失敗時は empty
          */
         DirectX::ScratchImage loadImageFromFile(const std::filesystem::path& path);
-
-        /**
-         * @brief Metadata から適切な DXGI_FORMAT を決定する
-         * @param metadata DirectXTex メタデータ
-         * @param colorSpace 指定された色空間
-         * @return 決定された DXGI フォーマット
-         */
-        DXGI_FORMAT determineFormat(const DirectX::TexMetadata& metadata, TextureColorSpace colorSpace);
 
         /**
          * @brief GPU リソースを作成して Upload する
@@ -177,6 +175,7 @@ namespace Engine
         // リソース
         Microsoft::WRL::ComPtr<ID3D12Resource> m_gpuResource;  //!< GPU テクスチャリソース
         Microsoft::WRL::ComPtr<ID3D12Resource> m_uploadBuffer; //!< Upload 用バッファ（完了後解放）
+        std::unique_ptr<DX12CommandList> m_uploadCommandList; //!< Fence完了までAllocatorとCommand Listを保持
 
         // メタデータ
         std::filesystem::path m_path;                  //!< ファイルパス（正規化済み）

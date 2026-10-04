@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <cstdint>
+#include <d3d12.h>
 #include <dxgi.h>
 
 namespace Engine
@@ -40,7 +41,7 @@ namespace Engine
      */
     enum class TextureColorSpace : uint8_t
     {
-        Auto,    //!< 拡張子などから自動判定（.png, .jpg は sRGB、.dds は DDS内の情報から判定）
+        Auto,    //!< ローダーが取得したフォーマットから判定。DDSはファイル内の色空間を維持
         Linear,  //!< Linear (Normal, Roughness, Metallic, AO, Mask等)
         SRGB,    //!< sRGB (Albedo, BaseColor, Diffuse等)
     };
@@ -51,9 +52,12 @@ namespace Engine
     struct TextureLoadDesc
     {
         TextureColorSpace colorSpace = TextureColorSpace::Auto; //!< 色空間の指定
-        bool generateMips = true;                               //!< ミップマップを生成するか
-        bool allowCompression = true;                           //!< 圧縮テクスチャをそのまま使用するか
+        bool generateMips = true;                               //!< 非圧縮・単一ミップ画像のみ生成。BC画像は事前生成が必要
+        bool allowCompression = true;                           //!< BC圧縮を保持。falseの場合は展開（圧縮の新規生成はしない）
         bool premultipliedAlpha = false;                        //!< 事前乗算アルファか
+
+        /** @brief ロード設定が同じか判定する。 */
+        bool operator==(const TextureLoadDesc&) const noexcept = default;
     };
 
     /**

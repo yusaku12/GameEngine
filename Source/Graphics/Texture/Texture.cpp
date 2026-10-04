@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Graphics\Texture\Texture.h"
+#include "Graphics\Texture\TextureImageUtils.h"
 #include "Graphics\DirectX12\Command.h"
 #include "Graphics\DirectX12\Fence.h"
 #include "Graphics\DirectX12\Queue.h"
@@ -7,6 +8,13 @@
 
 namespace Engine
 {
+    Texture::Texture() = default;
+
+    Texture::~Texture()
+    {
+        finalize();
+    }
+
     bool Texture::initialize(
         ID3D12Device& device,
         DX12DescriptorHeap& descriptorHeap,
@@ -35,21 +43,18 @@ namespace Engine
             return false;
         }
 
-        const auto& metadata = scratchImage.GetMetadata();
-        if (m_info.colorSpace == TextureColorSpace::Auto)
-            m_info.colorSpace = DirectX::IsSRGB(metadata.format) ? TextureColorSpace::SRGB : TextureColorSpace::Linear;
-
-        if (desc.generateMips && metadata.mipLevels == 1)
+        const HRESULT preparationResult = TextureImageUtils::prepare(scratchImage, desc);
+        if (FAILED(preparationResult))
         {
-            DirectX::ScratchImage mipImage;
-            const HRESULT mipResult = DirectX::GenerateMipMaps(
-                scratchImage.GetImages(), scratchImage.GetImageCount(), metadata,
-                DirectX::TEX_FILTER_DEFAULT, 0, mipImage);
-            if (SUCCEEDED(mipResult))
-                scratchImage = std::move(mipImage);
-            else
-                LOG_WARNING("[Texture] Mipmap生成に失敗しました (HRESULT: 0x{:08X})", static_cast<unsigned int>(mipResult));
+            LOG_ERROR("[Texture] 画像の準備に失敗しました: {} (0x{:08X})",
+                m_path.string(), static_cast<unsigned int>(preparationResult));
+            m_state = TextureState::Failed;
+            return false;
         }
+        if (preparationResult == S_FALSE)
+            LOG_WARNING("[Texture] BC画像のミップは事前変換で生成してください: {}", m_path.string());
+        m_info.colorSpace = DirectX::IsSRGB(scratchImage.GetMetadata().format)
+            ? TextureColorSpace::SRGB : TextureColorSpace::Linear;
 
         m_state = TextureState::Uploading;
         if (!createGpuResource(device, descriptorHeap, directQueue, fence, scratchImage))
@@ -79,7 +84,15 @@ namespace Engine
         if (FAILED(image.Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM, 1, 1, 1, 1)) || image.GetPixels() == nullptr)
             return false;
         std::memcpy(image.GetPixels(), color.data(), color.size());
-        m_info.colorSpace = colorSpace;
+        if (!image.OverrideFormat(colorSpace == TextureColorSpace::SRGB
+            ? DirectX::MakeSRGB(image.GetMetadata().format) : image.GetMetadata().format))
+        {
+            LOG_ERROR("[Texture] 単色画像の色空間設定に失敗しました");
+            m_state = TextureState::Failed;
+            return false;
+        }
+        m_info.colorSpace = DirectX::IsSRGB(image.GetMetadata().format)
+            ? TextureColorSpace::SRGB : TextureColorSpace::Linear;
         m_state = TextureState::Uploading;
         if (!createGpuResource(device, descriptorHeap, directQueue, fence, image))
         {
@@ -98,6 +111,7 @@ namespace Engine
                 m_uploadFence->waitOnCpu(m_uploadFenceValue);
         }
 
+        m_uploadCommandList.reset();
         m_uploadBuffer.Reset();
         m_gpuResource.Reset();
         m_path.clear();
@@ -117,17 +131,20 @@ namespace Engine
         if (m_gpuResource == nullptr)
             return 0;
 
-        const std::uint64_t bitsPerPixel = DirectX::BitsPerPixel(m_info.format);
-        if (bitsPerPixel == 0)
-            return 0;
+        const auto resourceDesc = m_gpuResource->GetDesc();
+        DirectX::TexMetadata metadata{};
+        metadata.width = m_info.width;
+        metadata.height = m_info.height;
+        metadata.arraySize = resourceDesc.DepthOrArraySize;
+        metadata.mipLevels = m_info.mipLevels;
+        metadata.format = m_info.format;
+        metadata.dimension = DirectX::TEX_DIMENSION_TEXTURE2D;
         std::uint64_t totalSize = 0;
-        std::uint64_t width = m_info.width;
-        std::uint64_t height = m_info.height;
-        for (std::uint32_t mip = 0; mip < m_info.mipLevels; ++mip)
+        const HRESULT result = TextureImageUtils::dataSize(metadata, totalSize);
+        if (FAILED(result))
         {
-            totalSize += std::max<std::uint64_t>(1, width) * std::max<std::uint64_t>(1, height) * bitsPerPixel / 8;
-            width = std::max<std::uint64_t>(1, width / 2);
-            height = std::max<std::uint64_t>(1, height / 2);
+            LOG_ERROR("[Texture] サイズ計算に失敗しました (0x{:08X})", static_cast<unsigned int>(result));
+            return 0;
         }
         return totalSize;
     }
@@ -163,28 +180,6 @@ namespace Engine
         return scratchImage;
     }
 
-    DXGI_FORMAT Texture::determineFormat(const DirectX::TexMetadata& metadata, TextureColorSpace colorSpace)
-    {
-        DXGI_FORMAT format = metadata.format;
-        if (colorSpace == TextureColorSpace::SRGB)
-        {
-            if (format == DXGI_FORMAT_R8G8B8A8_UNORM) format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-            else if (format == DXGI_FORMAT_BC1_UNORM) format = DXGI_FORMAT_BC1_UNORM_SRGB;
-            else if (format == DXGI_FORMAT_BC2_UNORM) format = DXGI_FORMAT_BC2_UNORM_SRGB;
-            else if (format == DXGI_FORMAT_BC3_UNORM) format = DXGI_FORMAT_BC3_UNORM_SRGB;
-            else if (format == DXGI_FORMAT_B8G8R8A8_UNORM) format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
-        }
-        else if (colorSpace == TextureColorSpace::Linear)
-        {
-            if (format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) format = DXGI_FORMAT_R8G8B8A8_UNORM;
-            else if (format == DXGI_FORMAT_BC1_UNORM_SRGB) format = DXGI_FORMAT_BC1_UNORM;
-            else if (format == DXGI_FORMAT_BC2_UNORM_SRGB) format = DXGI_FORMAT_BC2_UNORM;
-            else if (format == DXGI_FORMAT_BC3_UNORM_SRGB) format = DXGI_FORMAT_BC3_UNORM;
-            else if (format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB) format = DXGI_FORMAT_B8G8R8A8_UNORM;
-        }
-        return format;
-    }
-
     bool Texture::createGpuResource(
         ID3D12Device& device,
         DX12DescriptorHeap& descriptorHeap,
@@ -211,7 +206,8 @@ namespace Engine
         if (FAILED(result))
             return false;
 
-        DX12CommandList commandList;
+        auto uploadCommandList = std::make_unique<DX12CommandList>();
+        auto& commandList = *uploadCommandList;
         if (!commandList.initialize(device, DX12CommandQueueType::DIRECT) || !commandList.begin(fence))
             return false;
         ID3D12GraphicsCommandList* nativeList = commandList.getForRecording();
@@ -230,6 +226,8 @@ namespace Engine
         if (!commandList.close())
             return false;
 
+        m_uploadCommandList = std::move(uploadCommandList);
+        m_gpuResource = resource;
         ID3D12CommandList* executionList = commandList.getForExecution();
         directQueue.execute(std::span<ID3D12CommandList* const>(&executionList, 1));
         const std::uint64_t fenceValue = fence.signal(*directQueue.get());
@@ -237,14 +235,13 @@ namespace Engine
             return false;
         commandList.markSubmitted(fenceValue);
 
-        m_gpuResource = resource;
         m_uploadFence = &fence;
         m_uploadFenceValue = fenceValue;
         m_info.resource = m_gpuResource.Get();
         m_info.width = static_cast<std::uint32_t>(metadata.width);
         m_info.height = static_cast<std::uint32_t>(metadata.height);
         m_info.mipLevels = static_cast<std::uint32_t>(metadata.mipLevels);
-        m_info.format = determineFormat(metadata, m_info.colorSpace);
+        m_info.format = metadata.format;
         m_info.type = metadata.IsCubemap() ? TextureType::TextureCube : TextureType::Texture2D;
         return createShaderResourceView(device, descriptorHeap);
     }

@@ -69,7 +69,7 @@ namespace Engine
         /**
          * @brief テクスチャをロードする（カスタム設定）
          * @param path テクスチャファイルのパス
-         * @param desc ロード設定
+         * @param desc ロード設定。同一パスでも異なる設定は別リソースとして保持
          * @return 割り当てたテクスチャハンドル。失敗時は無効なハンドル
          */
         TextureHandle load(const std::filesystem::path& path, const TextureLoadDesc& desc);
@@ -224,7 +224,12 @@ namespace Engine
         uint32_t m_nextHandle = 0;                        //!< 次に割り当てるハンドルインデックス
 
         // キャッシュ機構
-        std::unordered_map<std::string, uint32_t> m_pathToHandle;                          //!< パス → ハンドルインデックスのマッピング
+        struct CachedTexture
+        {
+            TextureLoadDesc desc;
+            uint32_t handle;
+        };
+        std::unordered_multimap<std::string, CachedTexture> m_pathToHandle;                          //!< パス → ハンドルインデックスのマッピング
         std::unordered_map<AssetGUID, std::filesystem::path, ObjectGUIDHash> m_guidToPath; //!< GUIDからAsset Pathへの対応
         std::unordered_map<std::filesystem::path, AssetGUID> m_pathToGuid;                 //!< Asset PathからGUIDへの対応
         mutable std::mutex m_assetPathMutex;                                               //!< GUIDとPathの対応を保護するMutex

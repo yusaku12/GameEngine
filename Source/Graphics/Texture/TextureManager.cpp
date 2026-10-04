@@ -85,11 +85,14 @@ namespace Engine
         const auto normPathStr = normPath.string();
 
         // キャッシュ確認
-        auto it = m_pathToHandle.find(normPathStr);
-        if (it != m_pathToHandle.end())
+        const auto [begin, end] = m_pathToHandle.equal_range(normPathStr);
+        for (auto it = begin; it != end; ++it)
         {
-            LOG_DEBUG("[TextureManager] キャッシュ: {}", normPathStr);
-            return TextureHandle(it->second);
+            if (it->second.desc == desc)
+            {
+                LOG_DEBUG("[TextureManager] キャッシュ: {}", normPathStr);
+                return TextureHandle{ it->second.handle };
+            }
         }
 
         // 新規ロード
@@ -179,7 +182,7 @@ namespace Engine
             // キャッシュから削除
             for (auto it = m_pathToHandle.begin(); it != m_pathToHandle.end(); ++it)
             {
-                if (it->second == handle.index)
+                if (it->second.handle == handle.index)
                 {
                     m_pathToHandle.erase(it);
                     break;
@@ -258,7 +261,7 @@ namespace Engine
 
         uint32_t handle = m_nextHandle++;
         m_textures.push_back(std::move(texture));
-        m_pathToHandle[path.string()] = handle;
+        m_pathToHandle.emplace(path.string(), CachedTexture{ desc, handle });
 
         LOG_DEBUG("[TextureManager] テクスチャロード: {} (Handle: {})", path.filename().string(), handle);
         return TextureHandle(handle);
