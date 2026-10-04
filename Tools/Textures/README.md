@@ -21,15 +21,16 @@ accepts `-MSBuild <path>` for an explicit MSBuild installation.
 
 Double-click [ConvertTexture.bat](./ConvertTexture.bat), or drag **one** source
 image onto it. Enter the source path (if not dropped), a usage number, and an
-output path. Press Enter at the output prompt to use `Cooked\<source-name>.dds`
-beside the source. Existing outputs require explicit confirmation; declining
+output path. Press Enter at the output prompt to save `<source-name>.dds` in
+the same directory as the source, without creating a `Cooked` directory.
+Existing outputs require explicit confirmation; declining
 cancels without modifying them. The console stays open to show success/errors.
 Usage is mandatory: numerical images must not be treated as sRGB color.
 
 For unattended conversion, pass the existing converter's named arguments:
 
 ```powershell
-.\Tools\Textures\ConvertTexture.bat -Source ".\Assets\Textures\albedo.png" -Output ".\Assets\Textures\Cooked\albedo.dds" -Usage Color
+.\Tools\Textures\ConvertTexture.bat -Source ".\Assets\Textures\albedo.png" -Output ".\Assets\Textures\albedo.dds" -Usage Color
 ```
 
 Argument mode does not pause and returns a nonzero exit code on failure.
@@ -44,10 +45,10 @@ switch the game's texture references to DDS.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Textures\ConvertTexture.ps1 `
-    -Source .\Assets\Textures\albedo.png -Output .\Assets\Textures\Cooked\albedo.dds -Usage Color
+    -Source .\Assets\Textures\albedo.png -Output .\Assets\Textures\albedo.dds -Usage Color
 
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Textures\ConvertTexture.ps1 `
-    -Source .\Assets\Textures\orm.png -Output .\Assets\Textures\Cooked\orm.dds -Usage Data
+    -Source .\Assets\Textures\orm.png -Output .\Assets\Textures\orm.dds -Usage Data
 ```
 
 | Usage | DDS format | Input interpretation | Default mips |

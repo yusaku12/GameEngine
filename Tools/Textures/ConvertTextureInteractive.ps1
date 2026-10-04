@@ -30,8 +30,7 @@ $choices = @{ "1" = "Color"; "2" = "Data"; "3" = "Mask"; "4" = "UI"; "5" = "HDR"
 $selection = (Read-Host "Usage number (required)").Trim()
 if (!$choices.ContainsKey($selection)) { throw "Select a usage number from 1 to 5." }
 $usage = $choices[$selection]
-$defaultOutput = Join-Path (Join-Path ([IO.Path]::GetDirectoryName($Source)) "Cooked") `
-    ([IO.Path]::GetFileNameWithoutExtension($Source) + ".dds")
+$defaultOutput = [IO.Path]::ChangeExtension($Source, ".dds")
 $Output = Read-Path "Output DDS path (Enter: $defaultOutput)"
 if ([string]::IsNullOrWhiteSpace($Output)) { $Output = $defaultOutput }
 $Output = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Output)
