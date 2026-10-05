@@ -1,4 +1,5 @@
 ﻿#include "Pch.h"
+#include "Core\Logging\Logging.h"
 #include "Core\Scene\LayerManager.h"
 
 namespace Engine
@@ -33,6 +34,8 @@ namespace Engine
                 return layer;
             }
         }
+
+        LOG_ERROR("Cannot register Layer because all {} Layer IDs are already in use.", m_names.size());
         return 0;
     }
 

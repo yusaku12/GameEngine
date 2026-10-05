@@ -46,7 +46,7 @@ namespace Engine
         std::shared_ptr<const SkinningPaletteSnapshot> skinningPalette; //!< Animation済みPalette Snapshot
         const DX12UploadBuffer* bonePaletteBuffer = nullptr;            //!< Bind PoseまたはAnimation済みBone行列Buffer
         std::uint32_t meshID = 0;                                       //!< Mesh識別子
-        float cameraDepth = 0.0f;                                       //!< Transparent sort用Camera深度
+        float cameraDepth = 0.0f;                                       //!< Transparent sort用Camera視線方向深度
         RenderPassType pass = RenderPassType::Opaque;                   //!< 描画Pass
     };
 } // namespace Engine

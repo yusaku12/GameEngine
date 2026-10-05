@@ -324,27 +324,66 @@ namespace Engine
             return ModelHandle::Invalid();
         }
 
-        const std::scoped_lock lock(m_mutex);
-        if (!normalizedKey.empty())
+        try
         {
-            if (const auto found = m_pathCache.find(normalizedKey); found != m_pathCache.end())
-                return found->second;
-        }
-        if (m_nextGeneration == 0)
-            ++m_nextGeneration;
+            const std::shared_ptr<const ModelResource> resource =
+                std::make_shared<const ModelResource>(std::move(model));
+            std::filesystem::path storedPath = normalizedKey;
+            const std::scoped_lock lock(m_mutex);
+            if (!normalizedKey.empty())
+            {
+                if (const auto found = m_pathCache.find(normalizedKey); found != m_pathCache.end())
+                    return found->second;
+            }
+            if (m_nextGeneration == 0 || m_entries.size() >= ModelHandle::INVALID_INDEX
+                || m_entries.size() == m_entries.max_size()
+                || (!normalizedKey.empty() && m_pathCache.size() == m_pathCache.max_size()))
+            {
+                LOG_ERROR("[ModelManager] Model cache capacity exhausted");
+                return ModelHandle::Invalid();
+            }
 
-        const ModelHandle handle{
-            .index = static_cast<std::uint32_t>(m_entries.size()),
-            .generation = m_nextGeneration++,
-        };
-        m_entries.push_back(Entry{
-            .resource = std::make_shared<const ModelResource>(std::move(model)),
-            .path = normalizedKey,
-            .generation = handle.generation,
-            });
-        if (!normalizedKey.empty())
-            m_pathCache.emplace(normalizedKey, handle);
-        return handle;
+            m_entries.reserve(m_entries.size() + 1);
+            if (!normalizedKey.empty())
+                m_pathCache.reserve(m_pathCache.size() + 1);
+
+            const ModelHandle handle{
+                .index = static_cast<std::uint32_t>(m_entries.size()),
+                .generation = m_nextGeneration,
+            };
+            bool pathInserted = false;
+            try
+            {
+                if (!normalizedKey.empty())
+                {
+                    pathInserted = m_pathCache.emplace(storedPath, handle).second;
+                    if (!pathInserted)
+                        return m_pathCache.at(normalizedKey);
+                }
+                m_entries.push_back(Entry{
+                    .resource = resource,
+                    .path = std::move(storedPath),
+                    .generation = handle.generation,
+                    });
+            }
+            catch (...)
+            {
+                if (pathInserted)
+                    m_pathCache.erase(normalizedKey);
+                throw;
+            }
+            ++m_nextGeneration;
+            return handle;
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[ModelManager] Failed to allocate memory while registering Model.");
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[ModelManager] Model cache capacity exceeded.");
+        }
+        return ModelHandle::Invalid();
     }
 
     bool ModelManager::save(const ModelHandle handle, const std::filesystem::path& path)
@@ -417,8 +456,40 @@ namespace Engine
                 return false;
             }
         }
-        if (!Serialization::ModelSerializer{}.save(normalizedPath, snapshot))
+        std::shared_ptr<const ModelResource> updatedResource;
+        std::filesystem::path stagedPath = normalizedPath;
+        try
+        {
+            updatedResource = std::make_shared<const ModelResource>(snapshot);
+            if (normalizedPath != entry.path)
+            {
+                if (m_pathCache.size() == m_pathCache.max_size())
+                    return false;
+                m_pathCache.reserve(m_pathCache.size() + 1);
+                const auto [cacheEntry, inserted] = m_pathCache.emplace(stagedPath, handle);
+                GE_UNUSED(cacheEntry);
+                if (!inserted)
+                    return false;
+            }
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[ModelManager] Failed to allocate memory while preparing Model save.");
             return false;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[ModelManager] Model path cache capacity exceeded while saving.");
+            return false;
+        }
+
+        const bool pathStaged = normalizedPath != entry.path;
+        if (!Serialization::ModelSerializer{}.save(normalizedPath, snapshot))
+        {
+            if (pathStaged)
+                m_pathCache.erase(stagedPath);
+            return false;
+        }
         for (std::size_t index = 0; index < snapshot.embeddedMaterials.size(); ++index)
         {
             const MaterialAsset& material = snapshot.embeddedMaterials[index];
@@ -426,14 +497,20 @@ namespace Engine
             if (materialHandle.isValid())
                 materials.update(materialHandle, material);
             else if (!materials.create(material).isValid())
+            {
+                if (pathStaged)
+                    m_pathCache.erase(stagedPath);
                 return false;
+            }
             registerMaterialTexturePaths(material, normalizedPath);
         }
-        entry.resource = std::make_shared<const ModelResource>(std::move(snapshot));
-        if (!entry.path.empty())
-            m_pathCache.erase(entry.path);
-        entry.path = normalizedPath;
-        m_pathCache[normalizedPath] = handle;
+        entry.resource = std::move(updatedResource);
+        if (pathStaged)
+        {
+            entry.path.swap(stagedPath);
+            if (!stagedPath.empty())
+                m_pathCache.erase(stagedPath);
+        }
         return true;
     }
 

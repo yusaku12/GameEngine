@@ -90,7 +90,7 @@ namespace Engine
         AnimatorStateID sourceState = 0;           //!< 遷移元の状態のID
         AnimatorStateID destinationState = 0;      //!< 遷移先の状態のID
         float duration = 0.0f;                     //!< 遷移の継続時間（秒）
-        float exitTime = 0.0f;                     //!< 遷移の終了時間（秒）
+        float exitTime = 0.0f;                     //!< 遷移元Stateの正規化時刻（0.0〜1.0）
         bool hasExitTime = false;                  //!< 遷移に終了時間が設定されているかどうか
         bool anyState = false;                     //!< 遷移がAnyStateからの遷移かどうか
         std::vector<AnimatorCondition> conditions; //!< 遷移条件のリスト

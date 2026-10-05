@@ -19,6 +19,8 @@ namespace Engine::Serialization
         Vector3 toEngine(const Vec3* value);
         Vector4 toEngine(const Vec4* value);
         AssetGUID toEngine(const AssetGuid* value);
+        bool isFinite(const Vector3& value) noexcept;
+        bool isFinite(const Vector4& value) noexcept;
 
         flatbuffers::Offset<MaterialAssetData> createEmbeddedMaterial(flatbuffers::FlatBufferBuilder& builder,
             const Engine::MaterialAsset& material)
@@ -65,6 +67,10 @@ namespace Engine::Serialization
                 || !std::isfinite(source->emissive_intensity()) || !std::isfinite(source->normal_scale())
                 || !std::isfinite(source->occlusion_strength()) || !std::isfinite(source->alpha_cutoff()))
                 return false;
+            const Vector4 baseColor = toEngine(source->base_color());
+            const Vector3 emissiveColor = toEngine(source->emissive_color());
+            if (!isFinite(baseColor) || !isFinite(emissiveColor))
+                return false;
             const MaterialRenderState* renderState = source->render_state();
             if (renderState->surface_type() > Engine::Serialization::MaterialSurfaceType_Transparent
                 || renderState->cull_mode() > Engine::Serialization::MaterialCullMode_Back
@@ -84,10 +90,10 @@ namespace Engine::Serialization
             material.renderState.blendMode = static_cast<Engine::MaterialBlendMode>(renderState->blend_mode());
             material.renderState.depthWrite = renderState->depth_write();
             material.renderState.renderQueueOffset = renderState->render_queue_offset();
-            material.baseColor = toEngine(source->base_color());
+            material.baseColor = baseColor;
             material.metallic = source->metallic();
             material.roughness = source->roughness();
-            material.emissiveColor = toEngine(source->emissive_color());
+            material.emissiveColor = emissiveColor;
             material.emissiveIntensity = source->emissive_intensity();
             material.normalScale = source->normal_scale();
             material.occlusionStrength = source->occlusion_strength();
@@ -114,6 +120,34 @@ namespace Engine::Serialization
         Vector4 toEngine(const Vec4* value) { return value ? Vector4(value->x(), value->y(), value->z(), value->w()) : Vector4::Zero; }
         AssetGUID toEngine(const AssetGuid* value) { return value ? AssetGUID{ value->high(), value->low() } : AssetGUID{}; }
 
+        bool isFinite(const Vector2& value) noexcept
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y);
+        }
+
+        bool isFinite(const Vector3& value) noexcept
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+        }
+
+        bool isFinite(const Vector4& value) noexcept
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y)
+                && std::isfinite(value.z) && std::isfinite(value.w);
+        }
+
+        bool isValidRotation(const Quaternion& value) noexcept
+        {
+            const float lengthSquared = value.x * value.x + value.y * value.y
+                + value.z * value.z + value.w * value.w;
+            return std::isfinite(lengthSquared) && lengthSquared > std::numeric_limits<float>::epsilon();
+        }
+
+        bool isValidKeyTime(const float time, const float previousTime, const float duration) noexcept
+        {
+            return std::isfinite(time) && time >= 0.0f && time <= duration && time > previousTime;
+        }
+
         flatbuffers::Offset<Bounds> createBounds(flatbuffers::FlatBufferBuilder& builder, const AABB& box, const BoundingSphere& sphere)
         {
             const Vec3 boxCenter = toFlat(Vector3(box.Center));
@@ -131,6 +165,9 @@ namespace Engine::Serialization
         {
             if (values == nullptr || values->size() != 16)
                 return false;
+            for (const float value : *values)
+                if (!std::isfinite(value))
+                    return false;
             matrix = Matrix(
                 values->Get(0), values->Get(1), values->Get(2), values->Get(3),
                 values->Get(4), values->Get(5), values->Get(6), values->Get(7),
@@ -254,7 +291,10 @@ namespace Engine::Serialization
             box.Extents = toEngine(bounds->box_extents());
             sphere.Center = toEngine(bounds->sphere_center());
             sphere.Radius = bounds->sphere_radius();
-            return true;
+            return isFinite(Vector3(box.Center)) && isFinite(Vector3(box.Extents))
+                && isFinite(Vector3(sphere.Center)) && std::isfinite(sphere.Radius)
+                && box.Extents.x >= 0.0f && box.Extents.y >= 0.0f && box.Extents.z >= 0.0f
+                && sphere.Radius >= 0.0f;
         }
 
         bool readMesh(const Mesh* source, MeshResource& mesh)
@@ -286,22 +326,42 @@ namespace Engine::Serialization
                     vertex.texCoord = toEngine(sourceVertex->tex_coord());
                     vertex.color = toEngine(sourceVertex->color());
                     vertex.boneWeights = toEngine(sourceVertex->bone_weights());
+                    const float totalBoneWeight = vertex.boneWeights.x + vertex.boneWeights.y
+                        + vertex.boneWeights.z + vertex.boneWeights.w;
                     if (sourceVertex->bone_indices()->size() != vertex.boneIndices.size())
                         return false;
                     std::copy(sourceVertex->bone_indices()->begin(), sourceVertex->bone_indices()->end(), vertex.boneIndices.begin());
+                    if (!isFinite(vertex.position) || !isFinite(vertex.normal)
+                        || !isFinite(vertex.tangent) || !isFinite(vertex.bitangent)
+                        || !isFinite(vertex.texCoord) || !isFinite(vertex.color)
+                        || !isFinite(vertex.boneWeights)
+                        || !std::isfinite(totalBoneWeight)
+                        || vertex.boneWeights.x < 0.0f || vertex.boneWeights.y < 0.0f
+                        || vertex.boneWeights.z < 0.0f || vertex.boneWeights.w < 0.0f
+                        || std::any_of(vertex.boneIndices.begin(), vertex.boneIndices.end(),
+                            [](const std::uint16_t boneIndex) { return boneIndex >= MAX_SKINNING_BONES; }))
+                        return false;
                     mesh.vertices.push_back(vertex);
                 }
             }
+            for (const std::uint32_t index : mesh.indices)
+                if (index >= mesh.vertices.size())
+                    return false;
             return true;
         }
 
         bool readSkeleton(const Skeleton* source, SkeletonResource& skeleton)
         {
-            if (source == nullptr || source->bones() == nullptr)
+            if (source == nullptr || source->bones() == nullptr || source->bones()->size() == 0
+                || source->bones()->size() > MAX_SKINNING_BONES)
                 return false;
             skeleton.bones.reserve(source->bones()->size());
-            for (const Bone* sourceBone : *source->bones()) {
-                if (sourceBone == nullptr || sourceBone->name() == nullptr)
+            for (std::size_t index = 0; index < source->bones()->size(); ++index) {
+                const Bone* sourceBone = source->bones()->Get(static_cast<flatbuffers::uoffset_t>(index));
+                if (sourceBone == nullptr || sourceBone->name() == nullptr
+                    || sourceBone->index() != index || sourceBone->name()->size() == 0
+                    || sourceBone->parent_index() < -1
+                    || sourceBone->parent_index() >= static_cast<std::int32_t>(index))
                     return false;
                 Engine::Bone bone;
                 bone.index = sourceBone->index();
@@ -310,7 +370,8 @@ namespace Engine::Serialization
                 if (!readMatrix(sourceBone->inverse_bind_pose(), bone.inverseBindPose) ||
                     !readMatrix(sourceBone->local_bind_transform(), bone.localBindTransform))
                     return false;
-                skeleton.boneMap.emplace(bone.name, bone.index);
+                if (!skeleton.boneMap.emplace(bone.name, bone.index).second)
+                    return false;
                 skeleton.bones.push_back(std::move(bone));
             }
             return true;
@@ -329,6 +390,39 @@ namespace Engine::Serialization
             return true;
         }
 
+        bool validateNodeHierarchy(const std::vector<Engine::ModelNode>& nodes, const std::size_t meshCount)
+        {
+            if (nodes.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
+                return false;
+
+            std::vector<std::uint8_t> childOccurrences(nodes.size(), 0);
+            for (std::size_t index = 0; index < nodes.size(); ++index)
+            {
+                const Engine::ModelNode& node = nodes[index];
+                if (node.parentIndex < -1 || node.parentIndex >= static_cast<std::int32_t>(index))
+                    return false;
+
+                for (const std::uint32_t child : node.children)
+                {
+                    if (child <= index || child >= nodes.size()
+                        || nodes[child].parentIndex != static_cast<std::int32_t>(index)
+                        || childOccurrences[child] != 0)
+                        return false;
+                    childOccurrences[child] = 1;
+                }
+
+                for (const std::uint32_t meshIndex : node.meshIndices)
+                    if (meshIndex >= meshCount)
+                        return false;
+            }
+
+            for (std::size_t index = 0; index < nodes.size(); ++index)
+                if ((nodes[index].parentIndex == -1) != (childOccurrences[index] == 0))
+                    return false;
+
+            return true;
+        }
+
         bool readAnimation(const Animation* source, AnimationResource& animation)
         {
             if (source == nullptr || source->name() == nullptr)
@@ -336,33 +430,56 @@ namespace Engine::Serialization
             animation.name = source->name()->str();
             animation.duration = source->duration();
             animation.ticksPerSecond = source->ticks_per_second();
+            if (!std::isfinite(animation.duration) || animation.duration <= 0.0f
+                || !std::isfinite(animation.ticksPerSecond) || animation.ticksPerSecond <= 0.0f)
+                return false;
             if (const auto* channels = source->channels()) {
                 animation.channels.reserve(channels->size());
                 for (const AnimationChannel* sourceChannel : *channels) {
-                    if (sourceChannel == nullptr || sourceChannel->node_name() == nullptr)
+                    if (sourceChannel == nullptr || sourceChannel->node_name() == nullptr
+                        || sourceChannel->node_name()->size() == 0)
                         return false;
                     Engine::AnimationChannel channel;
                     channel.nodeName = sourceChannel->node_name()->str();
                     if (const auto* positions = sourceChannel->positions()) {
+                        float previousTime = -1.0f;
                         for (const PositionKey* sourceKey : *positions) {
                             if (sourceKey == nullptr)
                                 return false;
-                            channel.positions.push_back({ toEngine(sourceKey->value()), sourceKey->time() });
+                            const Vector3 value = toEngine(sourceKey->value());
+                            const float time = sourceKey->time();
+                            if (!isFinite(value) || !isValidKeyTime(time, previousTime, animation.duration))
+                                return false;
+                            channel.positions.push_back({ value, time });
+                            previousTime = time;
                         }
                     }
                     if (const auto* rotations = sourceChannel->rotations()) {
+                        float previousTime = -1.0f;
                         for (const RotationKey* sourceKey : *rotations) {
                             if (sourceKey == nullptr)
                                 return false;
                             const Vector4 value = toEngine(sourceKey->value());
-                            channel.rotations.push_back({ Quaternion(value.x, value.y, value.z, value.w), sourceKey->time() });
+                            const Quaternion rotation(value.x, value.y, value.z, value.w);
+                            const float time = sourceKey->time();
+                            if (!isFinite(value) || !isValidRotation(rotation)
+                                || !isValidKeyTime(time, previousTime, animation.duration))
+                                return false;
+                            channel.rotations.push_back({ rotation, time });
+                            previousTime = time;
                         }
                     }
                     if (const auto* scales = sourceChannel->scales()) {
+                        float previousTime = -1.0f;
                         for (const ScaleKey* sourceKey : *scales) {
                             if (sourceKey == nullptr)
                                 return false;
-                            channel.scales.push_back({ toEngine(sourceKey->value()), sourceKey->time() });
+                            const Vector3 value = toEngine(sourceKey->value());
+                            const float time = sourceKey->time();
+                            if (!isFinite(value) || !isValidKeyTime(time, previousTime, animation.duration))
+                                return false;
+                            channel.scales.push_back({ value, time });
+                            previousTime = time;
                         }
                     }
                     animation.channels.push_back(std::move(channel));
@@ -429,7 +546,7 @@ namespace Engine::Serialization
         return FlatBufferWriter{}.saveAtomic(path, std::span<const std::uint8_t>(builder.GetBufferPointer(), builder.GetSize()));
     }
 
-    bool ModelSerializer::load(const std::filesystem::path& path, ModelResource& model) const
+    bool ModelSerializer::load(const std::filesystem::path& path, ModelResource& destination) const
     {
         FlatBufferReader reader;
         if (!reader.open(path))
@@ -450,7 +567,7 @@ namespace Engine::Serialization
             LOG_ERROR("Unsupported or invalid model version: {}", path.string());
             return false;
         }
-        model = ModelResource{};
+        ModelResource model;
         if (!readBounds(source->bounds(), model.boundingBox, model.boundingSphere))
             return false;
         model.sourcePath = source->source_path() ? std::filesystem::path(source->source_path()->str()) : std::filesystem::path{};
@@ -484,10 +601,14 @@ namespace Engine::Serialization
                 MaterialResource material;
                 material.name = sourceMaterial->name()->str();
                 material.baseColor = toEngine(sourceMaterial->base_color());
+                material.emissive = toEngine(sourceMaterial->emissive());
                 material.metallic = sourceMaterial->metallic();
                 material.roughness = sourceMaterial->roughness();
-                material.emissive = toEngine(sourceMaterial->emissive());
                 material.opacity = sourceMaterial->opacity();
+                if (!isFinite(material.baseColor) || !isFinite(material.emissive)
+                    || !std::isfinite(material.metallic) || !std::isfinite(material.roughness)
+                    || !std::isfinite(material.opacity))
+                    return false;
                 const MaterialTexturePaths* textures = sourceMaterial->textures();
                 if (textures != nullptr) {
                     material.textures.baseColor = textures->base_color() ? textures->base_color()->str() : "";
@@ -546,24 +667,29 @@ namespace Engine::Serialization
         for (const MeshResource& mesh : model.meshes) {
             for (const SubMeshResource& subMesh : mesh.subMeshes) {
                 const std::size_t materialCount = std::max(model.materials.size(), model.materialSlots.size());
-                if (subMesh.materialIndex >= materialCount ||
-                    static_cast<std::size_t>(subMesh.indexStart) + subMesh.indexCount > mesh.indices.size())
+                const std::size_t indexStart = subMesh.indexStart;
+                if (subMesh.materialIndex >= materialCount || indexStart > mesh.indices.size()
+                    || subMesh.indexCount > mesh.indices.size() - indexStart
+                    || subMesh.indexCount % 3 != 0)
                     return false;
             }
         }
         if ((!model.embeddedMaterials.empty() && model.embeddedMaterials.size() != model.materialSlots.size())
             || (!model.animationClipPaths.empty() && model.animationClipPaths.size() != model.animationClipGuids.size()))
             return false;
-        for (const Engine::ModelNode& node : model.nodes) {
-            if (node.parentIndex >= static_cast<std::int32_t>(model.nodes.size()))
-                return false;
-            for (const std::uint32_t child : node.children)
-                if (child >= model.nodes.size())
-                    return false;
-            for (const std::uint32_t meshIndex : node.meshIndices)
-                if (meshIndex >= model.meshes.size())
-                    return false;
+        if (!validateNodeHierarchy(model.nodes, model.meshes.size()))
+            return false;
+        for (const MeshResource& mesh : model.meshes)
+        {
+            if (model.skeleton.has_value())
+            {
+                for (const Engine::ModelVertex& vertex : mesh.vertices)
+                    for (const std::uint16_t boneIndex : vertex.boneIndices)
+                        if (boneIndex >= model.skeleton->bones.size())
+                            return false;
+            }
         }
+        destination = std::move(model);
         return true;
     }
 }

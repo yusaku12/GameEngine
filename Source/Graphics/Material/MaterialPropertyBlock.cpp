@@ -6,10 +6,24 @@ namespace Engine
     namespace
     {
         constexpr std::uint32_t bit(const std::uint32_t index) noexcept { return 1u << index; }
+
+        bool isFinite(const Vector3& value) noexcept
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+        }
+
+        bool isFinite(const Vector4& value) noexcept
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y)
+                && std::isfinite(value.z) && std::isfinite(value.w);
+        }
     }
 
     bool MaterialPropertyBlock::setFloat(const MaterialParameterID id, const float value) noexcept
     {
+        if (!std::isfinite(value))
+            return false;
+
         if (id == MaterialParameters::Metallic) { m_values.metallic = value; m_overrideMask |= bit(1); }
         else if (id == MaterialParameters::Roughness) { m_values.roughness = value; m_overrideMask |= bit(2); }
         else if (id == MaterialParameters::EmissiveIntensity) { m_values.emissiveIntensity = value; m_overrideMask |= bit(4); }
@@ -22,7 +36,7 @@ namespace Engine
 
     bool MaterialPropertyBlock::setVector3(const MaterialParameterID id, const Vector3& value) noexcept
     {
-        if (id != MaterialParameters::EmissiveColor)
+        if (id != MaterialParameters::EmissiveColor || !isFinite(value))
             return false;
         m_values.emissiveColor = value;
         m_overrideMask |= bit(3);
@@ -31,7 +45,7 @@ namespace Engine
 
     bool MaterialPropertyBlock::setVector4(const MaterialParameterID id, const Vector4& value) noexcept
     {
-        if (id != MaterialParameters::BaseColor)
+        if (id != MaterialParameters::BaseColor || !isFinite(value))
             return false;
         m_values.baseColor = value;
         m_overrideMask |= bit(0);

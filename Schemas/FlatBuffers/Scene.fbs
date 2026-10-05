@@ -30,6 +30,7 @@ table SceneObject {
     transform:TransformData;
     component_types:[string];
     components:[ComponentData];
+    tag_name:string;
 }
 
 table SceneFile {

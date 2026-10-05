@@ -84,6 +84,7 @@ namespace Engine
         Scene* scene = SceneManager::instance().createScene("EditorScene");
         if (scene != nullptr)
         {
+            m_observedSceneGuid = scene->getGUID();
             GameObject* camera = createGameObject(*scene, GameObjectCreateType::Camera);
             createGameObject(*scene, GameObjectCreateType::Model);
             if (camera != nullptr)
@@ -244,19 +245,106 @@ namespace Engine
         if (ImGuizmo::Manipulate(&viewMatrix._11, &projectionMatrix._11, operation, mode, &worldMatrix._11,
             nullptr, snap))
         {
-            const Matrix worldToPivot = (Matrix::CreateFromQuaternion(m_selectedObject->getWorldRotation())
-                * Matrix::CreateTranslation(pivotPosition)).Invert();
+            const auto hasFiniteMatrix = [](const Matrix& matrix)
+                {
+                    const std::array<float, 16> values{
+                        matrix._11, matrix._12, matrix._13, matrix._14,
+                        matrix._21, matrix._22, matrix._23, matrix._24,
+                        matrix._31, matrix._32, matrix._33, matrix._34,
+                        matrix._41, matrix._42, matrix._43, matrix._44
+                    };
+                    return std::ranges::all_of(values, [](const float value) { return std::isfinite(value); });
+                };
+
+            const auto hasFiniteInverse = [&hasFiniteMatrix](const Matrix& matrix)
+                {
+                    const float determinant = matrix.Determinant();
+                    if (!std::isfinite(determinant) || determinant == 0.0f)
+                        return false;
+
+                    return hasFiniteMatrix(matrix.Invert());
+                };
+
+            const Matrix pivotMatrix = Matrix::CreateFromQuaternion(m_selectedObject->getWorldRotation())
+                * Matrix::CreateTranslation(pivotPosition);
+            if (!hasFiniteInverse(pivotMatrix))
+            {
+                LOG_WARNING("[Editor] Cannot apply transform gizmo because its pivot matrix is invalid.");
+                return;
+            }
+
+            for (const GameObject* const selectedObject : selectedRoots)
+            {
+                const GameObject* const parent = selectedObject->getParent();
+                if (parent != nullptr && !hasFiniteInverse(parent->getWorldMatrix()))
+                {
+                    LOG_WARNING("[Editor] Cannot apply transform gizmo because a selected object's parent matrix is singular.");
+                    return;
+                }
+            }
+
+            if (!hasFiniteMatrix(worldMatrix))
+            {
+                LOG_WARNING("[Editor] Cannot apply transform gizmo because its output matrix contains invalid values.");
+                return;
+            }
+
+            const Matrix worldToPivot = pivotMatrix.Invert();
+            std::vector<Transform> manipulatedTransforms;
+            try
+            {
+                manipulatedTransforms.reserve(selectedRoots.size());
+            }
+            catch (const std::bad_alloc&)
+            {
+                LOG_ERROR("[Editor] Failed to allocate manipulated transforms for the selected objects.");
+                return;
+            }
+            catch (const std::length_error&)
+            {
+                LOG_ERROR("[Editor] Selected object transform collection exceeds its maximum capacity.");
+                return;
+            }
             for (GameObject* const selectedObject : selectedRoots)
             {
                 const Matrix targetWorld = selectedObject->getWorldMatrix() * worldToPivot * worldMatrix;
                 const GameObject* const parent = selectedObject->getParent();
                 const Matrix localMatrix = parent == nullptr
                     ? targetWorld : targetWorld * parent->getWorldMatrix().Invert();
-                const Transform manipulatedTransform = Transform::fromMatrix(localMatrix);
+                if (!hasFiniteMatrix(localMatrix))
+                {
+                    LOG_WARNING("[Editor] Cannot apply transform gizmo because a resulting local matrix is invalid.");
+                    return;
+                }
+
+                Transform manipulatedTransform;
+                if (!Transform::tryFromMatrix(localMatrix, manipulatedTransform))
+                {
+                    LOG_WARNING("[Editor] Cannot apply transform gizmo because a resulting local matrix cannot be represented as TRS.");
+                    return;
+                }
+
+                const Vector3& position = manipulatedTransform.getPosition();
+                const Vector3& scale = manipulatedTransform.getScale();
+                const Quaternion& rotation = manipulatedTransform.getRotation();
+                if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z)
+                    || !std::isfinite(scale.x) || !std::isfinite(scale.y) || !std::isfinite(scale.z)
+                    || !std::isfinite(rotation.x) || !std::isfinite(rotation.y)
+                    || !std::isfinite(rotation.z) || !std::isfinite(rotation.w))
+                {
+                    LOG_WARNING("[Editor] Cannot apply transform gizmo because decomposition produced invalid values.");
+                    return;
+                }
+                manipulatedTransforms.push_back(manipulatedTransform);
+            }
+
+            for (std::size_t index = 0; index < selectedRoots.size(); ++index)
+            {
+                GameObject* const selectedObject = selectedRoots[index];
                 Transform* const localTransform = selectedObject->getTransform();
-                localTransform->setPosition(manipulatedTransform.getPosition());
-                localTransform->setRotation(manipulatedTransform.getRotation());
-                localTransform->setScale(manipulatedTransform.getScale());
+                localTransform->setPosition(manipulatedTransforms[index].getPosition());
+                localTransform->setRotation(manipulatedTransforms[index].getRotation());
+                localTransform->setScale(manipulatedTransforms[index].getScale());
             }
         }
     }
@@ -269,6 +357,7 @@ namespace Engine
                 {
                     selectObject(nullptr);
                     m_hierarchyCreateParent = nullptr;
+                    m_hierarchyCreateParentGuid = {};
                     m_hierarchyCreateRequested = false;
                     m_hierarchyDuplicateRequested = false;
                     m_hierarchyDeleteRequested = false;
@@ -298,13 +387,16 @@ namespace Engine
                 if (scene == nullptr || paths.empty())
                     return;
 
-                selectObject(nullptr);
-                m_hierarchyCreateParent = nullptr;
-                m_hierarchyCreateRequested = false;
-                m_hierarchyDuplicateRequested = false;
-                m_hierarchyDeleteRequested = false;
-                m_hierarchyStatus.clear();
-                static_cast<void>(m_sceneDocument.load(*scene, paths.front()));
+                if (m_sceneDocument.load(*scene, paths.front()))
+                {
+                    selectObject(nullptr);
+                    m_hierarchyCreateParent = nullptr;
+                    m_hierarchyCreateParentGuid = {};
+                    m_hierarchyCreateRequested = false;
+                    m_hierarchyDuplicateRequested = false;
+                    m_hierarchyDeleteRequested = false;
+                    m_hierarchyStatus.clear();
+                }
             });
     }
 
@@ -482,6 +574,7 @@ namespace Engine
     {
         m_hierarchyCreateType = type;
         m_hierarchyCreateParent = parent;
+        m_hierarchyCreateParentGuid = parent == nullptr ? ObjectGUID{} : parent->getGUID();
         m_hierarchyCreateRequested = true;
     }
 
@@ -493,6 +586,57 @@ namespace Engine
 
     void EditorUi::drawHierarchy()
     {
+        Scene* const scene = SceneManager::instance().getActiveScene();
+        const ObjectGUID sceneGuid = scene == nullptr ? ObjectGUID{} : scene->getGUID();
+        if (sceneGuid != m_observedSceneGuid)
+        {
+            selectObject(nullptr);
+            m_hierarchyCreateParent = nullptr;
+            m_hierarchyCreateRequested = false;
+            m_hierarchyDuplicateRequested = false;
+            m_hierarchyDeleteRequested = false;
+            m_hierarchyCreateType = GameObjectCreateType::Empty;
+            m_selectedObjectGuid = {};
+            m_selectedObjectGuids.clear();
+            m_hierarchyCreateParentGuid = {};
+            m_observedSceneGuid = sceneGuid;
+        }
+        else if (scene != nullptr)
+        {
+            for (std::size_t index = 0; index < m_selectedObjectGuids.size();)
+            {
+                GameObject* const selected = scene->find(m_selectedObjectGuids[index]);
+                if (selected == nullptr)
+                {
+                    m_selectedObjectGuids.erase(m_selectedObjectGuids.begin() + static_cast<std::ptrdiff_t>(index));
+                    m_selectedObjects.erase(m_selectedObjects.begin() + static_cast<std::ptrdiff_t>(index));
+                    continue;
+                }
+                m_selectedObjects[index] = selected;
+                ++index;
+            }
+
+            m_selectedObject = m_selectedObjectGuid.isValid() ? scene->find(m_selectedObjectGuid) : nullptr;
+            if (m_selectedObject == nullptr)
+            {
+                m_selectedObject = m_selectedObjects.empty() ? nullptr : m_selectedObjects.back();
+                m_selectedObjectGuid = m_selectedObjectGuids.empty() ? ObjectGUID{} : m_selectedObjectGuids.back();
+                m_objectName.fill('\0');
+                if (m_selectedObject != nullptr)
+                    std::snprintf(m_objectName.data(), m_objectName.size(), "%s", m_selectedObject->getName().c_str());
+            }
+            if (m_hierarchyCreateParentGuid.isValid())
+            {
+                m_hierarchyCreateParent = scene->find(m_hierarchyCreateParentGuid);
+                if (m_hierarchyCreateParent == nullptr)
+                {
+                    m_hierarchyCreateParentGuid = {};
+                    m_hierarchyCreateRequested = false;
+                    m_hierarchyStatus = "Could not create object: its parent is no longer in the active scene.";
+                }
+            }
+        }
+
         if (!ImGui::Begin("Hierarchy"))
         {
             ImGui::End();
@@ -512,7 +656,6 @@ namespace Engine
         if (!m_hierarchyStatus.empty())
             ImGui::TextDisabled("%s", m_hierarchyStatus.c_str());
         ImGui::Separator();
-        Scene* scene = SceneManager::instance().getActiveScene();
         if (scene != nullptr)
         {
             ImGui::Selectable(scene->getName().c_str());
@@ -520,8 +663,22 @@ namespace Engine
             {
                 if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("HIERARCHY_GAME_OBJECT"))
                 {
-                    GameObject* droppedObject = *static_cast<GameObject* const*>(payload->Data);
-                    droppedObject->setParent(nullptr);
+                    if (payload->Data == nullptr || payload->DataSize != sizeof(ObjectGUID))
+                    {
+                        m_hierarchyStatus = "Could not move object: invalid drag payload.";
+                    }
+                    else
+                    {
+                        ObjectGUID droppedGUID;
+                        std::memcpy(&droppedGUID, payload->Data, sizeof(droppedGUID));
+                        GameObject* const droppedObject = scene->find(droppedGUID);
+                        if (droppedObject == nullptr)
+                            m_hierarchyStatus = "Could not move object: it is no longer in the active scene.";
+                        else if (!droppedObject->setParent(nullptr))
+                            m_hierarchyStatus = "Could not move object to the scene root.";
+                        else
+                            m_hierarchyStatus.clear();
+                    }
                 }
                 ImGui::EndDragDropTarget();
             }
@@ -558,6 +715,7 @@ namespace Engine
                 selectObject(object);
                 m_hierarchyCreateRequested = false;
                 m_hierarchyCreateParent = nullptr;
+                m_hierarchyCreateParentGuid = {};
                 m_hierarchyCreateType = GameObjectCreateType::Empty;
             }
             if (m_hierarchyDuplicateRequested)
@@ -595,8 +753,8 @@ namespace Engine
         }
         if (ImGui::BeginDragDropSource())
         {
-            GameObject* payloadObject = &object;
-            ImGui::SetDragDropPayload("HIERARCHY_GAME_OBJECT", &payloadObject, sizeof(payloadObject));
+            const ObjectGUID payloadGUID = object.getGUID();
+            ImGui::SetDragDropPayload("HIERARCHY_GAME_OBJECT", &payloadGUID, sizeof(payloadGUID));
             ImGui::TextUnformatted(object.getName().c_str());
             ImGui::EndDragDropSource();
         }
@@ -604,8 +762,23 @@ namespace Engine
         {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("HIERARCHY_GAME_OBJECT"))
             {
-                GameObject* droppedObject = *static_cast<GameObject* const*>(payload->Data);
-                droppedObject->setParent(&object);
+                if (payload->Data == nullptr || payload->DataSize != sizeof(ObjectGUID))
+                {
+                    m_hierarchyStatus = "Could not change object parent: invalid drag payload.";
+                }
+                else
+                {
+                    ObjectGUID droppedGUID;
+                    std::memcpy(&droppedGUID, payload->Data, sizeof(droppedGUID));
+                    Scene* const scene = SceneManager::instance().getActiveScene();
+                    GameObject* const droppedObject = scene == nullptr ? nullptr : scene->find(droppedGUID);
+                    if (droppedObject == nullptr)
+                        m_hierarchyStatus = "Could not change object parent: it is no longer in the active scene.";
+                    else if (!droppedObject->setParent(&object))
+                        m_hierarchyStatus = "Could not change object parent.";
+                    else
+                        m_hierarchyStatus.clear();
+                }
             }
             ImGui::EndDragDropTarget();
         }
@@ -651,9 +824,14 @@ namespace Engine
     void EditorUi::selectObject(GameObject* object)
     {
         m_selectedObject = object;
+        m_selectedObjectGuid = object == nullptr ? ObjectGUID{} : object->getGUID();
         m_selectedObjects.clear();
+        m_selectedObjectGuids.clear();
         if (object != nullptr)
+        {
             m_selectedObjects.push_back(object);
+            m_selectedObjectGuids.push_back(m_selectedObjectGuid);
+        }
         m_objectName.fill('\0');
         if (object != nullptr)
             std::snprintf(m_objectName.data(), m_objectName.size(), "%s", object->getName().c_str());
@@ -665,12 +843,17 @@ namespace Engine
         if (selected == m_selectedObjects.end())
         {
             m_selectedObjects.push_back(&object);
+            m_selectedObjectGuids.push_back(object.getGUID());
             m_selectedObject = &object;
+            m_selectedObjectGuid = object.getGUID();
         }
         else
         {
+            const std::size_t index = static_cast<std::size_t>(selected - m_selectedObjects.begin());
             m_selectedObjects.erase(selected);
+            m_selectedObjectGuids.erase(m_selectedObjectGuids.begin() + static_cast<std::ptrdiff_t>(index));
             m_selectedObject = m_selectedObjects.empty() ? nullptr : m_selectedObjects.back();
+            m_selectedObjectGuid = m_selectedObjectGuids.empty() ? ObjectGUID{} : m_selectedObjectGuids.back();
         }
 
         m_objectName.fill('\0');
@@ -745,7 +928,12 @@ namespace Engine
             return;
 
         m_selectedObjects = std::move(duplicates);
+        m_selectedObjectGuids.clear();
+        m_selectedObjectGuids.reserve(m_selectedObjects.size());
+        for (const GameObject* const duplicate : m_selectedObjects)
+            m_selectedObjectGuids.push_back(duplicate->getGUID());
         m_selectedObject = m_selectedObjects.back();
+        m_selectedObjectGuid = m_selectedObjectGuids.back();
         m_objectName.fill('\0');
         std::snprintf(m_objectName.data(), m_objectName.size(), "%s", m_selectedObject->getName().c_str());
         if (!instantiationFailed)

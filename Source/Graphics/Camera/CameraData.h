@@ -39,6 +39,5 @@ namespace Engine
         CameraClearMode clearMode = CameraClearMode::SolidColor;               //!< Cameraのクリアモード
         Color backgroundColor = Color(0.08f, 0.16f, 0.24f, 1.0f);              //!< Cameraの背景色
         std::uint32_t cullingMask = std::numeric_limits<std::uint32_t>::max(); //!< CameraのCulling Mask
-        int priority = 0;                                                      //!< Cameraの描画優先度
     };
 } // namespace Engine

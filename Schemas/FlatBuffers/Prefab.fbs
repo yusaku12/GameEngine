@@ -30,6 +30,7 @@ table PrefabNodeData {
     component_types:[string];
     components:[ComponentData];
     children:[PrefabNodeData];
+    tag_name:string;
 }
 
 table PrefabFile {

@@ -5,7 +5,9 @@ namespace Engine
 {
     namespace
     {
-        void collectIncludes(const std::filesystem::path& sourcePath, std::vector<std::filesystem::path>& dependencies)
+        void collectIncludes(const std::filesystem::path& sourcePath,
+            const std::vector<std::filesystem::path>& includeDirectories,
+            std::vector<std::filesystem::path>& dependencies)
         {
             std::ifstream file(sourcePath);
             std::string line;
@@ -16,11 +18,37 @@ namespace Engine
                 const std::size_t quoteEnd = quoteBegin == std::string::npos ? std::string::npos : line.find_first_of("\">", quoteBegin + 1);
                 if (quoteEnd == std::string::npos)
                     continue;
-                const auto includePath = std::filesystem::absolute(sourcePath.parent_path() / line.substr(quoteBegin + 1, quoteEnd - quoteBegin - 1));
-                if (std::find(dependencies.begin(), dependencies.end(), includePath) == dependencies.end())
+
+                const std::filesystem::path includeName = line.substr(quoteBegin + 1, quoteEnd - quoteBegin - 1);
+                std::vector<std::filesystem::path> candidates;
+                if (includeName.is_absolute())
+                    candidates.push_back(includeName);
+                else
                 {
+                    candidates.push_back(sourcePath.parent_path() / includeName);
+                    for (const std::filesystem::path& directory : includeDirectories)
+                        candidates.push_back(directory / includeName);
+                }
+
+                for (const std::filesystem::path& candidate : candidates)
+                {
+                    std::error_code error;
+                    if (!std::filesystem::is_regular_file(candidate, error))
+                        continue;
+                    std::filesystem::path includePath = std::filesystem::weakly_canonical(candidate, error);
+                    if (error)
+                    {
+                        error.clear();
+                        includePath = std::filesystem::absolute(candidate, error);
+                    }
+                    if (error)
+                        continue;
+                    includePath = includePath.lexically_normal();
+                    if (std::find(dependencies.begin(), dependencies.end(), includePath) != dependencies.end())
+                        break;
                     dependencies.push_back(includePath);
-                    collectIncludes(includePath, dependencies);
+                    collectIncludes(includePath, includeDirectories, dependencies);
+                    break;
                 }
             }
         }
@@ -36,9 +64,29 @@ namespace Engine
         m_shaderRoot = shaderRoot;
         m_callback = std::move(callback);
         m_running = true;
-        m_worker = std::thread(&ShaderManager::compileWorker, this);
-        if (m_mode != ShaderMode::Runtime && !m_watcher.start(m_shaderRoot))
-            LOG_WARNING("[ShaderHotReload] File watcher could not start: {}", m_shaderRoot.string());
+        try
+        {
+            m_worker = std::thread(&ShaderManager::compileWorker, this);
+        }
+        catch (const std::system_error& exception)
+        {
+            m_running = false;
+            LOG_ERROR("[ShaderManager] Could not start shader compiler worker: {}", exception.what());
+            return false;
+        }
+
+        if (m_mode != ShaderMode::Runtime)
+        {
+            try
+            {
+                if (!m_watcher.start(m_shaderRoot))
+                    LOG_WARNING("[ShaderHotReload] File watcher could not start: {}", m_shaderRoot.string());
+            }
+            catch (const std::exception& exception)
+            {
+                LOG_ERROR("[ShaderHotReload] File watcher initialization failed: {}", exception.what());
+            }
+        }
         return true;
     }
 
@@ -54,6 +102,7 @@ namespace Engine
         m_entries.clear();
         while (!m_requests.empty()) m_requests.pop();
         while (!m_results.empty()) m_results.pop();
+        m_recompilePending.clear();
     }
 
     ShaderID ShaderManager::registerShader(const ShaderCompileDesc& compileDesc)
@@ -61,10 +110,27 @@ namespace Engine
         ShaderCompileDesc normalized = compileDesc;
         normalized.sourcePath = std::filesystem::absolute(normalized.sourcePath);
         normalized.outputPath = std::filesystem::absolute(normalized.outputPath);
-        const std::vector<std::filesystem::path> dependencies = collectDependencies(normalized.sourcePath);
+        const std::vector<std::filesystem::path> dependencies =
+            collectDependencies(normalized.sourcePath, normalized.includeDirectories);
         std::scoped_lock lock(m_mutex);
+        if (m_nextId == 0)
+        {
+            LOG_ERROR("[ShaderManager] Shader ID space exhausted");
+            return 0;
+        }
+
         const ShaderID id = m_nextId++;
-        m_entries.emplace(id, Entry{ .compileDesc = std::move(normalized), .dependencies = dependencies, .shader = std::make_shared<DX12Shader>() });
+        const bool inserted = m_entries.emplace(id, Entry{
+            .compileDesc = std::move(normalized),
+            .dependencies = dependencies,
+            .shader = std::make_shared<DX12Shader>()
+            }).second;
+        if (!inserted)
+        {
+            LOG_ERROR("[ShaderManager] Shader ID collision detected: {}", id);
+            return 0;
+        }
+
         return id;
     }
 
@@ -87,6 +153,9 @@ namespace Engine
 
     void ShaderManager::processHotReload()
     {
+        if (m_watcher.consumeOverflow())
+            recompileAll();
+
         for (const auto& changedPath : m_watcher.consumeChanges())
         {
             std::scoped_lock lock(m_mutex);
@@ -112,6 +181,13 @@ namespace Engine
                 auto entry = m_entries.find(compileResult.id);
                 if (entry == m_entries.end())
                     continue;
+                if (m_recompilePending.erase(compileResult.id) != 0)
+                {
+                    entry->second.status = entry->second.shader != nullptr && entry->second.shader->isCompiled()
+                        ? ShaderStatus::Loaded : ShaderStatus::Unloaded;
+                    enqueueCompile(compileResult.id);
+                    continue;
+                }
                 if (!compileResult.result.success)
                 {
                     entry->second.status = ShaderStatus::ReloadFailed;
@@ -125,6 +201,7 @@ namespace Engine
                     continue;
                 }
                 entry->second.shader = std::move(replacement);
+                entry->second.dependencies = compileResult.dependencies;
                 entry->second.status = ShaderStatus::Loaded;
             }
             if (m_callback)
@@ -142,11 +219,7 @@ namespace Engine
     {
         std::scoped_lock lock(m_mutex);
         for (const auto& [id, entry] : m_entries)
-        {
-            if (entry.status == ShaderStatus::Compiling)
-                continue;
             enqueueCompile(id);
-        }
     }
 
     bool ShaderManager::reloadAll()
@@ -187,10 +260,12 @@ namespace Engine
         return entry == m_entries.end() ? nullptr : entry->second.shader;
     }
 
-    std::vector<std::filesystem::path> ShaderManager::collectDependencies(const std::filesystem::path& sourcePath)
+    std::vector<std::filesystem::path> ShaderManager::collectDependencies(
+        const std::filesystem::path& sourcePath,
+        const std::vector<std::filesystem::path>& includeDirectories)
     {
         std::vector<std::filesystem::path> dependencies;
-        collectIncludes(sourcePath, dependencies);
+        collectIncludes(sourcePath, includeDirectories, dependencies);
         return dependencies;
     }
 
@@ -236,9 +311,38 @@ namespace Engine
         if (entry == m_entries.end())
             return;
         if (entry->second.status == ShaderStatus::Compiling)
+        {
+            try
+            {
+                m_recompilePending.insert(id);
+            }
+            catch (const std::bad_alloc&)
+            {
+                LOG_ERROR("[ShaderManager] Failed to queue a pending shader recompilation for ID {}.", id);
+            }
+            catch (const std::length_error&)
+            {
+                LOG_ERROR("[ShaderManager] Pending shader recompilation capacity exceeded for ID {}.", id);
+            }
             return;
+        }
+        try
+        {
+            m_requests.push({ id, entry->second.compileDesc });
+        }
+        catch (const std::bad_alloc&)
+        {
+            entry->second.status = ShaderStatus::ReloadFailed;
+            LOG_ERROR("[ShaderManager] Failed to allocate a shader compile request for ID {}.", id);
+            return;
+        }
+        catch (const std::length_error&)
+        {
+            entry->second.status = ShaderStatus::ReloadFailed;
+            LOG_ERROR("[ShaderManager] Shader compile request capacity exceeded for ID {}.", id);
+            return;
+        }
         entry->second.status = ShaderStatus::Compiling;
-        m_requests.push({ id, entry->second.compileDesc });
         m_condition.notify_one();
     }
 
@@ -255,10 +359,30 @@ namespace Engine
                 request = std::move(m_requests.front());
                 m_requests.pop();
             }
-            const ShaderCompileResult result = m_compiler.compile(request.desc);
+            try
             {
-                std::scoped_lock lock(m_mutex);
-                m_results.push({ request.id, result });
+                const ShaderCompileResult result = m_compiler.compile(request.desc);
+                std::vector<std::filesystem::path> dependencies;
+                if (result.success)
+                    dependencies = collectDependencies(request.desc.sourcePath, request.desc.includeDirectories);
+                const std::scoped_lock lock(m_mutex);
+                m_results.push({ request.id, result, std::move(dependencies) });
+            }
+            catch (const std::exception& exception)
+            {
+                const std::scoped_lock lock(m_mutex);
+                if (const auto entry = m_entries.find(request.id); entry != m_entries.end())
+                    entry->second.status = ShaderStatus::ReloadFailed;
+                m_recompilePending.erase(request.id);
+                LOG_ERROR("[ShaderManager] Shader compilation worker failed for ID {}: {}", request.id, exception.what());
+            }
+            catch (...)
+            {
+                const std::scoped_lock lock(m_mutex);
+                if (const auto entry = m_entries.find(request.id); entry != m_entries.end())
+                    entry->second.status = ShaderStatus::ReloadFailed;
+                m_recompilePending.erase(request.id);
+                LOG_ERROR("[ShaderManager] Shader compilation worker failed for ID {} with an unknown exception.", request.id);
             }
         }
     }

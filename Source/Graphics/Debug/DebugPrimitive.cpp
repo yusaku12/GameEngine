@@ -9,6 +9,29 @@ namespace Engine
 {
     namespace
     {
+        bool isFinite(const Vector3& value) noexcept
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+        }
+
+        bool isFinite(const Color& value) noexcept
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y)
+                && std::isfinite(value.z) && std::isfinite(value.w);
+        }
+
+        bool isFinite(const Matrix& value) noexcept
+        {
+            return std::isfinite(value._11) && std::isfinite(value._12)
+                && std::isfinite(value._13) && std::isfinite(value._14)
+                && std::isfinite(value._21) && std::isfinite(value._22)
+                && std::isfinite(value._23) && std::isfinite(value._24)
+                && std::isfinite(value._31) && std::isfinite(value._32)
+                && std::isfinite(value._33) && std::isfinite(value._34)
+                && std::isfinite(value._41) && std::isfinite(value._42)
+                && std::isfinite(value._43) && std::isfinite(value._44);
+        }
+
         constexpr std::array DEBUG_INPUT_LAYOUT =
         {
             D3D12_INPUT_ELEMENT_DESC{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, static_cast<UINT>(offsetof(DebugPrimitive::Vertex, position)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -60,16 +83,35 @@ namespace Engine
 
     void DebugPrimitive::drawLine(const Vector3& start, const Vector3& end, const Color& color)
     {
+        if (!isFinite(start) || !isFinite(end) || !isFinite(color))
+        {
+            LOG_WARNING("[DebugPrimitive] Line request contains non-finite values.");
+            return;
+        }
+
         const std::scoped_lock lock(m_mutex);
         m_pending.lines.push_back({ start, end, color });
     }
 
     void DebugPrimitive::drawGrid(const Vector3& center, const float width, const float depth, float step, const Color& color)
     {
-        if (width <= 0.0f || depth <= 0.0f)
+        if (!isFinite(center) || !isFinite(color)
+            || !std::isfinite(width) || !std::isfinite(depth) || !std::isfinite(step)
+            || width <= 0.0f || depth <= 0.0f)
+        {
+            LOG_WARNING("[DebugPrimitive] Grid request has invalid dimensions or position.");
             return;
+        }
         if (step <= 0.0f)
             step = 1.0f;
+
+        const double maxIntervals = static_cast<double>((std::numeric_limits<std::size_t>::max)() - 1);
+        if (static_cast<double>(width) / step >= maxIntervals
+            || static_cast<double>(depth) / step >= maxIntervals)
+        {
+            LOG_WARNING("[DebugPrimitive] Grid request exceeds the supported line count.");
+            return;
+        }
 
         const std::scoped_lock lock(m_mutex);
         m_pending.grids.push_back({ center, width, depth, step, color });
@@ -77,32 +119,47 @@ namespace Engine
 
     void DebugPrimitive::drawSphere(const Matrix& world, const float radius, const Color& color)
     {
-        if (radius <= 0.0f)
+        if (!isFinite(world) || !isFinite(color) || !std::isfinite(radius) || radius <= 0.0f)
+        {
+            LOG_WARNING("[DebugPrimitive] Sphere request contains invalid values.");
             return;
+        }
         const std::scoped_lock lock(m_mutex);
         m_pending.spheres.push_back({ world, radius, color });
     }
 
     void DebugPrimitive::drawBox(const Matrix& world, const Vector3& extents, const Color& color)
     {
-        if (extents.x <= 0.0f || extents.y <= 0.0f || extents.z <= 0.0f)
+        if (!isFinite(world) || !isFinite(extents) || !isFinite(color)
+            || extents.x <= 0.0f || extents.y <= 0.0f || extents.z <= 0.0f)
+        {
+            LOG_WARNING("[DebugPrimitive] Box request contains invalid values.");
             return;
+        }
         const std::scoped_lock lock(m_mutex);
         m_pending.boxes.push_back({ world, extents, color });
     }
 
     void DebugPrimitive::drawCylinder(const Matrix& world, const float radius, const float height, const Color& color)
     {
-        if (radius <= 0.0f || height <= 0.0f)
+        if (!isFinite(world) || !isFinite(color) || !std::isfinite(radius) || !std::isfinite(height)
+            || radius <= 0.0f || height <= 0.0f)
+        {
+            LOG_WARNING("[DebugPrimitive] Cylinder request contains invalid values.");
             return;
+        }
         const std::scoped_lock lock(m_mutex);
         m_pending.cylinders.push_back({ world, radius, height, color });
     }
 
     void DebugPrimitive::drawCapsule(const Matrix& world, const float radius, const float halfHeight, const Color& color)
     {
-        if (radius <= 0.0f || halfHeight < 0.0f)
+        if (!isFinite(world) || !isFinite(color) || !std::isfinite(radius) || !std::isfinite(halfHeight)
+            || radius <= 0.0f || halfHeight < 0.0f)
+        {
+            LOG_WARNING("[DebugPrimitive] Capsule request contains invalid values.");
             return;
+        }
         const std::scoped_lock lock(m_mutex);
         m_pending.capsules.push_back({ world, radius, halfHeight, color });
     }
@@ -129,6 +186,12 @@ namespace Engine
         bool succeeded = true;
         for (DX12UploadBuffer& buffer : m_vertexBuffers)
             succeeded = buffer.finalize() && succeeded;
+        if (!succeeded)
+        {
+            LOG_ERROR("[DebugPrimitive] GPU使用完了を確認できないためFinalizeを中止します");
+            return false;
+        }
+
         m_pipeline.finalize();
         clear();
         m_renderRequests.clear();
@@ -137,7 +200,7 @@ namespace Engine
         m_frameUsed.fill(false);
         m_device = nullptr;
         m_fence = nullptr;
-        return succeeded;
+        return true;
     }
 
     bool DebugPrimitive::rebuildPipeline(const DX12Shader& vertexShader, const DX12Shader& pixelShader)
@@ -161,11 +224,19 @@ namespace Engine
             .enableAlphaBlend = true,
             .enableDepthWrite = false,
         };
-        m_pipeline.finalize();
-        return m_pipeline.initialize(*m_device->get(), config);
+        DX12GraphicsPipeline replacement;
+        if (!replacement.initialize(*m_device->get(), config))
+            return false;
+
+        m_pipeline.swap(replacement);
+        return true;
     }
 
-    bool DebugPrimitive::render(DX12CommandList& commandList, const std::uint32_t frameIndex, const Matrix& viewProjection)
+    bool DebugPrimitive::render(
+        DX12CommandList& commandList,
+        const std::uint32_t frameIndex,
+        const Matrix& viewProjection,
+        const bool enabled)
     {
         if (frameIndex >= FRAME_COUNT)
             return false;
@@ -173,8 +244,14 @@ namespace Engine
         consumeRequests();
         if (m_renderRequests.empty())
             return true;
+        if (!enabled)
+        {
+            m_renderRequests.clear();
+            return true;
+        }
 
-        buildVertices();
+        if (!buildVertices())
+            return false;
         m_renderRequests.clear();
         if (m_vertices.empty())
             return true;
@@ -182,6 +259,13 @@ namespace Engine
             return false;
 
         const std::size_t byteSize = m_vertices.size() * sizeof(Vertex);
+        if (byteSize > (std::numeric_limits<UINT>::max)()
+            || m_vertices.size() > (std::numeric_limits<UINT>::max)())
+        {
+            LOG_ERROR("[DebugPrimitive] Vertex data exceeds DirectX 12 draw limits.");
+            return false;
+        }
+
         const std::span bytes(reinterpret_cast<const std::byte*>(m_vertices.data()), byteSize);
         DX12UploadBuffer& buffer = m_vertexBuffers[frameIndex];
         if (!buffer.write(bytes) || !m_pipeline.bind(commandList))
@@ -217,20 +301,60 @@ namespace Engine
         m_renderRequests.swap(m_pending);
     }
 
-    void DebugPrimitive::buildVertices()
+    bool DebugPrimitive::buildVertices()
     {
         m_vertices.clear();
-        std::size_t estimate = m_renderRequests.lines.size() * 2
-            + m_renderRequests.spheres.size() * CURVE_SEGMENTS * 6
-            + m_renderRequests.boxes.size() * 24
-            + m_renderRequests.cylinders.size() * (CURVE_SEGMENTS * 4 + 8)
-            + m_renderRequests.capsules.size() * (CURVE_SEGMENTS * 4 + CURVE_SEGMENTS * 8);
+        constexpr std::size_t maxVertexCount = (std::numeric_limits<UINT>::max)();
+        std::size_t estimate = 0;
+        const auto addVertices = [&estimate](const std::size_t count, const std::size_t verticesPerRequest)
+            {
+                constexpr std::size_t maximum = (std::numeric_limits<UINT>::max)();
+                if (count > (maximum - estimate) / verticesPerRequest)
+                    return false;
+                estimate += count * verticesPerRequest;
+                return true;
+            };
+        if (!addVertices(m_renderRequests.lines.size(), 2)
+            || !addVertices(m_renderRequests.spheres.size(), CURVE_SEGMENTS * 6)
+            || !addVertices(m_renderRequests.boxes.size(), 24)
+            || !addVertices(m_renderRequests.cylinders.size(), CURVE_SEGMENTS * 4 + 8)
+            || !addVertices(m_renderRequests.capsules.size(), CURVE_SEGMENTS * 12))
+        {
+            LOG_ERROR("[DebugPrimitive] Requested vertex count exceeds DirectX 12 draw limits.");
+            return false;
+        }
+
         for (const GridRequest& grid : m_renderRequests.grids)
         {
-            estimate += (static_cast<std::size_t>(std::floor(grid.width / grid.step))
-                + static_cast<std::size_t>(std::floor(grid.depth / grid.step)) + 2) * 2;
+            const double xLineCount = std::floor(static_cast<double>(grid.width) / static_cast<double>(grid.step)) + 1.0;
+            const double zLineCount = std::floor(static_cast<double>(grid.depth) / static_cast<double>(grid.step)) + 1.0;
+            if (!std::isfinite(xLineCount) || !std::isfinite(zLineCount)
+                || xLineCount < 1.0 || zLineCount < 1.0
+                || xLineCount > static_cast<double>(maxVertexCount / 2)
+                || zLineCount > static_cast<double>(maxVertexCount / 2)
+                || xLineCount + zLineCount > static_cast<double>((maxVertexCount - estimate) / 2))
+            {
+                LOG_ERROR("[DebugPrimitive] Grid vertex count exceeds DirectX 12 draw limits.");
+                return false;
+            }
+
+            estimate += (static_cast<std::size_t>(xLineCount) + static_cast<std::size_t>(zLineCount)) * 2;
         }
-        m_vertices.reserve(estimate);
+
+        try
+        {
+            m_vertices.reserve(estimate);
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[DebugPrimitive] Failed to allocate memory for debug vertices.");
+            return false;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[DebugPrimitive] Debug vertex request exceeds container capacity.");
+            return false;
+        }
 
         for (const LineRequest& line : m_renderRequests.lines)
             appendLine(line.start, line.end, line.color);
@@ -239,8 +363,10 @@ namespace Engine
         {
             const float halfWidth = grid.width * 0.5f;
             const float halfDepth = grid.depth * 0.5f;
-            const std::size_t xLineCount = static_cast<std::size_t>(std::floor(grid.width / grid.step)) + 1;
-            const std::size_t zLineCount = static_cast<std::size_t>(std::floor(grid.depth / grid.step)) + 1;
+            const std::size_t xLineCount = static_cast<std::size_t>(
+                std::floor(static_cast<double>(grid.width) / static_cast<double>(grid.step))) + 1;
+            const std::size_t zLineCount = static_cast<std::size_t>(
+                std::floor(static_cast<double>(grid.depth) / static_cast<double>(grid.step))) + 1;
             for (std::size_t index = 0; index < xLineCount; ++index)
             {
                 const float x = grid.center.x - halfWidth + static_cast<float>(index) * grid.step;
@@ -344,6 +470,12 @@ namespace Engine
                 }
             }
         }
+        if (m_vertices.size() > maxVertexCount)
+        {
+            LOG_ERROR("[DebugPrimitive] Generated vertex count exceeds DirectX 12 draw limits.");
+            return false;
+        }
+        return true;
     }
 
     bool DebugPrimitive::ensureFrameCapacity(const std::uint32_t frameIndex, const std::size_t vertexCount)
@@ -354,6 +486,12 @@ namespace Engine
             return false;
 
         const std::size_t capacity = nextPowerOfTwo(std::max(vertexCount, INITIAL_VERTEX_CAPACITY));
+        if (capacity == 0 || capacity > (std::numeric_limits<std::size_t>::max)() / sizeof(Vertex))
+        {
+            LOG_ERROR("[DebugPrimitive] Vertex buffer capacity is too large.");
+            return false;
+        }
+
         DX12UploadBuffer& buffer = m_vertexBuffers[frameIndex];
         if (!buffer.finalize()
             || !buffer.initialize(*m_device->get(), *m_fence, capacity * sizeof(Vertex)))

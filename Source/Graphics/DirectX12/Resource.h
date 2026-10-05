@@ -57,7 +57,7 @@ namespace Engine
          * @brief 記録中の Command List に Resource State 遷移を記録する
          * @param commandList 遷移を記録する Command List
          * @param state 遷移先の Resource State
-         * @param subresource 遷移対象の Subresource
+         * @param subresource 遷移対象。現在は全Subresource一括遷移のみ対応
          * @return 遷移を記録できた場合は true
          */
         bool transition(DX12CommandList& commandList, D3D12_RESOURCE_STATES state, UINT subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);

@@ -23,15 +23,35 @@ namespace Engine
         const std::filesystem::path& path,
         const TextureLoadDesc& desc)
     {
-        finalize();
+        if (!finalize())
+            return false;
 
-        if (path.empty() || !std::filesystem::exists(path))
+        if (path.empty())
+        {
+            LOG_ERROR("[Texture] ファイルパスが空です");
+            return false;
+        }
+
+        std::error_code error;
+        const bool fileExists = std::filesystem::exists(path, error);
+        if (error)
+        {
+            LOG_ERROR("[Texture] ファイルの存在確認に失敗しました: {} ({})", path.string(), error.message());
+            return false;
+        }
+        if (!fileExists)
         {
             LOG_ERROR("[Texture] ファイルが見つかりません: {}", path.string());
             return false;
         }
 
-        m_path = std::filesystem::weakly_canonical(path);
+        m_path = std::filesystem::weakly_canonical(path, error);
+        if (error)
+        {
+            LOG_ERROR("[Texture] ファイルパスの正規化に失敗しました: {} ({})", path.string(), error.message());
+            return false;
+        }
+
         m_info.colorSpace = desc.colorSpace;
         m_state = TextureState::Loading;
 
@@ -79,7 +99,15 @@ namespace Engine
         const std::array<std::uint8_t, 4>& color,
         TextureColorSpace colorSpace)
     {
-        finalize();
+        if (!finalize())
+            return false;
+        if (colorSpace != TextureColorSpace::Linear && colorSpace != TextureColorSpace::SRGB)
+        {
+            LOG_ERROR("[Texture] 単色画像の色空間設定が不正です");
+            m_state = TextureState::Failed;
+            return false;
+        }
+
         DirectX::ScratchImage image;
         if (FAILED(image.Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM, 1, 1, 1, 1)) || image.GetPixels() == nullptr)
             return false;
@@ -103,12 +131,18 @@ namespace Engine
         return true;
     }
 
-    void Texture::finalize()
+    bool Texture::finalize()
     {
-        if (m_uploadFence != nullptr && m_uploadFenceValue != 0)
+        if (m_uploadFence != nullptr)
         {
-            if (!m_uploadFence->isComplete(m_uploadFenceValue))
-                m_uploadFence->waitOnCpu(m_uploadFenceValue);
+            const std::uint64_t fenceValue = std::max(
+                m_uploadFenceValue, m_uploadFence->getLastSignaledValue());
+            if (fenceValue != 0 && !m_uploadFence->isComplete(fenceValue)
+                && !m_uploadFence->waitOnCpu(fenceValue))
+            {
+                LOG_ERROR("[Texture] GPU使用完了を確認できないためResourceを解放しません");
+                return false;
+            }
         }
 
         m_uploadCommandList.reset();
@@ -119,6 +153,7 @@ namespace Engine
         m_state = TextureState::Unloaded;
         m_uploadFence = nullptr;
         m_uploadFenceValue = 0;
+        return true;
     }
 
     const TextureResourceInfo* Texture::getResourceInfo() const noexcept
@@ -197,8 +232,18 @@ namespace Engine
         result = DirectX::PrepareUpload(&device, scratchImage.GetImages(), scratchImage.GetImageCount(), metadata, subresources);
         if (FAILED(result) || subresources.empty())
             return false;
+        if (subresources.size() > (std::numeric_limits<UINT>::max)())
+        {
+            LOG_ERROR("[Texture] サブリソース数がDirectX 12の上限を超えています");
+            return false;
+        }
 
         const UINT64 uploadSize = GetRequiredIntermediateSize(resource.Get(), 0, static_cast<UINT>(subresources.size()));
+        if (uploadSize == 0)
+        {
+            LOG_ERROR("[Texture] Upload Buffer の必要サイズが不正です");
+            return false;
+        }
         const auto uploadProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
         const auto uploadDescription = CD3DX12_RESOURCE_DESC::Buffer(uploadSize);
         result = device.CreateCommittedResource(&uploadProperties, D3D12_HEAP_FLAG_NONE, &uploadDescription,
@@ -229,14 +274,17 @@ namespace Engine
         m_uploadCommandList = std::move(uploadCommandList);
         m_gpuResource = resource;
         ID3D12CommandList* executionList = commandList.getForExecution();
-        directQueue.execute(std::span<ID3D12CommandList* const>(&executionList, 1));
+        if (executionList == nullptr
+            || !directQueue.execute(std::span<ID3D12CommandList* const>(&executionList, 1)))
+            return false;
         const std::uint64_t fenceValue = fence.signal(*directQueue.get());
         if (fenceValue == 0)
             return false;
-        commandList.markSubmitted(fenceValue);
-
         m_uploadFence = &fence;
         m_uploadFenceValue = fenceValue;
+        if (!commandList.markSubmitted(fenceValue))
+            return false;
+
         m_info.resource = m_gpuResource.Get();
         m_info.width = static_cast<std::uint32_t>(metadata.width);
         m_info.height = static_cast<std::uint32_t>(metadata.height);
@@ -249,8 +297,15 @@ namespace Engine
     bool Texture::createShaderResourceView(ID3D12Device& device, DX12DescriptorHeap& descriptorHeap)
     {
         const auto allocation = descriptorHeap.allocate();
-        if (!allocation.has_value() || !allocation->gpu.has_value())
+        if (!allocation.has_value())
             return false;
+        if (!allocation->gpu.has_value())
+        {
+            if (!descriptorHeap.release(allocation->cpu.index))
+                LOG_ERROR("[Texture] Failed to release a Descriptor slot from a non-shader-visible heap.");
+            return false;
+        }
+
         D3D12_SHADER_RESOURCE_VIEW_DESC description{};
         description.Format = m_info.format;
         description.ViewDimension = m_info.type == TextureType::TextureCube

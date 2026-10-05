@@ -13,11 +13,41 @@ namespace Engine
             return false;
         }
 
+        switch (config.type)
+        {
+        case D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV:
+        case D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER:
+        case D3D12_DESCRIPTOR_HEAP_TYPE_RTV:
+        case D3D12_DESCRIPTOR_HEAP_TYPE_DSV:
+            break;
+        default:
+            LOG_ERROR("[DX12] Descriptor Heap の種別が不正です");
+            return false;
+        }
+
         const bool shaderVisibleType = config.type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV
             || config.type == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
         if (config.shaderVisible && !shaderVisibleType)
         {
             LOG_ERROR("[DX12] RTV/DSV Descriptor Heap を Shader Visible にすることはできません");
+            return false;
+        }
+
+        try
+        {
+            m_allocated.assign(config.capacity, 0);
+            m_freeIndices.reserve(config.capacity);
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[DX12] Descriptor Heap の割り当て管理領域を確保できません");
+            finalize();
+            return false;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[DX12] Descriptor Heap の割り当て管理容量が上限を超えています");
+            finalize();
             return false;
         }
 
@@ -31,6 +61,7 @@ namespace Engine
         if (FAILED(result))
         {
             LOG_ERROR("[DX12] Descriptor Heap の作成に失敗しました (HRESULT: 0x{:08X})", static_cast<unsigned long>(result));
+            finalize();
             return false;
         }
 
@@ -38,7 +69,15 @@ namespace Engine
         if (config.shaderVisible)
             m_gpuStart = m_heap->GetGPUDescriptorHandleForHeapStart();
 
-        m_descriptorSize = device.GetDescriptorHandleIncrementSize(config.type);
+        const std::uint32_t descriptorSize = device.GetDescriptorHandleIncrementSize(config.type);
+        if (descriptorSize == 0)
+        {
+            LOG_ERROR("[DX12] Descriptor Heap のDescriptor幅を取得できません");
+            finalize();
+            return false;
+        }
+
+        m_descriptorSize = descriptorSize;
         m_capacity = config.capacity;
         m_shaderVisible = config.shaderVisible;
         return true;
@@ -52,6 +91,9 @@ namespace Engine
         m_descriptorSize = 0;
         m_capacity = 0;
         m_nextIndex = 0;
+        m_allocatedCount = 0;
+        m_freeIndices.clear();
+        m_allocated.clear();
         m_shaderVisible = false;
     }
 
@@ -63,25 +105,45 @@ namespace Engine
             return std::nullopt;
         }
 
-        if (m_nextIndex == m_capacity)
+        if (m_freeIndices.empty() && m_nextIndex == m_capacity)
         {
             LOG_ERROR("[DX12] Descriptor Heap の容量が不足しています (容量: {})", m_capacity);
             return std::nullopt;
         }
 
-        const SIZE_T offset = static_cast<SIZE_T>(m_nextIndex) * m_descriptorSize;
+        const std::uint32_t index = m_freeIndices.empty() ? m_nextIndex++ : m_freeIndices.back();
+        if (!m_freeIndices.empty())
+            m_freeIndices.pop_back();
+
+        const SIZE_T offset = static_cast<SIZE_T>(index) * m_descriptorSize;
         DX12DescriptorAllocation allocation{};
         allocation.cpu.native.ptr = m_cpuStart.ptr + offset;
-        allocation.cpu.index = m_nextIndex;
+        allocation.cpu.index = index;
         if (m_shaderVisible)
         {
             allocation.gpu = DX12GpuDescriptorHandle{
                 .native = { m_gpuStart.ptr + offset },
-                .index = m_nextIndex,
+                .index = index,
             };
         }
 
-        ++m_nextIndex;
+        m_allocated[index] = 1;
+        ++m_allocatedCount;
         return allocation;
+    }
+
+    bool DX12DescriptorHeap::release(const std::uint32_t index)
+    {
+        if (m_heap == nullptr || index >= m_nextIndex || m_allocated[index] == 0)
+        {
+            LOG_ERROR("[DX12] 未割り当てまたは解放済みの Descriptor slot を解放しようとしました (Index: {})",
+                index);
+            return false;
+        }
+
+        m_allocated[index] = 0;
+        m_freeIndices.push_back(index);
+        --m_allocatedCount;
+        return true;
     }
 } // namespace Engine

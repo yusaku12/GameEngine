@@ -48,6 +48,8 @@ if (!serializer.load("Data/Characters/player.mdl", loaded))
 
 Asset paths should be project-relative or asset IDs, not absolute machine paths. `sourcePath` is stored as the model's generic path string and is not used to open files during deserialization.
 
+Scene and Prefab serializers write asset version `2`, including a registered Tag name alongside its runtime ID. Version `1` files remain readable and retain their numeric Tag IDs.
+
 ## Schema evolution
 
 Only append fields or tables. Do not change the meaning or type of an existing field and do not reuse removed fields. Increment the relevant asset version when engine-side migration is needed; update `SerializationVersions.h` and add migration logic before accepting the new version.

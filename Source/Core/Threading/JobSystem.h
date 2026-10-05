@@ -47,8 +47,9 @@ namespace Engine
         /**
          * @brief 依存カウントを増やす
          * @param count 追加する依存数
+         * @return 加算できた場合はtrue。オーバーフローする場合はfalse。
          */
-        void addDependency(uint32_t count = 1);
+        bool addDependency(uint32_t count = 1);
 
         /**
          * @brief 依存の1つを完了したとみなす
@@ -89,13 +90,15 @@ namespace Engine
         /**
          * @brief 待機対象を増やす
          * @param count 増やす数
+         * @return 加算できた場合はtrue。オーバーフローする場合はfalse。
          */
-        void increment(uint32_t count = 1) { m_value.fetch_add(count, std::memory_order_relaxed); }
+        bool increment(uint32_t count = 1);
 
         /**
          * @brief 待機対象を1つ減らす
+         * @return 減算できた場合はtrue。既に0の場合はfalse。
          */
-        void decrement() { m_value.fetch_sub(1, std::memory_order_release); }
+        bool decrement() noexcept;
 
         /**
          * @brief 残っている待機対象の数を取得する
@@ -344,6 +347,7 @@ namespace Engine
 
         std::vector<std::thread> m_workers;           //!< ワーカースレッド
         std::deque<Job>          m_jobs;              //!< 投入されたジョブ
+        std::mutex               m_lifecycleMutex;    //!< 初期化・終了処理の直列化
         mutable std::mutex       m_mutex;             //!< ジョブキューの排他制御
         std::condition_variable  m_condition;         //!< ジョブの到着を待つ条件変数
         std::atomic<uint32_t>    m_pendingCount{ 0 }; //!< 未完了のジョブ数
@@ -372,7 +376,6 @@ namespace Engine
                 return;
 
             m_tasks.push_back(task);
-            m_counter.increment();
         }
 
         /**
@@ -390,14 +393,15 @@ namespace Engine
                 grainSize = 1;
 
             const size_t actualGrain = std::max<size_t>(1u, grainSize);
-            for (size_t begin = 0; begin < count; begin += actualGrain)
+            for (size_t begin = 0; begin < count;)
             {
-                const size_t end = std::min(begin + actualGrain, count);
+                const size_t end = begin + std::min(actualGrain, count - begin);
                 add([body, begin, end]()
                     {
                         for (size_t index = begin; index < end; ++index)
                             body(index);
                     });
+                begin = end;
             }
         }
 
@@ -431,12 +435,12 @@ namespace Engine
             m_cancellationToken = token;
 
             const size_t effectiveGrain = std::max<size_t>(1u, grainSize);
-            const size_t chunkCount = (m_tasks.size() + effectiveGrain - 1u) / effectiveGrain;
+            const size_t chunkCount = (m_tasks.size() - 1u) / effectiveGrain + 1u;
 
             for (size_t chunkIndex = 0; chunkIndex < chunkCount; ++chunkIndex)
             {
                 const size_t begin = chunkIndex * effectiveGrain;
-                const size_t end = std::min(begin + effectiveGrain, m_tasks.size());
+                const size_t end = begin + std::min(effectiveGrain, m_tasks.size() - begin);
 
                 jobSystem.schedule([this, begin, end, token]()
                     {

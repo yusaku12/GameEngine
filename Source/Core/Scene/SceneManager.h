@@ -127,14 +127,42 @@ namespace Engine
     private:
 
         /**
+         * @brief Scene操作の種類を表す列挙型。
+         */
+        enum class PendingOperationKind
+        {
+            SetActive, //!< アクティブSceneの設定
+            Remove     //!< Sceneの削除
+        };
+
+        /**
+         * @brief 保留中のScene操作を表す構造体。
+         */
+        struct PendingOperation
+        {
+            PendingOperationKind kind; //!< 操作の種類
+            Scene* scene;              //!< 操作対象のScene
+        };
+
+        /**
          * @brief 名前を指定したSceneを管理対象から削除する。
          * @param name 削除するSceneの名前
          * @return 削除に成功した場合はtrue、存在しない場合はfalse
          */
         bool removeScene(const std::string& name) noexcept;
+        bool removeScene(Scene* scene) noexcept;
+        bool removeSceneNow(Scene* scene) noexcept;
+        bool setActiveSceneNow(Scene* scene) noexcept;
+        bool queueOperation(PendingOperationKind kind, Scene* scene) noexcept;
+        void applyPendingOperations() noexcept;
 
-        std::unordered_map<std::string, std::unique_ptr<Scene>> m_scenes; //!< 名前からSceneへの索引
-        Scene m_persistentScene;                                          //!< Scene切り替え後も保持する永続Scene
-        Scene* m_activeScene = nullptr;                                   //!< 現在アクティブなScene。所有しない
+        std::vector<std::unique_ptr<Scene>> m_scenes;      //!< 所有するScene
+        Scene m_persistentScene;                           //!< Scene切り替え後も保持する永続Scene
+        Scene* m_activeScene = nullptr;                    //!< 現在アクティブなScene。所有しない
+        std::vector<PendingOperation> m_pendingOperations; //!< Lifecycle callback後に適用するScene操作
+        Scene* m_sceneBeingRemoved = nullptr;              //!< Lifecycle終了中のScene
+        bool m_isDispatching = false;                      //!< Scene/Component callback実行中か
+        bool m_isApplyingOperations = false;               //!< 保留操作の適用中か
+        bool m_isShuttingDown = false;                     //!< shutdown処理中か
     };
 } // namespace Engine

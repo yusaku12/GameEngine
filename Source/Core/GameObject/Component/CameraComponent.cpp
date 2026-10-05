@@ -28,9 +28,96 @@ namespace Engine
             return isFinite(value.x) && isFinite(value.y);
         }
 
+        bool isFinite(const Vector3& value) noexcept
+        {
+            return isFinite(value.x) && isFinite(value.y) && isFinite(value.z);
+        }
+
         bool isFinite(const Color& value) noexcept
         {
             return isFinite(value.x) && isFinite(value.y) && isFinite(value.z) && isFinite(value.w);
+        }
+
+        bool isFinite(const Matrix& value) noexcept
+        {
+            const std::array<float, 16> elements{
+                value._11, value._12, value._13, value._14,
+                value._21, value._22, value._23, value._24,
+                value._31, value._32, value._33, value._34,
+                value._41, value._42, value._43, value._44
+            };
+            return std::ranges::all_of(elements, [](const float element) { return std::isfinite(element); });
+        }
+
+        bool tryInvert(const Matrix& matrix, Matrix& inverse) noexcept
+        {
+            const float determinant = matrix.Determinant();
+            if (!isFinite(matrix) || !std::isfinite(determinant) || determinant == 0.0f)
+                return false;
+
+            inverse = matrix.Invert();
+            return isFinite(inverse);
+        }
+
+        Vector3 getNormalizedCameraDirection(
+            const GameObject* gameObject,
+            const Vector3& localDirection,
+            const Vector3& fallback) noexcept
+        {
+            if (gameObject == nullptr)
+                return fallback;
+
+            const Quaternion& rotation = gameObject->getWorldRotation();
+            const float rotationLengthSquared = rotation.LengthSquared();
+            if (!std::isfinite(rotation.x) || !std::isfinite(rotation.y)
+                || !std::isfinite(rotation.z) || !std::isfinite(rotation.w)
+                || !std::isfinite(rotationLengthSquared) || rotationLengthSquared <= 0.0f)
+            {
+                LOG_WARNING("[Camera] Invalid world rotation; using the default camera direction.");
+                return fallback;
+            }
+
+            Vector3 direction = Vector3::Transform(localDirection, rotation);
+            const float directionLengthSquared = direction.LengthSquared();
+            if (!isFinite(direction) || !std::isfinite(directionLengthSquared) || directionLengthSquared <= 0.0f)
+            {
+                LOG_WARNING("[Camera] Failed to calculate camera direction; using the default direction.");
+                return fallback;
+            }
+
+            direction.Normalize();
+            return isFinite(direction) ? direction : fallback;
+        }
+
+        bool calculateAspectRatio(
+            const float targetWidth,
+            const float targetHeight,
+            const CameraViewport& viewport,
+            float& aspectRatio) noexcept
+        {
+            const double width = static_cast<double>(targetWidth) * viewport.width;
+            const double height = static_cast<double>(targetHeight) * viewport.height;
+            const double ratio = width / height;
+            if (!std::isfinite(ratio) || ratio <= MIN_POSITIVE_VALUE
+                || ratio > std::numeric_limits<float>::max())
+                return false;
+
+            aspectRatio = static_cast<float>(ratio);
+            return isFinite(aspectRatio) && aspectRatio > MIN_POSITIVE_VALUE;
+        }
+
+        bool tryScreenToWorldPoint(
+            const Vector3& screenPoint,
+            const Viewport& viewport,
+            const Matrix& projection,
+            const Matrix& view,
+            Vector3& worldPoint) noexcept
+        {
+            if (!isFinite(screenPoint))
+                return false;
+
+            worldPoint = viewport.Unproject(screenPoint, projection, view, Matrix::Identity);
+            return isFinite(worldPoint);
         }
     }
 
@@ -41,10 +128,32 @@ namespace Engine
 
     void CameraComponent::setProjectionMode(const CameraProjectionMode mode) noexcept
     {
+        if (mode != CameraProjectionMode::Perspective && mode != CameraProjectionMode::Orthographic)
+        {
+            LOG_WARNING("[Camera] Invalid projection mode was rejected");
+            return;
+        }
+
         if (m_projectionMode == mode)
             return;
         m_projectionMode = mode;
         invalidateProjection();
+    }
+
+    void CameraComponent::setClearMode(const CameraClearMode mode) noexcept
+    {
+        switch (mode)
+        {
+        case CameraClearMode::Skybox:
+        case CameraClearMode::SolidColor:
+        case CameraClearMode::DepthOnly:
+        case CameraClearMode::Nothing:
+            m_clearMode = mode;
+            return;
+        default:
+            LOG_WARNING("[Camera] Invalid clear mode was rejected");
+            return;
+        }
     }
 
     void CameraComponent::setFieldOfView(const float fieldOfViewDegrees) noexcept
@@ -88,19 +197,6 @@ namespace Engine
         invalidateProjection();
     }
 
-    void CameraComponent::setAspectRatio(const float aspectRatio) noexcept
-    {
-        if (!isFinite(aspectRatio) || aspectRatio <= MIN_POSITIVE_VALUE)
-        {
-            LOG_WARNING("[Camera] Aspect Ratioは0より大きい有限値である必要があります");
-            return;
-        }
-        if (m_aspectRatio == aspectRatio)
-            return;
-        m_aspectRatio = aspectRatio;
-        invalidateProjection();
-    }
-
     void CameraComponent::setOrthographicSize(const float size) noexcept
     {
         if (!isFinite(size) || size <= MIN_POSITIVE_VALUE)
@@ -129,21 +225,40 @@ namespace Engine
         clamped.y = std::clamp(viewport.y, 0.0f, 1.0f - MIN_POSITIVE_VALUE);
         clamped.width = std::clamp(viewport.width, MIN_POSITIVE_VALUE, 1.0f - clamped.x);
         clamped.height = std::clamp(viewport.height, MIN_POSITIVE_VALUE, 1.0f - clamped.y);
-        if (std::memcmp(&m_viewport, &clamped, sizeof(CameraViewport)) == 0)
+        float aspectRatio = 0.0f;
+        if (!calculateAspectRatio(m_renderTargetSize.x, m_renderTargetSize.y, clamped, aspectRatio))
+        {
+            LOG_WARNING("[Camera] Viewport would produce an invalid Aspect Ratio");
+            return;
+        }
+        if (m_viewport.x == clamped.x && m_viewport.y == clamped.y
+            && m_viewport.width == clamped.width && m_viewport.height == clamped.height
+            && m_aspectRatio == aspectRatio)
             return;
 
         m_viewport = clamped;
-        setAspectRatio((m_renderTargetSize.x * m_viewport.width)
-            / (m_renderTargetSize.y * m_viewport.height));
+        m_aspectRatio = aspectRatio;
+        invalidateProjection();
     }
 
     void CameraComponent::setRenderTargetSize(const std::uint32_t width, const std::uint32_t height) noexcept
     {
         if (width == 0 || height == 0)
             return;
-        m_renderTargetSize = Vector2(static_cast<float>(width), static_cast<float>(height));
-        setAspectRatio((m_renderTargetSize.x * m_viewport.width)
-            / (m_renderTargetSize.y * m_viewport.height));
+
+        const Vector2 renderTargetSize(static_cast<float>(width), static_cast<float>(height));
+        float aspectRatio = 0.0f;
+        if (!calculateAspectRatio(renderTargetSize.x, renderTargetSize.y, m_viewport, aspectRatio))
+        {
+            LOG_WARNING("[Camera] Render Target Size would produce an invalid Aspect Ratio");
+            return;
+        }
+
+        if (m_renderTargetSize == renderTargetSize && m_aspectRatio == aspectRatio)
+            return;
+        m_renderTargetSize = renderTargetSize;
+        m_aspectRatio = aspectRatio;
+        invalidateProjection();
     }
 
     const Matrix& CameraComponent::getViewMatrix() const noexcept
@@ -196,32 +311,17 @@ namespace Engine
 
     Vector3 CameraComponent::getForward() const noexcept
     {
-        const GameObject* const gameObject = getGameObject();
-        if (gameObject == nullptr)
-            return Vector3::UnitZ;
-        Vector3 direction = Vector3::Transform(Vector3::UnitZ, gameObject->getWorldRotation());
-        direction.Normalize();
-        return direction;
+        return getNormalizedCameraDirection(getGameObject(), Vector3::UnitZ, Vector3::UnitZ);
     }
 
     Vector3 CameraComponent::getRight() const noexcept
     {
-        const GameObject* const gameObject = getGameObject();
-        if (gameObject == nullptr)
-            return Vector3::UnitX;
-        Vector3 direction = Vector3::Transform(Vector3::UnitX, gameObject->getWorldRotation());
-        direction.Normalize();
-        return direction;
+        return getNormalizedCameraDirection(getGameObject(), Vector3::UnitX, Vector3::UnitX);
     }
 
     Vector3 CameraComponent::getUp() const noexcept
     {
-        const GameObject* const gameObject = getGameObject();
-        if (gameObject == nullptr)
-            return Vector3::UnitY;
-        Vector3 direction = Vector3::Transform(Vector3::UnitY, gameObject->getWorldRotation());
-        direction.Normalize();
-        return direction;
+        return getNormalizedCameraDirection(getGameObject(), Vector3::UnitY, Vector3::UnitY);
     }
 
     const Frustum& CameraComponent::getFrustum() const noexcept
@@ -237,24 +337,80 @@ namespace Engine
 
     Vector3 CameraComponent::screenToWorldPoint(const Vector3& screenPoint) const noexcept
     {
-        const Viewport viewport = getPixelViewport();
-        return viewport.Unproject(screenPoint, getProjectionMatrix(), getViewMatrix(), Matrix::Identity);
+        if (!isFinite(screenPoint))
+        {
+            LOG_WARNING("[Camera] Cannot unproject a non-finite screen point.");
+            return Vector3::Zero;
+        }
+
+        Vector3 worldPoint;
+        if (!tryScreenToWorldPoint(
+            screenPoint, getPixelViewport(), getProjectionMatrix(), getViewMatrix(), worldPoint))
+        {
+            LOG_WARNING("[Camera] Screen-to-world conversion produced an invalid point.");
+            return Vector3::Zero;
+        }
+        return worldPoint;
     }
 
     Vector3 CameraComponent::worldToScreenPoint(const Vector3& worldPoint) const noexcept
     {
+        if (!isFinite(worldPoint))
+        {
+            LOG_WARNING("[Camera] Cannot project a non-finite world point.");
+            return Vector3::Zero;
+        }
+
         const Viewport viewport = getPixelViewport();
-        return viewport.Project(worldPoint, getProjectionMatrix(), getViewMatrix(), Matrix::Identity);
+        const Vector3 screenPoint = viewport.Project(
+            worldPoint, getProjectionMatrix(), getViewMatrix(), Matrix::Identity);
+        if (!isFinite(screenPoint))
+        {
+            LOG_WARNING("[Camera] World-to-screen conversion produced an invalid point.");
+            return Vector3::Zero;
+        }
+        return screenPoint;
     }
 
     Ray CameraComponent::screenPointToRay(const Vector2& screenPoint) const noexcept
     {
-        const Vector3 nearPoint = screenToWorldPoint(Vector3(screenPoint.x, screenPoint.y, 0.0f));
-        const Vector3 farPoint = screenToWorldPoint(Vector3(screenPoint.x, screenPoint.y, 1.0f));
-        const Vector3 origin = m_projectionMode == CameraProjectionMode::Perspective ? getPosition() : nearPoint;
+        const Vector3 fallbackOrigin = getPosition();
+        const Vector3 fallbackDirection = getForward();
+        if (!isFinite(screenPoint))
+        {
+            LOG_WARNING("[Camera] Cannot create a picking ray from a non-finite screen point.");
+            return Ray(fallbackOrigin, fallbackDirection);
+        }
+
+        const Viewport viewport = getPixelViewport();
+        const Matrix& projection = getProjectionMatrix();
+        const Matrix& view = getViewMatrix();
+        Vector3 nearPoint;
+        Vector3 farPoint;
+        if (!tryScreenToWorldPoint(
+            Vector3(screenPoint.x, screenPoint.y, 0.0f), viewport, projection, view, nearPoint)
+            || !tryScreenToWorldPoint(
+                Vector3(screenPoint.x, screenPoint.y, 1.0f), viewport, projection, view, farPoint))
+        {
+            LOG_WARNING("[Camera] Cannot create a picking ray because unprojection failed.");
+            return Ray(fallbackOrigin, fallbackDirection);
+        }
+
+        const Vector3 origin = m_projectionMode == CameraProjectionMode::Perspective ? fallbackOrigin : nearPoint;
         Vector3 direction = m_projectionMode == CameraProjectionMode::Perspective
             ? farPoint - origin : getForward();
+        const float directionLengthSquared = direction.LengthSquared();
+        if (!isFinite(direction) || !std::isfinite(directionLengthSquared) || directionLengthSquared <= 0.0f)
+        {
+            LOG_WARNING("[Camera] Picking ray direction is invalid; using the camera forward direction.");
+            return Ray(fallbackOrigin, fallbackDirection);
+        }
         direction.Normalize();
+        if (!isFinite(direction))
+        {
+            LOG_WARNING("[Camera] Picking ray normalization failed; using the camera forward direction.");
+            return Ray(fallbackOrigin, fallbackDirection);
+        }
         return Ray(origin, direction);
     }
 
@@ -312,11 +468,10 @@ namespace Engine
         result.clearMode = m_clearMode;
         result.backgroundColor = m_backgroundColor;
         result.cullingMask = m_cullingMask;
-        result.priority = m_priority;
         return result;
     }
 
-    void CameraComponent::onAwake()
+    void CameraComponent::onEnable()
     {
         CameraManager::instance().registerCamera(this);
     }
@@ -333,6 +488,11 @@ namespace Engine
     }
 
     void CameraComponent::onDestroy()
+    {
+        CameraManager::instance().unregisterCamera(this);
+    }
+
+    void CameraComponent::onDisable()
     {
         CameraManager::instance().unregisterCamera(this);
     }
@@ -363,20 +523,17 @@ namespace Engine
         float farClip = m_farClip;
         if (ImGui::DragFloat("Far Clip Plane", &farClip, 1.0f, m_nearClip + MIN_POSITIVE_VALUE, 1000000.0f))
             setFarClipPlane(farClip);
-        float aspectRatio = m_aspectRatio;
-        if (ImGui::DragFloat("Aspect Ratio", &aspectRatio, 0.01f, MIN_POSITIVE_VALUE, 100.0f))
-            setAspectRatio(aspectRatio);
-
         float viewport[] = { m_viewport.x, m_viewport.y, m_viewport.width, m_viewport.height };
         if (ImGui::DragFloat4("Viewport", viewport, 0.01f, 0.0f, 1.0f))
             setViewport(CameraViewport{ viewport[0], viewport[1], viewport[2], viewport[3] });
 
-        ImGui::InputInt("Priority", &m_priority);
         int clearMode = static_cast<int>(m_clearMode);
-        constexpr const char* clearModes[] = { "Skybox", "Solid Color", "Depth Only", "Nothing" };
+        constexpr const char* clearModes[] = {
+            "Skybox (uses Background Color)", "Solid Color", "Depth Only", "Nothing"
+        };
         if (ImGui::Combo("Clear Mode", &clearMode, clearModes, std::size(clearModes)))
             setClearMode(static_cast<CameraClearMode>(clearMode));
-        if (m_clearMode == CameraClearMode::SolidColor)
+        if (m_clearMode == CameraClearMode::SolidColor || m_clearMode == CameraClearMode::Skybox)
         {
             float backgroundColor[] = {
                 m_backgroundColor.x, m_backgroundColor.y, m_backgroundColor.z, m_backgroundColor.w
@@ -406,8 +563,17 @@ namespace Engine
         if (!m_viewDirty && revision == m_transformRevision)
             return;
 
-        m_inverseView = gameObject != nullptr ? gameObject->getWorldMatrix() : Matrix::Identity;
-        m_view = m_inverseView.Invert();
+        const Matrix inverseView = gameObject != nullptr ? gameObject->getWorldMatrix() : Matrix::Identity;
+        if (!tryInvert(inverseView, m_view))
+        {
+            LOG_WARNING("[Camera] Camera world matrix is singular or invalid; using identity view matrices.");
+            m_inverseView = Matrix::Identity;
+            m_view = Matrix::Identity;
+        }
+        else
+        {
+            m_inverseView = inverseView;
+        }
         m_transformRevision = revision;
         m_viewDirty = false;
         m_viewProjectionDirty = true;
@@ -419,12 +585,21 @@ namespace Engine
         if (!m_projectionDirty)
             return;
 
-        m_projection = m_projectionMode == CameraProjectionMode::Perspective
+        Matrix projection = m_projectionMode == CameraProjectionMode::Perspective
             ? CameraUtils::buildPerspective(m_fieldOfViewDegrees, m_aspectRatio, m_nearClip, m_farClip)
             : CameraUtils::buildOrthographic(m_orthographicSize, m_aspectRatio, m_nearClip, m_farClip);
-        m_projection._31 += m_projectionJitter.x;
-        m_projection._32 += m_projectionJitter.y;
-        m_inverseProjection = m_projection.Invert();
+        projection._31 += m_projectionJitter.x;
+        projection._32 += m_projectionJitter.y;
+        if (!tryInvert(projection, m_inverseProjection))
+        {
+            LOG_WARNING("[Camera] Projection matrix is singular or invalid; using identity projection matrices.");
+            m_projection = Matrix::Identity;
+            m_inverseProjection = Matrix::Identity;
+        }
+        else
+        {
+            m_projection = projection;
+        }
         m_projectionDirty = false;
         m_viewProjectionDirty = true;
         m_frustumDirty = true;
@@ -437,8 +612,17 @@ namespace Engine
         if (!m_viewProjectionDirty)
             return;
 
-        m_viewProjection = m_view * m_projection;
-        m_inverseViewProjection = m_viewProjection.Invert();
+        const Matrix viewProjection = m_view * m_projection;
+        if (!tryInvert(viewProjection, m_inverseViewProjection))
+        {
+            LOG_WARNING("[Camera] View Projection matrix is singular or invalid; using identity matrices.");
+            m_viewProjection = Matrix::Identity;
+            m_inverseViewProjection = Matrix::Identity;
+        }
+        else
+        {
+            m_viewProjection = viewProjection;
+        }
         m_viewProjectionDirty = false;
     }
 

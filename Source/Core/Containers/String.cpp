@@ -115,7 +115,11 @@ namespace Engine
 
         String result;
         result.resize(static_cast<size_t>(length) - 1);
-        ::WideCharToMultiByte(CP_UTF8, 0, text, -1, result.data(), length, nullptr, nullptr);
+        if (::WideCharToMultiByte(CP_UTF8, 0, text, -1, result.data(), length, nullptr, nullptr) != length)
+        {
+            GE_ASSERT_MSG(false, "ワイド文字列からUTF-8への変換に失敗しました");
+            return String();
+        }
 
         return result;
     }
@@ -125,12 +129,28 @@ namespace Engine
         if (m_size == 0)
             return std::wstring();
 
-        const int length = ::MultiByteToWideChar(CP_UTF8, 0, m_data, static_cast<int>(m_size), nullptr, 0);
-        if (length <= 0)
+        if (m_size > static_cast<size_t>((std::numeric_limits<int>::max)()))
+        {
+            GE_ASSERT_MSG(false, "UTF-8文字列が変換可能な長さを超えています");
             return std::wstring();
+        }
+
+        const int sourceLength = static_cast<int>(m_size);
+        const int length = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+            m_data, sourceLength, nullptr, 0);
+        if (length <= 0)
+        {
+            GE_ASSERT_MSG(false, "UTF-8文字列からワイド文字列への変換に失敗しました");
+            return std::wstring();
+        }
 
         std::wstring result(static_cast<size_t>(length), L'\0');
-        ::MultiByteToWideChar(CP_UTF8, 0, m_data, static_cast<int>(m_size), result.data(), length);
+        if (::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+            m_data, sourceLength, result.data(), length) != length)
+        {
+            GE_ASSERT_MSG(false, "UTF-8文字列からワイド文字列への変換に失敗しました");
+            return std::wstring();
+        }
 
         return result;
     }
@@ -140,8 +160,15 @@ namespace Engine
         if (capacity <= m_capacity)
             return;
 
+        constexpr size_t maxCapacity = (std::numeric_limits<size_t>::max)() - 1;
+        if (capacity > maxCapacity)
+        {
+            GE_ASSERT_MSG(false, "文字列の要求容量が上限を超えています");
+            return;
+        }
+
         // 拡張のたびに確保しないよう、少なくとも2倍に伸ばす
-        size_t newCapacity = m_capacity * 2;
+        size_t newCapacity = m_capacity <= maxCapacity / 2 ? m_capacity * 2 : m_capacity;
         if (newCapacity < capacity)
             newCapacity = capacity;
 
@@ -161,6 +188,8 @@ namespace Engine
     void String::resize(size_t size, char fill)
     {
         reserve(size);
+        if (size > m_capacity)
+            return;
 
         if (size > m_size)
             std::memset(m_data + m_size, fill, size - m_size);
@@ -180,10 +209,35 @@ namespace Engine
         if (text == nullptr || size == 0)
             return;
 
-        reserve(m_size + size);
+        constexpr size_t maxCapacity = (std::numeric_limits<size_t>::max)() - 1;
+        if (size > maxCapacity - m_size)
+        {
+            GE_ASSERT_MSG(false, "文字列の追加サイズが上限を超えています");
+            return;
+        }
 
-        std::memcpy(m_data + m_size, text, size);
-        m_size += size;
+        const std::uintptr_t dataAddress = reinterpret_cast<std::uintptr_t>(m_data);
+        const std::uintptr_t textAddress = reinterpret_cast<std::uintptr_t>(text);
+        const bool aliasesStorage = textAddress >= dataAddress
+            && textAddress - dataAddress <= m_size;
+        const size_t sourceOffset = aliasesStorage
+            ? static_cast<size_t>(textAddress - dataAddress)
+            : 0;
+        if (aliasesStorage && size > m_size - sourceOffset)
+        {
+            GE_ASSERT_MSG(false, "文字列追加元の範囲が有効な文字列を超えています");
+            return;
+        }
+
+        const size_t newSize = m_size + size;
+        reserve(newSize);
+        if (newSize > m_capacity)
+            return;
+
+        if (aliasesStorage)
+            text = m_data + sourceOffset;
+        std::memmove(m_data + m_size, text, size);
+        m_size = newSize;
         m_data[m_size] = '\0';
     }
 
@@ -255,6 +309,8 @@ namespace Engine
             size = 0;
 
         reserve(size);
+        if (size > m_capacity)
+            return;
 
         if (size > 0)
             std::memmove(m_data, text, size);

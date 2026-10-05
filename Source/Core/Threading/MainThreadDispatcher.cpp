@@ -27,6 +27,19 @@ namespace Engine
         }
 
         for (const auto& task : tasks)
-            task();
+        {
+            try
+            {
+                task();
+            }
+            catch (const std::exception& exception)
+            {
+                LOG_ERROR("[MainThreadDispatcher] Task failed with an exception: {}", exception.what());
+            }
+            catch (...)
+            {
+                LOG_ERROR("[MainThreadDispatcher] Task failed with an unknown exception.");
+            }
+        }
     }
 } // namespace Engine

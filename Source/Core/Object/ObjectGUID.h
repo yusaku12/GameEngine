@@ -14,8 +14,10 @@ namespace Engine
         /**
          * @brief 新しいGUIDを生成する。
          * @return 新しいGUID
+         * @throws std::system_error 乱数生成または同期に失敗した場合。
+         * @thread_safety Thread-safe.
          */
-        static ObjectGUID generate() noexcept;
+        static ObjectGUID generate();
 
         /**
          * @brief GUIDが有効かどうかを判定する。

@@ -38,6 +38,12 @@ namespace Engine
         std::vector<std::filesystem::path> consumeChanges();
 
         /**
+         * @brief 通知バッファ溢れにより変更一覧を失ったかを取得してフラグをクリアする
+         * @return 通知を取りこぼした場合は true
+         */
+        bool consumeOverflow();
+
+        /**
          * @brief 現在ファイル監視が実行中かどうかを取得する
          * @return 実行中の場合は true
          */
@@ -56,6 +62,7 @@ namespace Engine
         std::thread m_thread;                         //!< 監視ワーカースレッド
         std::mutex m_mutex;                           //!< 変更リスト保護用ミューテックス
         std::vector<std::filesystem::path> m_changes; //!< 蓄積された変更ファイル一覧
+        bool m_overflowed = false;                    //!< 変更通知を取りこぼしたか
         void* m_directoryHandle = nullptr;            //!< Windows Directory Handle (HANDLE)
     };
 } // namespace Engine

@@ -27,7 +27,7 @@ namespace Engine
          * @brief Cameraを登録する。
          * @param camera 登録する非所有Cameraポインタ。
          */
-        void registerCamera(CameraComponent* camera);
+        void registerCamera(CameraComponent* camera) noexcept;
 
         /**
          * @brief Cameraの登録を解除する。
@@ -92,6 +92,7 @@ namespace Engine
         void shutdown() noexcept;
 
     private:
+
         CameraManager() = default;
         ~CameraManager() = default;
 

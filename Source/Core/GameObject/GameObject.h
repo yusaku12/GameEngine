@@ -64,9 +64,9 @@ namespace Engine
 
         /**
          * @brief GameObjectのLayerを設定する。
-         * @param layer 設定するLayer
+         * @param layer 描画Culling Maskで使用する0～31のLayer
          */
-        void setLayer(LayerID layer) noexcept { m_layer = layer; }
+        void setLayer(LayerID layer) noexcept;
 
         /**
          * @brief 自身のアクティブ状態を取得する。
@@ -178,30 +178,55 @@ namespace Engine
          * @tparam T 追加するComponentの型。
          * @tparam Args Componentのコンストラクタに渡す引数の型。
          * @param args Componentのコンストラクタに渡す引数。
-         * @return 追加されたComponentのポインタ。既に存在する場合はnullptr。
+         * @details Lifecycle callback中の追加は現在のGameObject pass終了後に有効化される。
+         * @return 追加または既存のComponent。追加に失敗した場合はnullptr。
          */
         template <typename T, typename... Args>
         T* addComponent(Args&&... args)
         {
             static_assert(std::is_base_of_v<Component, T>, "T must derive from Component");
+            if (m_lifecycleShuttingDown)
+            {
+                LOG_ERROR("Cannot add a Component while its GameObject is shutting down.");
+                return nullptr;
+            }
             const ComponentTypeInfo* typeInfo = ComponentRegistry::instance().get<T>();
             ComponentRegistry::instance().ensureRegistered<T>();
             typeInfo = ComponentRegistry::instance().get<T>();
-            const auto type = std::type_index(typeid(T));
-            auto& components = m_components[type];
-            if (!typeInfo->allowMultiple && !components.empty())
-                return static_cast<T*>(components.front().get());
+            if (typeInfo == nullptr)
+                return nullptr;
 
-            auto component = std::make_unique<T>(std::forward<Args>(args)...);
-            T* result = component.get();
+            const auto type = std::type_index(typeid(T));
+            if (!typeInfo->allowMultiple)
+            {
+                if (Component* const existing = findComponentForAddition(type))
+                    return static_cast<T*>(existing);
+            }
+
+            std::unique_ptr<Component> component = std::make_unique<T>(std::forward<Args>(args)...);
+            T* result = static_cast<T*>(component.get());
             result->setGameObject(this);
             result->setLifecycleEnabled(typeInfo->executeLifecycle);
-            components.push_back(std::move(component));
+            if (m_lifecycleDispatchDepth != 0)
+            {
+                if (!queueComponentAddition(type, component))
+                    return nullptr;
+            }
+            else if (!storeComponent(type, component))
+            {
+                return nullptr;
+            }
             if (m_lifecycleAwake)
             {
-                result->invokeAwake();
-                if (isActiveInHierarchy() && result->isEnabled())
-                    result->invokeEnable();
+                if (m_lifecycleDispatchDepth == 0)
+                {
+                    const LifecycleDispatchScope dispatch(*this);
+                    result->invokeAwake();
+                    if (isActiveInHierarchy() && result->isEnabled())
+                        result->invokeEnable();
+                }
+                if (m_lifecycleDispatchDepth == 0 && !containsComponent(result))
+                    return nullptr;
             }
             return result;
         }
@@ -251,6 +276,7 @@ namespace Engine
 
         /**
          * @brief GameObjectから指定した型のComponentを削除する。
+         * @details Lifecycle callback中の削除は現在のLifecycle pass終了後に適用される。
          * @tparam T 削除するComponentの型。
          * @return 削除に成功した場合はtrue、削除するComponentが存在しなかった場合はfalse。
          */
@@ -259,12 +285,36 @@ namespace Engine
         {
             static_assert(std::is_base_of_v<Component, T>, "T must derive from Component");
             const auto found = m_components.find(std::type_index(typeid(T)));
-            if (found == m_components.end())
-                return false;
-
             if (const ComponentTypeInfo* typeInfo = ComponentRegistry::instance().get<T>(); typeInfo != nullptr && typeInfo->required)
                 return false;
 
+            const std::type_index type(typeid(T));
+            if (m_lifecycleDispatchDepth != 0)
+            {
+                if (!hasComponentAfterPendingOperations(type))
+                    return false;
+                try
+                {
+                    m_pendingComponentOperations.emplace_back(
+                        PendingComponentOperationKind::Remove, type);
+                }
+                catch (const std::bad_alloc&)
+                {
+                    LOG_ERROR("Failed to queue Component removal because memory allocation failed.");
+                    return false;
+                }
+                catch (const std::length_error&)
+                {
+                    LOG_ERROR("Component operation queue reached its maximum capacity.");
+                    return false;
+                }
+                return true;
+            }
+
+            if (found == m_components.end())
+                return false;
+
+            const LifecycleDispatchScope dispatch(*this);
             for (const auto& component : found->second)
             {
                 component->invokeDisable();
@@ -303,6 +353,7 @@ namespace Engine
         template <typename Function>
         void forEachComponent(Function&& function)
         {
+            const LifecycleDispatchScope dispatch(*this);
             for (auto& [type, components] : m_components)
             {
                 for (auto& component : components)
@@ -321,6 +372,112 @@ namespace Engine
     private:
 
         friend class GameObjectManager;
+        friend class Component;
+
+        /**
+         * @brief Componentの追加・削除を遅延処理するための操作種別。
+         */
+        enum class PendingComponentOperationKind
+        {
+            Add,
+            Remove
+        };
+
+        /**
+         * @brief Componentの追加・削除を遅延処理するための操作情報。
+         */
+        struct PendingComponentOperation
+        {
+            PendingComponentOperationKind kind;   //!<! 操作種別（追加または削除）
+            std::type_index type;                 //!<! Component型のtype_index
+            std::unique_ptr<Component> component; //!<! 追加するComponentの所有権（削除の場合はnullptr）
+
+            /**
+             * @brief PendingComponentOperationを構築する。
+             * @param operationKind 操作種別（追加または削除）
+             * @param componentType Component型のtype_index
+             * @param newComponent 追加するComponentの所有権（削除の場合はnullptr）
+             */
+            PendingComponentOperation(
+                const PendingComponentOperationKind operationKind,
+                const std::type_index& componentType,
+                std::unique_ptr<Component> newComponent = {})
+                : kind(operationKind), type(componentType), component(std::move(newComponent))
+            {
+            }
+        };
+
+        /**
+         * @brief Lifecycle callback中のComponent追加・削除を遅延処理するためのスコープ。
+         * @details Lifecycle callback中にComponentを追加・削除する場合、現在のLifecycle pass終了後に適用される。
+         */
+        class LifecycleDispatchScope
+        {
+        public:
+
+            explicit LifecycleDispatchScope(GameObject& gameObject) noexcept
+                : m_gameObject(gameObject)
+            {
+                ++m_gameObject.m_lifecycleDispatchDepth;
+            }
+
+            ~LifecycleDispatchScope() noexcept
+            {
+                --m_gameObject.m_lifecycleDispatchDepth;
+                if (m_gameObject.m_lifecycleDispatchDepth == 0)
+                    m_gameObject.applyPendingComponentOperations();
+            }
+
+            LifecycleDispatchScope(const LifecycleDispatchScope&) = delete;
+            LifecycleDispatchScope& operator=(const LifecycleDispatchScope&) = delete;
+
+        private:
+
+            GameObject& m_gameObject; //!< LifecycleDispatchScopeが適用されるGameObjectの参照
+        };
+
+        /**
+         * @brief 指定した型のComponentを追加するための準備を行う。
+         * @param type 追加するComponentの型のtype_index
+         * @return 既存のComponentが見つかった場合はそのポインタ、見つからなかった場合はnullptr
+         */
+        Component* findComponentForAddition(const std::type_index& type) const noexcept;
+
+        /**
+         * @brief 指定したComponentがGameObjectに含まれているかどうかを判定する。
+         * @param component 判定するComponentのポインタ
+         * @return 含まれている場合はtrue、含まれていない場合はfalse
+         */
+        bool containsComponent(const Component* component) const noexcept;
+
+        /**
+         * @brief 指定した型のComponentが、現在のLifecycle pass終了後にGameObjectに含まれるかどうかを判定する。
+         * @param type 判定するComponentの型のtype_index
+         * @return 含まれる場合はtrue、含まれない場合はfalse
+         */
+        bool hasComponentAfterPendingOperations(const std::type_index& type) const noexcept;
+
+        /**
+         * @brief Lifecycle callback中のComponent追加を遅延処理するためにキューに登録する。
+         * @param type 追加するComponentの型のtype_index
+         * @param component 追加するComponentの所有権
+         * @return 登録に成功した場合はtrue、失敗した場合はfalse
+         */
+        bool queueComponentAddition(const std::type_index& type, std::unique_ptr<Component>& component) noexcept;
+
+        /**
+         * @brief ComponentをGameObjectに追加する。
+         * @param type 追加するComponentの型のtype_index
+         * @param component 追加するComponentの所有権
+         * @return 追加に成功した場合はtrue、失敗した場合はfalse
+         */
+        bool storeComponent(const std::type_index& type, std::unique_ptr<Component>& component) noexcept;
+
+        /**
+         * @brief Lifecycle callback中にキューに登録されたComponentの追加・削除を適用する。
+         * @details Lifecycle callback中に追加・削除されたComponentは、現在のLifecycle pass終了後に適用される。
+         */
+        void applyPendingComponentOperations() noexcept;
 
         /**
          * @brief GameObjectを生成する。
@@ -395,6 +552,11 @@ namespace Engine
         void shutdownLifecycle() noexcept;
 
         /**
+         * @brief GameObject階層の有効なComponent Lifecycleを無効化する。
+         */
+        void deactivateLifecycle() noexcept;
+
+        /**
          * @brief GameObjectのアクティブ状態が変化したことを子GameObjectとComponentに伝播する。
          * @param wasActive 以前のアクティブ状態
          * @param isActive 現在のアクティブ状態
@@ -408,10 +570,13 @@ namespace Engine
         LayerID m_layer = 0;                                                                       //!< レイヤーID
         bool m_activeSelf = true;                                                                  //!< 自身のアクティブ状態
         bool m_destroyRequested = false;                                                           //!< 破棄要求が出ているかどうか
+        bool m_lifecycleShuttingDown = false;                                                      //!< Lifecycleの終了処理中かどうか
         TransformComponent* m_transformComponent = nullptr;                                        //!< ローカルTransformを保持する必須Component。所有しない
         GameObject* m_parent = nullptr;                                                            //!< 親GameObjectのポインタ
         std::vector<GameObject*> m_children;                                                       //!< 子GameObjectの配列
         std::unordered_map<std::type_index, std::vector<std::unique_ptr<Component>>> m_components; //!< Componentの型ごとのマップ
+        std::vector<PendingComponentOperation> m_pendingComponentOperations;                       //!< Lifecycle dispatch中のComponent操作
+        std::size_t m_lifecycleDispatchDepth = 0;                                                  //!< Lifecycle dispatchのネスト数
         mutable Transform m_worldTransform;                                                        //!< Transformのワールド変換をキャッシュするための変数
         mutable std::uint64_t m_cachedLocalRevision = 0;                                           //!< 自身のTransformの変更リビジョンをキャッシュするための変数
         mutable std::uint64_t m_cachedParentRevision = 0;                                          //!< 親のTransformの変更リビジョンをキャッシュするための変数

@@ -4,6 +4,7 @@ namespace Engine
 {
     //!< Tagを識別するID。
     using TagID = std::uint32_t;
+    inline constexpr TagID INVALID_TAG_ID = static_cast<TagID>(-1);
 
     /**
      * @brief Tag名とTagIDを管理するクラス。
@@ -22,7 +23,7 @@ namespace Engine
         /**
          * @brief Tag名を登録し、そのIDを返す。
          * @param name 登録するTag名
-         * @return 登録されたTagのID
+         * @return 登録されたTagのID。空名または容量不足の場合はINVALID_TAG_ID。
          */
         TagID registerTag(std::string name);
 

@@ -37,10 +37,16 @@ namespace Engine
                 succeeded = mesh->vertexBuffer.finalize() && succeeded;
             }
         }
+        if (!succeeded)
+        {
+            LOG_ERROR("[ModelGpuCache] GPU使用完了を確認できないためCacheのFinalizeを中止します");
+            return false;
+        }
+
         m_resources.clear();
         m_device = nullptr;
         m_fence = nullptr;
-        return succeeded;
+        return true;
     }
 
     ModelGpuResource* ModelGpuCache::getOrCreate(const ModelHandle handle)
@@ -51,12 +57,33 @@ namespace Engine
         if (const auto found = m_resources.find(key); found != m_resources.end())
             return found->second.get();
 
-        std::unique_ptr<ModelGpuResource> resource = createResource(handle);
-        if (resource == nullptr)
+        try
+        {
+            std::unique_ptr<ModelGpuResource> resource = createResource(handle);
+            if (resource == nullptr)
+                return nullptr;
+
+            const auto [entry, inserted] = m_resources.emplace(key, std::move(resource));
+            if (!inserted)
+            {
+                LOG_ERROR("[ModelGpuCache] Model {}:{} was inserted into the cache during resource creation.",
+                    handle.index, handle.generation);
+                return entry->second.get();
+            }
+            return entry->second.get();
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[ModelGpuCache] Failed to allocate GPU cache data for Model {}:{}.",
+                handle.index, handle.generation);
             return nullptr;
-        ModelGpuResource* const result = resource.get();
-        m_resources.emplace(key, std::move(resource));
-        return result;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[ModelGpuCache] GPU cache capacity is exhausted for Model {}:{}.",
+                handle.index, handle.generation);
+            return nullptr;
+        }
     }
 
     bool ModelGpuCache::markUsed(const ModelHandle handle, const std::uint64_t fenceValue)
@@ -65,6 +92,7 @@ namespace Engine
         if (found == m_resources.end())
             return false;
 
+        found->second->lastUsedFenceValue = fenceValue;
         bool succeeded = true;
         succeeded = found->second->bonePaletteBuffer.markUsed(fenceValue) && succeeded;
         for (const std::unique_ptr<ModelGpuMesh>& mesh : found->second->meshes)
@@ -75,6 +103,42 @@ namespace Engine
             succeeded = mesh->indexBuffer.markUsed(fenceValue) && succeeded;
         }
         return succeeded;
+    }
+
+    void ModelGpuCache::collectGarbage()
+    {
+        if (m_fence == nullptr)
+            return;
+
+        for (auto iterator = m_resources.begin(); iterator != m_resources.end();)
+        {
+            ModelGpuResource& resource = *iterator->second;
+            const bool unloaded = ModelManager::instance().get(resource.handle) == nullptr;
+            const bool gpuComplete = resource.lastUsedFenceValue == 0
+                || m_fence->isComplete(resource.lastUsedFenceValue);
+            if (unloaded && gpuComplete)
+            {
+                bool finalized = resource.bonePaletteBuffer.finalize();
+                for (const std::unique_ptr<ModelGpuMesh>& mesh : resource.meshes)
+                {
+                    if (mesh == nullptr)
+                        continue;
+                    finalized = mesh->indexBuffer.finalize() && finalized;
+                    finalized = mesh->vertexBuffer.finalize() && finalized;
+                }
+                if (!finalized)
+                {
+                    LOG_ERROR("[ModelGpuCache] Failed to finalize an unloaded model resource.");
+                    ++iterator;
+                    continue;
+                }
+                iterator = m_resources.erase(iterator);
+            }
+            else
+            {
+                ++iterator;
+            }
+        }
     }
 
     std::uint64_t ModelGpuCache::makeKey(const ModelHandle handle) noexcept
@@ -89,6 +153,7 @@ namespace Engine
             return nullptr;
 
         auto resource = std::make_unique<ModelGpuResource>();
+        resource->handle = handle;
         resource->source = std::move(source);
         std::vector<Matrix> nodeTransforms(resource->source->nodes.size(), Matrix::Identity);
         for (std::size_t nodeIndex = 0; nodeIndex < resource->source->nodes.size(); ++nodeIndex)
@@ -118,11 +183,21 @@ namespace Engine
                 continue;
             }
 
-            auto mesh = std::make_unique<ModelGpuMesh>();
             const std::span<const ModelVertex> vertices = sourceMesh.vertices;
             const std::span<const std::uint32_t> indices = sourceMesh.indices;
-            if (!mesh->vertexBuffer.initialize(*m_device->get(), *m_fence, std::as_bytes(vertices).size())
-                || !mesh->indexBuffer.initialize(*m_device->get(), *m_fence, std::as_bytes(indices).size())
+            const std::size_t vertexBufferSize = std::as_bytes(vertices).size();
+            const std::size_t indexBufferSize = std::as_bytes(indices).size();
+            if (sourceMesh.indices.size() > (std::numeric_limits<UINT>::max)()
+                || vertexBufferSize > (std::numeric_limits<UINT>::max)()
+                || indexBufferSize > (std::numeric_limits<UINT>::max)())
+            {
+                LOG_ERROR("[ModelGpuCache] Mesh exceeds DirectX 12 buffer view limits: {}", sourceMesh.name);
+                return nullptr;
+            }
+
+            auto mesh = std::make_unique<ModelGpuMesh>();
+            if (!mesh->vertexBuffer.initialize(*m_device->get(), *m_fence, vertexBufferSize)
+                || !mesh->indexBuffer.initialize(*m_device->get(), *m_fence, indexBufferSize)
                 || !mesh->vertexBuffer.write(std::as_bytes(vertices))
                 || !mesh->indexBuffer.write(std::as_bytes(indices)))
             {

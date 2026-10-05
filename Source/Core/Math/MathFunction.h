@@ -1,5 +1,8 @@
 ﻿#pragma once
 
+#include <cmath>
+#include <cstddef>
+#include <limits>
 #include "Core\CoreDefines.h"
 
 namespace Engine
@@ -47,7 +50,7 @@ namespace Engine
      */
     inline constexpr float saturate(float value)
     {
-        return clamp(value, 0.0f, 1.0f);
+        return value == value ? clamp(value, 0.0f, 1.0f) : 0.0f;
     }
 
     /**
@@ -59,7 +62,9 @@ namespace Engine
      */
     inline constexpr float lerp(float from, float to, float alpha)
     {
-        return from + (to - from) * alpha;
+        const double result = static_cast<double>(from)
+            + (static_cast<double>(to) - static_cast<double>(from)) * static_cast<double>(alpha);
+        return static_cast<float>(result);
     }
 
     /**
@@ -79,7 +84,12 @@ namespace Engine
      */
     inline constexpr float inverseLerp(float from, float to, float value)
     {
-        return to - from == 0.0f ? 0.0f : saturate((value - from) / (to - from));
+        const double range = static_cast<double>(to) - static_cast<double>(from);
+        if (range == 0.0)
+            return 0.0f;
+
+        const double t = (static_cast<double>(value) - static_cast<double>(from)) / range;
+        return static_cast<float>(t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t));
     }
 
     /**
@@ -116,7 +126,10 @@ namespace Engine
      */
     inline bool isNearlyEqual(float left, float right, float tolerance = EPSILON)
     {
-        return std::fabs(left - right) <= tolerance;
+        return std::isfinite(left) && std::isfinite(right)
+            && std::isfinite(tolerance) && tolerance >= 0.0f
+            && std::fabs(static_cast<double>(left) - static_cast<double>(right))
+            <= static_cast<double>(tolerance);
     }
 
     /**
@@ -124,7 +137,8 @@ namespace Engine
      */
     inline bool isNearlyZero(float value, float tolerance = EPSILON)
     {
-        return std::fabs(value) <= tolerance;
+        return std::isfinite(value) && std::isfinite(tolerance) && tolerance >= 0.0f
+            && std::fabs(static_cast<double>(value)) <= static_cast<double>(tolerance);
     }
 
     /**
@@ -153,11 +167,17 @@ namespace Engine
      */
     inline float wrapAngle(float radians)
     {
-        radians = std::fmod(radians + PI, TWO_PI);
-        if (radians < 0.0f)
-            radians += TWO_PI;
+        if (!std::isfinite(radians))
+            return 0.0f;
 
-        return radians - PI;
+        double wrapped = std::fmod(
+            static_cast<double>(radians) + static_cast<double>(PI),
+            static_cast<double>(TWO_PI));
+        if (wrapped < 0.0)
+            wrapped += static_cast<double>(TWO_PI);
+
+        const float result = static_cast<float>(wrapped - static_cast<double>(PI));
+        return result < PI ? result : -PI;
     }
 
     /**
@@ -169,44 +189,82 @@ namespace Engine
      */
     inline float lerpAngle(float from, float to, float alpha)
     {
-        return from + wrapAngle(to - from) * saturate(alpha);
+        if (!std::isfinite(from) || !std::isfinite(to) || !std::isfinite(alpha))
+            return from;
+
+        double delta = std::fmod(
+            static_cast<double>(to) - static_cast<double>(from) + static_cast<double>(PI),
+            static_cast<double>(TWO_PI));
+        if (delta < 0.0)
+            delta += static_cast<double>(TWO_PI);
+        delta -= static_cast<double>(PI);
+
+        const double result = static_cast<double>(from)
+            + delta * static_cast<double>(saturate(alpha));
+        return static_cast<float>(result);
     }
 
     /**
      * @brief 目標値へ一定量ずつ近づける
      * @param current 現在値
      * @param target 目標値
-     * @param maxDelta 1回で変化できる最大量
+     * @param maxDelta 1回で変化できる最大量。0以下の場合は現在値を返す
      * @return float 近づけた後の値
      */
     inline float moveTowards(float current, float target, float maxDelta)
     {
-        const float difference = target - current;
-        if (std::fabs(difference) <= maxDelta)
+        if (!std::isfinite(current) || !std::isfinite(target) || !std::isfinite(maxDelta)
+            || !(maxDelta > 0.0f))
+            return current;
+
+        const double difference = static_cast<double>(target) - static_cast<double>(current);
+        if (std::fabs(difference) <= static_cast<double>(maxDelta))
             return target;
 
-        return current + static_cast<float>(sign(difference)) * maxDelta;
+        const double result = static_cast<double>(current)
+            + (difference > 0.0 ? 1.0 : -1.0) * static_cast<double>(maxDelta);
+        return static_cast<float>(result);
     }
 
     /**
      * @brief 値を0から範囲の間で繰り返す
+     * @return float 範囲が正の有限値でない場合は0
      */
     inline float repeat(float value, float length)
     {
-        return clamp(value - std::floor(value / length) * length, 0.0f, length);
+        if (!std::isfinite(value) || !std::isfinite(length) || length <= 0.0f)
+            return 0.0f;
+
+        double wrapped = std::fmod(static_cast<double>(value), static_cast<double>(length));
+        if (wrapped < 0.0)
+            wrapped += static_cast<double>(length);
+
+        const float result = static_cast<float>(wrapped);
+        return result < length ? result : std::nextafter(length, 0.0f);
     }
 
     /**
      * @brief 値を0と範囲の間で往復させる
+     * @return float 範囲が正の有限値でない場合は0
      */
     inline float pingPong(float value, float length)
     {
-        const float wrapped = repeat(value, length * 2.0f);
-        return length - std::fabs(wrapped - length);
+        if (!std::isfinite(value) || !std::isfinite(length) || length <= 0.0f)
+            return 0.0f;
+
+        const double doubleLength = static_cast<double>(length);
+        double wrapped = std::fmod(static_cast<double>(value), doubleLength * 2.0);
+        if (wrapped < 0.0)
+            wrapped += doubleLength * 2.0;
+
+        const float result = static_cast<float>(doubleLength - std::fabs(wrapped - doubleLength));
+        return std::clamp(result, 0.0f, length);
     }
 
     /**
      * @brief 2の累乗かどうかを判定する
+     * @param value 判定する値
+     * @return bool 2の累乗ならtrue
      */
     inline constexpr bool isPowerOfTwo(size_t value)
     {
@@ -215,6 +273,8 @@ namespace Engine
 
     /**
      * @brief 指定値以上で最小の2の累乗を求める
+     * @param value 基準値
+     * @return size_t 2の累乗。表現可能な結果がない場合は0
      */
     inline constexpr size_t nextPowerOfTwo(size_t value)
     {
@@ -223,7 +283,11 @@ namespace Engine
 
         size_t result = 1;
         while (result < value)
+        {
+            if (result > (std::numeric_limits<size_t>::max)() / 2)
+                return 0;
             result <<= 1;
+        }
 
         return result;
     }

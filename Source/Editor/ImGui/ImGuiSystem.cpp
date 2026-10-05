@@ -103,6 +103,7 @@ namespace Engine
         m_editorUi.reset();
         m_gameTextureCpuHandle = {};
         m_gameTextureGpuHandle = {};
+        m_imguiDescriptorIndices.clear();
         m_gameTextureId = 0;
         m_srvHeap.finalize();
         m_initialized = false;
@@ -116,8 +117,14 @@ namespace Engine
         if (m_gameTextureId == 0)
         {
             const std::optional<DX12DescriptorAllocation> allocation = m_srvHeap.allocate();
-            if (!allocation || !allocation->gpu.has_value())
+            if (!allocation.has_value())
                 return false;
+            if (!allocation->gpu.has_value())
+            {
+                LOG_ERROR("[ImGui] Shader-visible Descriptor Heap returned an allocation without a GPU handle.");
+                m_srvHeap.release(allocation->cpu.index);
+                return false;
+            }
             m_gameTextureCpuHandle = allocation->cpu;
             m_gameTextureGpuHandle = *allocation->gpu;
             m_gameTextureId = static_cast<std::uint64_t>(m_gameTextureGpuHandle.native.ptr);
@@ -178,13 +185,49 @@ namespace Engine
         D3D12_CPU_DESCRIPTOR_HANDLE* const cpuHandle,
         D3D12_GPU_DESCRIPTOR_HANDLE* const gpuHandle)
     {
+        if (cpuHandle != nullptr)
+            *cpuHandle = {};
+        if (gpuHandle != nullptr)
+            *gpuHandle = {};
         if (info == nullptr || cpuHandle == nullptr || gpuHandle == nullptr || info->UserData == nullptr)
             return;
 
         ImGuiSystem& system = *static_cast<ImGuiSystem*>(info->UserData);
+        const std::scoped_lock lock(system.m_contextMutex);
         const std::optional<DX12DescriptorAllocation> allocation = system.m_srvHeap.allocate();
-        if (!allocation.has_value() || !allocation->gpu.has_value())
+        if (!allocation.has_value())
             return;
+        if (!allocation->gpu.has_value())
+        {
+            LOG_ERROR("[ImGui] Shader-visible Descriptor Heap returned an allocation without a GPU handle.");
+            system.m_srvHeap.release(allocation->cpu.index);
+            return;
+        }
+
+        try
+        {
+            const auto [entry, inserted] = system.m_imguiDescriptorIndices.emplace(
+                allocation->cpu.native.ptr, allocation->cpu.index);
+            GE_UNUSED(entry);
+            if (!inserted)
+            {
+                LOG_ERROR("[ImGui] Descriptor handle is already registered.");
+                system.m_srvHeap.release(allocation->cpu.index);
+                return;
+            }
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[ImGui] Failed to track an allocated Descriptor.");
+            system.m_srvHeap.release(allocation->cpu.index);
+            return;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[ImGui] Descriptor tracking capacity is exhausted.");
+            system.m_srvHeap.release(allocation->cpu.index);
+            return;
+        }
 
         *cpuHandle = allocation->cpu.native;
         *gpuHandle = allocation->gpu->native;
@@ -195,9 +238,24 @@ namespace Engine
         const D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle)
     {
-        (void)info;
-        (void)cpuHandle;
         (void)gpuHandle;
+        if (info == nullptr || info->UserData == nullptr)
+            return;
+
+        ImGuiSystem& system = *static_cast<ImGuiSystem*>(info->UserData);
+        const std::scoped_lock lock(system.m_contextMutex);
+        const auto entry = system.m_imguiDescriptorIndices.find(cpuHandle.ptr);
+        if (entry == system.m_imguiDescriptorIndices.end())
+        {
+            LOG_ERROR("[ImGui] Attempted to release an unknown Descriptor handle.");
+            return;
+        }
+        if (!system.m_srvHeap.release(entry->second))
+        {
+            LOG_ERROR("[ImGui] Failed to release Descriptor slot {}.", entry->second);
+            return;
+        }
+        system.m_imguiDescriptorIndices.erase(entry);
     }
 
     void ImGuiSystem::setupStyle()

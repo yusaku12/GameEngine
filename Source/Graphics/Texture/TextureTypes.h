@@ -8,30 +8,34 @@ namespace Engine
 {
     /**
      * @brief テクスチャハンドル
-     * @details リソースの寿命管理とキャッシュ機構のため、生ポインタではなくハンドルを使用する
+     * @details リソースの寿命管理とキャッシュ機構のため、生ポインタではなく世代付きハンドルを使用する
      */
     struct TextureHandle
     {
         static constexpr uint32_t INVALID_INDEX = 0xFFFFFFFF; //!< 無効なインデックス値
 
         uint32_t index = INVALID_INDEX; //!< テクスチャ管理配列内のインデックス
+        uint32_t generation = 0;        //!< スロット世代番号
 
         /**
          * @brief 有効なハンドルか判定する
          * @return 有効な場合は true
          */
-        bool isValid() const noexcept { return index != INVALID_INDEX; }
+        bool isValid() const noexcept { return index != INVALID_INDEX && generation != 0; }
 
         /**
          * @brief 無効なハンドルを作成する
          * @return 無効なハンドル
          */
-        static constexpr TextureHandle Invalid() noexcept { return TextureHandle{ INVALID_INDEX }; }
+        static constexpr TextureHandle Invalid() noexcept { return {}; }
 
         /**
          * @brief ハンドル同値性チェック
          */
-        bool operator==(const TextureHandle& other) const noexcept { return index == other.index; }
+        bool operator==(const TextureHandle& other) const noexcept
+        {
+            return index == other.index && generation == other.generation;
+        }
         bool operator!=(const TextureHandle& other) const noexcept { return !(*this == other); }
     };
 

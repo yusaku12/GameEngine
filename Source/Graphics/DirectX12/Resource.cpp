@@ -72,6 +72,12 @@ namespace Engine
             return false;
         }
 
+        if (subresource != D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES)
+        {
+            LOG_ERROR("[DX12] 個別 Subresource の State 遷移は未対応です。全 Subresource を指定してください");
+            return false;
+        }
+
         if (m_currentState == state)
             return true;
 
@@ -173,13 +179,16 @@ namespace Engine
             return false;
         }
 
-        std::memcpy(m_mappedData + offset, data.data(), data.size());
+        if (!data.empty())
+            std::memcpy(m_mappedData + offset, data.data(), data.size());
         return true;
     }
 
     bool DX12UploadBuffer::markUsed(const std::uint64_t fenceValue)
     {
-        if (m_resource.get() == nullptr || m_completionFence == nullptr || fenceValue == 0)
+        if (m_resource.get() == nullptr || m_completionFence == nullptr || fenceValue == 0
+            || fenceValue < m_lastUsedFenceValue
+            || fenceValue > m_completionFence->getLastSignaledValue())
         {
             LOG_ERROR("[DX12] Upload Buffer の使用 Fence 値が不正です");
             return false;
@@ -259,7 +268,8 @@ namespace Engine
     bool DX12ReadbackBuffer::markPending(const std::uint64_t fenceValue)
     {
         if (m_resource.get() == nullptr || m_completionFence == nullptr || fenceValue == 0
-            || fenceValue < m_pendingFenceValue)
+            || fenceValue < m_pendingFenceValue
+            || fenceValue > m_completionFence->getLastSignaledValue())
         {
             LOG_ERROR("[DX12] Readback Buffer の Copy Fence 値が不正です");
             return false;
@@ -291,8 +301,11 @@ namespace Engine
             return false;
         }
 
-        const std::byte* const source = static_cast<const std::byte*>(mappedData) + offset;
-        std::memcpy(destination.data(), source, destination.size());
+        if (!destination.empty())
+        {
+            const std::byte* const source = static_cast<const std::byte*>(mappedData) + offset;
+            std::memcpy(destination.data(), source, destination.size());
+        }
         m_resource.get()->Unmap(0, nullptr);
         return true;
     }

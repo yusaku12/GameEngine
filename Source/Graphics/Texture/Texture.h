@@ -70,8 +70,9 @@ namespace Engine
         /**
          * @brief テクスチャリソースを解放する
          * @warning GPU 使用完了を Fence で確認してから呼び出すこと
+         * @return GPU完了を確認して解放できた場合はtrue
          */
-        void finalize();
+        bool finalize();
 
         /**
          * @brief ロード済みかを判定する

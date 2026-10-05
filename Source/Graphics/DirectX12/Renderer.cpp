@@ -48,6 +48,12 @@ namespace Engine
         if (!finalize())
             return false;
 
+        const auto rollbackInitialization = [this]
+            {
+                if (!finalize())
+                    LOG_CRITICAL("[DX12] Renderer初期化失敗後のリソース解放に失敗しました");
+            };
+
         DX12DeviceConfig deviceConfig{};
 #if defined(_DEBUG)
         deviceConfig.enableDebugLayer = true;
@@ -64,7 +70,7 @@ namespace Engine
             || !m_materialGpuCache.initialize(m_device, m_directFence)
             || !DebugPrimitive::instance().initialize(m_device, m_directFence))
         {
-            finalize();
+            rollbackInitialization();
             return false;
         }
 
@@ -79,7 +85,7 @@ namespace Engine
             height,
             swapChainConfig))
         {
-            finalize();
+            rollbackInitialization();
             return false;
         }
 
@@ -97,7 +103,7 @@ namespace Engine
             || !createDepthBuffer(width, height)
             || !createShadowMap())
         {
-            finalize();
+            rollbackInitialization();
             return false;
         }
 
@@ -107,7 +113,7 @@ namespace Engine
                 || !m_finishCommandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT)
                 || !m_queryCommandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT))
             {
-                finalize();
+                rollbackInitialization();
                 return false;
             }
         }
@@ -115,12 +121,12 @@ namespace Engine
         m_imguiSystem = std::make_unique<ImGuiSystem>();
         if (!m_imguiSystem->initialize(*m_device.get(), *m_directQueue.get(), hwnd))
         {
-            finalize();
+            rollbackInitialization();
             return false;
         }
         if (!m_imguiSystem->updateGameTextureView(*m_device.get(), *m_gameRenderTarget.get()))
         {
-            finalize();
+            rollbackInitialization();
             return false;
         }
 
@@ -130,7 +136,7 @@ namespace Engine
             [this](ShaderID /*id*/) { m_psoRebuildPending = true; }))
         {
             LOG_ERROR("[DX12] ShaderManager の初期化に失敗しました");
-            finalize();
+            rollbackInitialization();
             return false;
         }
 
@@ -194,13 +200,13 @@ namespace Engine
         if (!m_shaderManager.loadAll())
         {
             LOG_ERROR("[DX12] Shader CSO のロードに失敗しました");
-            finalize();
+            rollbackInitialization();
             return false;
         }
 
         if (!rebuildGraphicsPipelines())
         {
-            finalize();
+            rollbackInitialization();
             return false;
         }
 
@@ -297,6 +303,7 @@ namespace Engine
         m_shadowViewProjection.reset();
         m_viewProjection = Matrix::Identity;
         m_cameraPosition = Vector3::Zero;
+        m_cameraForward = Vector3::UnitZ;
         m_cameraViewport = {};
         m_cameraClearMode = CameraClearMode::SolidColor;
         m_cameraClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);
@@ -330,8 +337,23 @@ namespace Engine
             return false;
 
         RenderView submittedView;
-        if (CameraRenderSubmissionQueue::instance().consume(submittedView))
+        const bool hasCameraView = CameraRenderSubmissionQueue::instance().consume(submittedView);
+        if (hasCameraView)
+        {
             setRenderView(submittedView);
+        }
+        else
+        {
+            m_viewProjection = Matrix::Identity;
+            m_cameraPosition = Vector3::Zero;
+            m_cameraForward = Vector3::UnitZ;
+            m_frustum.reset();
+            m_shadowViewProjection.reset();
+            m_cameraViewport = {};
+            m_cameraClearMode = CameraClearMode::SolidColor;
+            m_cameraClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);
+            m_cameraCullingMask = 0;
+        }
 
         const bool clearsColor = m_cameraClearMode == CameraClearMode::SolidColor
             || m_cameraClearMode == CameraClearMode::Skybox;
@@ -355,6 +377,7 @@ namespace Engine
         }
 
         m_shaderManager.processHotReload();
+        m_modelGpuCache.collectGarbage();
         m_materialGpuCache.collectGarbage();
 
         if (m_psoRebuildPending)
@@ -439,18 +462,19 @@ namespace Engine
         const float viewportHeight = m_cameraViewport.height * static_cast<float>(m_renderHeight);
         const D3D12_VIEWPORT viewport{ viewportX, viewportY, viewportWidth, viewportHeight, 0.0f, 1.0f };
         const D3D12_RECT scissorRect{
-            static_cast<LONG>(viewportX),
-            static_cast<LONG>(viewportY),
-            static_cast<LONG>(viewportX + viewportWidth),
-            static_cast<LONG>(viewportY + viewportHeight)
+            static_cast<LONG>(std::floor(viewportX)),
+            static_cast<LONG>(std::floor(viewportY)),
+            static_cast<LONG>(std::ceil(viewportX + viewportWidth)),
+            static_cast<LONG>(std::ceil(viewportY + viewportHeight))
         };
         nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
         nativeCommandList->RSSetViewports(1, &viewport);
         nativeCommandList->RSSetScissorRects(1, &scissorRect);
         if (m_cameraClearMode == CameraClearMode::SolidColor || m_cameraClearMode == CameraClearMode::Skybox)
-            nativeCommandList->ClearRenderTargetView(renderTargetView, &m_cameraClearColor.x, 0, nullptr);
-        nativeCommandList->ClearDepthStencilView(
-            m_depthStencilView.native, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+            nativeCommandList->ClearRenderTargetView(renderTargetView, &m_cameraClearColor.x, 1, &scissorRect);
+        if (m_cameraClearMode != CameraClearMode::Nothing)
+            nativeCommandList->ClearDepthStencilView(
+                m_depthStencilView.native, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 1, &scissorRect);
         m_skinningPaletteBufferCursors[frameIndex] = 0;
         if (!renderModelQueue(commandList, frameIndex))
             return false;
@@ -462,8 +486,9 @@ namespace Engine
         nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
         nativeCommandList->RSSetViewports(1, &viewport);
         nativeCommandList->RSSetScissorRects(1, &scissorRect);
-        DebugPrimitive::instance().drawGrid(Vector3::Zero, 20.0f, 20.0f, 1.0f);
-        if (!DebugPrimitive::instance().render(finishList, frameIndex, m_viewProjection))
+        if (hasCameraView)
+            DebugPrimitive::instance().drawGrid(Vector3::Zero, 20.0f, 20.0f, 1.0f);
+        if (!DebugPrimitive::instance().render(finishList, frameIndex, m_viewProjection, hasCameraView))
             return false;
 
         if (!m_gameRenderTarget.transition(finishList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
@@ -481,7 +506,8 @@ namespace Engine
             return false;
 
         m_executionLists.push_back(nativeExecutionList);
-        m_directQueue.execute(m_executionLists);
+        if (!m_directQueue.execute(m_executionLists))
+            return false;
         const bool presentSucceeded = m_swapChain.present(true);
         if (!presentSucceeded)
             m_device.logDeviceRemovedReason();
@@ -534,7 +560,14 @@ namespace Engine
         if (width == 0 || height == 0)
             return true;
 
-        if (!m_swapChain.resize(*m_device.get(), m_directFence, m_lastSubmittedFenceValue, width, height))
+        ID3D12Device* const device = m_device.get();
+        if (device == nullptr)
+        {
+            LOG_ERROR("[DX12] 未初期化の Renderer をリサイズしようとしました");
+            return false;
+        }
+
+        if (!m_swapChain.resize(*device, m_directFence, m_lastSubmittedFenceValue, width, height))
             return false;
 
         m_frameFenceValues.fill(0);
@@ -590,6 +623,7 @@ namespace Engine
     {
         m_viewProjection = view.camera.viewProjection;
         m_cameraPosition = view.camera.position;
+        m_cameraForward = view.camera.forward;
         m_frustum = view.frustum;
         m_cameraViewport = view.viewport;
         m_cameraClearMode = view.clearMode;
@@ -839,9 +873,13 @@ namespace Engine
                 continue;
             }
 
-            if (m_frustum && !isVisible(*m_frustum, submission.worldBounds))
-            {
+            const bool submitsShadow = m_shadowViewProjection.has_value() && submission.castShadows;
+            const bool outsideCamera = submission.skinningPalette == nullptr && m_frustum
+                && !isVisible(*m_frustum, submission.worldBounds);
+            if (outsideCamera)
                 ++m_frameStatistics.culledObjects;
+            if (outsideCamera && !submitsShadow)
+            {
                 continue;
             }
 
@@ -850,6 +888,7 @@ namespace Engine
                 continue;
 
             bool objectVisible = false;
+            bool modelResourceUsed = false;
             for (std::size_t meshIndex = 0; meshIndex < gpuModel->meshes.size(); ++meshIndex)
             {
                 const std::unique_ptr<ModelGpuMesh>& gpuMesh = gpuModel->meshes[meshIndex];
@@ -878,6 +917,7 @@ namespace Engine
                             pass = RenderPassType::AlphaTest;
                         else if (gpuMaterial->source->renderState.surfaceType == MaterialSurfaceType::Transparent)
                             pass = RenderPassType::Transparent;
+                        const Vector3 cameraRelativePosition = Vector3(meshWorldBounds.Center) - m_cameraPosition;
                         RenderItem colorItem{
                             .vertexBuffer = &gpuMesh->vertexBufferView,
                             .indexBuffer = &gpuMesh->indexBufferView,
@@ -895,25 +935,32 @@ namespace Engine
                             .skinningPalette = submission.skinningPalette,
                             .bonePaletteBuffer = &gpuModel->bonePaletteBuffer,
                             .meshID = static_cast<std::uint32_t>(meshIndex),
-                            .cameraDepth = (Vector3(meshWorldBounds.Center) - m_cameraPosition).LengthSquared(),
+                            .cameraDepth = cameraRelativePosition.x * m_cameraForward.x
+                                + cameraRelativePosition.y * m_cameraForward.y
+                                + cameraRelativePosition.z * m_cameraForward.z,
                             .pass = pass,
                         };
-                        const bool submitted = m_modelRenderQueue.submit(colorItem, m_frustum ? &*m_frustum : nullptr);
+                        const Frustum* const cullingFrustum = colorItem.skinningPalette == nullptr && m_frustum
+                            ? &*m_frustum : nullptr;
+                        const bool submitted = m_modelRenderQueue.submit(colorItem, cullingFrustum);
+                        bool materialUsed = submitted;
                         if (submitted && pass != RenderPassType::Transparent)
                         {
                             RenderItem depthItem = colorItem;
                             depthItem.pipelineID = depthItem.surfaceType == MaterialSurfaceType::AlphaTest ? 1u : 0u;
                             depthItem.pass = RenderPassType::DepthOnly;
                             m_modelRenderQueue.submit(depthItem);
-                            if (m_shadowViewProjection && submission.castShadows)
-                            {
-                                RenderItem shadowItem = depthItem;
-                                shadowItem.pass = RenderPassType::Shadow;
-                                m_modelRenderQueue.submit(shadowItem);
-                            }
+                        }
+                        if (submitsShadow && pass != RenderPassType::Transparent)
+                        {
+                            RenderItem shadowItem = colorItem;
+                            shadowItem.pipelineID = colorItem.surfaceType == MaterialSurfaceType::AlphaTest ? 1u : 0u;
+                            shadowItem.pass = RenderPassType::Shadow;
+                            materialUsed = m_modelRenderQueue.submit(shadowItem) || materialUsed;
                         }
                         objectVisible = submitted || objectVisible;
-                        if (submitted && std::find(usedMaterials.begin(), usedMaterials.end(), materialHandle) == usedMaterials.end())
+                        modelResourceUsed = materialUsed || modelResourceUsed;
+                        if (materialUsed && std::find(usedMaterials.begin(), usedMaterials.end(), materialHandle) == usedMaterials.end())
                             usedMaterials.push_back(materialHandle);
                     };
 
@@ -929,9 +976,10 @@ namespace Engine
             if (objectVisible)
             {
                 ++m_frameStatistics.visibleObjects;
-                if (std::find(usedModels.begin(), usedModels.end(), submission.model) == usedModels.end())
-                    usedModels.push_back(submission.model);
             }
+            if (modelResourceUsed
+                && std::find(usedModels.begin(), usedModels.end(), submission.model) == usedModels.end())
+                usedModels.push_back(submission.model);
         }
 
         m_modelRenderQueue.sort();

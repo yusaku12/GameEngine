@@ -65,17 +65,46 @@ namespace Engine
         if (low >= high)
             return low;
 
-        const uint32_t span = static_cast<uint32_t>(high - low) + 1u;
-        return low + static_cast<int32_t>(nextUInt() % span);
+        const std::uint64_t span = static_cast<std::uint64_t>(
+            static_cast<std::int64_t>(high) - static_cast<std::int64_t>(low)) + 1u;
+        constexpr std::uint64_t UINT32_RANGE = std::uint64_t{ 1 } << 32;
+        const std::uint64_t rejectionThreshold = UINT32_RANGE % span;
+        std::uint32_t value = nextUInt();
+        while (static_cast<std::uint64_t>(value) < rejectionThreshold)
+            value = nextUInt();
+
+        const std::int64_t result = static_cast<std::int64_t>(low)
+            + static_cast<std::int64_t>(static_cast<std::uint64_t>(value) % span);
+        return static_cast<std::int32_t>(result);
     }
 
     float Random::range(float low, float high)
     {
-        return low + (high - low) * nextFloat();
+        if (!std::isfinite(low) || !std::isfinite(high))
+        {
+            LOG_WARNING("[Random] Invalid floating-point range [{}, {}); returning a finite bound.", low, high);
+            if (std::isfinite(low))
+                return low;
+            if (std::isfinite(high))
+                return high;
+            return 0.0f;
+        }
+        if (low >= high)
+            return low;
+
+        const double value = static_cast<double>(low)
+            + (static_cast<double>(high) - static_cast<double>(low)) * static_cast<double>(nextFloat());
+        const float result = static_cast<float>(value);
+        return result < high ? result : std::nextafter(high, low);
     }
 
     bool Random::nextBool(float probability)
     {
+        if (!std::isfinite(probability) || probability < 0.0f || probability > 1.0f)
+        {
+            LOG_WARNING("[Random] Invalid probability {}; returning false.", probability);
+            return false;
+        }
         return nextFloat() < probability;
     }
 

@@ -28,6 +28,20 @@ namespace Engine::Serialization
             return CreateTransformData(builder, &position, createQuaternion(builder, transform.getRotation()), &scale);
         }
 
+        bool isFinite(const Engine::Vector3& value) noexcept
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+        }
+
+        bool isValidRotation(const Engine::Quaternion& value) noexcept
+        {
+            const float lengthSquared = value.x * value.x + value.y * value.y
+                + value.z * value.z + value.w * value.w;
+            return std::isfinite(value.x) && std::isfinite(value.y)
+                && std::isfinite(value.z) && std::isfinite(value.w)
+                && std::isfinite(lengthSquared) && lengthSquared > std::numeric_limits<float>::epsilon();
+        }
+
         flatbuffers::Offset<PrefabNodeData> createNode(flatbuffers::FlatBufferBuilder& builder, const PrefabNode& node)
         {
             std::vector<flatbuffers::Offset<flatbuffers::String>> componentTypes;
@@ -46,9 +60,13 @@ namespace Engine::Serialization
             for (const PrefabNode& child : node.children)
                 children.push_back(createNode(builder, child));
 
+            const std::string_view tagName = Engine::TagManager::instance().getName(node.tag);
+            const auto serializedTagName = tagName.empty() ? flatbuffers::Offset<flatbuffers::String>{}
+            : builder.CreateString(tagName.data(), tagName.size());
             return CreatePrefabNodeData(builder, createGuid(builder, node.sourceGUID), builder.CreateString(node.name),
                 node.active, node.tag, node.layer, createTransform(builder, node.localTransform),
-                builder.CreateVector(componentTypes), builder.CreateVector(components), builder.CreateVector(children));
+                builder.CreateVector(componentTypes), builder.CreateVector(components), builder.CreateVector(children),
+                serializedTagName);
         }
 
         bool readNode(const PrefabNodeData& source, PrefabNode& node)
@@ -62,7 +80,23 @@ namespace Engine::Serialization
             node.name = source.name()->str();
             node.active = source.active();
             node.tag = source.tag();
+            if (const flatbuffers::String* const tagName = source.tag_name();
+                tagName != nullptr && tagName->size() != 0)
+            {
+                const std::string name = tagName->str();
+                node.tag = Engine::TagManager::instance().registerTag(name);
+                if (Engine::TagManager::instance().getName(node.tag) != name)
+                {
+                    LOG_ERROR("Failed to register a Prefab Tag name: {}", name);
+                    return false;
+                }
+            }
             node.layer = source.layer();
+            if (node.layer >= 32)
+            {
+                LOG_ERROR("Prefab contains an invalid Layer ID.");
+                return false;
+            }
 
             const TransformData& transform = *source.transform();
             const Vec3* position = transform.position();
@@ -70,10 +104,12 @@ namespace Engine::Serialization
             const Vec3* scale = transform.scale();
             if (position == nullptr || rotation == nullptr || scale == nullptr)
                 return false;
-            node.localTransform = Engine::Transform(
-                Engine::Vector3(position->x(), position->y(), position->z()),
-                Engine::Quaternion(rotation->x(), rotation->y(), rotation->z(), rotation->w()),
-                Engine::Vector3(scale->x(), scale->y(), scale->z()));
+            const Engine::Vector3 positionValue(position->x(), position->y(), position->z());
+            const Engine::Quaternion rotationValue(rotation->x(), rotation->y(), rotation->z(), rotation->w());
+            const Engine::Vector3 scaleValue(scale->x(), scale->y(), scale->z());
+            if (!isFinite(positionValue) || !isFinite(scaleValue) || !isValidRotation(rotationValue))
+                return false;
+            node.localTransform = Engine::Transform(positionValue, rotationValue, scaleValue);
 
             node.componentTypes.clear();
             if (const auto* componentTypes = source.component_types())
@@ -127,34 +163,66 @@ namespace Engine::Serialization
         if (path.empty() || !prefab.isValid())
             return false;
 
-        flatbuffers::FlatBufferBuilder builder(1024);
-        const auto header = CreateFileHeader(builder, CURRENT_SCHEMA_VERSION, CURRENT_PREFAB_VERSION, 0);
-        const auto root = CreatePrefabFile(builder, header, createNode(builder, prefab.getRoot()));
-        FinishPrefabFileBuffer(builder, root);
-        return FlatBufferWriter{}.saveAtomic(path, std::span<const std::uint8_t>(builder.GetBufferPointer(), builder.GetSize()));
+        try
+        {
+            flatbuffers::FlatBufferBuilder builder(1024);
+            const auto header = CreateFileHeader(builder, CURRENT_SCHEMA_VERSION, CURRENT_PREFAB_VERSION, 0);
+            const auto root = CreatePrefabFile(builder, header, createNode(builder, prefab.getRoot()));
+            FinishPrefabFileBuffer(builder, root);
+            return FlatBufferWriter{}.saveAtomic(path,
+                std::span<const std::uint8_t>(builder.GetBufferPointer(), builder.GetSize()));
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("Failed to allocate memory while saving a Prefab.");
+            return false;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("Prefab data exceeded a collection capacity while saving.");
+            return false;
+        }
+        catch (const std::filesystem::filesystem_error& error)
+        {
+            LOG_ERROR("Filesystem error while saving a Prefab: {}", error.what());
+            return false;
+        }
     }
 
     bool PrefabSerializer::load(const std::filesystem::path& path, Prefab& prefab) const
     {
-        FlatBufferReader reader;
-        if (!reader.open(path) || !reader.hasIdentifier("PREF"))
-            return false;
-        flatbuffers::Verifier verifier(reader.data(), reader.size());
-        if (!VerifyPrefabFileBuffer(verifier))
-            return false;
+        try
+        {
+            FlatBufferReader reader;
+            if (!reader.open(path) || !reader.hasIdentifier("PREF"))
+                return false;
+            flatbuffers::Verifier verifier(reader.data(), reader.size());
+            if (!VerifyPrefabFileBuffer(verifier))
+                return false;
 
-        const PrefabFile* source = GetPrefabFile(reader.data());
-        if (source == nullptr || source->header() == nullptr || source->root() == nullptr
-            || source->header()->schema_version() != CURRENT_SCHEMA_VERSION
-            || source->header()->asset_version() < MINIMUM_SUPPORTED_PREFAB_VERSION
-            || source->header()->asset_version() > CURRENT_PREFAB_VERSION)
-            return false;
+            const PrefabFile* source = GetPrefabFile(reader.data());
+            if (source == nullptr || source->header() == nullptr || source->root() == nullptr
+                || source->header()->schema_version() != CURRENT_SCHEMA_VERSION
+                || source->header()->asset_version() < MINIMUM_SUPPORTED_PREFAB_VERSION
+                || source->header()->asset_version() > CURRENT_PREFAB_VERSION)
+                return false;
 
-        PrefabNode root;
-        if (!readNode(*source->root(), root))
+            PrefabNode root;
+            if (!readNode(*source->root(), root))
+                return false;
+            prefab.m_root = std::move(root);
+            prefab.m_valid = true;
+            return true;
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("Failed to allocate memory while loading a Prefab.");
             return false;
-        prefab.m_root = std::move(root);
-        prefab.m_valid = true;
-        return true;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("Prefab data exceeded a collection capacity while loading.");
+            return false;
+        }
     }
 } // namespace Engine::Serialization

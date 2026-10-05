@@ -465,6 +465,13 @@ namespace Engine
                     const int controlPointIndex = source->GetPolygonVertex(polygonIndex, vertexIndex);
                     if (controlPointIndex < 0 || controlPointIndex >= controlPointCount)
                         return false;
+                    if (mesh.vertices.size() >= (std::numeric_limits<std::uint32_t>::max)()
+                        || indices.size() >= (std::numeric_limits<std::uint32_t>::max)())
+                    {
+                        LOG_ERROR_CAT("FbxModelImporter", "Mesh exceeds supported vertex or index count: {}", mesh.name);
+                        return false;
+                    }
+
                     ModelVertex vertex;
                     vertex.position = toVector3(geometry.MultT(controlPoints[controlPointIndex]));
                     vertex.position.x = -vertex.position.x;
@@ -525,6 +532,14 @@ namespace Engine
                     continue;
                 for (std::size_t triangleIndex = 0; triangleIndex < materialIndicesForMesh.size(); triangleIndex += 3)
                     std::swap(materialIndicesForMesh[triangleIndex + 1], materialIndicesForMesh[triangleIndex + 2]);
+                const std::size_t maxIndexCount = (std::numeric_limits<std::uint32_t>::max)();
+                if (mesh.indices.size() > maxIndexCount
+                    || materialIndicesForMesh.size() > maxIndexCount - mesh.indices.size())
+                {
+                    LOG_ERROR_CAT("FbxModelImporter", "Mesh exceeds supported index count: {}", mesh.name);
+                    return false;
+                }
+
                 const std::uint32_t start = static_cast<std::uint32_t>(mesh.indices.size());
                 mesh.indices.insert(mesh.indices.end(), materialIndicesForMesh.begin(), materialIndicesForMesh.end());
                 mesh.subMeshes.push_back({ start, static_cast<std::uint32_t>(materialIndicesForMesh.size()),
@@ -549,6 +564,13 @@ namespace Engine
         {
             if (source == nullptr)
                 return true;
+            if (model.nodes.size() >= static_cast<std::size_t>((std::numeric_limits<std::int32_t>::max)())
+                || model.meshes.size() > (std::numeric_limits<std::uint32_t>::max)())
+            {
+                LOG_ERROR_CAT("FbxModelImporter", "Model exceeds supported node or mesh count.");
+                return false;
+            }
+
             const std::uint32_t nodeIndex = static_cast<std::uint32_t>(model.nodes.size());
             model.nodes.push_back({});
             model.nodes[nodeIndex].name = source->GetName();

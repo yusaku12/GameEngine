@@ -29,5 +29,5 @@
 #include <typeindex>
 #include <array>
 #include <unordered_set>
-
+#include <cwctype>
 #include "Core\Core.h"

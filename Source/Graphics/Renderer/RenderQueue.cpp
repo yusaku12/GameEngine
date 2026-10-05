@@ -4,6 +4,17 @@
 
 namespace Engine
 {
+    namespace
+    {
+        bool isValidBounds(const AABB& bounds) noexcept
+        {
+            return std::isfinite(bounds.Center.x) && std::isfinite(bounds.Center.y)
+                && std::isfinite(bounds.Center.z) && std::isfinite(bounds.Extents.x)
+                && std::isfinite(bounds.Extents.y) && std::isfinite(bounds.Extents.z)
+                && bounds.Extents.x >= 0.0f && bounds.Extents.y >= 0.0f && bounds.Extents.z >= 0.0f;
+        }
+    }
+
     void RenderQueue::clear() noexcept
     {
         m_items.clear();
@@ -19,6 +30,12 @@ namespace Engine
     {
         if (item.vertexBuffer == nullptr || item.indexBuffer == nullptr || item.indexCount == 0)
             return false;
+        if (!isValidBounds(item.worldBounds) || !std::isfinite(item.cameraDepth)
+            || item.pass > RenderPassType::Transparent)
+        {
+            LOG_ERROR("[RenderQueue] Rejecting item with invalid bounds, depth, or render pass.");
+            return false;
+        }
 
         if (frustum != nullptr && !isVisible(*frustum, item.worldBounds))
         {

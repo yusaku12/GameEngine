@@ -29,11 +29,28 @@ namespace Engine
         m_queue.Reset();
     }
 
-    void DX12CommandQueue::execute(const std::span<ID3D12CommandList* const> commandLists) const
+    bool DX12CommandQueue::execute(const std::span<ID3D12CommandList* const> commandLists) const
     {
         if (m_queue == nullptr || commandLists.empty())
-            return;
+        {
+            LOG_ERROR("[DX12] 未初期化の Queue または空の Command List 配列を実行しようとしました");
+            return false;
+        }
+
+        if (commandLists.size() > std::numeric_limits<UINT>::max())
+        {
+            LOG_ERROR("[DX12] Command List 配列の要素数が DirectX 12 の上限を超えています");
+            return false;
+        }
+
+        if (std::any_of(commandLists.begin(), commandLists.end(),
+            [](const ID3D12CommandList* commandList) { return commandList == nullptr; }))
+        {
+            LOG_ERROR("[DX12] nullptr を含む Command List 配列を実行しようとしました");
+            return false;
+        }
 
         m_queue->ExecuteCommandLists(static_cast<UINT>(commandLists.size()), commandLists.data());
+        return true;
     }
 } // namespace Engine

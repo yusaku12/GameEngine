@@ -42,7 +42,8 @@ namespace Engine
 
     private:
 
-        uint64_t m_frequency = 0;    //!< タイマーの周波数（ティック/秒）
-        int64_t  m_startCounter = 0; //!< リセット時のカウンタ値
+        uint64_t m_frequency = 0;       //!< タイマーの周波数（ティック/秒）
+        int64_t  m_startCounter = 0;    //!< リセット時のカウンタ値
+        bool m_usesSteadyClock = false; //!< QPCが利用できない場合の代替クロック
     };
 } // namespace Engine

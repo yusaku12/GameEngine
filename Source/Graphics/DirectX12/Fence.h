@@ -61,9 +61,15 @@ namespace Engine
 
         /**
          * @brief GPU が完了した最新 Fence 値を取得する
-         * @return 最新の完了 Fence 値。未初期化時は 0
+         * @return 最新の完了 Fence 値。未初期化時は 0、Device Removed 時は UINT64_MAX
          */
         std::uint64_t getCompletedValue() const noexcept;
+
+        /**
+         * @brief Queueへ最後に通知したFence値を取得する
+         * @return 最後に通知したFence値。未通知時は0
+         */
+        std::uint64_t getLastSignaledValue() const noexcept { return m_lastSignaledValue; }
 
         /**
          * @brief DirectX 12 Fence を取得する
@@ -76,5 +82,6 @@ namespace Engine
         Microsoft::WRL::ComPtr<ID3D12Fence> m_fence; //!< DirectX 12 Fence
         HANDLE m_event = nullptr;                    //!< CPU 待機イベント
         std::uint64_t m_nextValue = 1;               //!< 次に通知する Fence 値
+        std::uint64_t m_lastSignaledValue = 0;       //!< Queueへ最後に通知したFence値
     };
 } // namespace Engine

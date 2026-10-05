@@ -45,14 +45,22 @@ namespace Engine
 
     void ThreadDebugStats::beginTask(const ThreadDebugTask task) noexcept
     {
-        TaskCounters& counters = m_tasks[taskIndex(task)];
+        const size_t index = taskIndex(task);
+        if (index >= m_tasks.size())
+            return;
+
+        TaskCounters& counters = m_tasks[index];
         counters.activeCount.fetch_add(1, std::memory_order_acq_rel);
         counters.lastThreadId.store(getCurrentThreadId(), std::memory_order_release);
     }
 
     void ThreadDebugStats::endTask(const ThreadDebugTask task, const uint64_t durationMicroseconds) noexcept
     {
-        TaskCounters& counters = m_tasks[taskIndex(task)];
+        const size_t index = taskIndex(task);
+        if (index >= m_tasks.size())
+            return;
+
+        TaskCounters& counters = m_tasks[index];
         counters.totalRuns.fetch_add(1, std::memory_order_acq_rel);
         counters.lastDurationMicroseconds.store(durationMicroseconds, std::memory_order_release);
         counters.totalDurationMicroseconds.fetch_add(durationMicroseconds, std::memory_order_acq_rel);

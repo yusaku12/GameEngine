@@ -20,6 +20,17 @@ namespace Engine::Serialization
             return value ? AssetGUID{ value->high(), value->low() } : AssetGUID{};
         }
 
+        bool isFinite(const Vector3& value) noexcept
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+        }
+
+        bool isFinite(const Vector4& value) noexcept
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y)
+                && std::isfinite(value.z) && std::isfinite(value.w);
+        }
+
         bool readRenderState(const Engine::Serialization::MaterialRenderState* source, Engine::MaterialRenderState& state)
         {
             if (source == nullptr ||
@@ -116,12 +127,25 @@ namespace Engine::Serialization
             return false;
         }
 
+        const Vector4 baseColor(source->base_color()->x(), source->base_color()->y(),
+            source->base_color()->z(), source->base_color()->w());
+        const Vector3 emissiveColor(source->emissive_color()->x(), source->emissive_color()->y(),
+            source->emissive_color()->z());
+        if (!isFinite(baseColor) || !isFinite(emissiveColor)
+            || !std::isfinite(source->metallic()) || !std::isfinite(source->roughness())
+            || !std::isfinite(source->emissive_intensity()) || !std::isfinite(source->normal_scale())
+            || !std::isfinite(source->occlusion_strength()) || !std::isfinite(source->alpha_cutoff()))
+        {
+            LOG_ERROR("Material contains non-finite parameter values: {}", path.string());
+            return false;
+        }
+
         loaded.name = source->name()->str();
         loaded.shaderGuid = toEngine(source->shader_guid());
-        loaded.baseColor = Vector4(source->base_color()->x(), source->base_color()->y(), source->base_color()->z(), source->base_color()->w());
+        loaded.baseColor = baseColor;
         loaded.metallic = source->metallic();
         loaded.roughness = source->roughness();
-        loaded.emissiveColor = Vector3(source->emissive_color()->x(), source->emissive_color()->y(), source->emissive_color()->z());
+        loaded.emissiveColor = emissiveColor;
         loaded.emissiveIntensity = source->emissive_intensity();
         loaded.normalScale = source->normal_scale();
         loaded.occlusionStrength = source->occlusion_strength();

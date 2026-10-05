@@ -171,8 +171,12 @@ namespace Engine
 
         bool m_showShaderManager = false;                                         //!< Shader Managerパネルの表示フラグ
         bool m_showThreadDebug = false;                                           //!< Thread Debugパネルの表示フラグ
+        ObjectGUID m_observedSceneGuid{};                                        //!< Editor状態を紐付けたSceneのGUID
+        ObjectGUID m_selectedObjectGuid{};                                       //!< Inspectorで選択中のGameObject GUID
+        ObjectGUID m_hierarchyCreateParentGuid{};                                //!< 作成するGameObjectの親GUID
         GameObject* m_selectedObject = nullptr;                                   //!< Inspectorで選択中のGameObject
         std::vector<GameObject*> m_selectedObjects;                               //!< Hierarchyで選択中のGameObject
+        std::vector<ObjectGUID> m_selectedObjectGuids;                           //!< Hierarchyで選択中のGameObject GUID
         GameObject* m_hierarchyCreateParent = nullptr;                            //!< 作成するGameObjectの親。nullptrならRoot
         std::array<char, 128> m_hierarchySearch{};                                //!< Hierarchyの検索文字列
         std::array<char, 128> m_objectName{};                                     //!< Inspectorで編集中のGameObject名

@@ -15,6 +15,7 @@ namespace Engine
 
     /**
      * @brief CameraのClear方式。
+     * @details Skybox描画は未実装のため、Skyboxは背景色によるClearとして扱う。
      */
     enum class CameraClearMode
     {

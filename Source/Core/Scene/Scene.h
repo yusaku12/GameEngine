@@ -18,7 +18,7 @@ namespace Engine
          * @param name Scene名
          */
         Scene(ObjectGUID guid, std::string name);
-        ~Scene() = default;
+        ~Scene() { clear(); }
 
         GE_DISABLE_COPY_AND_MOVE(Scene);
 
@@ -84,6 +84,16 @@ namespace Engine
         }
 
         /**
+         * @brief Scene内のGameObjectを別Sceneの内容で置き換える。
+         * @param source 置換元Scene。成功時はGameObjectを所有しなくなる。
+         * @return 置き換えに成功した場合はtrue。
+         */
+        bool replaceGameObjectsFrom(Scene& source) noexcept
+        {
+            return m_objects.replaceContentsFrom(source.m_objects);
+        }
+
+        /**
          * @brief 通常更新を実行する。
          * @param deltaTime 経過時間
          */
@@ -105,6 +115,12 @@ namespace Engine
          * @brief 破棄キューを処理する。
          */
         void processDestroyQueue() noexcept { m_objects.processDestroyQueue(); }
+
+        /**
+         * @brief Scene内のComponent Lifecycleを無効化する。
+         * @details SceneがActiveでなくなる場合に呼び出す。
+         */
+        void deactivateLifecycle() noexcept { m_objects.deactivateLifecycle(); }
 
         /**
          * @brief 名前からGameObjectを検索する。
@@ -150,9 +166,15 @@ namespace Engine
         std::size_t getGameObjectCount() const noexcept { return m_objects.size(); }
 
         /**
+          * @brief Scene内でLifecycle callbackまたは破棄処理が実行中かどうかを取得する。
+          * @return callbackまたはManager操作が実行中の場合はtrue。
+          */
+        bool isBusy() const noexcept { return m_objects.isBusy(); }
+
+        /**
          * @brief Scene内のGameObject一覧を取得する。
-         * @return Scene内のGameObjectのポインタのベクター
-         */
+        * @return Scene内のGameObjectのポインタのベクター
+        */
         const auto& getGameObjects() const noexcept { return m_objects.objects(); }
 
         /**

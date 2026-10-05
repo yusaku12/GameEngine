@@ -21,12 +21,29 @@ namespace Engine
                 columns[3][0], columns[3][1], columns[3][2], columns[3][3]);
         }
 
-        float wrapTime(const float time, const float duration) noexcept
+        float wrapTime(const double time, const double duration) noexcept
         {
-            float wrapped = std::fmod(time, duration);
-            if (wrapped < 0.0f)
+            double wrapped = std::fmod(time, duration);
+            if (wrapped < 0.0)
                 wrapped += duration;
-            return wrapped;
+            return static_cast<float>(wrapped);
+        }
+
+        std::int64_t addLoopCount(const std::int64_t current, const double loops) noexcept
+        {
+            constexpr std::int64_t maxCount = (std::numeric_limits<std::int64_t>::max)();
+            constexpr std::int64_t minCount = (std::numeric_limits<std::int64_t>::min)();
+            if (loops >= static_cast<double>(maxCount))
+                return maxCount;
+            if (loops <= static_cast<double>(minCount))
+                return minCount;
+
+            const std::int64_t increment = static_cast<std::int64_t>(loops);
+            if (increment > 0 && current > maxCount - increment)
+                return maxCount;
+            if (increment < 0 && current < minCount - increment)
+                return minCount;
+            return current + increment;
         }
 
         bool isConditionCompatible(const AnimatorParameterType type, const AnimatorConditionMode mode) noexcept
@@ -38,15 +55,47 @@ namespace Engine
                 return mode == AnimatorConditionMode::If || mode == AnimatorConditionMode::IfNot;
             return type == AnimatorParameterType::Trigger && mode == AnimatorConditionMode::Triggered;
         }
+
+        bool isValidParameterType(const AnimatorParameterType type) noexcept
+        {
+            switch (type)
+            {
+            case AnimatorParameterType::Float:
+            case AnimatorParameterType::Int:
+            case AnimatorParameterType::Bool:
+            case AnimatorParameterType::Trigger:
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        bool isValidWrapOverride(const AnimatorWrapOverride wrapOverride) noexcept
+        {
+            switch (wrapOverride)
+            {
+            case AnimatorWrapOverride::UseClip:
+            case AnimatorWrapOverride::Once:
+            case AnimatorWrapOverride::Loop:
+            case AnimatorWrapOverride::PingPong:
+                return true;
+            default:
+                return false;
+            }
+        }
     }
 
     bool AnimatorInstance::setAssets(std::shared_ptr<const SkeletonAsset> skeleton,
         std::shared_ptr<const AnimationClipAsset> clip)
     {
         if (skeleton == nullptr || clip == nullptr
+            || skeleton->skeleton.num_joints() <= 0
             || clip->skeletonGuid != skeleton->guid
             || clip->skeletonSignature != skeleton->signature
             || clip->animation.num_tracks() != skeleton->skeleton.num_joints()
+            || !std::isfinite(clip->duration) || clip->duration <= 0.0f
+            || clip->duration != clip->animation.duration()
+            || clip->wrapMode > AnimationWrapMode::PingPong
             || skeleton->inverseBindPoses.size() != static_cast<std::size_t>(skeleton->skeleton.num_joints()))
         {
             clear();
@@ -96,6 +145,7 @@ namespace Engine
         if (skeleton == nullptr || controller == nullptr || clips.size() != controller->states.size()
             || controller->skeletonGuid != skeleton->guid || controller->skeletonSignature != skeleton->signature
             || controller->layerId == 0 || controller->defaultState == 0 || controller->states.empty()
+            || skeleton->skeleton.num_joints() <= 0
             || skeleton->inverseBindPoses.size() != static_cast<std::size_t>(skeleton->skeleton.num_joints()))
         {
             clear();
@@ -113,8 +163,12 @@ namespace Engine
             const AnimatorState& state = m_controller->states[index];
             const auto& clip = clips[index];
             if (state.id == 0 || !std::isfinite(state.speed) || findState(state.id) != m_states.size()
+                || !isValidWrapOverride(state.wrapOverride)
                 || clip == nullptr || clip->guid != state.clipGuid || clip->skeletonGuid != m_skeleton->guid
-                || clip->skeletonSignature != m_skeleton->signature || clip->animation.num_tracks() != jointCount)
+                || clip->skeletonSignature != m_skeleton->signature || clip->animation.num_tracks() != jointCount
+                || !std::isfinite(clip->duration) || clip->duration <= 0.0f
+                || clip->duration != clip->animation.duration()
+                || clip->wrapMode > AnimationWrapMode::PingPong)
             {
                 clear();
                 return false;
@@ -136,6 +190,7 @@ namespace Engine
         for (const AnimatorParameter& parameter : m_controller->parameters)
         {
             if (parameter.id == 0 || !std::isfinite(parameter.defaultFloat)
+                || !isValidParameterType(parameter.type)
                 || findParameter(parameter.id) != m_parameters.size())
             {
                 clear();
@@ -149,7 +204,8 @@ namespace Engine
         for (const AnimatorTransition& transition : m_controller->transitions)
         {
             if (transition.id == 0 || !std::isfinite(transition.duration) || transition.duration < 0.0f
-                || !std::isfinite(transition.exitTime) || transition.exitTime < 0.0f)
+                || !std::isfinite(transition.exitTime) || transition.exitTime < 0.0f
+                || (transition.hasExitTime && transition.exitTime > 1.0f))
             {
                 clear();
                 return false;
@@ -178,7 +234,7 @@ namespace Engine
             for (const AnimatorCondition& condition : transition.conditions)
             {
                 const std::size_t parameterIndex = findParameter(condition.parameterId);
-                if (parameterIndex == m_parameters.size())
+                if (parameterIndex == m_parameters.size() || !std::isfinite(condition.floatThreshold))
                 {
                     clear();
                     return false;
@@ -450,25 +506,26 @@ namespace Engine
 
         if (m_playing)
         {
-            const float previousTime = m_time;
-            const float unwrappedTime = previousTime + deltaTime * m_speed;
+            const double unwrappedTime = static_cast<double>(m_time)
+                + static_cast<double>(deltaTime) * static_cast<double>(m_speed);
             switch (m_clip->wrapMode)
             {
             case AnimationWrapMode::Once:
-                m_time = std::clamp(unwrappedTime, 0.0f, m_clip->duration);
+                m_time = static_cast<float>(std::clamp(unwrappedTime, 0.0, static_cast<double>(m_clip->duration)));
                 if ((m_speed > 0.0f && unwrappedTime >= m_clip->duration)
                     || (m_speed < 0.0f && unwrappedTime <= 0.0f))
                     m_playing = false;
                 break;
             case AnimationWrapMode::Loop:
-                m_loopCount += static_cast<std::int64_t>(std::floor(unwrappedTime / m_clip->duration));
-                m_time = wrapTime(unwrappedTime, m_clip->duration);
+                m_loopCount = addLoopCount(m_loopCount,
+                    std::floor(unwrappedTime / static_cast<double>(m_clip->duration)));
+                m_time = wrapTime(unwrappedTime, static_cast<double>(m_clip->duration));
                 break;
             case AnimationWrapMode::PingPong:
             {
-                const float period = m_clip->duration * 2.0f;
+                const double period = static_cast<double>(m_clip->duration) * 2.0;
                 const float wrapped = wrapTime(unwrappedTime, period);
-                m_loopCount += static_cast<std::int64_t>(std::floor(unwrappedTime / period));
+                m_loopCount = addLoopCount(m_loopCount, std::floor(unwrappedTime / period));
                 m_time = wrapped;
                 break;
             }
@@ -479,21 +536,26 @@ namespace Engine
 
     void AnimatorInstance::advanceState(RuntimeState& state, const float deltaTime) noexcept
     {
-        const float unwrappedTime = state.time + deltaTime * m_speed * state.speed;
+        const double unwrappedTime = static_cast<double>(state.time)
+            + static_cast<double>(deltaTime) * static_cast<double>(m_speed) * static_cast<double>(state.speed);
         switch (state.wrapMode)
         {
         case AnimationWrapMode::Once:
-            state.time = std::clamp(unwrappedTime, 0.0f, state.clip->duration);
+            state.time = static_cast<float>(
+                std::clamp(unwrappedTime, 0.0, static_cast<double>(state.clip->duration)));
             break;
         case AnimationWrapMode::Loop:
-            state.loopCount += static_cast<std::int64_t>(std::floor(unwrappedTime / state.clip->duration));
-            state.time = wrapTime(unwrappedTime, state.clip->duration);
+            state.loopCount = addLoopCount(state.loopCount,
+                std::floor(unwrappedTime / static_cast<double>(state.clip->duration)));
+            state.time = wrapTime(unwrappedTime, static_cast<double>(state.clip->duration));
             break;
         case AnimationWrapMode::PingPong:
-            const float period = state.clip->duration * 2.0f;
-            state.loopCount += static_cast<std::int64_t>(std::floor(unwrappedTime / period));
+        {
+            const double period = static_cast<double>(state.clip->duration) * 2.0;
+            state.loopCount = addLoopCount(state.loopCount, std::floor(unwrappedTime / period));
             state.time = wrapTime(unwrappedTime, period);
             break;
+        }
         }
     }
 

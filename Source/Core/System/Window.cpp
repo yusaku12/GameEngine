@@ -120,7 +120,7 @@ namespace Engine
             break;
 
         case WM_ACTIVATE:
-            InputManager::instance().setWindowFocused(wparam != WA_INACTIVE);
+            InputManager::instance().setWindowFocused(LOWORD(wparam) != WA_INACTIVE);
             break;
 
         default:

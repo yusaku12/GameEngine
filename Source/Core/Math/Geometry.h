@@ -73,14 +73,24 @@ namespace Engine
      */
     inline Vector3 closestPointOnSegment(const Vector3& point, const Vector3& lineStart, const Vector3& lineEnd)
     {
-        const Vector3 segment = lineEnd - lineStart;
-        const float lengthSquared = segment.LengthSquared();
+        const double segmentX = static_cast<double>(lineEnd.x) - lineStart.x;
+        const double segmentY = static_cast<double>(lineEnd.y) - lineStart.y;
+        const double segmentZ = static_cast<double>(lineEnd.z) - lineStart.z;
+        const double lengthSquared = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
 
-        if (lengthSquared <= EPSILON)
+        if (!std::isfinite(lengthSquared) || lengthSquared <= 0.0)
             return lineStart;
 
-        const float t = saturate((point - lineStart).Dot(segment) / lengthSquared);
-        return lineStart + segment * t;
+        const double pointX = static_cast<double>(point.x) - lineStart.x;
+        const double pointY = static_cast<double>(point.y) - lineStart.y;
+        const double pointZ = static_cast<double>(point.z) - lineStart.z;
+        const double projection = (pointX * segmentX + pointY * segmentY + pointZ * segmentZ) / lengthSquared;
+        const double t = std::clamp(projection, 0.0, 1.0);
+
+        return Vector3(
+            static_cast<float>(static_cast<double>(lineStart.x) + segmentX * t),
+            static_cast<float>(static_cast<double>(lineStart.y) + segmentY * t),
+            static_cast<float>(static_cast<double>(lineStart.z) + segmentZ * t));
     }
 
     /**

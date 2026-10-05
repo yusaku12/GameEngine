@@ -80,6 +80,22 @@ struct PixelInput
     float3 bitangent : BITANGENT;
 };
 
+row_major float3x3 getNormalMatrix(row_major float3x3 transform)
+{
+    const float3 row0 = transform[0];
+    const float3 row1 = transform[1];
+    const float3 row2 = transform[2];
+    const float3 cofactor0 = cross(row1, row2);
+    const float3 cofactor1 = cross(row2, row0);
+    const float3 cofactor2 = cross(row0, row1);
+    const float determinant = dot(row0, cofactor0);
+    if (abs(determinant) <= 0.00000001f)
+        return float3x3(1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+
+    const float determinantSign = determinant < 0.0f ? -1.0f : 1.0f;
+    return float3x3(cofactor0 * determinantSign, cofactor1 * determinantSign, cofactor2 * determinantSign);
+}
+
 PixelInput vsMain(VertexInput input, uint instanceID : SV_InstanceID)
 {
     const ObjectConstants object = objectInstances[instanceID];
@@ -103,17 +119,19 @@ PixelInput vsMain(VertexInput input, uint instanceID : SV_InstanceID)
             + (float3x3)boneNormalMatrices[boneIndices.w] * normalizedWeights.w;
         localPosition = mul(localPosition, skinMatrix);
         localNormal = normalize(mul(localNormal, skinNormalMatrix));
-        localTangent = normalize(mul(localTangent, skinNormalMatrix));
-        localBitangent = normalize(mul(localBitangent, skinNormalMatrix));
+        localTangent = normalize(mul(localTangent, (float3x3)skinMatrix));
+        localBitangent = normalize(mul(localBitangent, (float3x3)skinMatrix));
     }
     output.position = mul(localPosition, object.worldViewProjection);
     const float4 resolvedBaseColor = (propertyOverrideMask & PROPERTY_BASE_COLOR) != 0
         ? propertyBaseColor : baseColor;
     output.color = input.color * resolvedBaseColor;
     output.texCoord = input.texCoord;
-    output.normal = normalize(mul(localNormal, (float3x3)object.worldMatrix));
-    output.tangent = normalize(mul(localTangent, (float3x3)object.worldMatrix));
-    output.bitangent = normalize(mul(localBitangent, (float3x3)object.worldMatrix));
+    const row_major float3x3 worldMatrix = (float3x3)object.worldMatrix;
+    const row_major float3x3 worldNormalMatrix = getNormalMatrix(worldMatrix);
+    output.normal = normalize(mul(localNormal, worldNormalMatrix));
+    output.tangent = normalize(mul(localTangent, worldMatrix));
+    output.bitangent = normalize(mul(localBitangent, worldMatrix));
     return output;
 }
 

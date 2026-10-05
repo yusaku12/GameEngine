@@ -51,11 +51,17 @@ namespace Engine
         }
         for (std::unique_ptr<MaterialGpuResource>& resource : m_retiredResources)
             succeeded = resource->constantBuffer.finalize() && succeeded;
+        if (!succeeded)
+        {
+            LOG_ERROR("[MaterialGpuCache] GPU使用完了を確認できないためCacheのFinalizeを中止します");
+            return false;
+        }
+
         m_resources.clear();
         m_retiredResources.clear();
         m_device = nullptr;
         m_fence = nullptr;
-        return succeeded;
+        return true;
     }
 
     MaterialGpuResource* MaterialGpuCache::getOrCreate(const MaterialHandle handle)
@@ -66,13 +72,35 @@ namespace Engine
         if (const auto found = m_resources.find(key); found != m_resources.end())
         {
             const std::shared_ptr<const MaterialAsset> current = MaterialManager::instance().get(handle);
-            if (current == nullptr || found->second->source == current)
+            const MaterialGpuResource& cached = *found->second;
+            TextureManager& textures = TextureManager::instance();
+            const bool cachedTexturesAvailable =
+                textures.get(cached.baseColorTexture) != nullptr
+                && textures.get(cached.normalTexture) != nullptr
+                && textures.get(cached.metallicRoughnessTexture) != nullptr
+                && textures.get(cached.ambientOcclusionTexture) != nullptr
+                && textures.get(cached.emissiveTexture) != nullptr;
+            if (current == nullptr || (cached.source == current && cachedTexturesAvailable))
                 return found->second.get();
 
             std::unique_ptr<MaterialGpuResource> replacement = createResource(handle);
             if (replacement == nullptr)
                 return found->second.get();
-            m_retiredResources.push_back(std::move(found->second));
+            try
+            {
+                m_retiredResources.reserve(m_retiredResources.size() + 1);
+                m_retiredResources.push_back(std::move(found->second));
+            }
+            catch (const std::bad_alloc&)
+            {
+                LOG_ERROR("[MaterialGpuCache] Failed to retain the previous material resource.");
+                return found->second.get();
+            }
+            catch (const std::length_error&)
+            {
+                LOG_ERROR("[MaterialGpuCache] Retired material resource capacity is exhausted.");
+                return found->second.get();
+            }
             found->second = std::move(replacement);
             return found->second.get();
         }
@@ -86,7 +114,23 @@ namespace Engine
             return nullptr;
         }
         MaterialGpuResource* const result = resource.get();
-        m_resources.emplace(key, std::move(resource));
+        try
+        {
+            const auto [entry, inserted] = m_resources.emplace(key, std::move(resource));
+            if (!inserted)
+                return entry->second.get();
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[MaterialGpuCache] Failed to allocate a cache entry for Material {}:{}.",
+                handle.index, handle.generation);
+            return nullptr;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[MaterialGpuCache] Material cache reached its maximum capacity.");
+            return nullptr;
+        }
         return result;
     }
 
@@ -122,14 +166,18 @@ namespace Engine
             replacements.emplace(key, std::move(replacement));
         }
 
+        if (m_resources.size() > m_retiredResources.max_size() - m_retiredResources.size())
+        {
+            LOG_ERROR("[MaterialGpuCache] Retired resource capacity is exhausted");
+            return false;
+        }
+        m_retiredResources.reserve(m_retiredResources.size() + m_resources.size());
         for (auto& [key, resource] : m_resources)
         {
             GE_UNUSED(key);
-            resource->constantBuffer.finalize();
+            m_retiredResources.push_back(std::move(resource));
         }
-        for (std::unique_ptr<MaterialGpuResource>& resource : m_retiredResources)
-            resource->constantBuffer.finalize();
-        m_retiredResources.clear();
+        m_resources.clear();
         m_resources.swap(replacements);
         return true;
     }
@@ -142,7 +190,11 @@ namespace Engine
             {
                 if (resource->lastUsedFenceValue != 0 && !m_fence->isComplete(resource->lastUsedFenceValue))
                     return false;
-                resource->constantBuffer.finalize();
+                if (!resource->constantBuffer.finalize())
+                {
+                    LOG_ERROR("[MaterialGpuCache] Failed to finalize a retired material resource.");
+                    return false;
+                }
                 return true;
             });
         for (auto iterator = m_resources.begin(); iterator != m_resources.end();)
@@ -153,7 +205,12 @@ namespace Engine
                 || m_fence->isComplete(resource.lastUsedFenceValue);
             if (unloaded && gpuComplete)
             {
-                resource.constantBuffer.finalize();
+                if (!resource.constantBuffer.finalize())
+                {
+                    LOG_ERROR("[MaterialGpuCache] Failed to finalize an unloaded material resource.");
+                    ++iterator;
+                    continue;
+                }
                 iterator = m_resources.erase(iterator);
             }
             else

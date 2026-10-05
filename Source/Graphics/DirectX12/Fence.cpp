@@ -40,6 +40,7 @@ namespace Engine
 
         m_fence.Reset();
         m_nextValue = 1;
+        m_lastSignaledValue = 0;
     }
 
     std::uint64_t DX12Fence::signal(ID3D12CommandQueue& queue)
@@ -47,6 +48,11 @@ namespace Engine
         if (m_fence == nullptr)
         {
             LOG_ERROR("[DX12] 未初期化の Fence を通知しようとしました");
+            return 0;
+        }
+        if (m_nextValue == 0)
+        {
+            LOG_ERROR("[DX12] Fence value space exhausted");
             return 0;
         }
 
@@ -59,6 +65,7 @@ namespace Engine
         }
 
         ++m_nextValue;
+        m_lastSignaledValue = value;
         return value;
     }
 
@@ -66,6 +73,12 @@ namespace Engine
     {
         if (m_fence == nullptr || value == 0)
             return false;
+        if (value > m_lastSignaledValue)
+        {
+            LOG_ERROR("[DX12] 未通知の Fence 値を GPU 待機に指定しました (Value: {}, Last signaled: {})",
+                value, m_lastSignaledValue);
+            return false;
+        }
 
         const HRESULT result = queue.Wait(m_fence.Get(), value);
         if (FAILED(result))
@@ -81,8 +94,20 @@ namespace Engine
     {
         if (m_fence == nullptr || m_event == nullptr || value == 0)
             return false;
+        if (value > m_lastSignaledValue)
+        {
+            LOG_ERROR("[DX12] 未通知の Fence 値を CPU 待機に指定しました (Value: {}, Last signaled: {})",
+                value, m_lastSignaledValue);
+            return false;
+        }
 
-        if (isComplete(value))
+        const std::uint64_t completedValue = m_fence->GetCompletedValue();
+        if (completedValue == std::numeric_limits<std::uint64_t>::max())
+        {
+            LOG_CRITICAL("[DX12] Device Removed を検出したため Fence 待機を中止しました");
+            return false;
+        }
+        if (completedValue >= value)
             return true;
 
         const HRESULT result = m_fence->SetEventOnCompletion(value, m_event);
@@ -99,12 +124,23 @@ namespace Engine
             return false;
         }
 
+        if (m_fence->GetCompletedValue() == std::numeric_limits<std::uint64_t>::max())
+        {
+            LOG_CRITICAL("[DX12] Fence 待機中に Device Removed を検出しました");
+            return false;
+        }
+
         return true;
     }
 
     bool DX12Fence::isComplete(const std::uint64_t value) const noexcept
     {
-        return m_fence != nullptr && m_fence->GetCompletedValue() >= value;
+        if (m_fence == nullptr)
+            return false;
+
+        const std::uint64_t completedValue = m_fence->GetCompletedValue();
+        return completedValue != std::numeric_limits<std::uint64_t>::max()
+            && completedValue >= value;
     }
 
     std::uint64_t DX12Fence::getCompletedValue() const noexcept

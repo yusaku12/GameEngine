@@ -142,6 +142,9 @@ namespace Engine
      */
     inline float ease(EaseType type, float alpha)
     {
+        if (!std::isfinite(alpha))
+            return 0.0f;
+
         const float t = saturate(alpha);
 
         switch (type)

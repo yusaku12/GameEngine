@@ -175,9 +175,14 @@ namespace Engine
          * @param commandList 描画に使用するコマンドリスト
          * @param frameIndex 描画対象のフレームインデックス
          * @param viewProjection ビュー射影行列
+         * @param enabled 描画可能なCameraがある場合は true
          * @return 描画に成功した場合は true
          */
-        bool render(DX12CommandList& commandList, std::uint32_t frameIndex, const Matrix& viewProjection);
+        bool render(
+            DX12CommandList& commandList,
+            std::uint32_t frameIndex,
+            const Matrix& viewProjection,
+            bool enabled);
 
         /**
          * @brief フレームインデックスに対応する頂点バッファを使用済みにする
@@ -195,7 +200,7 @@ namespace Engine
         /**
          * @brief 描画要求を頂点バッファに展開する
          */
-        void buildVertices();
+        bool buildVertices();
 
         /**
          * @brief フレームインデックスに対応する頂点バッファの容量を確保する

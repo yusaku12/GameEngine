@@ -129,7 +129,11 @@ namespace Engine
          * @brief Fixed Update が必要か判定する
          * @return bool Fixed Update が必要ならtrue
          */
-        bool hasFixedUpdate() const noexcept { return m_fixedAccumulator >= m_fixedDeltaTime; }
+        bool hasFixedUpdate() const noexcept
+        {
+            return m_fixedAccumulator >= m_fixedDeltaTime
+                && m_fixedUpdatesThisFrame < MAX_FIXED_UPDATES_PER_FRAME;
+        }
 
         /**
          * @brief Fixed Update を1回実行済みにしてAccumulatorを減らす
@@ -190,7 +194,7 @@ namespace Engine
          * ブレークポイントなどで長時間停止した際のスパイク対策
          * @param seconds 上限（秒）
          */
-        void setMaxDeltaTime(float seconds) noexcept { m_maxDeltaTime = maximum(0.0, static_cast<double>(seconds)); }
+        void setMaxDeltaTime(float seconds) noexcept;
 
         /**
          * @brief getDeltaTime（従来互換）
@@ -253,19 +257,21 @@ namespace Engine
 
         static constexpr uint32_t SMOOTH_SAMPLE_COUNT = 10;         //!< Smooth Delta Time のサンプル数
         static constexpr double FPS_UPDATE_INTERVAL = 0.5;          //!< FPS統計を更新する間隔（秒）
-        static constexpr uint32_t MAX_FIXED_UPDATES_PER_FRAME = 8;  //!< 1フレーム内の Fixed Update 上限数
+        static constexpr uint32_t MAX_FIXED_UPDATES_PER_FRAME = 8;  //!< 1フレーム内の Fixed Update 上限数。超過分は破棄
 
         HighResolutionTimer m_timer;                                           //!< 高精度タイマー
         double m_deltaTime = 0.0;                                              //!< 前フレームからの経過時間（Time Scale適用後）
         double m_unscaledDeltaTime = 0.0;                                      //!< 前フレームからの経過時間（Time Scale未適用）
         double m_gameTime = 0.0;                                               //!< ゲーム開始からの経過時間（Time Scale適用後）
         double m_unscaledTime = 0.0;                                           //!< ゲーム開始からの経過時間（Time Scale未適用）
+        double m_realtime = 0.0;                                               //!< エンジン起動からの実経過時間
         double m_timeScale = 1.0;                                              //!< 時間の進み方（1.0で等倍、0.0で停止）
         double m_maxDeltaTime = 0.1;                                           //!< 1フレームの経過時間の上限
         double m_fixedDeltaTime = 1.0 / 60.0;                                  //!< Fixed Update の1フレーム時間
         double m_fixedAccumulator = 0.0;                                       //!< Fixed Update のAccumulator
         uint64_t m_frameCount = 0;                                             //!< フレーム数
         uint64_t m_fixedFrameCount = 0;                                        //!< Fixed Update の実行回数
+        uint32_t m_fixedUpdatesThisFrame = 0;                                  //!< 今フレームの Fixed Update 実行回数
         double m_fps = 0.0;                                                    //!< 現在のFPS
         double m_averageFps = 0.0;                                             //!< 平均FPS
         double m_fpsTimer = 0.0;                                               //!< FPS計測用タイマー

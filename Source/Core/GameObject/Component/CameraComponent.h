@@ -68,18 +68,6 @@ namespace Engine
         float getFarClipPlane() const noexcept { return m_farClip; }
 
         /**
-         * @brief Aspect Ratioを設定する。
-         * @param aspectRatio 0より大きい横幅と高さの比。
-         */
-        void setAspectRatio(float aspectRatio) noexcept;
-
-        /**
-         * @brief Aspect Ratioを取得する。
-         * @return 横幅と高さの比。
-         */
-        float getAspectRatio() const noexcept { return m_aspectRatio; }
-
-        /**
          * @brief Orthographicの縦方向Half Sizeを設定する。
          * @param size 0より大きいHalf Size。
          */
@@ -184,7 +172,7 @@ namespace Engine
 
         /**
          * @brief Screen座標をWorld座標へ変換する。
-         * @param screenPoint x/yはPixel座標、zは0～1のDepth。
+         * @param screenPoint x/yはRender Target左上原点のPixel座標、zは0～1のDepth。
          * @return World座標。
          */
         Vector3 screenToWorldPoint(const Vector3& screenPoint) const noexcept;
@@ -192,13 +180,13 @@ namespace Engine
         /**
          * @brief World座標をScreen座標へ変換する。
          * @param worldPoint World座標。
-         * @return x/yはPixel座標、zは0～1のDepth。
+         * @return x/yはRender Target左上原点のPixel座標、zは0～1のDepth。
          */
         Vector3 worldToScreenPoint(const Vector3& worldPoint) const noexcept;
 
         /**
          * @brief Screen座標からPicking Rayを生成する。
-         * @param screenPoint Pixel座標。
+         * @param screenPoint Render Target左上原点のPixel座標。
          * @return World Space Ray。
          */
         Ray screenPointToRay(const Vector2& screenPoint) const noexcept;
@@ -228,22 +216,10 @@ namespace Engine
         std::uint32_t getCullingMask() const noexcept { return m_cullingMask; }
 
         /**
-         * @brief Camera Priorityを設定する。
-         * @param priority 描画優先度。
-         */
-        void setPriority(int priority) noexcept { m_priority = priority; }
-
-        /**
-         * @brief Camera Priorityを取得する。
-         * @return 描画優先度。
-         */
-        int getPriority() const noexcept { return m_priority; }
-
-        /**
          * @brief Clear方式を設定する。
          * @param mode Clear方式。
          */
-        void setClearMode(CameraClearMode mode) noexcept { m_clearMode = mode; }
+        void setClearMode(CameraClearMode mode) noexcept;
 
         /**
          * @brief Clear方式を取得する。
@@ -271,8 +247,9 @@ namespace Engine
 
     protected:
 
-        void onAwake() override;
+        void onEnable() override;
         void onLateUpdate(float deltaTime) override;
+        void onDisable() override;
         void onDestroy() override;
         void onImGui() override;
 
@@ -313,7 +290,6 @@ namespace Engine
         Vector2 m_renderTargetSize = Vector2(1.0f, 1.0f);                          //!< Render Target Size
         Vector2 m_projectionJitter = Vector2::Zero;                                //!< Projection Jitter
         std::uint32_t m_cullingMask = std::numeric_limits<std::uint32_t>::max();   //!< 描画対象LayerのBit Mask
-        int m_priority = 0;                                                        //!< 描画優先度
         CameraClearMode m_clearMode = CameraClearMode::SolidColor;                 //!< Clear方式
         Color m_backgroundColor = Color(0.08f, 0.16f, 0.24f, 1.0f);                //!< 背景Clear Color
 

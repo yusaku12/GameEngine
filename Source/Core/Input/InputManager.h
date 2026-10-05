@@ -205,7 +205,7 @@ namespace Engine
           * @brief ゲームパッドのバイブレーションを設定
           * @param leftMotor 左モーターの強さ（0.0f～1.0f）
           * @param rightMotor 右モーターの強さ（0.0f～1.0f）
-          * @param duration 持続時間（秒、-1.0fで無限）
+          * @param duration 持続時間（秒、-1.0fで無限。他の負値や非有限値は拒否）
           * @param index コントローラーのインデックス（0～3）
           */
         void setGamepadVibration(float leftMotor, float rightMotor, float duration = -1.0f, int index = 0);
@@ -304,8 +304,7 @@ namespace Engine
           */
         struct InputBufferEntry
         {
-            float timeLeft = 0.0f;   //!< バッファリング残り時間（秒）
-            bool  triggered = false; //!< バッファリングがトリガーされたかどうか
+            float timeLeft = 0.0f; //!< バッファリング残り時間（秒）
         };
 
         /**

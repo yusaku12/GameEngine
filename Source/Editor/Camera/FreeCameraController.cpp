@@ -81,8 +81,10 @@ namespace Engine
         if (wheel != 0)
         {
             const float distance = static_cast<float>(wheel) * m_zoomSensitivity;
-            getTransform()->translate(camera->getForward() * distance);
-            m_orbitDistance = std::max(MIN_SETTING_VALUE, m_orbitDistance - distance);
+            const float newOrbitDistance = std::max(MIN_SETTING_VALUE, m_orbitDistance - distance);
+            const float appliedDistance = m_orbitDistance - newOrbitDistance;
+            getTransform()->translate(camera->getForward() * appliedDistance);
+            m_orbitDistance = newOrbitDistance;
         }
     }
 

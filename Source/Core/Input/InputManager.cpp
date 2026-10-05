@@ -21,6 +21,9 @@ namespace Engine
 
     void InputManager::setWindowFocused(bool focused)
     {
+        if (m_windowFocused == focused)
+            return;
+
         m_windowFocused = focused;
 
         if (!focused)
@@ -31,19 +34,48 @@ namespace Engine
             ZeroMemory(m_prevMouse, sizeof(m_prevMouse));
             m_mouseWheel = 0;
             m_prevMouseWheel = 0;
+            m_mouseDelta = {};
+            m_actionBuffers.clear();
+            for (GamepadState& state : m_gamepads)
+            {
+                state.prevButtons = 0;
+                state.currButtons = 0;
+                state.leftStickX = 0.0f;
+                state.leftStickY = 0.0f;
+                state.rightStickX = 0.0f;
+                state.rightStickY = 0.0f;
+                state.leftTrigger = 0.0f;
+                state.rightTrigger = 0.0f;
+            }
             stopAllGamepadVibration();
+            return;
         }
+
+        if (GetCursorPos(&m_mousePos))
+            m_prevMousePos = m_mousePos;
+        m_mouseDelta = {};
     }
 
     void InputManager::addMouseWheel(int delta)
     {
-        m_mouseWheel += delta;
+        if (m_windowFocused)
+        {
+            const std::int64_t accumulated = static_cast<std::int64_t>(m_mouseWheel) + delta;
+            m_mouseWheel = static_cast<int>(std::clamp(
+                accumulated,
+                static_cast<std::int64_t>(std::numeric_limits<int>::min()),
+                static_cast<std::int64_t>(std::numeric_limits<int>::max())));
+        }
     }
 
     void InputManager::updateKeyboard()
     {
         memcpy(m_prevKeys, m_currKeys, 256);
-        GetKeyboardState(m_currKeys);
+        if (!GetKeyboardState(m_currKeys))
+        {
+            ZeroMemory(m_currKeys, sizeof(m_currKeys));
+            LOG_ERROR("Failed to retrieve keyboard state.");
+        }
     }
 
     bool InputManager::isKeyPressed(uint8_t key) const
@@ -70,7 +102,12 @@ namespace Engine
         m_currMouse[2] = (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
 
         m_prevMousePos = m_mousePos;
-        GetCursorPos(&m_mousePos);
+        if (!GetCursorPos(&m_mousePos))
+        {
+            m_mouseDelta = {};
+            LOG_ERROR("Failed to retrieve mouse cursor position.");
+            return;
+        }
 
         m_mouseDelta.x = m_mousePos.x - m_prevMousePos.x;
         m_mouseDelta.y = m_mousePos.y - m_prevMousePos.y;
@@ -78,17 +115,17 @@ namespace Engine
 
     bool InputManager::isMousePressed(uint8_t button) const
     {
-        return !m_prevMouse[button] && m_currMouse[button];
+        return button < std::size(m_currMouse) && !m_prevMouse[button] && m_currMouse[button];
     }
 
     bool InputManager::isMouseHeld(uint8_t button) const
     {
-        return m_currMouse[button] != 0;
+        return button < std::size(m_currMouse) && m_currMouse[button] != 0;
     }
 
     bool InputManager::isMouseReleased(uint8_t button) const
     {
-        return m_prevMouse[button] && !m_currMouse[button];
+        return button < std::size(m_currMouse) && m_prevMouse[button] && !m_currMouse[button];
     }
 
     void InputManager::updateGamepads()
@@ -190,6 +227,51 @@ namespace Engine
     bool InputManager::isValidIndex(int index)
     {
         return index >= 0 && index < static_cast<int>(XUSER_MAX_COUNT);
+    }
+
+    namespace
+    {
+        bool isValidGamepadButton(const GamepadButton button) noexcept
+        {
+            switch (button)
+            {
+            case GamepadButton::DPadUp:
+            case GamepadButton::DPadDown:
+            case GamepadButton::DPadLeft:
+            case GamepadButton::DPadRight:
+            case GamepadButton::Start:
+            case GamepadButton::Back:
+            case GamepadButton::LeftThumb:
+            case GamepadButton::RightThumb:
+            case GamepadButton::LeftShoulder:
+            case GamepadButton::RightShoulder:
+            case GamepadButton::A:
+            case GamepadButton::B:
+            case GamepadButton::X:
+            case GamepadButton::Y:
+            case GamepadButton::LeftTrigger:
+            case GamepadButton::RightTrigger:
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        bool isValidGamepadAxis(const GamepadAxis axis) noexcept
+        {
+            switch (axis)
+            {
+            case GamepadAxis::LeftStickX:
+            case GamepadAxis::LeftStickY:
+            case GamepadAxis::RightStickX:
+            case GamepadAxis::RightStickY:
+            case GamepadAxis::LeftTrigger:
+            case GamepadAxis::RightTrigger:
+                return true;
+            default:
+                return false;
+            }
+        }
     }
 
     bool InputManager::checkGamepadButtonPressed(GamepadButton btn, int index) const
@@ -297,7 +379,24 @@ namespace Engine
 
     void InputManager::setGamepadVibration(float leftMotor, float rightMotor, float duration, int index)
     {
-        if (!isValidIndex(index)) return;
+        if (!isValidIndex(index))
+        {
+            LOG_ERROR("Cannot set gamepad vibration: invalid controller index {}.", index);
+            return;
+        }
+
+        if (!std::isfinite(leftMotor) || !std::isfinite(rightMotor)
+            || !std::isfinite(duration) || (duration < 0.0f && duration != -1.0f))
+        {
+            LOG_ERROR("Cannot set gamepad vibration: invalid motor strength or duration.");
+            return;
+        }
+
+        if (duration == 0.0f)
+        {
+            stopGamepadVibration(index);
+            return;
+        }
 
         auto& s = m_gamepads[index];
         s.leftMotor = std::clamp(leftMotor, 0.f, 1.f);
@@ -352,6 +451,12 @@ namespace Engine
 
     void InputManager::bindAction(const std::string& actionName, uint8_t key, float bufferTime)
     {
+        if (actionName.empty() || !std::isfinite(bufferTime))
+        {
+            LOG_WARNING("Cannot bind keyboard action: action name or buffer time is invalid.");
+            return;
+        }
+
         auto& action = m_actionBindings[actionName];
         action.keys.push_back(key);
         if (bufferTime >= 0.f)
@@ -360,6 +465,13 @@ namespace Engine
 
     void InputManager::bindAction(const std::string& actionName, GamepadButton button, float bufferTime, int controllerIndex)
     {
+        if (actionName.empty() || !std::isfinite(bufferTime) || !isValidGamepadButton(button)
+            || (controllerIndex != -1 && !isValidIndex(controllerIndex)))
+        {
+            LOG_WARNING("Cannot bind gamepad action: action name, button, controller index, or buffer time is invalid.");
+            return;
+        }
+
         auto& action = m_actionBindings[actionName];
         action.gamepadButtons.push_back({ button, controllerIndex });
         if (bufferTime >= 0.f)
@@ -373,28 +485,40 @@ namespace Engine
             return InputState::None;
 
         const auto& action = it->second;
+        bool held = false;
+        bool released = false;
 
-        // キーボードチェック
         for (uint8_t key : action.keys)
         {
-            if (isKeyPressed(key))  return InputState::Pressed;
-            if (isKeyHeld(key))     return InputState::Held;
-            if (isKeyReleased(key)) return InputState::Released;
+            if (isKeyPressed(key))
+                return InputState::Pressed;
+            held = held || isKeyHeld(key);
+            released = released || isKeyReleased(key);
         }
 
-        // ゲームパッドボタンチェック
         for (const auto& bind : action.gamepadButtons)
         {
-            if (isGamepadButtonPressed(bind.button, bind.controllerIndex)) return InputState::Pressed;
-            if (isGamepadButtonHeld(bind.button, bind.controllerIndex)) return InputState::Held;
-            if (isGamepadButtonReleased(bind.button, bind.controllerIndex)) return InputState::Released;
+            if (isGamepadButtonPressed(bind.button, bind.controllerIndex))
+                return InputState::Pressed;
+            held = held || isGamepadButtonHeld(bind.button, bind.controllerIndex);
+            released = released || isGamepadButtonReleased(bind.button, bind.controllerIndex);
         }
 
+        if (held)
+            return InputState::Held;
+        if (released)
+            return InputState::Released;
         return InputState::None;
     }
 
     void InputManager::bindAxis(const std::string& name, uint8_t negative, uint8_t positive)
     {
+        if (name.empty())
+        {
+            LOG_WARNING("Cannot bind keyboard axis: axis name is empty.");
+            return;
+        }
+
         auto& axis = m_axes[name];
         axis.negativeKey = negative;
         axis.positiveKey = positive;
@@ -402,6 +526,13 @@ namespace Engine
 
     void InputManager::bindAxis(const std::string& name, GamepadAxis axis, int controllerIndex, bool invert)
     {
+        if (name.empty() || !isValidGamepadAxis(axis)
+            || (controllerIndex != -1 && !isValidIndex(controllerIndex)))
+        {
+            LOG_WARNING("Cannot bind gamepad axis: axis name, axis, or controller index is invalid.");
+            return;
+        }
+
         auto& a = m_axes[name];
         a.hasGamepadAxis = true;
         a.gpAxis = axis;
@@ -438,6 +569,15 @@ namespace Engine
     {
         const float dt = TimeManager::instance().getDeltaTime();
 
+        for (auto it = m_actionBuffers.begin(); it != m_actionBuffers.end(); )
+        {
+            it->second.timeLeft -= dt;
+            if (it->second.timeLeft <= 0.f)
+                it = m_actionBuffers.erase(it);
+            else
+                ++it;
+        }
+
         for (auto& [name, action] : m_actionBindings)
         {
             bool justPressed = false;
@@ -465,18 +605,7 @@ namespace Engine
             {
                 auto& buf = m_actionBuffers[name];
                 buf.timeLeft = action.bufferTime;
-                buf.triggered = true;
             }
-        }
-
-        // バッファ寿命管理
-        for (auto it = m_actionBuffers.begin(); it != m_actionBuffers.end(); )
-        {
-            it->second.timeLeft -= dt;
-            if (it->second.timeLeft <= 0.f)
-                it = m_actionBuffers.erase(it);
-            else
-                ++it;
         }
     }
 

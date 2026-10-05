@@ -11,8 +11,15 @@ namespace Engine
             return false;
         }
 
-        if (!std::filesystem::exists(config.bytecodePath))
+        std::error_code filesystemError;
+        if (!std::filesystem::is_regular_file(config.bytecodePath, filesystemError))
         {
+            if (filesystemError)
+            {
+                LOG_ERROR("[Shader] CSO ファイルの確認に失敗しました: {} ({})",
+                    config.bytecodePath.string(), filesystemError.message());
+                return false;
+            }
             LOG_ERROR("[Shader] CSO ファイルが見つかりません: {}", config.bytecodePath.string());
             return false;
         }
@@ -25,12 +32,18 @@ namespace Engine
         }
         const std::streamsize size = file.tellg();
         if (size <= 0)
+        {
+            LOG_ERROR("[Shader] CSO のサイズが不正です: {}", config.bytecodePath.string());
             return false;
+        }
         std::vector<std::uint8_t> bytecode(static_cast<std::size_t>(size));
         file.seekg(0);
         file.read(reinterpret_cast<char*>(bytecode.data()), size);
         if (!file)
+        {
+            LOG_ERROR("[Shader] CSO の読み込みに失敗しました: {}", config.bytecodePath.string());
             return false;
+        }
         m_bytecode = std::move(bytecode);
         return true;
     }

@@ -3,6 +3,7 @@
 #include "Generated\FlatBuffers\AnimationClip_generated.h"
 #include "Assets\Animation\Serialization\AnimationClipSerializer.h"
 #include "Assets\Animation\Serialization\OzzArchiveUtils.h"
+#include "Core\Logging\Logging.h"
 #include "Core\Serialization\FlatBufferReader.h"
 #include "Core\Serialization\FlatBufferWriter.h"
 #include "Core\Serialization\SerializationVersions.h"
@@ -17,8 +18,19 @@ namespace Engine::Serialization
     bool AnimationClipSerializer::save(const std::filesystem::path& path, const AnimationClipAsset& clip) const
     {
         if (!clip.guid.isValid() || !clip.skeletonGuid.isValid() || !clip.skeletonSignature.isValid()
-            || clip.duration <= 0.0f || clip.animation.num_tracks() <= 0)
+            || !std::isfinite(clip.duration) || clip.duration <= 0.0f
+            || clip.duration != clip.animation.duration() || clip.animation.num_tracks() <= 0
+            || clip.wrapMode > Engine::AnimationWrapMode::PingPong)
             return false;
+        for (const Engine::AnimationEvent& event : clip.events)
+        {
+            if (!std::isfinite(event.normalizedTime)
+                || event.normalizedTime < 0.0f || event.normalizedTime > 1.0f)
+            {
+                LOG_ERROR("Cannot save animation clip with an invalid event time: {}", clip.name);
+                return false;
+            }
+        }
         std::vector<std::uint8_t> archive;
         if (!saveOzzArchive(clip.animation, archive))
             return false;
@@ -74,12 +86,14 @@ namespace Engine::Serialization
         loaded.sourcePath = source->source_path() ? source->source_path()->str() : "";
         loaded.sourceClipName = source->source_clip_name() ? source->source_clip_name()->str() : "";
         if (!loaded.guid.isValid() || !loaded.skeletonGuid.isValid() || !loaded.skeletonSignature.isValid()
+            || !std::isfinite(loaded.duration) || loaded.duration <= 0.0f
             || !loadOzzArchive(archive, loaded.animation) || loaded.duration != loaded.animation.duration())
             return false;
         if (const auto* events = source->events())
             for (const Engine::Serialization::AnimationEvent* event : *events)
             {
-                if (event == nullptr || event->normalized_time() < 0.0f || event->normalized_time() > 1.0f)
+                if (event == nullptr || !std::isfinite(event->normalized_time())
+                    || event->normalized_time() < 0.0f || event->normalized_time() > 1.0f)
                     return false;
                 loaded.events.push_back({ event->normalized_time(), event->event_id() });
             }

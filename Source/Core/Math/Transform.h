@@ -30,6 +30,14 @@ namespace Engine
         static Transform fromMatrix(const Matrix& matrix);
 
         /**
+         * @brief 行列をTRS形式で正確に表現できる場合に変換を取り出す。
+         * @param matrix 変換行列。
+         * @param result 取り出したTransformの出力先。
+         * @return 有限かつTRS形式で表現可能な行列の場合はtrue。
+         */
+        static bool tryFromMatrix(const Matrix& matrix, Transform& result);
+
+        /**
          * @brief 2つの変換を補間する
          * @param from 開始する変換
          * @param to 終了する変換

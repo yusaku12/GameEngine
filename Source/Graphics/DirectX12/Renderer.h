@@ -290,6 +290,7 @@ namespace Engine
         bool m_enableModelInstancing = true;                                                              //!< 非透明Modelの互換Drawをまとめる
         Matrix m_viewProjection = Matrix::Identity;                                                       //!< CameraのView Projection行列
         Vector3 m_cameraPosition = Vector3::Zero;                                                         //!< Transparent sort用Camera座標
+        Vector3 m_cameraForward = Vector3::UnitZ;                                                         //!< Transparent sort用Camera視線方向
         std::optional<Frustum> m_frustum;                                                                 //!< World Space Camera Frustum
         std::optional<Matrix> m_shadowViewProjection;                                                     //!< Light View Projection。未設定時はShadow passを省略
         CameraViewport m_cameraViewport{};                                                                //!< 描画先に対する正規化Camera Viewport

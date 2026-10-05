@@ -3,7 +3,6 @@
 #include "Graphics\DirectX12\Command.h"
 #include "Graphics\DirectX12\Pipeline.h"
 #include "Graphics\Renderer\RenderQueue.h"
-#include <cmath>
 
 namespace Engine
 {
@@ -17,7 +16,7 @@ namespace Engine
             if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z)
                 || !std::isfinite(extents.x) || !std::isfinite(extents.y) || !std::isfinite(extents.z)
                 || extents.x < 0.0f || extents.y < 0.0f || extents.z < 0.0f
-                || extents.LengthSquared() <= 0.0f)
+                || extents.x == 0.0f && extents.y == 0.0f && extents.z == 0.0f)
                 return false;
 
             std::array<DirectX::XMFLOAT3, AABB::CORNER_COUNT> corners;
@@ -44,10 +43,15 @@ namespace Engine
             }
 
             // Enclose every covered pixel and bias toward the camera to avoid rounding-induced false occlusion.
-            rectangle.x = std::max(-1.0f, rectangle.x - 2.0f / viewportSize.x);
-            rectangle.y = std::max(-1.0f, rectangle.y - 2.0f / viewportSize.y);
-            rectangle.z = std::min(1.0f, rectangle.z + 2.0f / viewportSize.x);
-            rectangle.w = std::min(1.0f, rectangle.w + 2.0f / viewportSize.y);
+            const float paddingX = 4.0f / viewportSize.x;
+            const float paddingY = 4.0f / viewportSize.y;
+            rectangle.x = std::max(-1.0f, rectangle.x - paddingX);
+            rectangle.y = std::max(-1.0f, rectangle.y - paddingY);
+            rectangle.z = std::min(1.0f, rectangle.z + paddingX);
+            rectangle.w = std::min(1.0f, rectangle.w + paddingY);
+            if (!std::isfinite(rectangle.x) || !std::isfinite(rectangle.y)
+                || !std::isfinite(rectangle.z) || !std::isfinite(rectangle.w))
+                return false;
             nearestDepth = std::max(0.0f, nearestDepth - 0.00001f);
             return rectangle.x < rectangle.z && rectangle.y < rectangle.w;
         }
@@ -63,7 +67,11 @@ namespace Engine
             if (!m_readback.read(std::as_writable_bytes(std::span(m_completedResults))))
                 return false;
             tested = m_pendingCount;
-            occluded = static_cast<std::uint32_t>(std::count(m_completedResults.begin(), m_completedResults.end(), 0u));
+            for (const std::uint64_t result : m_completedResults)
+            {
+                if (result == 0)
+                    ++occluded;
+            }
         }
         m_pendingCount = 0;
         m_queries.clear();
@@ -76,7 +84,21 @@ namespace Engine
     {
         if (count <= m_capacity)
             return true;
-        const std::uint32_t capacity = std::min(MAX_QUERIES, std::max(count, std::max(256u, m_capacity * 2)));
+        if (count > MAX_QUERIES || m_pendingCount != 0)
+        {
+            LOG_ERROR("[Occlusion] Cannot resize query resources while query results are pending.");
+            return false;
+        }
+        const std::uint32_t doubledCapacity = m_capacity > MAX_QUERIES / 2
+            ? MAX_QUERIES : m_capacity * 2;
+        const std::uint32_t capacity = std::min(MAX_QUERIES, std::max(count, std::max(256u, doubledCapacity)));
+        if (!m_readback.finalize())
+            return false;
+
+        m_results.finalize();
+        m_heap.Reset();
+        m_capacity = 0;
+
         Microsoft::WRL::ComPtr<ID3D12QueryHeap> heap;
         const D3D12_QUERY_HEAP_DESC heapDescription{ D3D12_QUERY_HEAP_TYPE_OCCLUSION, capacity, 0 };
         const HRESULT result = device.CreateQueryHeap(&heapDescription, IID_PPV_ARGS(&heap));
@@ -95,12 +117,19 @@ namespace Engine
         description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
         if (!m_results.initialize(device, {
                 .description = description,
-            })
-            || !m_readback.initialize(device, fence, description.Width))
+            }))
         {
             LOG_ERROR("[Occlusion] Query result buffer creation failed.");
             return false;
         }
+
+        if (!m_readback.initialize(device, fence, description.Width))
+        {
+            m_results.finalize();
+            LOG_ERROR("[Occlusion] Readback buffer creation failed.");
+            return false;
+        }
+
         m_heap = std::move(heap);
         m_capacity = capacity;
         return true;
@@ -162,6 +191,11 @@ namespace Engine
         if (!ensureCapacity(device, fence, getQueryCount()) || !pipeline.bind(commandList))
             return false;
         ID3D12GraphicsCommandList* const native = commandList.getForRecording();
+        if (native == nullptr || m_results.get() == nullptr || m_heap == nullptr)
+        {
+            LOG_ERROR("[Occlusion] Query resources or command list are not initialized.");
+            return false;
+        }
         native->SetPredication(nullptr, 0, D3D12_PREDICATION_OP_EQUAL_ZERO);
         native->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         for (std::uint32_t index = 0; index < getQueryCount(); ++index)

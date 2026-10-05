@@ -42,8 +42,8 @@ namespace Engine
     };
 
     /**
-     * @brief 線形割り当てを行う DirectX 12 Descriptor Heap
-     * @details GPU 使用中の Descriptor を再利用しないため、個別の解放と reset は提供しない。
+     * @brief DirectX 12 Descriptor Heap
+     * @details Descriptor は線形に割り当て、解放済みの slot は再利用する。
      * @thread_safety Not thread-safe. Access must be synchronized externally.
      */
     class DX12DescriptorHeap
@@ -76,6 +76,14 @@ namespace Engine
         std::optional<DX12DescriptorAllocation> allocate();
 
         /**
+         * @brief 使用済み Descriptor slot を解放する
+         * @param index Heap 内の Descriptor Index
+         * @return slot が割り当て済みで、解放できた場合は true
+         * @warning GPU が Descriptor を使用していないことを Fence で確認してから呼び出すこと
+         */
+        bool release(std::uint32_t index);
+
+        /**
          * @brief Shader Visible Heap かを取得する
          * @return Shader Visible Heap の場合は true
          */
@@ -85,7 +93,7 @@ namespace Engine
          * @brief 割り当て済み Descriptor 数を取得する
          * @return 割り当て済み Descriptor 数
          */
-        std::uint32_t getAllocatedCount() const noexcept { return m_nextIndex; }
+        std::uint32_t getAllocatedCount() const noexcept { return m_allocatedCount; }
 
         /**
          * @brief Descriptor Heap の総容量を取得する
@@ -106,7 +114,10 @@ namespace Engine
         D3D12_GPU_DESCRIPTOR_HANDLE m_gpuStart{};            //!< GPU Handle の先頭
         std::uint32_t m_descriptorSize = 0;                  //!< Descriptor 1 個のサイズ
         std::uint32_t m_capacity = 0;                        //!< 割り当て可能な Descriptor 数
-        std::uint32_t m_nextIndex = 0;                       //!< 次に割り当てる Descriptor Index
+        std::uint32_t m_nextIndex = 0;                       //!< 未使用の新規 Descriptor Index
+        std::uint32_t m_allocatedCount = 0;                  //!< 現在割り当て済みの Descriptor 数
+        std::vector<std::uint32_t> m_freeIndices;            //!< 再利用可能な Descriptor Index
+        std::vector<std::uint8_t> m_allocated;               //!< Index ごとの割り当て状態
         bool m_shaderVisible = false;                        //!< GPU から参照可能か
     };
 } // namespace Engine

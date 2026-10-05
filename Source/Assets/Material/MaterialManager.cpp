@@ -279,22 +279,87 @@ namespace Engine
 
     MaterialHandle MaterialManager::addEntry(MaterialAsset material, const std::filesystem::path& path, const bool builtIn)
     {
-        if (m_nextGeneration == 0)
-            ++m_nextGeneration;
+        if (m_nextGeneration == 0 || m_entries.size() >= MaterialHandle::INVALID_INDEX)
+        {
+            LOG_ERROR("[MaterialManager] Material handle space exhausted");
+            return MaterialHandle::Invalid();
+        }
+
+        const std::uint32_t generation = m_nextGeneration;
         const MaterialHandle handle{
             .index = static_cast<std::uint32_t>(m_entries.size()),
-            .generation = m_nextGeneration++,
+            .generation = generation,
         };
         const AssetGUID guid = material.guid;
-        m_entries.push_back(Entry{
-            .resource = std::make_shared<const MaterialAsset>(std::move(material)),
-            .path = path,
-            .generation = handle.generation,
-            .builtIn = builtIn,
-            });
-        if (!path.empty())
-            m_pathCache.emplace(path, handle);
-        m_guidCache.emplace(guid, handle);
+        bool entryInserted = false;
+        bool pathInserted = false;
+        bool guidInserted = false;
+        try
+        {
+            std::shared_ptr<const MaterialAsset> resource =
+                std::make_shared<const MaterialAsset>(std::move(material));
+            m_entries.reserve(m_entries.size() + 1);
+            if (!path.empty())
+                m_pathCache.reserve(m_pathCache.size() + 1);
+            m_guidCache.reserve(m_guidCache.size() + 1);
+
+            m_entries.push_back(Entry{
+                .resource = std::move(resource),
+                .path = path,
+                .generation = generation,
+                .builtIn = builtIn,
+                });
+            entryInserted = true;
+
+            if (!path.empty())
+            {
+                const auto [pathEntry, inserted] = m_pathCache.emplace(path, handle);
+                GE_UNUSED(pathEntry);
+                if (!inserted)
+                {
+                    m_entries.pop_back();
+                    LOG_ERROR("[MaterialManager] Material path is already registered: {}", path.string());
+                    return MaterialHandle::Invalid();
+                }
+                pathInserted = true;
+            }
+
+            const auto [guidEntry, inserted] = m_guidCache.emplace(guid, handle);
+            GE_UNUSED(guidEntry);
+            if (!inserted)
+            {
+                if (pathInserted)
+                    m_pathCache.erase(path);
+                m_entries.pop_back();
+                LOG_ERROR("[MaterialManager] Material GUID is already registered.");
+                return MaterialHandle::Invalid();
+            }
+            guidInserted = true;
+        }
+        catch (const std::bad_alloc&)
+        {
+            if (guidInserted)
+                m_guidCache.erase(guid);
+            if (pathInserted)
+                m_pathCache.erase(path);
+            if (entryInserted)
+                m_entries.pop_back();
+            LOG_ERROR("[MaterialManager] Memory allocation failed while registering a Material.");
+            return MaterialHandle::Invalid();
+        }
+        catch (const std::length_error&)
+        {
+            if (guidInserted)
+                m_guidCache.erase(guid);
+            if (pathInserted)
+                m_pathCache.erase(path);
+            if (entryInserted)
+                m_entries.pop_back();
+            LOG_ERROR("[MaterialManager] Material registry reached its maximum capacity.");
+            return MaterialHandle::Invalid();
+        }
+
+        ++m_nextGeneration;
         return handle;
     }
 

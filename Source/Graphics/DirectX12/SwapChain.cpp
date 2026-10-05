@@ -104,6 +104,15 @@ namespace Engine
         if (m_swapChain == nullptr || width == 0 || height == 0)
             return false;
 
+        DXGI_SWAP_CHAIN_DESC1 previousDescription{};
+        const HRESULT descriptionResult = m_swapChain->GetDesc1(&previousDescription);
+        if (FAILED(descriptionResult))
+        {
+            LOG_ERROR("[DX12] Resize 前の SwapChain 設定取得に失敗しました (HRESULT: 0x{:08X})",
+                static_cast<unsigned long>(descriptionResult));
+            return false;
+        }
+
         if (!waitForGpu(completionFence, lastSubmittedFenceValue))
             return false;
 
@@ -113,11 +122,44 @@ namespace Engine
         if (FAILED(result))
         {
             LOG_ERROR("[DX12] SwapChain の ResizeBuffers に失敗しました (HRESULT: 0x{:08X})", static_cast<unsigned long>(result));
+            if (!createBackBuffers(device))
+            {
+                releaseBackBuffers();
+                LOG_CRITICAL("[DX12] ResizeBuffers 失敗後に既存 Back Buffer を復元できませんでした");
+                return false;
+            }
+
+            m_currentBackBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
             return false;
         }
 
         if (!createBackBuffers(device))
+        {
+            LOG_ERROR("[DX12] Resize 後の Back Buffer 作成に失敗しました。旧サイズへの復旧を試みます");
+            releaseBackBuffers();
+            const HRESULT rollbackResult = m_swapChain->ResizeBuffers(
+                previousDescription.BufferCount,
+                previousDescription.Width,
+                previousDescription.Height,
+                previousDescription.Format,
+                previousDescription.Flags);
+            if (FAILED(rollbackResult))
+            {
+                LOG_CRITICAL("[DX12] Resize 後の Back Buffer 作成失敗に続き、旧サイズへの復旧にも失敗しました (HRESULT: 0x{:08X})",
+                    static_cast<unsigned long>(rollbackResult));
+                return false;
+            }
+
+            if (!createBackBuffers(device))
+            {
+                releaseBackBuffers();
+                LOG_CRITICAL("[DX12] SwapChain の旧サイズ復旧後に Back Buffer を作成できませんでした");
+                return false;
+            }
+
+            m_currentBackBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
             return false;
+        }
 
         m_currentBackBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
         return true;
@@ -159,31 +201,51 @@ namespace Engine
         if (!m_rtvHeap.initialize(device, rtvConfig))
             return false;
 
-        m_backBuffers.reserve(m_config.bufferCount);
-        m_rtvs.reserve(m_config.bufferCount);
-        for (std::uint32_t index = 0; index < m_config.bufferCount; ++index)
+        try
         {
-            Microsoft::WRL::ComPtr<ID3D12Resource> backBuffer;
-            const HRESULT result = m_swapChain->GetBuffer(index, IID_PPV_ARGS(&backBuffer));
-            if (FAILED(result))
+            m_backBuffers.reserve(m_config.bufferCount);
+            m_rtvs.reserve(m_config.bufferCount);
+            for (std::uint32_t index = 0; index < m_config.bufferCount; ++index)
             {
-                LOG_ERROR("[DX12] Back Buffer の取得に失敗しました (HRESULT: 0x{:08X})", static_cast<unsigned long>(result));
-                releaseBackBuffers();
-                return false;
-            }
+                Microsoft::WRL::ComPtr<ID3D12Resource> backBuffer;
+                const HRESULT result = m_swapChain->GetBuffer(index, IID_PPV_ARGS(&backBuffer));
+                if (FAILED(result))
+                {
+                    LOG_ERROR("[DX12] Back Buffer の取得に失敗しました (HRESULT: 0x{:08X})", static_cast<unsigned long>(result));
+                    releaseBackBuffers();
+                    return false;
+                }
 
-            std::unique_ptr<DX12Resource> resource = std::make_unique<DX12Resource>();
-            resource->initializeExisting(*backBuffer.Get(), D3D12_RESOURCE_STATE_PRESENT);
-            const std::optional<DX12DescriptorAllocation> rtv = m_rtvHeap.allocate();
-            if (!rtv.has_value())
-            {
-                releaseBackBuffers();
-                return false;
-            }
+                auto resource = std::make_unique<DX12Resource>();
+                if (!resource->initializeExisting(*backBuffer.Get(), D3D12_RESOURCE_STATE_PRESENT))
+                {
+                    LOG_ERROR("[DX12] Back Buffer Resource の追跡開始に失敗しました");
+                    releaseBackBuffers();
+                    return false;
+                }
+                const std::optional<DX12DescriptorAllocation> rtv = m_rtvHeap.allocate();
+                if (!rtv.has_value())
+                {
+                    releaseBackBuffers();
+                    return false;
+                }
 
-            device.CreateRenderTargetView(resource->get(), nullptr, rtv->cpu.native);
-            m_backBuffers.push_back(std::move(resource));
-            m_rtvs.push_back(rtv->cpu);
+                device.CreateRenderTargetView(resource->get(), nullptr, rtv->cpu.native);
+                m_backBuffers.push_back(std::move(resource));
+                m_rtvs.push_back(rtv->cpu);
+            }
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[DX12] Back Buffer 管理用メモリを確保できません");
+            releaseBackBuffers();
+            return false;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[DX12] Back Buffer 管理配列が上限を超えています");
+            releaseBackBuffers();
+            return false;
         }
 
         return true;

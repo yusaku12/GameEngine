@@ -150,7 +150,7 @@ namespace Engine
          * @brief ロード済みテクスチャ数を取得する
          * @return テクスチャ数
          */
-        uint32_t getLoadedTextureCount() const noexcept { return m_nextHandle; }
+        uint32_t getLoadedTextureCount() const noexcept;
 
         /**
          * @brief 白いデフォルトテクスチャを取得する
@@ -219,9 +219,17 @@ namespace Engine
         DX12Fence* m_directFence = nullptr;        //!< Fence（非所有）
         DX12DescriptorHeap m_descriptorHeap;       //!< SRV ディスクリプタヒープ
 
-        // テクスチャストレージ
-        std::vector<std::unique_ptr<Texture>> m_textures; //!< テクスチャ配列
-        uint32_t m_nextHandle = 0;                        //!< 次に割り当てるハンドルインデックス
+        /*
+        * @brief Texture スロット情報
+        */
+        struct TextureEntry
+        {
+            std::unique_ptr<Texture> texture;  //!< GPU Texture resource
+            std::uint32_t generation = 0;      //!< Handle generation
+        };
+
+        std::vector<TextureEntry> m_textures; //!< Texture slots
+        uint32_t m_nextGeneration = 1;        //!< 次に割り当てる世代番号。0は無効
 
         /*
         * @brief キャッシュ済みテクスチャ情報
@@ -229,7 +237,7 @@ namespace Engine
         struct CachedTexture
         {
             TextureLoadDesc desc; //!< ロード設定
-            uint32_t handle;      //!< テクスチャ管理配列内のインデックス
+            TextureHandle handle; //!< 世代付きTexture Handle
         };
 
         std::unordered_multimap<std::string, CachedTexture> m_pathToHandle;                //!< パス → ハンドルインデックスのマッピング

@@ -43,8 +43,9 @@ namespace Engine
         /**
          * @brief Close 済みのコマンドリストを GPU に実行登録する
          * @param commandLists 実行するコマンドリスト
+         * @return 実行登録した場合は true
          */
-        void execute(std::span<ID3D12CommandList* const> commandLists) const;
+        bool execute(std::span<ID3D12CommandList* const> commandLists) const;
 
         /**
          * @brief コマンドキューの種別を取得する

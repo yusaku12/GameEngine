@@ -173,7 +173,11 @@ namespace Engine
 
             // GPUリソースの終了処理は描画側の役割として扱う
             setCurrentThreadRole(ThreadRole::Render);
-            renderer.finalize();
+            if (!renderer.finalize())
+            {
+                LOG_CRITICAL("[Engine] Renderer の終了処理に失敗しました");
+                result = -1;
+            }
 
             // ComponentをSingleton Managerより先にMain Threadで破棄する
             setCurrentThreadRole(ThreadRole::Main);

@@ -15,7 +15,7 @@ namespace Engine
         using Factory = std::unique_ptr<Component>(*)();
 
         ComponentTypeID id = 0;        //!< Component型ID。ComponentRegistryが自動で割り当てる。
-        std::string_view name;         //!< Component型の表示名。Editorで使用される。
+        std::string name;              //!< Component型の表示名。Editorで使用される。
         Factory factory = nullptr;     //!< Component生成関数。
         bool allowMultiple = false;    //!< 同一GameObjectへの複数追加を許可するか
         bool required = false;         //!< 必須Componentか
@@ -51,20 +51,9 @@ namespace Engine
         {
             static_assert(std::is_base_of_v<Component, T>, "T must derive from Component");
             const std::type_index type = typeid(T);
-            if (const auto found = m_types.find(type); found != m_types.end())
-                return found->second.id;
-
-            const ComponentTypeInfo info{
-                .id = m_nextId++,
-                .name = name,
-                .factory = []() -> std::unique_ptr<Component> { return std::make_unique<T>(); },
-                .allowMultiple = allowMultiple,
-                .required = required,
-                .executeLifecycle = executeLifecycle
-            };
-            m_types.emplace(type, info);
-            m_ids.emplace(info.id, type);
-            return info.id;
+            return registerTypeInfo(type, name,
+                []() -> std::unique_ptr<Component> { return std::make_unique<T>(); },
+                allowMultiple, required, executeLifecycle);
         }
 
         /**
@@ -122,6 +111,19 @@ namespace Engine
         void clear() noexcept;
 
     private:
+
+        /**
+         * @brief Component型をメタデータ付きで登録する。
+         * @param type 登録するComponent型のtype_index
+         * @param name 表示名
+         * @param factory Component生成関数
+         * @param allowMultiple 同一GameObjectへの複数追加を許可するか
+         * @param required 必須Componentか
+         * @param executeLifecycle Lifecycleを実行するか
+         * @return 登録されたComponent型ID
+         */
+        ComponentTypeID registerTypeInfo(std::type_index type, std::string_view name,
+            ComponentTypeInfo::Factory factory, bool allowMultiple, bool required, bool executeLifecycle);
 
         ComponentTypeID m_nextId = 1;                                   //!< 次に割り当てるComponent型ID。0は無効IDとして予約する。
         std::unordered_map<std::type_index, ComponentTypeInfo> m_types; //!< Component型とメタデータの対応

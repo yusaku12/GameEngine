@@ -204,5 +204,6 @@ namespace Engine
         bool m_awakened = false;         //!< Awakeが呼ばれたかどうか。
         bool m_started = false;          //!< Startが呼ばれたかどうか。
         bool m_lifecycleActive = false;  //!< Lifecycleが有効かどうか。GameObjectが非アクティブの場合はfalse。
+        bool m_destroyed = false;        //!< Destroy callbackが呼ばれたかどうか。
     };
 } // namespace Engine

@@ -17,6 +17,16 @@ namespace Engine::TextureImageUtils
      */
     inline HRESULT prepare(DirectX::ScratchImage& image, const TextureLoadDesc& desc) noexcept
     {
+        switch (desc.colorSpace)
+        {
+        case TextureColorSpace::Auto:
+        case TextureColorSpace::Linear:
+        case TextureColorSpace::SRGB:
+            break;
+        default:
+            return E_INVALIDARG;
+        }
+
         const auto metadata = image.GetMetadata();
         if (image.GetImageCount() == 0 || metadata.dimension != DirectX::TEX_DIMENSION_TEXTURE2D
             || metadata.arraySize != (metadata.IsCubemap() ? 6u : 1u)

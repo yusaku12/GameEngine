@@ -25,9 +25,11 @@ namespace Engine
      */
     struct ModelGpuResource
     {
+        ModelHandle handle;                                //!< Cache内でのModel Handle
         std::shared_ptr<const ModelResource> source;       //!< 元のModelResourceへの参照
         std::vector<std::unique_ptr<ModelGpuMesh>> meshes; //!< Mesh単位のGPU描画Resource
         DX12UploadBuffer bonePaletteBuffer;                //!< Bind Pose用Bone行列Buffer
+        std::uint64_t lastUsedFenceValue = 0;              //!< 最終描画提出Fence値
     };
 
     /**
@@ -68,6 +70,11 @@ namespace Engine
          * @return 成功した場合はtrue、それ以外はfalse
          */
         bool markUsed(ModelHandle handle, std::uint64_t fenceValue);
+
+        /**
+         * @brief アンロード済みModelのGPU ResourceをFence完了後に破棄する。
+         */
+        void collectGarbage();
 
     private:
 

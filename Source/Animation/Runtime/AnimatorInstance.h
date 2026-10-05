@@ -45,14 +45,14 @@ namespace Engine
 
         /**
          * @brief 指定正規化時刻から再生を開始する。
-         * @param normalizedTime 正規化時刻(0.0〜1.0)。負値は逆再生として扱う。
+         * @param normalizedTime 正規化時刻。0.0未満は0.0、1.0超過は1.0として扱う。
          */
         bool play(float normalizedTime = 0.0f) noexcept;
 
         /**
          * @brief 指定stateを即時再生する。
          * @param stateId 再生するstateのID。
-         * @param normalizedTime 正規化時刻(0.0〜1.0)。負値は逆再生として扱う。
+         * @param normalizedTime 正規化時刻。0.0未満は0.0、1.0超過は1.0として扱う。
          * @return 再生に成功した場合はtrue、それ以外はfalse。
          */
         bool play(AnimatorStateID stateId, float normalizedTime = 0.0f) noexcept;
@@ -108,6 +108,7 @@ namespace Engine
         /**
          * @brief 時間を進め、ozz runtimeで新しいPalette Snapshotを生成する。
          * @details 同一Instanceへの他のアクセスと並行して呼び出してはならない。
+         * 再生方向はdeltaTimeと再生速度の符号で決まり、正規化開始時刻は0.0〜1.0へ制限される。
          * @param deltaTime 前回updateからの経過時間(秒)。負値は逆再生として扱う。
          */
         bool update(float deltaTime);

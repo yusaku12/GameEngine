@@ -41,6 +41,7 @@ namespace Engine::Serialization
             for (const Engine::AnimatorParameter& parameter : controller.parameters)
             {
                 if (parameter.id == 0 || parameter.name.empty() || !std::isfinite(parameter.defaultFloat)
+                    || parameter.type > Engine::AnimatorParameterType::Trigger
                     || !parameterTypes.emplace(parameter.id, parameter.type).second
                     || !parameterNames.emplace(parameter.name).second)
                     return false;
@@ -52,6 +53,7 @@ namespace Engine::Serialization
             for (const Engine::AnimatorState& state : controller.states)
             {
                 if (state.id == 0 || state.name.empty() || !state.clipGuid.isValid() || !std::isfinite(state.speed)
+                    || state.wrapOverride > Engine::AnimatorWrapOverride::PingPong
                     || !stateIds.emplace(state.id).second || !stateNames.emplace(state.name).second)
                     return false;
             }
@@ -65,7 +67,8 @@ namespace Engine::Serialization
                     || !stateIds.contains(transition.destinationState)
                     || (!transition.anyState && !stateIds.contains(transition.sourceState))
                     || !std::isfinite(transition.duration) || transition.duration < 0.0f
-                    || !std::isfinite(transition.exitTime) || transition.exitTime < 0.0f)
+                    || !std::isfinite(transition.exitTime) || transition.exitTime < 0.0f
+                    || (transition.hasExitTime && transition.exitTime > 1.0f))
                     return false;
                 for (const Engine::AnimatorCondition& condition : transition.conditions)
                 {

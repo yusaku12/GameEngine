@@ -19,11 +19,21 @@ namespace Engine
             return false;
         }
 
+        constexpr std::size_t maxElementCount = (std::numeric_limits<UINT>::max)();
+        if (config.rootParameters.size() > maxElementCount
+            || config.staticSamplers.size() > maxElementCount
+            || config.inputLayout.size() > maxElementCount)
+        {
+            LOG_ERROR("[DX12] Graphics Pipeline 設定の要素数がDirectX 12の上限を超えています");
+            return false;
+        }
+
         const bool requiresPixelShader = config.renderTargetFormat != DXGI_FORMAT_UNKNOWN;
         if (config.vertexShader == nullptr || !config.vertexShader->isCompiled()
-            || (requiresPixelShader && (config.pixelShader == nullptr || !config.pixelShader->isCompiled())))
+            || (requiresPixelShader && config.pixelShader == nullptr)
+            || (config.pixelShader != nullptr && !config.pixelShader->isCompiled()))
         {
-            LOG_ERROR("[DX12] Graphics Pipeline にコンパイル済みの Vertex/Pixel Shader が必要です");
+            LOG_ERROR("[DX12] Graphics Pipeline にコンパイル済みの Vertex Shader と有効な Pixel Shader 設定が必要です");
             return false;
         }
 

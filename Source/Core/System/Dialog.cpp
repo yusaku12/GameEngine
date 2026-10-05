@@ -72,6 +72,12 @@ namespace Engine
         }
         if (!filterSpecs.empty())
         {
+            if (filterSpecs.size() > (std::numeric_limits<UINT>::max)())
+            {
+                LOG_ERROR("[Dialog] File filter count exceeds the Windows dialog limit.");
+                return E_INVALIDARG;
+            }
+
             if (const HRESULT result = dialog.SetFileTypes(
                 static_cast<UINT>(filterSpecs.size()), filterSpecs.data()); FAILED(result))
                 return result;
