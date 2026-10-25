@@ -15,6 +15,34 @@ namespace Engine
     public:
 
         /**
+         * @brief Tag登録を一時的に行い、commitされなければ追加分を取り消す。
+         * @details Main thread only。スコープ中に別のTag登録を割り込ませないこと。
+         */
+        class RegistrationTransaction
+        {
+        public:
+
+            explicit RegistrationTransaction(TagManager& manager) noexcept;
+            ~RegistrationTransaction();
+
+            RegistrationTransaction(const RegistrationTransaction&) = delete;
+            RegistrationTransaction& operator=(const RegistrationTransaction&) = delete;
+            RegistrationTransaction(RegistrationTransaction&&) = delete;
+            RegistrationTransaction& operator=(RegistrationTransaction&&) = delete;
+
+            /** @brief Tagを登録し、トランザクション失敗時に取り消せるようにする。 */
+            TagID registerTag(std::string name);
+
+            /** @brief 登録したTagを確定し、破棄時のロールバックを無効にする。 */
+            void commit() noexcept { m_manager = nullptr; }
+
+        private:
+
+            TagManager* m_manager;
+            std::size_t m_initialCount;
+        };
+
+        /**
          * @brief TagManagerのシングルトンを取得する。
          * @return TagManagerのインスタンス
          */
@@ -51,6 +79,7 @@ namespace Engine
     private:
 
         TagManager();
+        void rollbackTo(std::size_t count) noexcept;
 
         std::vector<std::string> m_names;             //!< Tag IDごとの名前
         std::unordered_map<std::string, TagID> m_ids; //!< Tag名からIDへの索引

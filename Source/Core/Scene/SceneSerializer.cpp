@@ -152,7 +152,8 @@ namespace Engine::Serialization
         }
     }
 
-    static bool loadSceneData(const std::filesystem::path& path, Scene& scene)
+    static bool loadSceneData(const std::filesystem::path& path, Scene& scene,
+        TagManager::RegistrationTransaction& tagRegistration)
     {
         FlatBufferReader reader;
         if (!reader.open(path) || !reader.hasIdentifier("SCNE"))
@@ -193,7 +194,7 @@ namespace Engine::Serialization
                     tagName != nullptr && tagName->size() != 0)
                 {
                     const std::string name = tagName->str();
-                    tag = TagManager::instance().registerTag(name);
+                    tag = tagRegistration.registerTag(name);
                     if (TagManager::instance().getName(tag) != name)
                     {
                         LOG_ERROR("Failed to register a Scene Tag name: {}", name);
@@ -264,8 +265,9 @@ namespace Engine::Serialization
     {
         try
         {
+            TagManager::RegistrationTransaction tagRegistration(TagManager::instance());
             Scene loadedScene(Engine::ObjectGUID::generate(), {});
-            if (!loadSceneData(path, loadedScene))
+            if (!loadSceneData(path, loadedScene, tagRegistration))
                 return false;
 
             std::string loadedName = loadedScene.getName();
@@ -276,6 +278,7 @@ namespace Engine::Serialization
             }
             scene.setGUID(loadedScene.getGUID());
             scene.setName(std::move(loadedName));
+            tagRegistration.commit();
             return true;
         }
         catch (const std::bad_alloc&)

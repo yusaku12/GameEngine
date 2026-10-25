@@ -15,6 +15,32 @@ namespace Engine
         registerTag("Untagged");
     }
 
+    TagManager::RegistrationTransaction::RegistrationTransaction(TagManager& manager) noexcept
+        : m_manager(&manager)
+        , m_initialCount(manager.m_names.size())
+    {
+    }
+
+    TagManager::RegistrationTransaction::~RegistrationTransaction()
+    {
+        if (m_manager != nullptr)
+            m_manager->rollbackTo(m_initialCount);
+    }
+
+    TagID TagManager::RegistrationTransaction::registerTag(std::string name)
+    {
+        return m_manager != nullptr ? m_manager->registerTag(std::move(name)) : INVALID_TAG_ID;
+    }
+
+    void TagManager::rollbackTo(const std::size_t count) noexcept
+    {
+        while (m_names.size() > count)
+        {
+            m_ids.erase(m_names.back());
+            m_names.pop_back();
+        }
+    }
+
     TagID TagManager::registerTag(std::string name)
     {
         if (name.empty())
