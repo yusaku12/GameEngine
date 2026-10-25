@@ -49,6 +49,8 @@ namespace Engine
 
         /**
          * @brief 前フレームからの経過時間を取得する（タイムスケール適用後、float）
+         * @details raw経過時間をmaxDeltaTimeで上限処理し、一時停止中は0にした値に
+         * timeScaleを乗じた値。ゲーム更新およびゲーム時間の進行に使用する。
          * @return float 経過時間（秒）
          */
         float deltaTime() const noexcept { return static_cast<float>(m_deltaTime); }
@@ -61,6 +63,8 @@ namespace Engine
 
         /**
          * @brief 前フレームからの経過時間を取得する（タイムスケール未適用、float）
+         * @details raw経過時間をmaxDeltaTimeで上限処理した値。一時停止中は0となる。
+         * timeScaleが0でも、一時停止中でなければこの値は進行する。
          * @return float 経過時間（秒）
          */
         float unscaledDeltaTime() const noexcept { return static_cast<float>(m_unscaledDeltaTime); }
@@ -73,6 +77,7 @@ namespace Engine
 
         /**
          * @brief ゲーム開始からの経過時間を取得する（Time Scale適用後、float）
+         * @details deltaTimeの累積値。一時停止中またはtimeScaleが0の間は進行しない。
          * @return float 経過時間（秒）
          */
         float timeSinceStartup() const noexcept { return static_cast<float>(m_gameTime); }
@@ -85,6 +90,7 @@ namespace Engine
 
         /**
          * @brief ゲーム開始からの経過時間を取得する（タイムスケール未適用、float）
+         * @details unscaledDeltaTimeの累積値。一時停止中は進行しないが、timeScaleが0でも進行する。
          * @return float 経過時間（秒）
          */
         float unscaledTime() const noexcept { return static_cast<float>(m_unscaledTime); }
@@ -109,6 +115,8 @@ namespace Engine
 
         /**
          * @brief Fixed Update用の1フレーム時間を取得する（float）
+         * @details シミュレーション時間での固定刻み。timeScaleはこの値自体には適用せず、
+         * scaled deltaTimeをAccumulatorに加算して実行回数を決める。
          * @return float Fixed Delta Time（秒）
          */
         float fixedDeltaTime() const noexcept { return static_cast<float>(m_fixedDeltaTime); }
@@ -127,6 +135,8 @@ namespace Engine
 
         /**
          * @brief Fixed Update が必要か判定する
+         * @details 1フレームあたり最大8回。上限に達しても残る完全な刻みは破棄し、
+         * 端数のみ次フレームへ持ち越す。
          * @return bool Fixed Update が必要ならtrue
          */
         bool hasFixedUpdate() const noexcept
@@ -166,7 +176,7 @@ namespace Engine
 
         /**
          * @brief 平滑化された Delta Time を取得する（float）
-         * 直近複数フレームの平均値を返す
+         * 直近10フレームのunscaledDeltaTimeの平均値を返す。一時停止中のフレームは0として含む。
          * @return float Smooth Delta Time（秒）
          */
         float smoothDeltaTime() const noexcept { return static_cast<float>(m_smoothDeltaTime); }
@@ -179,19 +189,23 @@ namespace Engine
 
         /**
          * @brief ゲームの一時停止状態を設定する
+         * @details 一時停止中は次回以降のunscaledDeltaTimeを0にし、ゲーム時間とFixed Updateの
+         * 進行を停止する。実時間やフレーム処理そのものは停止しない。timeScaleとは独立している。
          * @param paused 一時停止するならtrue
          */
         void setPaused(bool paused) noexcept { m_paused = paused; }
 
         /**
          * @brief エンジン起動からの実時間を取得する（Time Scale非適用）
+         * @details 一時停止中も進行し、deltaTimeの上限処理も適用されない。
          * @return double 経過時間（秒）
          */
         double realtimeSinceStartup() const noexcept;
 
         /**
          * @brief 1フレームの経過時間の上限を設定する
-         * ブレークポイントなどで長時間停止した際のスパイク対策
+         * ブレークポイントなどで長時間停止した際のスパイク対策。
+         * realtimeSinceStartupには適用されない。
          * @param seconds 上限（秒）
          */
         void setMaxDeltaTime(float seconds) noexcept;
