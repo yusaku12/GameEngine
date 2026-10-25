@@ -79,7 +79,7 @@ namespace Engine
          * @brief フレームジョブの完了を待機する
          * @param counter 待機対象のジョブカウンター
          */
-        void waitForFrameJobs(const JobCounter& counter) const;
+        void waitForFrameJobs(JobCounter& counter) const;
 
         /**
          * @brief タイトルバーの更新処理を実行する

@@ -19,7 +19,7 @@ namespace Engine
         /**
          * @brief キャンセルを要求する
          */
-        void cancel() { m_cancelled.store(true, std::memory_order_release); }
+        void cancel() noexcept;
 
         /**
          * @brief キャンセル済みかを取得する
@@ -326,6 +326,10 @@ namespace Engine
 
         GE_DISABLE_COPY_AND_MOVE(JobSystem);
 
+        friend class JobCounter;
+        friend class CancellationToken;
+        friend class JobDependency;
+
         /**
          * @brief ワーカースレッドのループ処理
          * @param index スレッド番号
@@ -338,6 +342,7 @@ namespace Engine
          * @return bool ジョブがあればtrue
          */
         bool tryPopJob(Job& outJob);
+        void notifyWaiters() noexcept;
 
         /**
          * @brief ジョブを実行する
@@ -462,8 +467,7 @@ namespace Engine
          */
         void wait()
         {
-            while (!m_counter.isComplete())
-                std::this_thread::yield();
+            JobSystem::instance().wait(m_counter);
         }
 
         /**

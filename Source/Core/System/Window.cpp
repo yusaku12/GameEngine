@@ -167,10 +167,9 @@ namespace Engine
         render();
     }
 
-    void Window::waitForFrameJobs(const JobCounter& counter) const
+    void Window::waitForFrameJobs(JobCounter& counter) const
     {
-        while (!counter.isComplete())
-            yieldThread();
+        JobSystem::instance().wait(counter);
     }
 
     void Window::updateTitleBar()

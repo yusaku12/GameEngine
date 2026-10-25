@@ -4,6 +4,12 @@
 
 namespace Engine
 {
+    void CancellationToken::cancel() noexcept
+    {
+        m_cancelled.store(true, std::memory_order_release);
+        JobSystem::instance().notifyWaiters();
+    }
+
     bool JobCounter::increment(const uint32_t count)
     {
         if (count == 0)
@@ -30,7 +36,11 @@ namespace Engine
         {
             if (m_value.compare_exchange_weak(current, current - 1,
                 std::memory_order_acq_rel, std::memory_order_acquire))
+            {
+                if (current == 1)
+                    JobSystem::instance().notifyWaiters();
                 return true;
+            }
         }
         LOG_ERROR("[Job] Cannot decrement a completed job counter.");
         return false;
@@ -76,6 +86,7 @@ namespace Engine
                 {
                     std::lock_guard<std::mutex> lock(m_mutex);
                     m_condition.notify_all();
+                    JobSystem::instance().notifyWaiters();
                 }
                 return;
             }
@@ -349,7 +360,13 @@ namespace Engine
             if (tryPopJob(job))
                 executeJob(job);
             else
-                yieldThread();
+            {
+                std::unique_lock<std::mutex> lock(m_mutex);
+                m_condition.wait(lock, [&counter, this]
+                    {
+                        return counter.isComplete() || !m_jobs.empty();
+                    });
+            }
         }
     }
 
@@ -361,13 +378,25 @@ namespace Engine
             if (tryPopJob(job))
                 executeJob(job);
             else
-                yieldThread();
+            {
+                std::unique_lock<std::mutex> lock(m_mutex);
+                m_condition.wait(lock, [this]
+                    {
+                        return m_pendingCount.load(std::memory_order_acquire) == 0 || !m_jobs.empty();
+                    });
+            }
         }
     }
 
     bool JobSystem::isWorkerThread()
     {
         return s_isWorkerThread;
+    }
+
+    void JobSystem::notifyWaiters() noexcept
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_condition.notify_all();
     }
 
     void JobSystem::workerLoop(uint32_t index)
@@ -424,7 +453,15 @@ namespace Engine
             if (tryPopJob(pendingJob))
                 executeJob(pendingJob);
             else
-                yieldThread();
+            {
+                std::unique_lock<std::mutex> lock(m_mutex);
+                m_condition.wait(lock, [&job]
+                    {
+                        return job.dependency->isReady()
+                            || (job.cancellationToken != nullptr && job.cancellationToken->isCancelled())
+                            || !m_jobs.empty();
+                    });
+            }
         }
 
         if (job.cancellationToken != nullptr && job.cancellationToken->isCancelled())
@@ -433,6 +470,7 @@ namespace Engine
                 job.counter->decrement();
 
             m_pendingCount.fetch_sub(1, std::memory_order_release);
+            notifyWaiters();
             return;
         }
 
@@ -449,5 +487,6 @@ namespace Engine
             job.counter->decrement();
 
         m_pendingCount.fetch_sub(1, std::memory_order_release);
+        notifyWaiters();
     }
 } // namespace Engine
