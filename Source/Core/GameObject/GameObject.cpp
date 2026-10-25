@@ -5,6 +5,38 @@
 
 namespace Engine
 {
+    namespace
+    {
+        template <class Callback>
+        void invokeComponentCallback(const char* const name, Callback&& callback) noexcept
+        {
+            try
+            {
+                std::forward<Callback>(callback)();
+            }
+            catch (const std::exception& exception)
+            {
+                try
+                {
+                    LOG_ERROR("[Component] Exception in {} callback: {}", name, exception.what());
+                }
+                catch (...)
+                {
+                }
+            }
+            catch (...)
+            {
+                try
+                {
+                    LOG_ERROR("[Component] Unknown exception in {} callback.", name);
+                }
+                catch (...)
+                {
+                }
+            }
+        }
+    }
+
     GameObject::GameObject(GameObjectManager& manager, const ObjectGUID guid, std::string name)
         : m_manager(&manager), m_guid(guid), m_name(std::move(name))
     {
@@ -652,6 +684,11 @@ namespace Engine
         return m_gameObject != nullptr ? m_gameObject->getTransform() : nullptr;
     }
 
+    void Component::drawImGui()
+    {
+        invokeComponentCallback("onImGui", [this] { onImGui(); });
+    }
+
     void Component::setEnabled(const bool enabled) noexcept
     {
         if (m_enabled == enabled)
@@ -682,7 +719,7 @@ namespace Engine
         if (m_lifecycleEnabled && !m_awakened)
         {
             m_awakened = true;
-            onAwake();
+            invokeComponentCallback("onAwake", [this] { onAwake(); });
         }
     }
 
@@ -691,7 +728,7 @@ namespace Engine
         if (m_lifecycleEnabled && m_awakened && m_enabled && !m_lifecycleActive)
         {
             m_lifecycleActive = true;
-            onEnable();
+            invokeComponentCallback("onEnable", [this] { onEnable(); });
         }
     }
 
@@ -700,26 +737,26 @@ namespace Engine
         if (m_lifecycleEnabled && m_lifecycleActive && !m_started)
         {
             m_started = true;
-            onStart();
+            invokeComponentCallback("onStart", [this] { onStart(); });
         }
     }
 
     void Component::invokeUpdate(const float deltaTime) noexcept
     {
         if (m_lifecycleEnabled && m_lifecycleActive && m_started)
-            onUpdate(deltaTime);
+            invokeComponentCallback("onUpdate", [this, deltaTime] { onUpdate(deltaTime); });
     }
 
     void Component::invokeFixedUpdate(const float fixedDeltaTime) noexcept
     {
         if (m_lifecycleEnabled && m_lifecycleActive && m_started)
-            onFixedUpdate(fixedDeltaTime);
+            invokeComponentCallback("onFixedUpdate", [this, fixedDeltaTime] { onFixedUpdate(fixedDeltaTime); });
     }
 
     void Component::invokeLateUpdate(const float deltaTime) noexcept
     {
         if (m_lifecycleEnabled && m_lifecycleActive && m_started)
-            onLateUpdate(deltaTime);
+            invokeComponentCallback("onLateUpdate", [this, deltaTime] { onLateUpdate(deltaTime); });
     }
 
     void Component::invokeDisable() noexcept
@@ -727,7 +764,7 @@ namespace Engine
         if (m_lifecycleEnabled && m_lifecycleActive)
         {
             m_lifecycleActive = false;
-            onDisable();
+            invokeComponentCallback("onDisable", [this] { onDisable(); });
         }
     }
 
@@ -736,7 +773,7 @@ namespace Engine
         if (m_lifecycleEnabled && m_awakened && !m_destroyed)
         {
             m_destroyed = true;
-            onDestroy();
+            invokeComponentCallback("onDestroy", [this] { onDestroy(); });
         }
     }
 } // namespace Engine

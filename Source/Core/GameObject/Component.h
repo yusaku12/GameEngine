@@ -12,6 +12,8 @@ namespace Engine
 
     /**
      * @brief GameObjectが所有する機能拡張の基底クラス。
+     * @details Lifecycle / Inspector Callbackで発生した例外は捕捉してログに記録する。
+     * Lifecycle状態は巻き戻さず、後続処理を継続する。
      * @thread_safety Main thread only.
      */
     class Component
@@ -50,7 +52,7 @@ namespace Engine
          * @brief ComponentのInspector UIを描画する。
          * @details EditorUiが選択中のGameObjectを描画するときに呼ばれる。
          */
-        void drawImGui() { onImGui(); }
+        void drawImGui();
 
         /** @brief Component固有payloadのversionを取得する。 */
         virtual std::uint32_t getPayloadVersion() const noexcept { return 0; }
