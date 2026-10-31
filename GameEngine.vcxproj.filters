@@ -76,6 +76,20 @@
     <ClCompile Include="Source\Core\Prefab\PrefabInstance.cpp" />
     <ClCompile Include="Source\Core\Prefab\PrefabSerializer.cpp" />
     <ClCompile Include="Source\Core\GameObject\GameObjectManager.cpp" />
+    <ClCompile Include="Source\Physics\PhysicsSystem.cpp" />
+    <ClCompile Include="Source\Physics\PhysicsMaterial.cpp" />
+    <ClCompile Include="Source\Physics\PhysicsMeshAsset.cpp" />
+    <ClCompile Include="Source\Physics\PhysicsWorld.cpp" />
+    <ClCompile Include="Source\Physics\Character\CharacterControllerComponent.cpp" />
+    <ClCompile Include="Source\Physics\Joint\JointComponent.cpp" />
+    <ClCompile Include="Source\Physics\Rigidbody\RigidbodyComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\ColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\BoxColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\SphereColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\CapsuleColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\MeshColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\ConvexColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Internal\PhysXConversions.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h" />
@@ -219,6 +233,28 @@
     <ClInclude Include="Source\Core\GameObject\GameObject.h" />
     <ClInclude Include="Source\Core\GameObject\GameObjectManager.h" />
     <ClInclude Include="Source\Core\Containers\BitFlags.h" />
+    <ClInclude Include="Generated\FlatBuffers\ModelRendererComponent_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\PhysicsComponent_generated.h" />
+    <ClInclude Include="Source\Physics\PhysicsTypes.h" />
+    <ClInclude Include="Source\Physics\PhysicsDebug.h" />
+    <ClInclude Include="Source\Physics\PhysicsLayer.h" />
+    <ClInclude Include="Source\Physics\PhysicsMaterial.h" />
+    <ClInclude Include="Source\Physics\PhysicsMeshAsset.h" />
+    <ClInclude Include="Source\Physics\PhysicsQuery.h" />
+    <ClInclude Include="Source\Physics\PhysicsEventListener.h" />
+    <ClInclude Include="Source\Physics\PhysicsSystem.h" />
+    <ClInclude Include="Source\Physics\PhysicsWorld.h" />
+    <ClInclude Include="Source\Physics\Internal\PhysicsPayload.h" />
+    <ClInclude Include="Source\Physics\Character\CharacterControllerComponent.h" />
+    <ClInclude Include="Source\Physics\Joint\JointComponent.h" />
+    <ClInclude Include="Source\Physics\Rigidbody\RigidbodyComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\ColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\BoxColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\SphereColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\CapsuleColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\MeshColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\ConvexColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Internal\PhysXConversions.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Shaders\Model.hlsl" />
@@ -238,5 +274,7 @@
     <None Include="Tools\Shaders\CompileShaders.ps1" />
     <None Include="Tools\Shaders\CleanShaderCache.bat" />
     <None Include="Schemas\FlatBuffers\Scene.fbs" />
+    <None Include="Schemas\FlatBuffers\ModelRendererComponent.fbs" />
+    <None Include="Schemas\FlatBuffers\PhysicsComponent.fbs" />
   </ItemGroup>
 </Project>
