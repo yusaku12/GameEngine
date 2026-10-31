@@ -987,7 +987,8 @@ namespace Engine
         }
 
         ImGui::Separator();
-        m_selectedObject->forEachComponent([](Component& component, const std::type_index& type)
+        bool removalFailed = false;
+        m_selectedObject->forEachComponent([this, &removalFailed](Component& component, const std::type_index& type)
             {
                 const ComponentTypeInfo* typeInfo = ComponentRegistry::instance().get(type);
                 if (typeInfo == nullptr)
@@ -1001,10 +1002,31 @@ namespace Engine
                         component.setEnabled(enabled);
                     ImGui::SameLine();
                 }
-                if (ImGui::CollapsingHeader(typeInfo->name.data(), ImGuiTreeNodeFlags_DefaultOpen))
+                bool keepComponent = true;
+                const bool expanded = ImGui::CollapsingHeader(typeInfo->name.c_str(),
+                    typeInfo->required ? nullptr : &keepComponent, ImGuiTreeNodeFlags_DefaultOpen);
+                if (ImGui::BeginPopupContextItem("ComponentMenu"))
+                {
+                    if (ImGui::MenuItem("Remove Component", nullptr, false, !typeInfo->required))
+                        keepComponent = false;
+                    if (typeInfo->required && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        ImGui::SetTooltip("This component is required and cannot be removed.");
+                    ImGui::EndPopup();
+                }
+                if (!keepComponent)
+                {
+                    if (!m_selectedObject->removeComponent(component))
+                    {
+                        LOG_ERROR("[Editor] Failed to remove component: {}", typeInfo->name);
+                        removalFailed = true;
+                    }
+                }
+                else if (expanded)
                     component.drawImGui();
                 ImGui::PopID();
             });
+        if (removalFailed)
+            ImGui::TextDisabled("Cannot remove component; see the engine log.");
 
         ImGui::Separator();
         if (ImGui::Button("Add Component", ImVec2(-1.0f, 0.0f)))

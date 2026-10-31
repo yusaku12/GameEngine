@@ -93,36 +93,84 @@ namespace Engine
 
     Component* GameObject::findComponentForAddition(const std::type_index& type) const noexcept
     {
-        Component* result = nullptr;
-        if (const auto found = m_components.find(type); found != m_components.end() && !found->second.empty())
-            result = found->second.front().get();
-
-        for (const PendingComponentOperation& operation : m_pendingComponentOperations)
+        if (const auto found = m_components.find(type); found != m_components.end())
         {
-            if (operation.type != type)
-                continue;
-            if (operation.kind == PendingComponentOperationKind::Remove)
+            for (const auto& component : found->second)
             {
-                result = nullptr;
-            }
-            else if (operation.component != nullptr)
-            {
-                result = operation.component.get();
+                if (hasComponentAfterPendingOperations(component.get(), type))
+                    return component.get();
             }
         }
-        return result;
+        for (std::size_t index = m_pendingComponentOperationIndex; index < m_pendingComponentOperations.size(); ++index)
+        {
+            const PendingComponentOperation& operation = m_pendingComponentOperations[index];
+            if (operation.type == type && operation.component != nullptr
+                && hasComponentAfterPendingOperations(operation.component.get(), type))
+                return operation.component.get();
+        }
+        return nullptr;
     }
 
-    bool GameObject::hasComponentAfterPendingOperations(const std::type_index& type) const noexcept
+    bool GameObject::hasComponentAfterPendingOperations(
+        const Component* const component, const std::type_index& type) const noexcept
     {
-        const auto found = m_components.find(type);
-        bool exists = found != m_components.end() && !found->second.empty();
-        for (const PendingComponentOperation& operation : m_pendingComponentOperations)
+        bool exists = containsComponent(component);
+        for (std::size_t index = m_pendingComponentOperationIndex; index < m_pendingComponentOperations.size(); ++index)
         {
-            if (operation.type == type)
-                exists = operation.kind == PendingComponentOperationKind::Add;
+            const PendingComponentOperation& operation = m_pendingComponentOperations[index];
+            if (operation.type != type)
+                continue;
+            if (operation.kind == PendingComponentOperationKind::Add && operation.component.get() == component)
+                exists = true;
+            else if (operation.kind == PendingComponentOperationKind::Remove
+                && (operation.removalTarget == nullptr || operation.removalTarget == component))
+                exists = false;
         }
         return exists;
+    }
+
+    bool GameObject::removeComponent(Component& component) noexcept
+    {
+        if (component.getGameObject() != this)
+        {
+            LOG_WARNING("Cannot remove a Component owned by another GameObject.");
+            return false;
+        }
+        return requestComponentRemoval(std::type_index(typeid(component)), &component);
+    }
+
+    bool GameObject::requestComponentRemoval(const std::type_index& type, Component* const target) noexcept
+    {
+        const ComponentTypeInfo* const typeInfo = ComponentRegistry::instance().get(type);
+        if (typeInfo != nullptr && typeInfo->required)
+        {
+            LOG_WARNING("Cannot remove required Component: {}.", typeInfo->name);
+            return false;
+        }
+        if (target != nullptr ? !hasComponentAfterPendingOperations(target, type)
+            : findComponentForAddition(type) == nullptr)
+        {
+            LOG_WARNING("Cannot remove a Component that is absent or already pending removal.");
+            return false;
+        }
+        try
+        {
+            m_pendingComponentOperations.emplace_back(
+                PendingComponentOperationKind::Remove, type, nullptr, target);
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("Failed to queue Component removal because memory allocation failed.");
+            return false;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("Component operation queue reached its maximum capacity.");
+            return false;
+        }
+        if (m_lifecycleDispatchDepth == 0)
+            applyPendingComponentOperations();
+        return true;
     }
 
     bool GameObject::queueComponentAddition(
@@ -186,12 +234,13 @@ namespace Engine
         if (m_lifecycleDispatchDepth != 0)
             return;
 
-        std::size_t operationIndex = 0;
-        while (operationIndex < m_pendingComponentOperations.size())
+        // 再入時の追加・削除判定にも、適用中の削除要求を含める。
+        for (; m_pendingComponentOperationIndex < m_pendingComponentOperations.size(); ++m_pendingComponentOperationIndex)
         {
+            const std::size_t operationIndex = m_pendingComponentOperationIndex;
             const PendingComponentOperationKind kind = m_pendingComponentOperations[operationIndex].kind;
             const std::type_index type = m_pendingComponentOperations[operationIndex].type;
-            ++operationIndex;
+            Component* const target = m_pendingComponentOperations[operationIndex].removalTarget;
 
             if (kind == PendingComponentOperationKind::Remove)
             {
@@ -200,19 +249,28 @@ namespace Engine
                     continue;
 
                 ++m_lifecycleDispatchDepth;
-                for (const std::unique_ptr<Component>& component : found->second)
+                auto& components = found->second;
+                for (const std::unique_ptr<Component>& component : components)
                 {
+                    if (target != nullptr && component.get() != target)
+                        continue;
                     component->invokeDisable();
                     component->invokeDestroy();
                     component->setGameObject(nullptr);
                 }
-                m_components.erase(found);
+                if (target == nullptr)
+                    components.clear();
+                else
+                    std::erase_if(components, [target](const std::unique_ptr<Component>& component)
+                        { return component.get() == target; });
+                if (components.empty())
+                    m_components.erase(found);
                 --m_lifecycleDispatchDepth;
                 continue;
             }
 
             std::unique_ptr<Component> component =
-                std::move(m_pendingComponentOperations[operationIndex - 1].component);
+                std::move(m_pendingComponentOperations[operationIndex].component);
             if (component == nullptr)
                 continue;
 
@@ -230,6 +288,7 @@ namespace Engine
             --m_lifecycleDispatchDepth;
         }
         m_pendingComponentOperations.clear();
+        m_pendingComponentOperationIndex = 0;
     }
 
     bool GameObject::isActiveInHierarchy() const noexcept

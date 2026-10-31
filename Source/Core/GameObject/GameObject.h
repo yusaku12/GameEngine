@@ -275,55 +275,27 @@ namespace Engine
         Component* addComponent(std::string_view typeName);
 
         /**
-         * @brief GameObjectから指定した型のComponentを削除する。
+         * @brief GameObjectから指定した型のComponentをすべて削除する。
          * @details Lifecycle callback中の削除は現在のLifecycle pass終了後に適用される。
          * @tparam T 削除するComponentの型。
-         * @return 削除に成功した場合はtrue、削除するComponentが存在しなかった場合はfalse。
+         * @return 削除または削除予約に成功した場合はtrue。必須・存在しない・削除予約済みの型はfalse。
          */
         template <typename T>
         bool removeComponent() noexcept
         {
             static_assert(std::is_base_of_v<Component, T>, "T must derive from Component");
-            const auto found = m_components.find(std::type_index(typeid(T)));
-            if (const ComponentTypeInfo* typeInfo = ComponentRegistry::instance().get<T>(); typeInfo != nullptr && typeInfo->required)
-                return false;
-
-            const std::type_index type(typeid(T));
-            if (m_lifecycleDispatchDepth != 0)
-            {
-                if (!hasComponentAfterPendingOperations(type))
-                    return false;
-                try
-                {
-                    m_pendingComponentOperations.emplace_back(
-                        PendingComponentOperationKind::Remove, type);
-                }
-                catch (const std::bad_alloc&)
-                {
-                    LOG_ERROR("Failed to queue Component removal because memory allocation failed.");
-                    return false;
-                }
-                catch (const std::length_error&)
-                {
-                    LOG_ERROR("Component operation queue reached its maximum capacity.");
-                    return false;
-                }
-                return true;
-            }
-
-            if (found == m_components.end())
-                return false;
-
-            const LifecycleDispatchScope dispatch(*this);
-            for (const auto& component : found->second)
-            {
-                component->invokeDisable();
-                component->invokeDestroy();
-                component->setGameObject(nullptr);
-            }
-            m_components.erase(found);
-            return true;
+            return requestComponentRemoval(std::type_index(typeid(T)), nullptr);
         }
+
+        /**
+         * @brief 指定したComponentインスタンスだけを削除する。
+         * @param component このGameObjectが所有するComponent。追加待ちのComponentも指定可能。
+         * @details Lifecycle callbackやforEachComponent中は列挙終了後に削除する。
+         * 必須Componentは削除できない。成功後はComponentへの参照を使用しないこと。
+         * @return 削除または削除予約に成功した場合はtrue。失敗時はログを出力する。
+         * @thread_safety Lifecycleと構造変更を行うスレッドから直列に使用すること。
+         */
+        bool removeComponent(Component& component) noexcept;
 
         /**
          * @brief GameObjectが持つComponentの型名を取得する。
@@ -391,18 +363,21 @@ namespace Engine
             PendingComponentOperationKind kind;   //!<! 操作種別（追加または削除）
             std::type_index type;                 //!<! Component型のtype_index
             std::unique_ptr<Component> component; //!<! 追加するComponentの所有権（削除の場合はnullptr）
+            Component* removalTarget = nullptr;  //!< 削除対象の非所有参照。nullptrなら同じ型をすべて削除。
 
             /**
              * @brief PendingComponentOperationを構築する。
              * @param operationKind 操作種別（追加または削除）
              * @param componentType Component型のtype_index
              * @param newComponent 追加するComponentの所有権（削除の場合はnullptr）
+             * @param target 削除対象の非所有参照。nullptrなら同じ型をすべて削除。
              */
             PendingComponentOperation(
                 const PendingComponentOperationKind operationKind,
                 const std::type_index& componentType,
-                std::unique_ptr<Component> newComponent = {})
-                : kind(operationKind), type(componentType), component(std::move(newComponent))
+                std::unique_ptr<Component> newComponent = {},
+                Component* target = nullptr)
+                : kind(operationKind), type(componentType), component(std::move(newComponent)), removalTarget(target)
             {
             }
         };
@@ -451,11 +426,15 @@ namespace Engine
         bool containsComponent(const Component* component) const noexcept;
 
         /**
-         * @brief 指定した型のComponentが、現在のLifecycle pass終了後にGameObjectに含まれるかどうかを判定する。
-         * @param type 判定するComponentの型のtype_index
+         * @brief 指定したComponentが未処理の操作を適用した後も存在するか判定する。
+         * @param component 判定するComponentの非所有参照
+         * @param type Component型
          * @return 含まれる場合はtrue、含まれない場合はfalse
          */
-        bool hasComponentAfterPendingOperations(const std::type_index& type) const noexcept;
+        bool hasComponentAfterPendingOperations(const Component* component, const std::type_index& type) const noexcept;
+
+        /** @brief 型全体またはインスタンスの削除を予約し、列挙中でなければ直ちに適用する。 */
+        bool requestComponentRemoval(const std::type_index& type, Component* target) noexcept;
 
         /**
          * @brief Lifecycle callback中のComponent追加を遅延処理するためにキューに登録する。
@@ -576,6 +555,7 @@ namespace Engine
         std::vector<GameObject*> m_children;                                                       //!< 子GameObjectの配列
         std::unordered_map<std::type_index, std::vector<std::unique_ptr<Component>>> m_components; //!< Componentの型ごとのマップ
         std::vector<PendingComponentOperation> m_pendingComponentOperations;                       //!< Lifecycle dispatch中のComponent操作
+        std::size_t m_pendingComponentOperationIndex = 0;                                          //!< 次に適用するComponent操作
         std::size_t m_lifecycleDispatchDepth = 0;                                                  //!< Lifecycle dispatchのネスト数
         mutable Transform m_worldTransform;                                                        //!< Transformのワールド変換をキャッシュするための変数
         mutable std::uint64_t m_cachedLocalRevision = 0;                                           //!< 自身のTransformの変更リビジョンをキャッシュするための変数
