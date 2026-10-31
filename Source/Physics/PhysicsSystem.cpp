@@ -1,4 +1,5 @@
 #include "Pch.h"
+#include "Core\Profiling\FrameProfiler.h"
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Core\GameObject\GameObject.h"
 #include "Physics\Character\CharacterControllerComponent.h"
@@ -99,6 +100,7 @@ namespace Engine
 
     void PhysicsSystem::update(const float fixedDeltaTime) noexcept
     {
+        FrameProfiler::ScopedCpuTimer profile(FrameProfileMetric::Physics);
         if (m_world == nullptr || !m_world->isInitialized())
         {
             LOG_ERROR("[PhysicsSystem] Cannot update because Physics is not initialized.");

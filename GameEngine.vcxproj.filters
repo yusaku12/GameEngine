@@ -26,6 +26,7 @@
     <ClCompile Include="Source\Graphics\DirectX12\Resource.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Renderer.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\OcclusionQueries.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\GpuProfiler.cpp" />
     <ClCompile Include="Source\Graphics\Renderer\RenderQueue.cpp" />
     <ClCompile Include="Source\Graphics\Renderer\ModelRenderSubmission.cpp" />
     <ClCompile Include="Source\Graphics\Camera\CameraManager.cpp" />
@@ -46,6 +47,7 @@
     <ClCompile Include="Source\Core\Threading\MainThreadDispatcher.cpp" />
     <ClCompile Include="Source\Core\Threading\ThreadDebugStats.cpp" />
     <ClCompile Include="Source\Core\Threading\ThreadUtility.cpp" />
+    <ClCompile Include="Source\Core\Profiling\FrameProfiler.cpp" />
     <ClCompile Include="Source\Pch.cpp" />
     <ClCompile Include="Source\Core\Time\HighResolutionTimer.cpp" />
     <ClCompile Include="Source\Core\Time\TimeManager.cpp" />
@@ -147,6 +149,7 @@
     <ClInclude Include="Source\Core\Threading\ThreadDebugStats.h" />
     <ClInclude Include="Source\Core\Threading\Threading.h" />
     <ClInclude Include="Source\Core\Threading\ThreadUtility.h" />
+    <ClInclude Include="Source\Core\Profiling\FrameProfiler.h" />
     <ClInclude Include="Source\Core\Time\HighResolutionTimer.h" />
     <ClInclude Include="Source\Core\Time\TimeManager.h" />
     <ClInclude Include="Source\Core\System\Window.h" />
@@ -161,6 +164,7 @@
     <ClInclude Include="Source\Graphics\DirectX12\Resource.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Renderer.h" />
     <ClInclude Include="Source\Graphics\DirectX12\OcclusionQueries.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\GpuProfiler.h" />
     <ClInclude Include="Source\Graphics\Renderer\RenderItem.h" />
     <ClInclude Include="Source\Graphics\Renderer\RenderQueue.h" />
     <ClInclude Include="Source\Graphics\Renderer\ModelRenderSubmission.h" />

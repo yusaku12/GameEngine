@@ -168,12 +168,15 @@ namespace Engine
          * @brief Thread Debugパネルを描画する
          */
         void drawThreadDebug();
-         /** @brief 物理デバッグ／プロファイラーパネルを描画する */
-         void drawPhysicsDebug();
+        /** @brief CPU/GPUのFrame時間と履歴グラフを描画する */
+        void drawPerformanceProfiler();
+        /** @brief 物理デバッグ／プロファイラーパネルを描画する */
+        void drawPhysicsDebug();
 
-         bool m_showShaderManager = false;                                         //!< シェーダーマネージャーパネルの表示フラグ
-         bool m_showThreadDebug = false;                                           //!< スレッドデバッグパネルの表示フラグ
-         bool m_showPhysicsDebug = false;                                          //!< 物理デバッグパネルの表示フラグ
+        bool m_showShaderManager = false;                                         //!< シェーダーマネージャーパネルの表示フラグ
+        bool m_showThreadDebug = false;                                           //!< スレッドデバッグパネルの表示フラグ
+        bool m_showPerformanceProfiler = true;                                    //!< CPU/GPUプロファイラーパネルの表示フラグ
+        bool m_showPhysicsDebug = false;                                          //!< 物理デバッグパネルの表示フラグ
         ObjectGUID m_observedSceneGuid{};                                        //!< Editor状態を紐付けたSceneのGUID
         ObjectGUID m_selectedObjectGuid{};                                       //!< Inspectorで選択中のGameObject GUID
         ObjectGUID m_hierarchyCreateParentGuid{};                                //!< 作成するGameObjectの親GUID

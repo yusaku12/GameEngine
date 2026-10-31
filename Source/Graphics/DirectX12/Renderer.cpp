@@ -4,6 +4,7 @@
 #include "Graphics\Camera\CameraRenderSubmission.h"
 #include "Graphics\Renderer\ModelRenderSubmission.h"
 #include "Graphics\Texture\TextureManager.h"
+#include "Core\Profiling\FrameProfiler.h"
 #include <imgui.h>
 
 namespace Engine
@@ -69,6 +70,12 @@ namespace Engine
             || !m_modelGpuCache.initialize(m_device, m_directFence)
             || !m_materialGpuCache.initialize(m_device, m_directFence)
             || !DebugPrimitive::instance().initialize(m_device, m_directFence))
+        {
+            rollbackInitialization();
+            return false;
+        }
+
+        if (!m_gpuProfiler.initialize(*m_device.get(), *m_directQueue.get(), m_directFence))
         {
             rollbackInitialization();
             return false;
@@ -231,6 +238,8 @@ namespace Engine
         }
 
         if (!m_swapChain.finalize(m_directFence, m_lastSubmittedFenceValue))
+            return false;
+        if (!m_gpuProfiler.finalize())
             return false;
 
         m_depthBuffer.finalize();
@@ -435,15 +444,28 @@ namespace Engine
             return false;
         }
 
-        const std::uint64_t frameFenceValue = m_frameFenceValues[frameIndex];
-        if (frameFenceValue != 0 && !m_directFence.isComplete(frameFenceValue)
-            && !m_directFence.waitOnCpu(frameFenceValue))
         {
-            return false;
+            FrameProfiler::ScopedCpuTimer profile(FrameProfileMetric::RenderFenceWait);
+            const std::uint64_t frameFenceValue = m_frameFenceValues[frameIndex];
+            if (frameFenceValue != 0 && !m_directFence.isComplete(frameFenceValue)
+                && !m_directFence.waitOnCpu(frameFenceValue))
+            {
+                return false;
+            }
         }
         if (!m_occlusionQueries[frameIndex].collectCompletedResults(
             m_frameStatistics.completedOcclusionQueries, m_frameStatistics.occludedBatches))
             return false;
+        bool gpuMeasurementAvailable = false;
+        std::uint64_t gpuFrameId = 0;
+        double gpuMilliseconds = 0.0;
+        if (!m_gpuProfiler.collect(frameIndex, gpuMeasurementAvailable, gpuFrameId, gpuMilliseconds))
+            return false;
+        if (gpuMeasurementAvailable
+            && !FrameProfiler::instance().recordGpuTime(gpuFrameId, gpuMilliseconds))
+        {
+            return false;
+        }
 
         DX12CommandList& commandList = m_commandLists[frameIndex];
         DX12Resource* const backBuffer = m_swapChain.getCurrentBackBuffer();
@@ -453,6 +475,8 @@ namespace Engine
         {
             return false;
         }
+        if (!m_gpuProfiler.beginFrame(frameIndex, FrameProfiler::instance().currentFrameId(), commandList))
+            return false;
 
         ID3D12GraphicsCommandList* nativeCommandList = commandList.getForRecording();
         const D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_gameRenderTargetView.native;
@@ -498,7 +522,9 @@ namespace Engine
         nativeCommandList->OMSetRenderTargets(1, &backBufferView, FALSE, nullptr);
         m_imguiSystem->render(*nativeCommandList);
 
-        if (!backBuffer->transition(finishList, D3D12_RESOURCE_STATE_PRESENT) || !finishList.close())
+        if (!backBuffer->transition(finishList, D3D12_RESOURCE_STATE_PRESENT)
+            || !m_gpuProfiler.endFrame(frameIndex, finishList)
+            || !finishList.close())
             return false;
 
         ID3D12CommandList* const nativeExecutionList = finishList.getForExecution();
@@ -506,13 +532,17 @@ namespace Engine
             return false;
 
         m_executionLists.push_back(nativeExecutionList);
-        if (!m_directQueue.execute(m_executionLists))
-            return false;
-        const bool presentSucceeded = m_swapChain.present(true);
-        if (!presentSucceeded)
-            m_device.logDeviceRemovedReason();
-
-        const std::uint64_t submittedFenceValue = m_directFence.signal(*m_directQueue.get());
+        bool presentSucceeded = false;
+        std::uint64_t submittedFenceValue = 0;
+        {
+            FrameProfiler::ScopedCpuTimer profile(FrameProfileMetric::SubmitAndPresent);
+            if (!m_directQueue.execute(m_executionLists))
+                return false;
+            presentSucceeded = m_swapChain.present(true);
+            if (!presentSucceeded)
+                m_device.logDeviceRemovedReason();
+            submittedFenceValue = m_directFence.signal(*m_directQueue.get());
+        }
         if (submittedFenceValue == 0)
         {
             m_device.logDeviceRemovedReason();
@@ -524,6 +554,7 @@ namespace Engine
         m_lastSubmittedFenceValue = submittedFenceValue;
         if (!commandList.markSubmitted(submittedFenceValue)
             || !finishList.markSubmitted(submittedFenceValue)
+            || !m_gpuProfiler.markSubmitted(frameIndex, submittedFenceValue)
             || !m_modelCommandRecorders[frameIndex].markSubmitted(submittedFenceValue)
             || (m_frameStatistics.occlusionQueryCount != 0
                 && !m_queryCommandLists[frameIndex].markSubmitted(submittedFenceValue)))
@@ -857,6 +888,7 @@ namespace Engine
 
     void DX12Renderer::buildModelRenderQueue(std::vector<ModelHandle>& usedModels, std::vector<MaterialHandle>& usedMaterials)
     {
+        FrameProfiler::ScopedCpuTimer profile(FrameProfileMetric::RenderQueue);
         m_modelRenderQueue.clear();
         m_frameStatistics = {};
         ModelRenderSubmissionQueue::instance().consume(m_modelSubmissions);
@@ -989,8 +1021,11 @@ namespace Engine
     bool DX12Renderer::renderModelQueue(DX12CommandList& commandList, const std::uint32_t frameIndex)
     {
         m_executionLists.clear();
-        if (!prepareModelDraws(frameIndex))
-            return false;
+        {
+            FrameProfiler::ScopedCpuTimer profile(FrameProfileMetric::DrawPreparation);
+            if (!prepareModelDraws(frameIndex))
+                return false;
+        }
         const bool hasShadow = std::any_of(m_preparedModelDraws.begin(), m_preparedModelDraws.end(),
             [](const DX12PreparedModelDraw& draw) { return draw.item->pass == RenderPassType::Shadow; });
         if (hasShadow)
@@ -1043,9 +1078,12 @@ namespace Engine
         }
 
         DX12ModelCommandRecorder& recorder = m_modelCommandRecorders[frameIndex];
-        if (!recorder.record(*m_device.get(), m_directFence, m_preparedModelDraws,
-            state, m_enableParallelModelRecording))
-            return false;
+        {
+            FrameProfiler::ScopedCpuTimer profile(FrameProfileMetric::CommandRecording);
+            if (!recorder.record(*m_device.get(), m_directFence, m_preparedModelDraws,
+                state, m_enableParallelModelRecording))
+                return false;
+        }
         bool queryInserted = state.queries == nullptr;
         const auto ranges = recorder.getRanges();
         for (std::size_t index = 0; index < ranges.size(); ++index)

@@ -2,6 +2,7 @@
 #include "Window.h"
 #include "Graphics\Camera\CameraManager.h"
 #include "Core\Scene\SceneManager.h"
+#include "Core\Profiling\FrameProfiler.h"
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Threading\ThreadDebugStats.h"
 #include "Graphics\DirectX12\Renderer.h"
@@ -144,6 +145,11 @@ namespace Engine
 
     void Window::runThreadedFrame()
     {
+        const auto frameStart = std::chrono::steady_clock::now();
+        const std::uint64_t frameId = FrameProfiler::instance().beginFrame();
+        if (frameId == 0)
+            return;
+
         updateFrameInput();
 
         JobSystem& jobSystem = JobSystem::instance();
@@ -157,12 +163,17 @@ namespace Engine
         const std::array<std::uint32_t, 2> gameViewSize = m_renderer.getGameViewSize();
         CameraManager::instance().setRenderTargetSize(gameViewSize[0], gameViewSize[1]);
         TimeManager::instance().endFrame();
+
+        const auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - frameStart);
+        FrameProfiler::instance().endFrame(frameId, elapsed.count());
     }
 
     void Window::runGameUpdateJob()
     {
         ScopedThreadRole role(ThreadRole::GameUpdate);
         ThreadDebugStats::ScopedTask debugTask(ThreadDebugTask::GameUpdate);
+        FrameProfiler::ScopedCpuTimer profile(FrameProfileMetric::GameUpdate);
         update();
     }
 
@@ -170,6 +181,7 @@ namespace Engine
     {
         ScopedThreadRole role(ThreadRole::Render);
         ThreadDebugStats::ScopedTask debugTask(ThreadDebugTask::RenderUpdate);
+        FrameProfiler::ScopedCpuTimer profile(FrameProfileMetric::RenderUpdate);
         render();
     }
 

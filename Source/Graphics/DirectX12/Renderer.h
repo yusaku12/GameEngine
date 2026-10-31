@@ -9,6 +9,7 @@
 #include "Graphics\DirectX12\Queue.h"
 #include "Graphics\DirectX12\Resource.h"
 #include "Graphics\DirectX12\OcclusionQueries.h"
+#include "Graphics\DirectX12\GpuProfiler.h"
 #include "Graphics\DirectX12\ModelCommandRecorder.h"
 #include "Graphics\Shader\ShaderManager.h"
 #include "Graphics\DirectX12\SwapChain.h"
@@ -253,6 +254,7 @@ namespace Engine
         DX12Device m_device;                                                                              //!< DirectX 12 デバイス
         DX12CommandQueue m_directQueue;                                                                   //!< 描画コマンドキュー
         DX12Fence m_directFence;                                                                          //!< 描画コマンドの完了 Fence
+        DX12GpuProfiler m_gpuProfiler;                                                                    //!< Direct QueueのFrame Timestamp計測
         DX12SwapChain m_swapChain;                                                                        //!< 画面出力用 SwapChain
         DX12DescriptorHeap m_gameRtvHeap;                                                                 //!< Game Texture用 RTV Heap
         DX12Resource m_gameRenderTarget;                                                                  //!< ImGui Game Viewへ表示するScene描画Texture

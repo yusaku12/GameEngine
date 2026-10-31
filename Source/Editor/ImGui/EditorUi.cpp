@@ -5,6 +5,7 @@
 #include "Core\GameObject\Component\ModelRendererComponent.h"
 #include "Core\Prefab\Prefab.h"
 #include "Core\Prefab\PrefabSerializer.h"
+#include "Core\Profiling\FrameProfiler.h"
 #include "Core\Scene\SceneManager.h"
 #include "Core\System\Dialog.h"
 #include "Core\Threading\MainThreadDispatcher.h"
@@ -140,6 +141,7 @@ namespace Engine
             {
                 ImGui::MenuItem("Shader Manager", nullptr, &m_showShaderManager);
                 ImGui::MenuItem("Thread Debug", nullptr, &m_showThreadDebug);
+                ImGui::MenuItem("Performance Profiler", nullptr, &m_showPerformanceProfiler);
                 ImGui::MenuItem("Physics Debug", nullptr, &m_showPhysicsDebug);
                 ImGui::EndMenu();
             }
@@ -151,6 +153,7 @@ namespace Engine
         drawInspector();
         drawShaderManager(shaderManager);
         drawThreadDebug();
+        drawPerformanceProfiler();
         drawPhysicsDebug();
     }
 
@@ -1225,6 +1228,138 @@ namespace Engine
             ImGui::EndTable();
         }
 
+        ImGui::End();
+    }
+
+    void EditorUi::drawPerformanceProfiler()
+    {
+        if (!m_showPerformanceProfiler)
+            return;
+
+        if (!ImGui::Begin("Performance Profiler", &m_showPerformanceProfiler))
+        {
+            ImGui::End();
+            return;
+        }
+
+        const FrameProfilerSnapshot snapshot = FrameProfiler::instance().capture();
+        if (snapshot.sampleCount == 0)
+        {
+            ImGui::TextUnformatted("Waiting for the first completed frame...");
+            ImGui::End();
+            return;
+        }
+
+        const FrameProfileSample& latest = snapshot.samples[snapshot.sampleCount - 1];
+        const FrameProfileSample* latestGpu = nullptr;
+        std::array<float, FrameProfilerSnapshot::HISTORY_SIZE> frameGraph{};
+        std::array<float, FrameProfilerSnapshot::HISTORY_SIZE> gpuGraph{};
+        float graphMaximum = 33.333f;
+        for (std::size_t index = 0; index < snapshot.sampleCount; ++index)
+        {
+            const FrameProfileSample& sample = snapshot.samples[index];
+            frameGraph[index] = static_cast<float>(sample.frameWallMilliseconds);
+            graphMaximum = std::max(graphMaximum, frameGraph[index]);
+            if (sample.hasGpuMeasurement)
+            {
+                gpuGraph[index] = static_cast<float>(sample.gpuMilliseconds);
+                graphMaximum = std::max(graphMaximum, gpuGraph[index]);
+                latestGpu = &sample;
+            }
+        }
+        graphMaximum *= 1.1f;
+
+        ImGui::Text("Latest completed Frame %llu | %.2f ms | %.1f FPS",
+            static_cast<unsigned long long>(latest.frameId),
+            latest.frameWallMilliseconds,
+            latest.frameWallMilliseconds > 0.0 ? 1000.0 / latest.frameWallMilliseconds : 0.0);
+        ImGui::Text("60 FPS budget: 16.67 ms | GPU results are delayed until their frame slot completes.");
+        ImGui::PlotLines("Frame wall (ms)", frameGraph.data(), static_cast<int>(snapshot.sampleCount),
+            0, nullptr, 0.0f, graphMaximum, ImVec2(-1.0f, 72.0f));
+        ImGui::PlotLines("GPU frame (ms)", gpuGraph.data(), static_cast<int>(snapshot.sampleCount),
+            0, nullptr, 0.0f, graphMaximum, ImVec2(-1.0f, 72.0f));
+        ImGui::TextDisabled("CPU rows are wall-clock durations: Physics is included in Game Update; render details in Render Update.");
+        ImGui::TextDisabled("Submit + Present can include VSync. GPU time measures Direct Queue work, not CPU waits.");
+        ImGui::TextDisabled("GPU results arrive after the frame slot completes.");
+
+        if (!ImGui::BeginTable("PerformanceProfilerMetrics", 4,
+            ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
+        {
+            ImGui::End();
+            return;
+        }
+
+        ImGui::TableSetupColumn("Metric");
+        ImGui::TableSetupColumn("Latest (ms)");
+        ImGui::TableSetupColumn("Average (ms)");
+        ImGui::TableSetupColumn("Peak (ms)");
+        ImGui::TableHeadersRow();
+
+        const auto addMetricRow = [&](const char* const name, const auto& getValue, const bool gpuMetric)
+            {
+                double total = 0.0;
+                double peak = 0.0;
+                std::size_t count = 0;
+                for (std::size_t index = 0; index < snapshot.sampleCount; ++index)
+                {
+                    const FrameProfileSample& sample = snapshot.samples[index];
+                    if (gpuMetric && !sample.hasGpuMeasurement)
+                        continue;
+                    const double value = getValue(sample);
+                    total += value;
+                    peak = std::max(peak, value);
+                    ++count;
+                }
+
+                const double latestValue = gpuMetric
+                    ? latestGpu != nullptr ? getValue(*latestGpu) : 0.0
+                    : getValue(latest);
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextUnformatted(name);
+                ImGui::TableSetColumnIndex(1);
+                if (gpuMetric && latestGpu == nullptr)
+                    ImGui::TextUnformatted("Waiting...");
+                else
+                    ImGui::Text("%.3f", latestValue);
+                ImGui::TableSetColumnIndex(2);
+                if (count != 0)
+                    ImGui::Text("%.3f", total / static_cast<double>(count));
+                else
+                    ImGui::TextUnformatted("--");
+                ImGui::TableSetColumnIndex(3);
+                if (count != 0)
+                    ImGui::Text("%.3f", peak);
+                else
+                    ImGui::TextUnformatted("--");
+            };
+
+        addMetricRow("Frame wall", [](const FrameProfileSample& sample)
+            { return sample.frameWallMilliseconds; }, false);
+        addMetricRow("GPU frame", [](const FrameProfileSample& sample)
+            { return sample.gpuMilliseconds; }, true);
+
+        constexpr std::array METRIC_NAMES = {
+            "Game Update",
+            "Physics (included in Game Update)",
+            "Render Update",
+            "Build Render Queue",
+            "Prepare Draws",
+            "Record Commands",
+            "Submit + Present",
+            "Render Fence Wait",
+        };
+        for (std::size_t metricIndex = 0; metricIndex < METRIC_NAMES.size(); ++metricIndex)
+        {
+            addMetricRow(METRIC_NAMES[metricIndex],
+                [metricIndex](const FrameProfileSample& sample)
+                {
+                    return sample.cpuMilliseconds[metricIndex];
+                },
+                false);
+        }
+
+        ImGui::EndTable();
         ImGui::End();
     }
 
