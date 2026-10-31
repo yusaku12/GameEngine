@@ -31,4 +31,11 @@ namespace Engine::Serialization
      * @param snapshots 復元するComponentのsnapshotリスト
      */
     bool restoreComponents(GameObject& object, const std::vector<ComponentSnapshot>& snapshots);
+
+    /**
+     * @brief すべてのオブジェクトの生成後に、シリアライズされたGameObject参照を解決する。
+     * @param object コンポーネントの参照を解決するGameObject。
+     * @param objects シリアライズ時の識別子をキーとするGameObjectのマップ。
+     */
+    bool resolveObjectReferences(GameObject& object, const ObjectReferenceMap& objects);
 }

@@ -1,11 +1,11 @@
 ﻿#include "Pch.h"
 #include "Editor\ImGui\EditorUi.h"
 #include "Assets\Model\ModelManager.h"
-#include "Core\GameObject\Component\AnimatorComponent.h"
 #include "Core\GameObject\Component\CameraComponent.h"
 #include "Core\GameObject\Component\ModelRendererComponent.h"
 #include "Core\Prefab\Prefab.h"
 #include "Core\Prefab\PrefabSerializer.h"
+#include "Core\Scene\SceneManager.h"
 #include "Core\System\Dialog.h"
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Threading\ThreadDebugStats.h"
@@ -13,6 +13,8 @@
 #include "Graphics\Camera\CameraManager.h"
 #include "Graphics\Debug\DebugPrimitive.h"
 #include "Graphics\Shader\ShaderManager.h"
+#include "Physics\PhysicsSystem.h"
+#include "Physics\PhysicsWorld.h"
 #include <imgui.h>
 #include <ImGuizmo.h>
 
@@ -138,6 +140,7 @@ namespace Engine
             {
                 ImGui::MenuItem("Shader Manager", nullptr, &m_showShaderManager);
                 ImGui::MenuItem("Thread Debug", nullptr, &m_showThreadDebug);
+                ImGui::MenuItem("Physics Debug", nullptr, &m_showPhysicsDebug);
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
@@ -148,6 +151,7 @@ namespace Engine
         drawInspector();
         drawShaderManager(shaderManager);
         drawThreadDebug();
+        drawPhysicsDebug();
     }
 
     void EditorUi::drawGameView(const std::uint64_t textureId, std::uint32_t& width, std::uint32_t& height)
@@ -1007,25 +1011,26 @@ namespace Engine
             ImGui::OpenPopup("AddComponentPopup");
         if (ImGui::BeginPopup("AddComponentPopup"))
         {
-            if (!m_selectedObject->hasComponent<ModelRendererComponent>()
-                && ImGui::MenuItem("Model Renderer"))
+            std::vector<ComponentTypeInfo> types;
+            if (!ComponentRegistry::instance().getRegisteredTypes(types))
+                ImGui::TextDisabled("Cannot list components; see the engine log.");
+            for (const ComponentTypeInfo& type : types)
             {
-                m_selectedObject->addComponent<ModelRendererComponent>();
+                if (type.required || type.factory == nullptr)
+                    continue;
+                const std::string_view reason = type.getEditorAdditionBlockReason(*m_selectedObject);
+                ImGui::PushID(static_cast<int>(type.id));
+                if (ImGui::MenuItem(type.name.c_str(), nullptr, false, reason.empty()))
+                {
+                    if (m_selectedObject->addComponent(type.name) == nullptr)
+                        LOG_ERROR("[Editor] Failed to add component: {}", type.name);
+                    ImGui::PopID();
+                    break;
+                }
+                if (!reason.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    ImGui::SetTooltip("%.*s", static_cast<int>(reason.size()), reason.data());
+                ImGui::PopID();
             }
-            const bool hasModelRenderer = m_selectedObject->hasComponent<ModelRendererComponent>();
-            const bool hasAnimator = m_selectedObject->hasComponent<AnimatorComponent>();
-            if (ImGui::MenuItem("Animator", nullptr, false, hasModelRenderer && !hasAnimator))
-                m_selectedObject->addComponent<AnimatorComponent>();
-            if (!m_selectedObject->hasComponent<CameraComponent>()
-                && ImGui::MenuItem("Camera"))
-            {
-                m_selectedObject->addComponent<CameraComponent>();
-            }
-
-            const bool hasCamera = m_selectedObject->hasComponent<CameraComponent>();
-            const bool hasController = m_selectedObject->hasComponent<FreeCameraController>();
-            if (ImGui::MenuItem("Free Camera Controller", nullptr, false, hasCamera && !hasController))
-                m_selectedObject->addComponent<FreeCameraController>();
             ImGui::EndPopup();
         }
         ImGui::End();
@@ -1200,4 +1205,112 @@ namespace Engine
 
         ImGui::End();
     }
+
+    void EditorUi::drawPhysicsDebug()
+    {
+        if (!m_showPhysicsDebug)
+            return;
+
+        if (!ImGui::Begin("Physics Debug", &m_showPhysicsDebug))
+        {
+            ImGui::End();
+            return;
+        }
+
+        PhysicsSystem& physicsSystem = PhysicsSystem::instance();
+        const bool paused = physicsSystem.isPaused();
+        if (ImGui::Button(paused ? "Resume Physics" : "Pause Physics"))
+            physicsSystem.setPaused(!paused);
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!paused);
+        if (ImGui::Button("Step Physics"))
+            physicsSystem.requestSingleStep();
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!physicsSystem.isInitialized());
+        if (ImGui::Button("Reset Physics") && !physicsSystem.reset())
+            m_physicsRaycastResult = "Physics reset failed; see the engine log.";
+        ImGui::EndDisabled();
+
+        PhysicsDebugSettings settings = physicsSystem.getDebugSettings();
+        bool settingsChanged = ImGui::Checkbox("Enable Debug Draw", &settings.enabled);
+        ImGui::BeginDisabled(!settings.enabled);
+        settingsChanged |= ImGui::Checkbox("Draw Colliders", &settings.drawColliders);
+        settingsChanged |= ImGui::Checkbox("Draw Contacts", &settings.drawContacts);
+        settingsChanged |= ImGui::Checkbox("Draw AABB", &settings.drawAabbs);
+        settingsChanged |= ImGui::Checkbox("Draw Velocity", &settings.drawVelocities);
+        settingsChanged |= ImGui::Checkbox("Draw Center Of Mass", &settings.drawCenterOfMass);
+        settingsChanged |= ImGui::Checkbox("Draw Raycasts", &settings.drawRaycasts);
+        ImGui::EndDisabled();
+        if (settingsChanged)
+            physicsSystem.setDebugSettings(settings);
+
+        const PhysicsProfilerSnapshot profiler = physicsSystem.getProfilerSnapshot();
+        ImGui::SeparatorText("Profiler");
+        ImGui::Text("Fixed Delta Time: %.4f ms", profiler.fixedDeltaTime * 1000.0f);
+        ImGui::Text("Simulation Step: %.3f ms", profiler.lastStepMilliseconds);
+        ImGui::Text("Average Step: %.3f ms", profiler.averageStepMilliseconds);
+        ImGui::Text("Total Steps: %llu", static_cast<unsigned long long>(profiler.totalSteps));
+
+        if (physicsSystem.isInitialized())
+        {
+            ImGui::SeparatorText("Scene");
+            ImGui::Text("Active Bodies: %u", profiler.activeBodies);
+            ImGui::Text("Active Actors: %u", profiler.activeActors);
+            ImGui::Text("Dynamic Bodies: %u", profiler.dynamicBodies);
+            ImGui::Text("Static Bodies: %u", profiler.staticBodies);
+            ImGui::Text("Active Shapes: %u", profiler.activeShapes);
+            ImGui::Text("Active Joints: %u", profiler.activeJoints);
+            ImGui::Text("Active Contacts: %u", profiler.activeContacts);
+
+            ImGui::SeparatorText("Raycast Test");
+            CameraComponent* const camera = CameraManager::instance().getActiveCamera();
+            ImGui::BeginDisabled(camera == nullptr);
+            if (ImGui::Button("Raycast From Active Camera"))
+            {
+                const std::optional<RaycastHit> hit = physicsSystem.getWorld()->raycast(
+                    camera->getPosition(), camera->getForward(), 1000.0f);
+                if (!hit.has_value())
+                {
+                    m_physicsRaycastResult = "No collider was hit.";
+                }
+                else
+                {
+                    Scene* const activeScene = SceneManager::instance().getActiveScene();
+                    GameObject* const hitObject = activeScene != nullptr
+                        ? activeScene->find(hit->gameObject)
+                        : nullptr;
+                    const std::string objectName = hitObject != nullptr
+                        ? hitObject->getName()
+                        : "Unknown";
+                    m_physicsRaycastResult =
+                        "Hit GameObject: " + objectName
+                        + " | GUID: " + std::to_string(hit->gameObject.high)
+                        + ":" + std::to_string(hit->gameObject.low)
+                        + " | Point: (" + std::to_string(hit->point.x)
+                        + ", " + std::to_string(hit->point.y)
+                        + ", " + std::to_string(hit->point.z)
+                        + ") | Normal: (" + std::to_string(hit->normal.x)
+                        + ", " + std::to_string(hit->normal.y)
+                        + ", " + std::to_string(hit->normal.z)
+                        + ") | Distance: " + std::to_string(hit->distance);
+
+                    if (hitObject != nullptr)
+                        selectObject(hitObject);
+                }
+            }
+            ImGui::EndDisabled();
+            if (camera == nullptr)
+                ImGui::TextDisabled("No active Camera is available.");
+            if (!m_physicsRaycastResult.empty())
+                ImGui::TextWrapped("%s", m_physicsRaycastResult.c_str());
+        }
+        else
+        {
+            ImGui::TextDisabled("Physics World is not initialized.");
+        }
+
+        ImGui::End();
+    }
+
 } // namespace Engine

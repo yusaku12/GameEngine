@@ -24,6 +24,7 @@
     <ClInclude Include="Generated\FlatBuffers\AnimatorController_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimatorComponent_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\ModelRendererComponent_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\PhysicsComponent_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Common_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Material_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\Model_generated.h" />
@@ -105,6 +106,26 @@
     <ClInclude Include="Source\Core\GameObject\Component\AnimatorComponent.h" />
     <ClInclude Include="Source\Core\GameObject\Component\CameraComponent.h" />
     <ClInclude Include="Source\Core\GameObject\Component\TransformComponent.h" />
+    <ClInclude Include="Source\Physics\PhysicsTypes.h" />
+    <ClInclude Include="Source\Physics\PhysicsDebug.h" />
+    <ClInclude Include="Source\Physics\PhysicsLayer.h" />
+    <ClInclude Include="Source\Physics\PhysicsMaterial.h" />
+    <ClInclude Include="Source\Physics\PhysicsMeshAsset.h" />
+    <ClInclude Include="Source\Physics\PhysicsQuery.h" />
+    <ClInclude Include="Source\Physics\PhysicsEventListener.h" />
+    <ClInclude Include="Source\Physics\PhysicsSystem.h" />
+    <ClInclude Include="Source\Physics\PhysicsWorld.h" />
+    <ClInclude Include="Source\Physics\Internal\PhysicsPayload.h" />
+    <ClInclude Include="Source\Physics\Character\CharacterControllerComponent.h" />
+    <ClInclude Include="Source\Physics\Joint\JointComponent.h" />
+    <ClInclude Include="Source\Physics\Rigidbody\RigidbodyComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\ColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\BoxColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\SphereColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\CapsuleColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\MeshColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\ConvexColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Internal\PhysXConversions.h" />
     <ClInclude Include="Source\Core\GameObject\Component\ModelRendererComponent.h" />
     <ClInclude Include="Source\Core\GameObject\ComponentRegistry.h" />
     <ClInclude Include="Source\Core\GameObject\Behaviour.h" />
@@ -199,6 +220,20 @@
     <ClCompile Include="Source\Core\GameObject\Component\AnimatorComponent.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\CameraComponent.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\TransformComponent.cpp" />
+    <ClCompile Include="Source\Physics\PhysicsSystem.cpp" />
+    <ClCompile Include="Source\Physics\PhysicsMaterial.cpp" />
+    <ClCompile Include="Source\Physics\PhysicsMeshAsset.cpp" />
+    <ClCompile Include="Source\Physics\PhysicsWorld.cpp" />
+    <ClCompile Include="Source\Physics\Character\CharacterControllerComponent.cpp" />
+    <ClCompile Include="Source\Physics\Joint\JointComponent.cpp" />
+    <ClCompile Include="Source\Physics\Rigidbody\RigidbodyComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\ColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\BoxColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\SphereColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\CapsuleColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\MeshColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\ConvexColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Internal\PhysXConversions.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\ModelRendererComponent.cpp" />
     <ClCompile Include="Source\Core\GameObject\ComponentRegistry.cpp" />
     <ClCompile Include="Source\Core\Scene\Scene.cpp" />
@@ -272,6 +307,7 @@
     <None Include="Schemas\FlatBuffers\AnimatorController.fbs" />
     <None Include="Schemas\FlatBuffers\AnimatorComponent.fbs" />
     <None Include="Schemas\FlatBuffers\ModelRendererComponent.fbs" />
+    <None Include="Schemas\FlatBuffers\PhysicsComponent.fbs" />
     <None Include="Tools\FlatBuffers\build_schema.bat" />
     <None Include="Tools\FlatBuffers\build_schema.ps1" />
     <None Include="Tools\Shaders\CompileShaders.bat" />
@@ -365,11 +401,12 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;PX_PHYSX_STATIC_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;$(FBXSDKRoot)\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;.\Library\PhysX\physx\include;.\Library\PhysX\physx\source\foundation\include;.\Library\PhysX\physx\source\common\include;.\Library\PhysX\pxshared\include;$(FBXSDKRoot)\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ExternalIncludePath>$(ProjectDir)Library\PhysX\physx\include;$(ProjectDir)Library\PhysX\physx\source\foundation\include;$(ProjectDir)Library\PhysX\physx\source\common\include;$(ProjectDir)Library\PhysX\pxshared\include;%(ExternalIncludePath)</ExternalIncludePath>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -379,8 +416,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;libfbxsdk.lib;wininet.lib;ws2_32.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration);$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Debug;$(FBXSDKRoot)\lib\x64\debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>PhysX_static_64.lib;PhysXExtensions_static_64.lib;PhysXCharacterKinematic_static_64.lib;PhysXCooking_static_64.lib;PhysXCommon_static_64.lib;PhysXPvdSDK_static_64.lib;PhysXFoundation_static_64.lib;ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;libfbxsdk.lib;wininet.lib;ws2_32.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)Build\PhysX\lib\bin\win.x86_64.vc143.mt\debug;$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration);$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Debug;$(FBXSDKRoot)\lib\x64\debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(FBXSDKRoot)\lib\x64\debug\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll"</Command>
@@ -392,11 +429,12 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;PX_PHYSX_STATIC_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;$(FBXSDKRoot)\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;.\Library\PhysX\physx\include;.\Library\PhysX\physx\source\foundation\include;.\Library\PhysX\physx\source\common\include;.\Library\PhysX\pxshared\include;$(FBXSDKRoot)\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ExternalIncludePath>$(ProjectDir)Library\PhysX\physx\include;$(ProjectDir)Library\PhysX\physx\source\foundation\include;$(ProjectDir)Library\PhysX\physx\source\common\include;$(ProjectDir)Library\PhysX\pxshared\include;%(ExternalIncludePath)</ExternalIncludePath>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -406,18 +444,24 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;libfbxsdk.lib;wininet.lib;ws2_32.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration);$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Release;$(FBXSDKRoot)\lib\x64\release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>PhysX_static_64.lib;PhysXExtensions_static_64.lib;PhysXCharacterKinematic_static_64.lib;PhysXCooking_static_64.lib;PhysXCommon_static_64.lib;PhysXPvdSDK_static_64.lib;PhysXFoundation_static_64.lib;ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;libfbxsdk.lib;wininet.lib;ws2_32.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)Build\PhysX\lib\bin\win.x86_64.vc143.mt\release;$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration);$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Release;$(FBXSDKRoot)\lib\x64\release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(FBXSDKRoot)\lib\x64\release\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
-  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Schemas\FlatBuffers\Skeleton.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimationClip.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorController.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\ModelRendererComponent.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h;$(ProjectDir)Generated\FlatBuffers\Skeleton_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimationClip_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorController_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\ModelRendererComponent_generated.h">
+  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Schemas\FlatBuffers\Skeleton.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimationClip.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorController.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\ModelRendererComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\PhysicsComponent.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h;$(ProjectDir)Generated\FlatBuffers\Skeleton_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimationClip_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorController_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\ModelRendererComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\PhysicsComponent_generated.h">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
   </Target>
   <Target Name="BuildOzzAnimation" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'" Inputs="$(ProjectDir)Library\ozz-animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\build_ozz.ps1" Outputs="$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration)\ozz_animation_offline$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration)\ozz_animation$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration)\ozz_base$(OzzLibraryPostfix).lib">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Animation\build_ozz.ps1&quot; -Configuration $(Configuration)" />
+  </Target>
+  <Target Name="BuildPhysX" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Physics\build_physx.ps1&quot; -Configuration $(Configuration)" />
+  </Target>
+  <Target Name="RejectWin32PhysX" BeforeTargets="ClCompile" Condition="'$(Platform)'=='Win32'">
+    <Error Text="The PhysX integration requires the x64 platform. Select Debug|x64 or Release|x64." />
   </Target>
   <Target Name="CompileShaders" BeforeTargets="ClCompile" Condition="Exists('$(ProjectDir)Tools\DXC\dxc.exe')" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Assets\Shaders\DebugPrimitive.hlsl;$(ProjectDir)Assets\Shaders\Occlusion.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Occlusion_vsMain_vs.cso">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />

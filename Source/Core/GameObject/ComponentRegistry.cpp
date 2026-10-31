@@ -1,9 +1,29 @@
 ﻿#include "Pch.h"
 #include "Core\Logging\Logging.h"
 #include "Core\GameObject\ComponentRegistry.h"
+#include "Core\GameObject\GameObject.h"
 
 namespace Engine
 {
+    std::string_view ComponentTypeInfo::getEditorAdditionBlockReason(const GameObject& object) const
+    {
+        if (required)
+            return "This is a required component.";
+        if (factory == nullptr)
+            return "This component has no factory.";
+        if (!allowMultiple)
+        {
+            bool alreadyAdded = false;
+            object.forEachComponent([&](const Component&, const std::type_index& componentType)
+            {
+                alreadyAdded = alreadyAdded || componentType == type;
+            });
+            if (alreadyAdded)
+                return "This component is already attached.";
+        }
+        return editorAdditionRule != nullptr ? editorAdditionRule(object) : std::string_view{};
+    }
+
     ComponentRegistry& ComponentRegistry::instance() noexcept
     {
         static ComponentRegistry registry;
@@ -12,7 +32,7 @@ namespace Engine
 
     ComponentTypeID ComponentRegistry::registerTypeInfo(const std::type_index type, const std::string_view name,
         const ComponentTypeInfo::Factory factory, const bool allowMultiple, const bool required,
-        const bool executeLifecycle)
+        const bool executeLifecycle, const ComponentTypeInfo::EditorAdditionRule editorAdditionRule)
     {
         if (const auto found = m_types.find(type); found != m_types.end())
             return found->second.id;
@@ -39,7 +59,9 @@ namespace Engine
             .factory = factory,
             .allowMultiple = allowMultiple,
             .required = required,
-            .executeLifecycle = executeLifecycle
+            .executeLifecycle = executeLifecycle,
+            .type = type,
+            .editorAdditionRule = editorAdditionRule
         };
         try
         {
@@ -115,6 +137,32 @@ namespace Engine
     {
         const ComponentTypeInfo* info = findByName(name);
         return info == nullptr || info->factory == nullptr ? nullptr : info->factory();
+    }
+
+    bool ComponentRegistry::getRegisteredTypes(std::vector<ComponentTypeInfo>& types) const noexcept
+    {
+        types.clear();
+        try
+        {
+            types.reserve(m_types.size());
+            for (const auto& [type, info] : m_types)
+            {
+                GE_UNUSED(type);
+                types.push_back(info);
+            }
+            std::ranges::sort(types, {}, &ComponentTypeInfo::name);
+            return true;
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("Failed to allocate the registered Component type list.");
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("Registered Component type list exceeds its maximum capacity.");
+        }
+        types.clear();
+        return false;
     }
 
     void ComponentRegistry::clear() noexcept

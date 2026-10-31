@@ -7,7 +7,7 @@ namespace Engine
 {
     /**
      * @brief Sceneの生成・切り替え・破棄を管理するクラス。
-     * @thread_safety Main thread only.
+     * @thread_safety メインスレッドからのみ使用可能。
      */
     class SceneManager
     {
@@ -91,6 +91,21 @@ namespace Engine
          * @return 永続Sceneのポインタ
          */
         Scene* getPersistentScene() noexcept { return &m_persistentScene; }
+
+        /**
+         * @brief 管理対象の各Sceneと永続Sceneに対してコールバックを呼び出す。
+         * @param callback 各Sceneに対して呼び出す関数。
+         */
+        template <typename Callback>
+        void forEachScene(Callback&& callback)
+        {
+            for (const auto& scene : m_scenes)
+            {
+                if (scene != nullptr)
+                    callback(*scene);
+            }
+            callback(m_persistentScene);
+        }
 
         /**
          * @brief 名前からSceneを検索する。.

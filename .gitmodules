@@ -1,3 +1,6 @@
 [submodule "Library/ozz-animation"]
 	path = Library/ozz-animation
 	url = https://github.com/guillaumeblanc/ozz-animation.git
+[submodule "Library/PhysX"]
+	path = Library/PhysX
+	url = https://github.com/NVIDIA-Omniverse/PhysX.git

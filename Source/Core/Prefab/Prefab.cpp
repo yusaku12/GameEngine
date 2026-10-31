@@ -3,9 +3,37 @@
 #include "Core\Prefab\Prefab.h"
 #include "Core\Serialization\ComponentSerialization.h"
 #include "Core\GameObject\ComponentRegistry.h"
+#include <unordered_map>
 
 namespace Engine
 {
+    namespace
+    {
+        void mapPrefabReferences(
+            const PrefabNode& node,
+            GameObject& object,
+            ObjectReferenceMap& references)
+        {
+            if (node.sourceGUID.isValid())
+                references[node.sourceGUID] = &object;
+            const std::size_t childCount = std::min(node.children.size(), object.getChildCount());
+            for (std::size_t index = 0; index < childCount; ++index)
+                mapPrefabReferences(node.children[index], *object.getChild(index), references);
+        }
+
+        bool resolvePrefabReferences(GameObject& object, const ObjectReferenceMap& references)
+        {
+            if (!Serialization::resolveObjectReferences(object, references))
+                return false;
+            for (std::size_t index = 0; index < object.getChildCount(); ++index)
+            {
+                if (!resolvePrefabReferences(*object.getChild(index), references))
+                    return false;
+            }
+            return true;
+        }
+    }
+
     bool Prefab::capture(const GameObject& root)
     {
         try
@@ -59,7 +87,35 @@ namespace Engine
 
     GameObject* Prefab::instantiate(Scene& scene) const
     {
-        return m_valid ? instantiateNode(m_root, scene, nullptr) : nullptr;
+        if (!m_valid)
+            return nullptr;
+
+        GameObject* const root = instantiateNode(m_root, scene, nullptr);
+        if (root == nullptr)
+            return nullptr;
+        try
+        {
+            ObjectReferenceMap references;
+            references.reserve(scene.getGameObjectCount());
+            for (const auto& object : scene.getGameObjects())
+            {
+                if (object != nullptr)
+                    references.emplace(object->getGUID(), object.get());
+            }
+            mapPrefabReferences(m_root, *root, references);
+            if (!resolvePrefabReferences(*root, references))
+            {
+                root->destroy();
+                return nullptr;
+            }
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("Failed to allocate object-reference data while instantiating a Prefab.");
+            root->destroy();
+            return nullptr;
+        }
+        return root;
     }
 
     GameObject* Prefab::instantiateNode(const PrefabNode& node, Scene& scene, GameObject* parent)

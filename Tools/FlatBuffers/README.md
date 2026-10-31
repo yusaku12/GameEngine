@@ -22,11 +22,11 @@ The batch equivalent is:
 Tools\FlatBuffers\build_schema.bat
 ```
 
-Both commands fail with a clear message when `flatc.exe` is unavailable. They generate all shared, material, model, prefab, and scene headers together.
+Both commands fail with a clear message when `flatc.exe` is unavailable. They generate all headers for every schema together, including the Physics component payloads.
 
 ## Normal Visual Studio build
 
-No manual generation is required. `GameEngine.vcxproj` runs the PowerShell generator before C++ compilation and tracks both schema files as inputs. A schema change therefore regenerates the headers before the affected C++ files compile.
+No manual generation is required. `GameEngine.vcxproj` runs the PowerShell generator before C++ compilation and tracks the schema files as inputs. A schema change therefore regenerates the headers before the affected C++ files compile.
 
 ## Using the model serializer
 
@@ -49,6 +49,8 @@ if (!serializer.load("Data/Characters/player.mdl", loaded))
 Asset paths should be project-relative or asset IDs, not absolute machine paths. `sourcePath` is stored as the model's generic path string and is not used to open files during deserialization.
 
 Scene and Prefab serializers write asset version `2`, including a registered Tag name alongside its runtime ID. Version `1` files remain readable and retain their numeric Tag IDs.
+
+Physics components use `Schemas/FlatBuffers/PhysicsComponent.fbs` and the shared helpers in `Source/Physics/Internal/PhysicsPayload.h`. Rigidbody, Collider, Character Controller, and Joint settings are stored in component payloads for both Scene and Prefab serialization. Joint references are stored by GameObject GUID and resolved after objects are instantiated. Mesh and Convex Collider payloads store project-relative `.physics` asset paths; those assets must be saved before the owning Scene or Prefab can be serialized. Empty legacy Physics payloads remain readable with component defaults.
 
 ## Schema evolution
 

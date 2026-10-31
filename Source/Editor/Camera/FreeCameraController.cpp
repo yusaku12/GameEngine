@@ -17,7 +17,12 @@ namespace Engine
 
         const ComponentTypeID freeCameraControllerType =
             ComponentRegistry::instance().registerType<FreeCameraController>(
-                "Free Camera Controller", false, false, true);
+                "Free Camera Controller", false, false, true,
+                [](const GameObject& object) -> std::string_view
+                {
+                    return object.hasComponent<CameraComponent>()
+                        ? std::string_view{} : "Add a Camera before adding a Free Camera Controller.";
+                });
     }
 
     FreeCameraController::FreeCameraController() noexcept

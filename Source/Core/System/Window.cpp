@@ -5,6 +5,7 @@
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Threading\ThreadDebugStats.h"
 #include "Graphics\DirectX12\Renderer.h"
+#include "Physics\PhysicsSystem.h"
 
 namespace Engine
 {
@@ -52,10 +53,15 @@ namespace Engine
         while (time.hasFixedUpdate())
         {
             sceneManager.fixedUpdate(time.fixedDeltaTime());
+            if (PhysicsSystem::instance().isPaused())
+                PhysicsSystem::instance().updateFrame(time.fixedDeltaTime());
+            else
+                PhysicsSystem::instance().update(time.fixedDeltaTime());
             time.consumeFixedUpdate();
         }
         sceneManager.lateUpdate(time.deltaTime());
         sceneManager.processDestroyQueue();
+        PhysicsSystem::instance().drawDebug();
     }
 
     void Window::render()

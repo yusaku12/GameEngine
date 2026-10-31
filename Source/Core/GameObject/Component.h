@@ -3,16 +3,19 @@
 #include <cstdint>
 #include <span>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
+#include "Core\Object\ObjectGUID.h"
 #include "Core\Math\Transform.h"
 
 namespace Engine
 {
     class GameObject;
+    using ObjectReferenceMap = std::unordered_map<ObjectGUID, GameObject*, ObjectGUIDHash>;
 
     /**
      * @brief GameObjectが所有する機能拡張の基底クラス。
-     * @thread_safety Main thread only.
+     * @thread_safety メインスレッドからのみ使用可能。
      */
     class Component
     {
@@ -77,6 +80,23 @@ namespace Engine
             return version == 0 && payload.empty();
         }
 
+        /** @brief シリアライズされたペイロードの復元後にコンポーネントのフックを呼び出す。 */
+        void notifyPayloadRestored() noexcept
+        {
+            if (m_lifecycleActive)
+                onPayloadRestored();
+        }
+
+        /**
+         * @brief シリアライズされた他のGameObjectへの参照を解決する。
+         * @param objects シリアライズ時の識別子をキーとするGameObjectのマップ。
+         */
+        virtual bool resolveObjectReferences(const ObjectReferenceMap& objects)
+        {
+            static_cast<void>(objects);
+            return true;
+        }
+
     protected:
 
         friend class GameObject;
@@ -135,6 +155,9 @@ namespace Engine
          * @brief ComponentのInspector UIを描画するときに呼ばれる。
          */
         virtual void onImGui() {}
+
+        /** @brief シリアライズされた設定の復元後にネイティブの実行時状態を再生成する。 */
+        virtual void onPayloadRestored() {}
 
         GameObject* m_gameObject = nullptr; //!< 所属するGameObjectのポインタ。nullptrの場合は所属していない。
         bool m_enabled = true;              //!< Componentが有効かどうか。GameObjectが非アクティブの場合はfalse。

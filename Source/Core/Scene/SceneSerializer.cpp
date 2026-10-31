@@ -256,6 +256,12 @@ namespace Engine::Serialization
                         return false;
                 }
             }
+            for (const auto& [guid, object] : objects)
+            {
+                GE_UNUSED(guid);
+                if (!resolveObjectReferences(*object, objects))
+                    return false;
+            }
         }
         return true;
     }

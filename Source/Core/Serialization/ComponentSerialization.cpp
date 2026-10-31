@@ -87,7 +87,21 @@ namespace Engine::Serialization
                 LOG_ERROR("Failed to deserialize component payload: {}", snapshot.type);
                 return false;
             }
+            component->notifyPayloadRestored();
         }
         return true;
+    }
+
+    bool resolveObjectReferences(GameObject& object, const ObjectReferenceMap& objects)
+    {
+        bool resolved = true;
+        object.forEachComponent([&](Component& component, const std::type_index&)
+        {
+            if (resolved)
+                resolved = component.resolveObjectReferences(objects);
+        });
+        if (!resolved)
+            LOG_ERROR("Failed to resolve a serialized GameObject reference.");
+        return resolved;
     }
 }

@@ -1,0 +1,54 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+table RigidbodyComponentPayload {
+    mass:float = 1.0;
+    linear_velocity:Vec3;
+    angular_velocity:Vec3;
+    linear_damping:float;
+    angular_damping:float = 0.05;
+    kinematic:bool;
+    gravity_enabled:bool = true;
+}
+
+table ColliderComponentPayload {
+    center:Vec3;
+    static_friction:float = 0.5;
+    dynamic_friction:float = 0.5;
+    restitution:float;
+    layer:uint;
+    collision_mask:uint = 4294967295;
+    is_trigger:bool;
+    size:Vec3;
+    radius:float = 0.5;
+    height:float = 2.0;
+    physics_asset_path:string;
+}
+
+table CharacterControllerComponentPayload {
+    radius:float = 0.5;
+    height:float = 2.0;
+    layer:uint;
+    collision_mask:uint = 4294967295;
+}
+
+table JointComponentPayload {
+    type:ubyte;
+    connected_body_guid:AssetGuid;
+    local_anchor:Vec3;
+    connected_anchor:Vec3;
+    break_force:float = 3.402823466e+38;
+    break_torque:float = 3.402823466e+38;
+    distance_minimum:float;
+    distance_maximum:float;
+    revolute_minimum:float;
+    revolute_maximum:float;
+    d6_free_axes:ubyte;
+    distance_range_set:bool;
+    revolute_limit_set:bool;
+    collision_enabled:bool;
+}
+
+root_type ColliderComponentPayload;
+file_identifier "PCMP";

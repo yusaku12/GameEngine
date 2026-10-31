@@ -12,7 +12,7 @@ namespace Engine
 
     /**
      * @brief Unity風のEditor DockSpaceと標準Panelを描画するクラス
-     * @thread_safety Main thread only.
+     * @thread_safety メインスレッドからのみ使用可能。
      */
     class EditorUi
     {
@@ -168,9 +168,12 @@ namespace Engine
          * @brief Thread Debugパネルを描画する
          */
         void drawThreadDebug();
+         /** @brief 物理デバッグ／プロファイラーパネルを描画する */
+         void drawPhysicsDebug();
 
-        bool m_showShaderManager = false;                                         //!< Shader Managerパネルの表示フラグ
-        bool m_showThreadDebug = false;                                           //!< Thread Debugパネルの表示フラグ
+         bool m_showShaderManager = false;                                         //!< シェーダーマネージャーパネルの表示フラグ
+         bool m_showThreadDebug = false;                                           //!< スレッドデバッグパネルの表示フラグ
+         bool m_showPhysicsDebug = false;                                          //!< 物理デバッグパネルの表示フラグ
         ObjectGUID m_observedSceneGuid{};                                        //!< Editor状態を紐付けたSceneのGUID
         ObjectGUID m_selectedObjectGuid{};                                       //!< Inspectorで選択中のGameObject GUID
         ObjectGUID m_hierarchyCreateParentGuid{};                                //!< 作成するGameObjectの親GUID
@@ -183,6 +186,7 @@ namespace Engine
         Editor::SceneDocument m_sceneDocument;                                    //!< 編集中Sceneのファイル状態
         std::string m_prefabStatus;                                               //!< 直近のPrefab保存結果
         std::string m_hierarchyStatus;                                            //!< Hierarchy操作の結果
+        std::string m_physicsRaycastResult;                                       //!< 直近の物理レイキャスト結果
         GameObjectCreateType m_hierarchyCreateType = GameObjectCreateType::Empty; //!< 生成予定のGameObject種別
         GizmoOperation m_gizmoOperation = GizmoOperation::Translate;              //!< Transform Gizmo操作
         float m_gridSnapStep = 1.0f;                                              //!< 移動スナップ間隔

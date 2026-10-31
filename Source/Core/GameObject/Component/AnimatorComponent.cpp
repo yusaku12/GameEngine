@@ -18,7 +18,12 @@ namespace Engine
     namespace
     {
         const ComponentTypeID animatorType = ComponentRegistry::instance().registerType<AnimatorComponent>(
-            "Animator", false, false, true);
+            "Animator", false, false, true,
+            [](const GameObject& object) -> std::string_view
+            {
+                return object.hasComponent<ModelRendererComponent>()
+                    ? std::string_view{} : "Add a Model Renderer before adding an Animator.";
+            });
     }
 
     AnimatorComponent::AnimatorComponent() noexcept

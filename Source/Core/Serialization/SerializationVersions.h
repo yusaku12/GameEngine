@@ -16,6 +16,8 @@ namespace Engine::Serialization
     inline constexpr std::uint32_t CURRENT_ANIMATOR_COMPONENT_VERSION = 1;                 //!< 現在のAnimator Component payloadバージョン
     inline constexpr std::uint32_t MINIMUM_SUPPORTED_MODEL_RENDERER_COMPONENT_VERSION = 1; //!< サポートされている最小のModel Renderer Component payloadバージョン
     inline constexpr std::uint32_t CURRENT_MODEL_RENDERER_COMPONENT_VERSION = 1;           //!< 現在のModel Renderer Component payloadバージョン
+    inline constexpr std::uint32_t MINIMUM_SUPPORTED_PHYSICS_COMPONENT_VERSION = 1;        //!< サポートされている最小の物理コンポーネントのペイロードバージョン
+    inline constexpr std::uint32_t CURRENT_PHYSICS_COMPONENT_VERSION = 1;                   //!< 現在の物理コンポーネントのペイロードバージョン
     inline constexpr std::uint32_t CURRENT_PREFAB_VERSION = 1;                             //!< 現在のPrefabバージョン
     inline constexpr std::uint32_t MINIMUM_SUPPORTED_PREFAB_VERSION = 1;                   //!< サポートされている最小のPrefabバージョン
     inline constexpr std::uint32_t CURRENT_SCENE_VERSION = 1;                              //!< 現在のSceneバージョン

@@ -4,6 +4,7 @@
 #include "Core\System\Window.h"
 #include "Graphics\Camera\CameraManager.h"
 #include "Graphics\DirectX12\Renderer.h"
+#include "Physics\PhysicsSystem.h"
 
 namespace Engine
 {
@@ -100,6 +101,12 @@ namespace Engine
         if (!initializeCore())
             return -1;
 
+        if (!PhysicsSystem::instance().initialize())
+        {
+            finalizeCore();
+            return -1;
+        }
+
         DWORD style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME;
         DWORD exStyle = WS_EX_APPWINDOW;
 
@@ -122,6 +129,7 @@ namespace Engine
         if (!RegisterClassEx(&windowClass))
         {
             LOG_CRITICAL("[Engine] ウィンドウクラスの登録に失敗しました");
+            PhysicsSystem::instance().shutdown();
             finalizeCore();
             return -1;
         }
@@ -140,6 +148,7 @@ namespace Engine
         if (hwnd == nullptr)
         {
             LOG_CRITICAL("[Engine] ウィンドウの作成に失敗しました");
+            PhysicsSystem::instance().shutdown();
             finalizeCore();
             return -1;
         }
@@ -158,6 +167,8 @@ namespace Engine
                 // 描画スレッドの役割をメインスレッドに戻す
                 setCurrentThreadRole(ThreadRole::Main);
                 DestroyWindow(hwnd);
+                SceneManager::instance().shutdown();
+                PhysicsSystem::instance().shutdown();
                 finalizeCore();
                 return -1;
             }
@@ -184,6 +195,7 @@ namespace Engine
             SceneManager::instance().shutdown();
             CameraManager::instance().shutdown();
             ModelManager::instance().clear();
+            PhysicsSystem::instance().shutdown();
         }
 
         finalizeCore();
