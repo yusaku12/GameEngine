@@ -80,6 +80,20 @@ namespace Engine
             return version == 0 && payload.empty();
         }
 
+        /**
+         * @brief Copies configuration into a fresh component of the same registered type.
+         * @details Override for in-memory resources that cannot be serialized to disk.
+         * Runtime state and ownership must not be shared between components.
+         * @param destination Newly created component, before its lifecycle starts.
+         * @return True if all configuration was copied.
+         */
+        virtual bool copyConfigurationTo(Component& destination) const
+        {
+            std::vector<std::uint8_t> payload;
+            return serializePayload(payload)
+                && destination.deserializePayload(getPayloadVersion(), payload);
+        }
+
         /** @brief シリアライズされたペイロードの復元後にコンポーネントのフックを呼び出す。 */
         void notifyPayloadRestored() noexcept
         {

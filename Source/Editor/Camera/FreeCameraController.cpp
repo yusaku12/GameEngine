@@ -32,6 +32,28 @@ namespace Engine
 
     void FreeCameraController::onUpdate(const float deltaTime)
     {
+        GE_UNUSED(deltaTime);
+    }
+
+    bool FreeCameraController::copyConfigurationTo(Component& destination) const
+    {
+        auto* target = dynamic_cast<FreeCameraController*>(&destination);
+        if (target == nullptr)
+        {
+            LOG_ERROR("[Play] Free camera clone type mismatch.");
+            return false;
+        }
+        target->m_orbitPoint = m_orbitPoint;
+        target->m_orbitDistance = m_orbitDistance;
+        target->m_moveSpeed = m_moveSpeed;
+        target->m_lookSensitivity = m_lookSensitivity;
+        target->m_panSensitivity = m_panSensitivity;
+        target->m_zoomSensitivity = m_zoomSensitivity;
+        return true;
+    }
+
+    void FreeCameraController::updateEditor(const float deltaTime)
+    {
         CameraComponent* const camera = getCamera();
         if (!std::isfinite(deltaTime) || deltaTime <= 0.0f
             || camera == nullptr || getTransform() == nullptr)

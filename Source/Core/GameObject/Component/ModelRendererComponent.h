@@ -64,6 +64,7 @@ namespace Engine
         std::uint32_t getPayloadVersion() const noexcept override;
         bool serializePayload(std::vector<std::uint8_t>& payload) const override;
         bool deserializePayload(std::uint32_t version, std::span<const std::uint8_t> payload) override;
+        bool copyConfigurationTo(Component& destination) const override;
 
         /**
          * @brief Shadow Passへ登録するかを設定する。

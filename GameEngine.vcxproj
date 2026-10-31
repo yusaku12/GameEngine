@@ -19,6 +19,11 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\Core\System\ExecutionMode.h" />
+    <ClInclude Include="Source\Core\System\GameSession.h" />
+    <ClInclude Include="Source\Core\System\StartupOptions.h" />
+    <ClInclude Include="Source\Core\Scene\SceneClone.h" />
+    <ClInclude Include="Generated\FlatBuffers\CameraComponent_generated.h" />
     <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimationClip_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimatorController_generated.h" />
@@ -177,6 +182,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\Animation\Runtime\AnimatorInstance.cpp" />
+    <ClCompile Include="Source\Core\System\GameSession.cpp" />
+    <ClCompile Include="Source\Core\System\StartupOptions.cpp" />
+    <ClCompile Include="Source\Core\Scene\SceneClone.cpp" />
     <ClCompile Include="Source\Assets\Animation\AnimatorControllerAsset.cpp" />
     <ClCompile Include="Source\Assets\Animation\AnimationAssetBuilder.cpp" />
     <ClCompile Include="Source\Assets\Animation\AnimationAssetManager.cpp" />
@@ -252,7 +260,8 @@
     <ClCompile Include="Source\Core\GameObject\GameObjectManager.cpp" />
     <ClCompile Include="Source\Core\Containers\String.cpp" />
     <ClCompile Include="Source\Core\Input\InputManager.cpp" />
-    <ClCompile Include="Source\Main.cpp" />
+    <ClCompile Include="Source\Main.cpp" Condition="'$(GameSessionTests)'!='true'" />
+    <ClCompile Include="Tools\Runtime\GameSessionTests.cpp" Condition="'$(GameSessionTests)'=='true'" />
     <ClCompile Include="Source\Core\Logging\Assert.cpp" />
     <ClCompile Include="Source\Core\Logging\Logger.cpp" />
     <ClCompile Include="Source\Core\Math\Random.cpp" />
@@ -304,6 +313,7 @@
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
     <None Include="Assets\Shaders\Occlusion.hlsl" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
+    <None Include="Schemas\FlatBuffers\CameraComponent.fbs" />
     <None Include="Schemas\FlatBuffers\Material.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />
     <None Include="Schemas\FlatBuffers\Prefab.fbs" />
@@ -457,7 +467,12 @@
       <Command>copy /Y "$(FBXSDKRoot)\lib\x64\release\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
-  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Schemas\FlatBuffers\Skeleton.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimationClip.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorController.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\ModelRendererComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\PhysicsComponent.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h;$(ProjectDir)Generated\FlatBuffers\Skeleton_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimationClip_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorController_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\ModelRendererComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\PhysicsComponent_generated.h">
+  <ItemDefinitionGroup Condition="'$(GameSessionTests)'=='true'">
+    <Link>
+      <SubSystem>Console</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
+  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Schemas\FlatBuffers\Skeleton.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimationClip.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorController.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\ModelRendererComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\PhysicsComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\CameraComponent.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h;$(ProjectDir)Generated\FlatBuffers\Skeleton_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimationClip_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorController_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\ModelRendererComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\PhysicsComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\CameraComponent_generated.h">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
   </Target>
   <Target Name="BuildOzzAnimation" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'" Inputs="$(ProjectDir)Library\ozz-animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\build_ozz.ps1" Outputs="$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration)\ozz_animation_offline$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration)\ozz_animation$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration)\ozz_base$(OzzLibraryPostfix).lib">

@@ -84,6 +84,9 @@ namespace Engine
          */
         void update();
 
+        /** @brief Clears transient input and vibration without changing configured bindings or focus. */
+        void resetState();
+
         /**
           * @brief ウィンドウのフォーカス状態を設定
           * @param focused フォーカスされているかどうか

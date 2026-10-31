@@ -5,6 +5,11 @@
 #include "Graphics\Camera\CameraManager.h"
 #include "Graphics\DirectX12\Renderer.h"
 #include "Physics\PhysicsSystem.h"
+#include "Core\Scene\SceneSerializer.h"
+#include "Core\System\GameSession.h"
+#include "Core\System\StartupOptions.h"
+#include <shellapi.h>
+#pragma comment(lib, "Shell32.lib")
 
 namespace Engine
 {
@@ -60,10 +65,11 @@ namespace Engine
      * @brief エンジンの基盤機能を初期化する
      * @return bool 成功したらtrue
      */
-    static bool initializeCore()
+    static bool initializeCore(const bool showConsole)
     {
         // コンソールの初期化
-        initializeConsole();
+        if (showConsole)
+            initializeConsole();
 
         // メインスレッドの役割を設定
         setCurrentThreadRole(ThreadRole::Main);
@@ -98,13 +104,54 @@ namespace Engine
      */
     static int runEngine(HINSTANCE instance, INT cmdShow)
     {
-        if (!initializeCore())
+        int argumentCount = 0;
+        auto freeArguments = [](wchar_t** arguments) { LocalFree(arguments); };
+        std::unique_ptr<wchar_t*, decltype(freeArguments)> arguments(
+            CommandLineToArgvW(GetCommandLineW(), &argumentCount), freeArguments);
+        StartupOptions options;
+        std::string argumentError;
+        std::vector<std::wstring_view> argumentViews;
+        if (arguments != nullptr)
+        {
+            for (int index = 1; index < argumentCount; ++index)
+                argumentViews.emplace_back(arguments.get()[index]);
+        }
+        const bool validArguments = arguments != nullptr && options.parse(argumentViews, argumentError);
+        if (!initializeCore(!validArguments || options.showHelp || options.mode == ExecutionMode::Editor))
             return -1;
+        if (!validArguments)
+        {
+            LOG_ERROR("[Startup] {} Usage: GameEngine.exe [--runtime --scene <scene file>] [--help]",
+                arguments == nullptr ? "Could not decode command line." : argumentError);
+            finalizeCore();
+            return -1;
+        }
+        if (options.showHelp)
+        {
+            LOG_INFO("Usage: GameEngine.exe [--runtime --scene <scene file>] [--help]");
+            finalizeCore();
+            return 0;
+        }
+        GameSession::instance().initialize(options.mode);
 
         if (!PhysicsSystem::instance().initialize())
         {
             finalizeCore();
             return -1;
+        }
+
+        if (options.mode == ExecutionMode::Runtime)
+        {
+            Scene* scene = SceneManager::instance().createScene("RuntimeScene");
+            if (scene == nullptr || !Serialization::SceneSerializer{}.load(options.scenePath, *scene))
+            {
+                LOG_ERROR("[Startup] Runtime scene could not be loaded: {}", String::fromWide(options.scenePath.c_str()).view());
+                SceneManager::instance().shutdown();
+                PhysicsSystem::instance().shutdown();
+                finalizeCore();
+                return -1;
+            }
+            LOG_INFO("[Startup] Runtime scene loaded: {}", String::fromWide(options.scenePath.c_str()).view());
         }
 
         DWORD style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME;
@@ -129,6 +176,7 @@ namespace Engine
         if (!RegisterClassEx(&windowClass))
         {
             LOG_CRITICAL("[Engine] ウィンドウクラスの登録に失敗しました");
+            SceneManager::instance().shutdown();
             PhysicsSystem::instance().shutdown();
             finalizeCore();
             return -1;
@@ -148,6 +196,7 @@ namespace Engine
         if (hwnd == nullptr)
         {
             LOG_CRITICAL("[Engine] ウィンドウの作成に失敗しました");
+            SceneManager::instance().shutdown();
             PhysicsSystem::instance().shutdown();
             finalizeCore();
             return -1;
@@ -162,7 +211,7 @@ namespace Engine
 
             // DirectX 12 レンダラーの初期化
             DX12Renderer renderer;
-            if (!renderer.initialize(hwnd, SCREEN_WIDTH, SCREEN_HEIGHT))
+            if (!renderer.initialize(hwnd, SCREEN_WIDTH, SCREEN_HEIGHT, options.mode))
             {
                 // 描画スレッドの役割をメインスレッドに戻す
                 setCurrentThreadRole(ThreadRole::Main);
@@ -181,6 +230,8 @@ namespace Engine
             // Window / Input / Message Pump はMain Threadで処理する
             setCurrentThreadRole(ThreadRole::Main);
             result = window.run();
+            GameSession::instance().shutdown();
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
 
             // GPUリソースの終了処理は描画側の役割として扱う
             setCurrentThreadRole(ThreadRole::Render);

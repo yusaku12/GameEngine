@@ -7,6 +7,7 @@
 #include "Core\Threading\ThreadDebugStats.h"
 #include "Graphics\DirectX12\Renderer.h"
 #include "Physics\PhysicsSystem.h"
+#include "Core\System\GameSession.h"
 
 namespace Engine
 {
@@ -47,35 +48,24 @@ namespace Engine
 
     void Window::update()
     {
-        TimeManager& time = TimeManager::instance();
-        SceneManager& sceneManager = SceneManager::instance();
-
-        sceneManager.update(time.deltaTime());
-        while (time.hasFixedUpdate())
-        {
-            sceneManager.fixedUpdate(time.fixedDeltaTime());
-            if (PhysicsSystem::instance().isPaused())
-                PhysicsSystem::instance().updateFrame(time.fixedDeltaTime());
-            else
-                PhysicsSystem::instance().update(time.fixedDeltaTime());
-            time.consumeFixedUpdate();
-        }
-        sceneManager.lateUpdate(time.deltaTime());
-        sceneManager.processDestroyQueue();
-        PhysicsSystem::instance().drawDebug();
+        GameSession::instance().update();
     }
 
     void Window::render()
     {
+        m_renderer.setEditorOverlayEnabled(!GameSession::instance().isPlaying());
         if (!m_renderer.render())
+        {
             LOG_ERROR("[Window] 描画に失敗しました");
+            m_frameFailed = true;
+        }
     }
 
     int Window::run()
     {
         MSG msg = {};
 
-        while (WM_QUIT != msg.message)
+        while (WM_QUIT != msg.message && !m_frameFailed)
         {
             if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
             {
@@ -90,7 +80,7 @@ namespace Engine
             }
         }
 
-        return static_cast<int>(msg.wParam);
+        return m_frameFailed ? -1 : static_cast<int>(msg.wParam);
     }
 
     LRESULT Window::processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
@@ -114,7 +104,10 @@ namespace Engine
                 const std::uint32_t width = LOWORD(lparam);
                 const std::uint32_t height = HIWORD(lparam);
                 if (!m_renderer.resize(width, height))
+                {
                     LOG_ERROR("[Window] 描画領域のリサイズに失敗しました");
+                    m_frameFailed = true;
+                }
             }
             break;
 
@@ -127,7 +120,9 @@ namespace Engine
             break;
 
         case WM_ACTIVATE:
-            InputManager::instance().setWindowFocused(LOWORD(wparam) != WA_INACTIVE);
+            m_windowFocused = LOWORD(wparam) != WA_INACTIVE;
+            if (!m_windowFocused)
+                InputManager::instance().setWindowFocused(false);
             break;
 
         default:
@@ -139,8 +134,7 @@ namespace Engine
 
     void Window::updateFrameInput()
     {
-        TimeManager::instance().update();
-        InputManager::instance().update();
+        GameSession::instance().beginFrame(m_windowFocused);
     }
 
     void Window::runThreadedFrame()

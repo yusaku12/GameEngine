@@ -55,6 +55,9 @@ namespace Engine
          */
         bool replaceContentsFrom(GameObjectManager& source) noexcept;
 
+        /** @brief Exchanges idle managers without destroying objects or allocating memory. */
+        bool exchangeContents(GameObjectManager& other) noexcept;
+
         /**
          * @brief 破棄キューに溜まったGameObjectを処理する。
          * @details destroy()で遅延破棄されたGameObjectがここで実際に破棄されます。
@@ -92,6 +95,13 @@ namespace Engine
          * @param deltaTime 前フレームからの経過時間（秒）。
          */
         void lateUpdate(float deltaTime) noexcept;
+
+        /**
+         * @brief Submits current camera/model data while editing or paused.
+         * @details Does not invoke Awake, Start, Update, LateUpdate or animation evaluation.
+         * @thread_safety Call between frame jobs; no concurrent structural changes.
+         */
+        void submitRenderData() noexcept;
 
         /**
          * @brief 名前でGameObjectを検索する。

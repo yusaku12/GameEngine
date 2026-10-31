@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "Core\CoreDefines.h"
+#include "Core\System\ExecutionMode.h"
 #include "Graphics\DirectX12\Command.h"
 #include "Editor\ImGui\ImGuiSystem.h"
 #include "Graphics\DirectX12\Device.h"
@@ -64,9 +65,14 @@ namespace Engine
          * @param hwnd 描画先ウィンドウ
          * @param width Back Buffer 幅
          * @param height Back Buffer 高さ
+         * @param mode Editor UI or direct Runtime presentation.
          * @return 初期化に成功した場合は true
          */
-        bool initialize(HWND hwnd, std::uint32_t width, std::uint32_t height);
+        bool initialize(HWND hwnd, std::uint32_t width, std::uint32_t height,
+            ExecutionMode mode = ExecutionMode::Editor);
+
+        /** @brief Shows editor grid overlays only in editing frames. */
+        void setEditorOverlayEnabled(bool enabled) noexcept { m_editorOverlayEnabled = enabled; }
 
         /**
          * @brief GPU 完了を待機して描画リソースを安全に解放する
@@ -75,7 +81,7 @@ namespace Engine
         bool finalize();
 
         /**
-         * @brief Game ViewとImGuiを描画して Back Buffer を Present する
+         * @brief Game Viewを描画し、Editor UIまたはRuntime画像をBack BufferへPresentする
          * @return 描画と Present に成功した場合は true
          */
         bool render();
@@ -174,6 +180,9 @@ namespace Engine
         void setParallelModelRecordingEnabled(bool enabled) noexcept { m_enableParallelModelRecording = enabled; }
 
     private:
+
+        ExecutionMode m_mode = ExecutionMode::Editor;
+        bool m_editorOverlayEnabled = true;
 
         /**
          * @brief 現在フレームの描画を構築してGPUへ提出する。

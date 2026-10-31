@@ -14,7 +14,7 @@ namespace Engine
     public:
 
         CameraComponent() noexcept;
-        ~CameraComponent() override = default;
+        ~CameraComponent() override;
 
         CameraComponent(const CameraComponent&) = delete;
         CameraComponent& operator=(const CameraComponent&) = delete;
@@ -245,7 +245,16 @@ namespace Engine
          */
         RenderView buildRenderView() const noexcept;
 
+        /** @brief Returns the version of persisted camera configuration. */
+        std::uint32_t getPayloadVersion() const noexcept override;
+        /** @brief Writes camera configuration and Main Camera preference, excluding frame history. */
+        bool serializePayload(std::vector<std::uint8_t>& payload) const override;
+        /** @brief Validates and restores configuration; legacy empty payloads are accepted. */
+        bool deserializePayload(std::uint32_t version, std::span<const std::uint8_t> payload) override;
+
     protected:
+
+        friend class GameObjectManager;
 
         void onEnable() override;
         void onLateUpdate(float deltaTime) override;
@@ -254,6 +263,9 @@ namespace Engine
         void onImGui() override;
 
     private:
+
+        friend class CameraManager;
+        bool m_mainCameraPreferred = false;
 
         /**
          * @brief View行列を無効化する。

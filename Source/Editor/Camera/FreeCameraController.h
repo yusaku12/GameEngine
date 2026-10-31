@@ -21,6 +21,10 @@ namespace Engine
          */
         FreeCameraController() noexcept;
 
+        /** @brief Updates editor navigation without executing a gameplay lifecycle. */
+        void updateEditor(float deltaTime);
+        bool copyConfigurationTo(Component& destination) const override;
+
         /**
          * @brief 通常移動速度を設定する。
          * @param speed World Unit毎秒。

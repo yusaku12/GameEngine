@@ -388,6 +388,55 @@ namespace Engine
         return true;
     }
 
+    bool AnimatorComponent::copyConfigurationTo(Component& destination) const
+    {
+        auto* target = dynamic_cast<AnimatorComponent*>(&destination);
+        if (target == nullptr)
+        {
+            LOG_ERROR("[Play] Animator clone type mismatch.");
+            return false;
+        }
+        target->m_skeleton = m_skeleton;
+        target->m_clip = m_clip;
+        target->m_controller = m_controller;
+        target->m_skeletonGuid = m_skeletonGuid;
+        target->m_clipGuid = m_clipGuid;
+        target->m_controllerGuid = m_controllerGuid;
+        target->m_skeletonPath = m_skeletonPath;
+        target->m_clipPath = m_clipPath;
+        target->m_controllerPath = m_controllerPath;
+        target->m_controllerClipReferences = m_controllerClipReferences;
+        target->m_availableClips = m_availableClips;
+        target->m_applyRootMotion = m_applyRootMotion;
+        target->m_instance.setSpeed(getSpeed());
+        target->m_pendingPlaying = m_restorePending ? m_pendingPlaying : isPlaying();
+        target->m_pendingState = m_restorePending ? m_pendingState : getCurrentState();
+        target->m_pendingNormalizedTime = m_restorePending ? m_pendingNormalizedTime : getNormalizedTime();
+        target->m_pendingParameters = m_pendingParameters;
+        if (!m_restorePending)
+        {
+            if (const auto controller = AnimationAssetManager::instance().getController(m_controller))
+            {
+                target->m_pendingParameters.clear();
+                for (const AnimatorParameter& parameter : controller->parameters)
+                {
+                    PersistedParameterValue value{ parameter.id, parameter.type,
+                        parameter.defaultFloat, parameter.defaultInt, parameter.defaultBool };
+                    if (parameter.type == AnimatorParameterType::Float)
+                        m_instance.getFloat(parameter.id, value.floatValue);
+                    else if (parameter.type == AnimatorParameterType::Int)
+                        m_instance.getInt(parameter.id, value.intValue);
+                    else
+                        m_instance.getBool(parameter.id, value.boolValue);
+                    target->m_pendingParameters.push_back(value);
+                }
+            }
+        }
+        target->m_restorePending = m_skeletonGuid.isValid() || m_clipGuid.isValid() || m_controllerGuid.isValid();
+        target->m_bindingDirty = false;
+        return true;
+    }
+
     void AnimatorComponent::onAwake()
     {
         if (!m_restorePending && !m_skeleton.isValid() && !m_clip.isValid() && !m_controller.isValid())

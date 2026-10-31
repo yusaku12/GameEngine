@@ -16,6 +16,7 @@
 #include "Graphics\Shader\ShaderManager.h"
 #include "Physics\PhysicsSystem.h"
 #include "Physics\PhysicsWorld.h"
+#include "Core\System\GameSession.h"
 #include <imgui.h>
 #include <ImGuizmo.h>
 
@@ -120,6 +121,8 @@ namespace Engine
 
         if (ImGui::BeginMainMenuBar())
         {
+            const bool playing = GameSession::instance().isPlaying();
+            ImGui::BeginDisabled(playing);
             if (ImGui::BeginMenu("ファイル"))
             {
                 if (ImGui::MenuItem("新規シーン"))
@@ -137,6 +140,7 @@ namespace Engine
                     ImGui::TextDisabled("%s", m_prefabStatus.c_str());
                 ImGui::EndMenu();
             }
+            ImGui::EndDisabled();
             if (ImGui::BeginMenu("Window"))
             {
                 ImGui::MenuItem("Shader Manager", nullptr, &m_showShaderManager);
@@ -145,12 +149,42 @@ namespace Engine
                 ImGui::MenuItem("Physics Debug", nullptr, &m_showPhysicsDebug);
                 ImGui::EndMenu();
             }
+            if (ImGui::Button(playing ? "Stop" : "Play"))
+                requestPlayTransition(!playing);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!playing);
+            const bool paused = GameSession::instance().state() == PlayState::Paused;
+            if (ImGui::Button(paused ? "Resume" : "Pause"))
+                MainThreadDispatcher::instance().post([paused]
+                {
+                    static_cast<void>(GameSession::instance().setPaused(!paused));
+                });
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!paused);
+            if (ImGui::Button("Step"))
+                MainThreadDispatcher::instance().post([]
+                {
+                    static_cast<void>(GameSession::instance().step());
+                });
+            ImGui::EndDisabled();
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextUnformatted(paused ? "Paused" : (playing ? "Playing" : "Editing"));
+            if (!GameSession::instance().status().empty())
+            {
+                ImGui::SameLine();
+                ImGui::TextUnformatted(GameSession::instance().status().c_str());
+            }
             ImGui::EndMainMenuBar();
         }
 
+        ImGui::BeginDisabled(GameSession::instance().isPlaying());
         drawHierarchy();
+        ImGui::EndDisabled();
         drawGameView(gameTextureId, gameWidth, gameHeight);
+        ImGui::BeginDisabled(GameSession::instance().isPlaying());
         drawInspector();
+        ImGui::EndDisabled();
         drawShaderManager(shaderManager);
         drawThreadDebug();
         drawPerformanceProfiler();
@@ -161,16 +195,22 @@ namespace Engine
     {
         if (!ImGui::Begin("Game"))
         {
+            GameSession::instance().setGameViewFocused(false);
             ImGui::End();
             return;
         }
 
-        ImGui::Checkbox("Grid Snap", &m_gridSnapEnabled);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Move uses the configured step; rotation snaps to 15 degrees and scale to 0.1.");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(100.0f);
-        ImGui::DragFloat("Move Step", &m_gridSnapStep, 0.05f, 0.01f, 100.0f, "%.2f");
+        GameSession::instance().setGameViewFocused(
+            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::GetIO().WantTextInput);
+        if (!GameSession::instance().isPlaying())
+        {
+            ImGui::Checkbox("Grid Snap", &m_gridSnapEnabled);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Move uses the configured step; rotation snaps to 15 degrees and scale to 0.1.");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(100.0f);
+            ImGui::DragFloat("Move Step", &m_gridSnapStep, 0.05f, 0.01f, 100.0f, "%.2f");
+        }
 
         const ImVec2 availableSize = ImGui::GetContentRegionAvail();
         if (textureId != 0 && width != 0 && height != 0 && availableSize.x > 0.0f && availableSize.y > 0.0f)
@@ -182,7 +222,8 @@ namespace Engine
             height = static_cast<std::uint32_t>(std::clamp(
                 std::lround(availableSize.y * framebufferScale.y), 1l, 16384l));
             ImGui::Image(static_cast<ImTextureID>(textureId), availableSize);
-            drawSelectedObjectGizmo(cursorPosition, availableSize);
+            if (!GameSession::instance().isPlaying())
+                drawSelectedObjectGizmo(cursorPosition, availableSize);
         }
 
         ImGui::End();
@@ -354,6 +395,39 @@ namespace Engine
                 localTransform->setScale(manipulatedTransforms[index].getScale());
             }
         }
+    }
+
+    void EditorUi::requestPlayTransition(const bool start)
+    {
+        MainThreadDispatcher::instance().post([this, start]
+        {
+            if (start)
+            {
+                m_selectionBeforePlay = m_selectedObjectGuids;
+                if (!GameSession::instance().play())
+                    return;
+            }
+            else if (!GameSession::instance().stop())
+                return;
+
+            selectObject(nullptr);
+            m_hierarchyCreateParent = nullptr;
+            m_hierarchyCreateParentGuid = {};
+            m_hierarchyCreateRequested = false;
+            m_hierarchyDuplicateRequested = false;
+            m_hierarchyDeleteRequested = false;
+            if (Scene* scene = SceneManager::instance().getActiveScene())
+            {
+                m_observedSceneGuid = scene->getGUID();
+                for (const ObjectGUID guid : m_selectionBeforePlay)
+                {
+                    if (GameObject* object = scene->find(guid))
+                        toggleObjectSelection(*object);
+                }
+            }
+            if (!start)
+                m_selectionBeforePlay.clear();
+        });
     }
 
     void EditorUi::newScene()
@@ -705,7 +779,8 @@ namespace Engine
                 ImGui::EndPopup();
             }
 
-            if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
+            if (!GameSession::instance().isPlaying()
+                && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
                 && !ImGui::GetIO().WantTextInput)
             {
                 if (ImGui::IsKeyPressed(ImGuiKey_Delete) && !m_selectedObjects.empty())

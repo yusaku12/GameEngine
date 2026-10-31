@@ -5,6 +5,8 @@
 #include "Graphics\Camera\CameraManager.h"
 #include "Graphics\Camera\CameraRenderSubmission.h"
 #include "Graphics\Camera\CameraUtils.h"
+#include "Core\Serialization\SerializationVersions.h"
+#include "Generated\FlatBuffers\CameraComponent_generated.h"
 #include <imgui.h>
 
 namespace Engine
@@ -469,6 +471,84 @@ namespace Engine
         result.backgroundColor = m_backgroundColor;
         result.cullingMask = m_cullingMask;
         return result;
+    }
+
+    std::uint32_t CameraComponent::getPayloadVersion() const noexcept
+    {
+        return Serialization::CURRENT_CAMERA_COMPONENT_VERSION;
+    }
+
+    bool CameraComponent::serializePayload(std::vector<std::uint8_t>& payload) const
+    {
+        flatbuffers::FlatBufferBuilder builder(128);
+        const Serialization::Vec4 viewport(m_viewport.x, m_viewport.y, m_viewport.width, m_viewport.height);
+        const Serialization::Vec4 background(m_backgroundColor.x, m_backgroundColor.y,
+            m_backgroundColor.z, m_backgroundColor.w);
+        const auto root = Serialization::CreateCameraComponentPayload(builder,
+            static_cast<std::uint8_t>(m_projectionMode), m_fieldOfViewDegrees, m_nearClip,
+            m_farClip, m_orthographicSize, &viewport, static_cast<std::uint8_t>(m_clearMode),
+            &background, m_cullingMask,
+            m_mainCameraPreferred || CameraManager::instance().getMainCamera() == this);
+        Serialization::FinishCameraComponentPayloadBuffer(builder, root);
+        payload.assign(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
+        return true;
+    }
+
+    bool CameraComponent::deserializePayload(const std::uint32_t version,
+        const std::span<const std::uint8_t> payload)
+    {
+        if (version == 0 && payload.empty())
+            return true;
+        if (payload.size() < 8)
+        {
+            LOG_ERROR("[Camera] Camera payload is truncated.");
+            return false;
+        }
+        flatbuffers::Verifier verifier(payload.data(), payload.size());
+        if (version != Serialization::CURRENT_CAMERA_COMPONENT_VERSION
+            || !Serialization::VerifyCameraComponentPayloadBuffer(verifier))
+        {
+            LOG_ERROR("[Camera] Invalid camera payload or version.");
+            return false;
+        }
+        const auto* source = Serialization::GetCameraComponentPayload(payload.data());
+        const auto* viewport = source->viewport();
+        const auto* background = source->background();
+        if (source->projection_mode() > static_cast<std::uint8_t>(CameraProjectionMode::Orthographic)
+            || source->clear_mode() > static_cast<std::uint8_t>(CameraClearMode::Nothing)
+            || !isFinite(source->field_of_view()) || source->field_of_view() < MIN_FIELD_OF_VIEW
+            || source->field_of_view() > MAX_FIELD_OF_VIEW
+            || !isFinite(source->near_clip()) || !isFinite(source->far_clip())
+            || source->near_clip() <= 0.0f || source->far_clip() <= source->near_clip()
+            || !isFinite(source->orthographic_size()) || source->orthographic_size() <= MIN_POSITIVE_VALUE
+            || viewport == nullptr || background == nullptr
+            || !isFinite(Color(background->x(), background->y(), background->z(), background->w()))
+            || !isFinite(Color(viewport->x(), viewport->y(), viewport->z(), viewport->w()))
+            || viewport->x() < 0.0f || viewport->y() < 0.0f
+            || viewport->z() < MIN_POSITIVE_VALUE || viewport->w() < MIN_POSITIVE_VALUE
+            || viewport->x() + viewport->z() > 1.0f || viewport->y() + viewport->w() > 1.0f)
+        {
+            LOG_ERROR("[Camera] Invalid serialized camera settings.");
+            return false;
+        }
+        m_projectionMode = static_cast<CameraProjectionMode>(source->projection_mode());
+        m_fieldOfViewDegrees = source->field_of_view();
+        m_nearClip = source->near_clip();
+        m_farClip = source->far_clip();
+        m_orthographicSize = source->orthographic_size();
+        m_clearMode = static_cast<CameraClearMode>(source->clear_mode());
+        m_backgroundColor = Color(background->x(), background->y(), background->z(), background->w());
+        m_cullingMask = source->culling_mask();
+        m_mainCameraPreferred = source->main_camera();
+        setViewport({ viewport->x(), viewport->y(), viewport->z(), viewport->w() });
+        invalidateProjection();
+        m_hasPreviousViewProjection = false;
+        return true;
+    }
+
+    CameraComponent::~CameraComponent()
+    {
+        CameraManager::instance().unregisterCamera(this);
     }
 
     void CameraComponent::onEnable()

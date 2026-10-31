@@ -2,8 +2,10 @@
 #include "Core\Logging\Logging.h"
 #include "Core\GameObject\GameObjectManager.h"
 #include "Core\GameObject\Component\AnimatorComponent.h"
+#include "Core\GameObject\Component\CameraComponent.h"
 #include "Core\GameObject\Component\ModelRendererComponent.h"
 #include "Core\Threading\JobSystem.h"
+#include "Graphics\Camera\CameraManager.h"
 
 namespace Engine
 {
@@ -236,6 +238,28 @@ namespace Engine
         return true;
     }
 
+    bool GameObjectManager::exchangeContents(GameObjectManager& other) noexcept
+    {
+        if (isBusy() || other.isBusy() || &other == this)
+        {
+            LOG_ERROR("Cannot exchange busy GameObject managers.");
+            return false;
+        }
+        m_objects.swap(other.m_objects);
+        m_guidIndex.swap(other.m_guidIndex);
+        m_destroyQueue.swap(other.m_destroyQueue);
+        m_lifecycleRoots.swap(other.m_lifecycleRoots);
+        m_deactivationRoots.swap(other.m_deactivationRoots);
+        m_animatorsToUpdate.swap(other.m_animatorsToUpdate);
+        m_modelRenderersToSubmit.swap(other.m_modelRenderersToSubmit);
+        m_transformRootsToUpdate.swap(other.m_transformRootsToUpdate);
+        for (const auto& object : m_objects)
+            object->m_manager = this;
+        for (const auto& object : other.m_objects)
+            object->m_manager = &other;
+        return true;
+    }
+
     bool GameObjectManager::reserveUpdateBuffers(const std::size_t capacity) noexcept
     {
         try
@@ -421,6 +445,40 @@ namespace Engine
                 });
         }
         m_modelRenderersToSubmit.clear();
+    }
+
+    void GameObjectManager::submitRenderData() noexcept
+    {
+        if (isBusy())
+        {
+            LOG_ERROR("Cannot submit render data during GameObject callbacks.");
+            return;
+        }
+        const ScopedFlag updateScope(m_isUpdatingLifecycle);
+        for (const auto& object : m_objects)
+        {
+            const bool active = object->isActiveInHierarchy() && !object->m_destroyRequested;
+            if (auto* camera = object->getComponent<CameraComponent>())
+            {
+                if (active && camera->isEnabled())
+                    CameraManager::instance().registerCamera(camera);
+                else
+                    CameraManager::instance().unregisterCamera(camera);
+            }
+        }
+        for (const auto& object : m_objects)
+        {
+            if (!object->isActiveInHierarchy() || object->m_destroyRequested)
+                continue;
+            if (auto* camera = object->getComponent<CameraComponent>(); camera != nullptr && camera->isEnabled())
+                camera->onLateUpdate(0.0f);
+            if (auto* renderer = object->getComponent<ModelRendererComponent>();
+                renderer != nullptr && renderer->isEnabled())
+            {
+                renderer->onLateUpdate(0.0f);
+                renderer->submitPendingRender();
+            }
+        }
     }
 
     void GameObjectManager::processDestroyQueue() noexcept

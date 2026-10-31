@@ -33,7 +33,10 @@ namespace Engine
          * @brief フレーム開始時に呼び出す（BeginFrame）
          * 高精度タイマーから現在時刻を取得し、Delta Timeを計算する
          */
-        void beginFrame();
+        void beginFrame(bool advanceSimulation = true, bool singleStep = false);
+
+        /** @brief Resets simulation time and fixed-step backlog without resetting wall-clock statistics. */
+        void resetSimulation() noexcept;
 
         /**
          * @brief フレーム終了時に呼び出す（EndFrame）
@@ -195,6 +198,8 @@ namespace Engine
          * @param seconds 上限（秒）
          */
         void setMaxDeltaTime(float seconds) noexcept;
+        /** @brief Returns the configured frame-delta upper bound in seconds. */
+        float maxDeltaTime() const noexcept { return static_cast<float>(m_maxDeltaTime); }
 
         /**
          * @brief getDeltaTime（従来互換）

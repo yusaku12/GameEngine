@@ -39,7 +39,17 @@ namespace Engine
         LOG_DEBUG_CAT("Time", "[TimeManager] Initialized");
     }
 
-    void TimeManager::beginFrame()
+    void TimeManager::resetSimulation() noexcept
+    {
+        m_timer.reset();
+        m_deltaTime = 0.0;
+        m_gameTime = 0.0;
+        m_fixedAccumulator = 0.0;
+        m_fixedUpdatesThisFrame = 0;
+        m_fixedFrameCount = 0;
+    }
+
+    void TimeManager::beginFrame(const bool advanceSimulation, const bool singleStep)
     {
         // 現在の経過時間を取得
         const double rawDeltaTime = m_timer.getElapsedSeconds();
@@ -50,24 +60,18 @@ namespace Engine
         const double clampedDeltaTime = minimum(rawDeltaTime, m_maxDeltaTime);
 
         // Unscaled Delta Time を更新
-        if (m_paused)
-        {
-            m_unscaledDeltaTime = 0.0;
-        }
-        else
-        {
-            m_unscaledDeltaTime = clampedDeltaTime;
-        }
+        m_unscaledDeltaTime = clampedDeltaTime;
 
         // Time Scale を適用して Delta Time を計算
-        m_deltaTime = m_unscaledDeltaTime * m_timeScale;
+        m_deltaTime = singleStep ? m_fixedDeltaTime
+            : (advanceSimulation && !m_paused ? m_unscaledDeltaTime * m_timeScale : 0.0);
 
         // ゲーム時間を更新
         m_gameTime += m_deltaTime;
         m_unscaledTime += m_unscaledDeltaTime;
 
         // Fixed Update Accumulator を更新
-        m_fixedAccumulator += m_deltaTime;
+        m_fixedAccumulator = singleStep ? m_fixedDeltaTime : m_fixedAccumulator + m_deltaTime;
         m_fixedUpdatesThisFrame = 0;
 
         // フレームカウントを増加

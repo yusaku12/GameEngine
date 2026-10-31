@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <ClCompile Include="Source\Core\System\StartupOptions.cpp" />
+    <ClCompile Include="Source\Core\System\GameSession.cpp" />
+    <ClCompile Include="Source\Core\Scene\SceneClone.cpp" />
+    <ClCompile Include="Tools\Runtime\GameSessionTests.cpp" />
     <ClCompile Include="Source\Animation\Runtime\AnimatorInstance.cpp" />
     <ClCompile Include="Source\Assets\Animation\AnimatorControllerAsset.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\AnimatorComponent.cpp" />
@@ -94,6 +98,11 @@
     <ClCompile Include="Source\Physics\Internal\PhysXConversions.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\Core\System\ExecutionMode.h" />
+    <ClInclude Include="Source\Core\System\StartupOptions.h" />
+    <ClInclude Include="Source\Core\System\GameSession.h" />
+    <ClInclude Include="Source\Core\Scene\SceneClone.h" />
+    <ClInclude Include="Generated\FlatBuffers\CameraComponent_generated.h" />
     <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h" />
     <ClInclude Include="Source\Graphics\DirectX12\ModelCommandRecorder.h" />
     <ClInclude Include="Source\Graphics\Renderer\CommandRecordingRange.h" />
@@ -269,6 +278,7 @@
     <None Include="Schemas\FlatBuffers\AnimationClip.fbs" />
     <None Include="Schemas\FlatBuffers\AnimatorController.fbs" />
     <None Include="Schemas\FlatBuffers\AnimatorComponent.fbs" />
+    <None Include="Schemas\FlatBuffers\CameraComponent.fbs" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
     <None Include="Schemas\FlatBuffers\Material.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />

@@ -38,6 +38,24 @@ namespace Engine
         void shutdown() noexcept;
 
         /**
+         * @brief Exchanges managed scenes and active scene with an isolated session.
+         * @details All scenes must be idle and active must belong to the incoming collection.
+         * @param scenes Receives the previous collection on success.
+         * @param active Receives the previous active scene on success.
+         * @return True if scene ownership was exchanged.
+         */
+        bool exchangeScenes(std::vector<std::unique_ptr<Scene>>& scenes, Scene*& active) noexcept;
+
+        /** @brief True while managed scene callbacks or structural operations are executing. */
+        bool isBusy() const noexcept;
+        /**
+         * @brief Destroys managed and persistent runtime scenes before restoring editor ownership.
+         * @details Scene operations from destruction callbacks are rejected, as during shutdown.
+         * @return True if all scenes were discarded at an idle frame boundary.
+         */
+        bool discardScenes() noexcept;
+
+        /**
          * @brief 名前を指定してSceneを生成する。
          * @param name 生成するSceneの名前
          * @return 生成されたSceneのポインタ

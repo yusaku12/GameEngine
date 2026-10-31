@@ -93,6 +93,9 @@ namespace Engine
             return m_objects.replaceContentsFrom(source.m_objects);
         }
 
+        /** @brief Exchanges object ownership with another idle scene without lifecycle callbacks. */
+        bool exchangeGameObjects(Scene& other) noexcept { return m_objects.exchangeContents(other.m_objects); }
+
         /**
          * @brief 通常更新を実行する。
          * @param deltaTime 経過時間
@@ -110,6 +113,9 @@ namespace Engine
          * @param deltaTime 経過時間
          */
         void lateUpdate(float deltaTime) noexcept { m_objects.lateUpdate(deltaTime); }
+
+        /** @brief Submits camera/model snapshots without executing gameplay callbacks. */
+        void submitRenderData() noexcept { m_objects.submitRenderData(); }
 
         /**
          * @brief 破棄キューを処理する。

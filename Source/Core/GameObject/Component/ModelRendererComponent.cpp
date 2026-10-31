@@ -502,6 +502,22 @@ namespace Engine
         return true;
     }
 
+    bool ModelRendererComponent::copyConfigurationTo(Component& destination) const
+    {
+        auto* target = dynamic_cast<ModelRendererComponent*>(&destination);
+        if (target == nullptr)
+        {
+            LOG_ERROR("[Play] ModelRenderer clone type mismatch.");
+            return false;
+        }
+        target->setModel(m_model);
+        target->m_materialOverrides = m_materialOverrides;
+        target->m_pendingMaterialOverrides = m_pendingMaterialOverrides;
+        target->m_propertyBlock = m_propertyBlock;
+        target->m_castShadows = m_castShadows;
+        return true;
+    }
+
     void ModelRendererComponent::onLateUpdate([[maybe_unused]] const float deltaTime)
     {
         m_submissionPending = false;

@@ -10,15 +10,19 @@ namespace Engine
 
     void SceneManager::shutdown() noexcept
     {
-        if (m_isDispatching || m_isApplyingOperations || m_persistentScene.isBusy()
-            || std::any_of(m_scenes.begin(), m_scenes.end(),
-                [](const std::unique_ptr<Scene>& scene) { return scene->isBusy(); }))
-        {
-            LOG_ERROR("Cannot shut down SceneManager while Scene callbacks or operations are active.");
-            return;
-        }
         if (m_isShuttingDown)
             return;
+        if (discardScenes())
+            m_isShuttingDown = true;
+    }
+
+    bool SceneManager::discardScenes() noexcept
+    {
+        if (isBusy())
+        {
+            LOG_ERROR("Cannot discard scenes while Scene callbacks or operations are active.");
+            return false;
+        }
         m_isShuttingDown = true;
         m_pendingOperations.clear();
         m_activeScene = nullptr;
@@ -26,6 +30,34 @@ namespace Engine
             scene->clear();
         m_scenes.clear();
         m_persistentScene.clear();
+        m_isShuttingDown = false;
+        return true;
+    }
+
+    bool SceneManager::exchangeScenes(std::vector<std::unique_ptr<Scene>>& scenes, Scene*& active) noexcept
+    {
+        const auto idle = [](const std::unique_ptr<Scene>& scene)
+        {
+            return scene != nullptr && !scene->isBusy();
+        };
+        if (m_isShuttingDown || m_isDispatching || m_isApplyingOperations
+            || !m_pendingOperations.empty() || !std::ranges::all_of(m_scenes, idle)
+            || !std::ranges::all_of(scenes, idle)
+            || (active != nullptr && std::ranges::none_of(scenes,
+                [active](const auto& scene) { return scene.get() == active; })))
+        {
+            LOG_ERROR("[Play] Cannot exchange scenes during callbacks or with invalid ownership.");
+            return false;
+        }
+        m_scenes.swap(scenes);
+        std::swap(m_activeScene, active);
+        return true;
+    }
+
+    bool SceneManager::isBusy() const noexcept
+    {
+        return m_isDispatching || m_isApplyingOperations || m_isShuttingDown || m_persistentScene.isBusy()
+            || std::ranges::any_of(m_scenes, [](const auto& scene) { return scene->isBusy(); });
     }
 
     Scene* SceneManager::createScene(const std::string& name)

@@ -1,0 +1,19 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+table CameraComponentPayload {
+    projection_mode:ubyte;
+    field_of_view:float = 60;
+    near_clip:float = 0.1;
+    far_clip:float = 1000;
+    orthographic_size:float = 5;
+    viewport:Vec4;
+    clear_mode:ubyte = 1;
+    background:Vec4;
+    culling_mask:uint = 4294967295;
+    main_camera:bool;
+}
+
+root_type CameraComponentPayload;
+file_identifier "CMCP";

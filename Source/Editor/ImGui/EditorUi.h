@@ -35,6 +35,9 @@ namespace Engine
 
     private:
 
+        void requestPlayTransition(bool start);
+        std::vector<ObjectGUID> m_selectionBeforePlay;
+
         /**
          * @brief Editorで生成するGameObjectの種類。
          */

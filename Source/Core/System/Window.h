@@ -91,5 +91,7 @@ namespace Engine
         const HWND m_hwnd;               //!< ウィンドウハンドル
         DX12Renderer& m_renderer;        //!< 描画処理
         float      m_titleTimer = 0.0f;  //!< タイトルバーを更新するまでの経過時間
+        bool m_windowFocused = true;
+        bool m_frameFailed = false;
     };
 } // namespace Engine

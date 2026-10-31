@@ -41,13 +41,16 @@ namespace Engine
         }
     }
 
-    bool DX12Renderer::initialize(const HWND hwnd, const std::uint32_t width, const std::uint32_t height)
+    bool DX12Renderer::initialize(const HWND hwnd, const std::uint32_t width, const std::uint32_t height,
+        const ExecutionMode mode)
     {
         if (hwnd == nullptr || width == 0 || height == 0)
             return false;
 
         if (!finalize())
             return false;
+        m_mode = mode;
+        m_editorOverlayEnabled = mode == ExecutionMode::Editor;
 
         const auto rollbackInitialization = [this]
             {
@@ -125,20 +128,19 @@ namespace Engine
             }
         }
 
-        m_imguiSystem = std::make_unique<ImGuiSystem>();
-        if (!m_imguiSystem->initialize(*m_device.get(), *m_directQueue.get(), hwnd))
+        if (mode == ExecutionMode::Editor)
         {
-            rollbackInitialization();
-            return false;
-        }
-        if (!m_imguiSystem->updateGameTextureView(*m_device.get(), *m_gameRenderTarget.get()))
-        {
-            rollbackInitialization();
-            return false;
+            m_imguiSystem = std::make_unique<ImGuiSystem>();
+            if (!m_imguiSystem->initialize(*m_device.get(), *m_directQueue.get(), hwnd)
+                || !m_imguiSystem->updateGameTextureView(*m_device.get(), *m_gameRenderTarget.get()))
+            {
+                rollbackInitialization();
+                return false;
+            }
         }
 
         if (!m_shaderManager.initialize(
-            ShaderMode::Development,
+            mode == ExecutionMode::Runtime ? ShaderMode::Runtime : ShaderMode::Development,
             "Assets/Shaders",
             [this](ShaderID /*id*/) { m_psoRebuildPending = true; }))
         {
@@ -342,7 +344,8 @@ namespace Engine
 
     bool DX12Renderer::renderFrame()
     {
-        if (m_imguiSystem == nullptr || !m_imguiSystem->isInitialized())
+        if (m_device.get() == nullptr
+            || (m_mode == ExecutionMode::Editor && (m_imguiSystem == nullptr || !m_imguiSystem->isInitialized())))
             return false;
 
         RenderView submittedView;
@@ -375,7 +378,8 @@ namespace Engine
             if (m_lastSubmittedFenceValue != 0 && !m_directFence.waitOnCpu(m_lastSubmittedFenceValue))
                 return false;
             if (!createGameRenderTarget(m_requestedGameWidth, m_requestedGameHeight, m_cameraClearColor)
-                || !m_imguiSystem->updateGameTextureView(*m_device.get(), *m_gameRenderTarget.get()))
+                || (m_imguiSystem != nullptr
+                    && !m_imguiSystem->updateGameTextureView(*m_device.get(), *m_gameRenderTarget.get())))
             {
                 return false;
             }
@@ -407,7 +411,8 @@ namespace Engine
         std::vector<ModelHandle> usedModels;
         std::vector<MaterialHandle> usedMaterials;
         buildModelRenderQueue(usedModels, usedMaterials);
-        m_imguiSystem->beginFrame(&m_shaderManager,
+        if (m_imguiSystem != nullptr)
+            m_imguiSystem->beginFrame(&m_shaderManager,
             m_imguiSystem->getGameTextureId(), m_requestedGameWidth, m_requestedGameHeight, [this]
             {
                 if (ImGui::Begin("Renderer Statistics"))
@@ -510,17 +515,28 @@ namespace Engine
         nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
         nativeCommandList->RSSetViewports(1, &viewport);
         nativeCommandList->RSSetScissorRects(1, &scissorRect);
-        if (hasCameraView)
+        if (hasCameraView && m_mode == ExecutionMode::Editor && m_editorOverlayEnabled)
             DebugPrimitive::instance().drawGrid(Vector3::Zero, 20.0f, 20.0f, 1.0f);
         if (!DebugPrimitive::instance().render(finishList, frameIndex, m_viewProjection, hasCameraView))
             return false;
 
-        if (!m_gameRenderTarget.transition(finishList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
-            return false;
-
-        const D3D12_CPU_DESCRIPTOR_HANDLE backBufferView = m_swapChain.getCurrentRtv().native;
-        nativeCommandList->OMSetRenderTargets(1, &backBufferView, FALSE, nullptr);
-        m_imguiSystem->render(*nativeCommandList);
+        if (m_mode == ExecutionMode::Runtime)
+        {
+            if (!m_gameRenderTarget.transition(finishList, D3D12_RESOURCE_STATE_COPY_SOURCE)
+                || !backBuffer->transition(finishList, D3D12_RESOURCE_STATE_COPY_DEST))
+                return false;
+            nativeCommandList->CopyResource(backBuffer->get(), m_gameRenderTarget.get());
+            if (!m_gameRenderTarget.transition(finishList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
+                return false;
+        }
+        else
+        {
+            if (!m_gameRenderTarget.transition(finishList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
+                return false;
+            const D3D12_CPU_DESCRIPTOR_HANDLE backBufferView = m_swapChain.getCurrentRtv().native;
+            nativeCommandList->OMSetRenderTargets(1, &backBufferView, FALSE, nullptr);
+            m_imguiSystem->render(*nativeCommandList);
+        }
 
         if (!backBuffer->transition(finishList, D3D12_RESOURCE_STATE_PRESENT)
             || !m_gpuProfiler.endFrame(frameIndex, finishList)
@@ -603,6 +619,11 @@ namespace Engine
 
         m_frameFenceValues.fill(0);
         m_lastSubmittedFenceValue = 0;
+        if (m_mode == ExecutionMode::Runtime)
+        {
+            m_requestedGameWidth = width;
+            m_requestedGameHeight = height;
+        }
         return true;
     }
 

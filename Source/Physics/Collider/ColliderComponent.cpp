@@ -230,6 +230,41 @@ namespace Engine
         return true;
     }
 
+    bool ColliderComponent::copyConfigurationTo(Component& destination) const
+    {
+        auto* target = dynamic_cast<ColliderComponent*>(&destination);
+        if (target == nullptr || typeid(*this) != typeid(destination))
+        {
+            LOG_ERROR("[Play] Collider clone type mismatch.");
+            return false;
+        }
+        target->setCenter(m_center);
+        target->setMaterial(m_material);
+        target->setLayer(m_layer);
+        target->setCollisionMask(m_collisionMask);
+        target->setIsTrigger(m_isTrigger);
+        if (const auto* box = dynamic_cast<const BoxColliderComponent*>(this))
+            static_cast<BoxColliderComponent*>(target)->setSize(box->getSize());
+        else if (const auto* sphere = dynamic_cast<const SphereColliderComponent*>(this))
+            static_cast<SphereColliderComponent*>(target)->setRadius(sphere->getRadius());
+        else if (const auto* capsule = dynamic_cast<const CapsuleColliderComponent*>(this))
+        {
+            auto* copy = static_cast<CapsuleColliderComponent*>(target);
+            copy->setRadius(capsule->getRadius());
+            copy->setHeight(capsule->getHeight());
+        }
+        else if (const auto* mesh = dynamic_cast<const MeshColliderComponent*>(this))
+            static_cast<MeshColliderComponent*>(target)->setPhysicsAsset(mesh->getPhysicsAsset());
+        else if (const auto* convex = dynamic_cast<const ConvexColliderComponent*>(this))
+            static_cast<ConvexColliderComponent*>(target)->setPhysicsAsset(convex->getPhysicsAsset());
+        else
+        {
+            LOG_ERROR("[Play] Unsupported collider clone type.");
+            return false;
+        }
+        return true;
+    }
+
     bool ColliderComponent::deserializePayload(
         const std::uint32_t version,
         const std::span<const std::uint8_t> payload)

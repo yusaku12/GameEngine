@@ -44,7 +44,7 @@ namespace Engine
         }
 
         camera->setRenderTargetSize(m_renderTargetWidth, m_renderTargetHeight);
-        if (m_mainCamera == nullptr)
+        if (m_mainCamera == nullptr || camera->m_mainCameraPreferred)
             m_mainCamera = camera;
     }
 
@@ -71,6 +71,8 @@ namespace Engine
     {
         if (camera != nullptr && !contains(camera))
             return false;
+        for (CameraComponent* registered : m_cameras)
+            registered->m_mainCameraPreferred = registered == camera;
         m_mainCamera = camera;
         return true;
     }

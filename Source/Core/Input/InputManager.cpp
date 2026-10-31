@@ -19,6 +19,32 @@ namespace Engine
         updateBuffer();
     }
 
+    void InputManager::resetState()
+    {
+        ZeroMemory(m_currKeys, sizeof(m_currKeys));
+        ZeroMemory(m_prevKeys, sizeof(m_prevKeys));
+        ZeroMemory(m_currMouse, sizeof(m_currMouse));
+        ZeroMemory(m_prevMouse, sizeof(m_prevMouse));
+        m_mouseWheel = 0;
+        m_prevMouseWheel = 0;
+        m_mouseDelta = {};
+        if (GetCursorPos(&m_mousePos))
+            m_prevMousePos = m_mousePos;
+        m_actionBuffers.clear();
+        for (GamepadState& state : m_gamepads)
+        {
+            state.prevButtons = 0;
+            state.currButtons = 0;
+            state.leftStickX = 0.0f;
+            state.leftStickY = 0.0f;
+            state.rightStickX = 0.0f;
+            state.rightStickY = 0.0f;
+            state.leftTrigger = 0.0f;
+            state.rightTrigger = 0.0f;
+        }
+        stopAllGamepadVibration();
+    }
+
     void InputManager::setWindowFocused(bool focused)
     {
         if (m_windowFocused == focused)
@@ -28,26 +54,7 @@ namespace Engine
 
         if (!focused)
         {
-            ZeroMemory(m_currKeys, 256);
-            ZeroMemory(m_prevKeys, 256);
-            ZeroMemory(m_currMouse, sizeof(m_currMouse));
-            ZeroMemory(m_prevMouse, sizeof(m_prevMouse));
-            m_mouseWheel = 0;
-            m_prevMouseWheel = 0;
-            m_mouseDelta = {};
-            m_actionBuffers.clear();
-            for (GamepadState& state : m_gamepads)
-            {
-                state.prevButtons = 0;
-                state.currButtons = 0;
-                state.leftStickX = 0.0f;
-                state.leftStickY = 0.0f;
-                state.rightStickX = 0.0f;
-                state.rightStickY = 0.0f;
-                state.leftTrigger = 0.0f;
-                state.rightTrigger = 0.0f;
-            }
-            stopAllGamepadVibration();
+            resetState();
             return;
         }
 
