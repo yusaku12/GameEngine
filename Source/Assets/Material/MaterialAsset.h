@@ -7,7 +7,7 @@
 namespace Engine
 {
     /**
-     * @brief Materialが参照するTexture AssetのGUID。
+     * @brief Materialが参照するTexture AssetのGUID。Path Hintは実行時に絶対パス、保存時に参照元Asset基準の相対パス。
      */
     struct MaterialTextureReferences
     {

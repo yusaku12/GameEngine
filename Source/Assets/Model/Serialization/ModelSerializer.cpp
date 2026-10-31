@@ -2,6 +2,7 @@
 #include <flatbuffers/flatbuffers.h>
 #include "Generated\FlatBuffers\Model_generated.h"
 #include "Assets\Model\Serialization\ModelSerializer.h"
+#include "Assets\Material\Serialization\TextureReferencePaths.h"
 #include "Core\Logging\Logging.h"
 #include "Core\Serialization\FlatBufferReader.h"
 #include "Core\Serialization\FlatBufferWriter.h"
@@ -21,6 +22,13 @@ namespace Engine::Serialization
         AssetGUID toEngine(const AssetGuid* value);
         bool isFinite(const Vector3& value) noexcept;
         bool isFinite(const Vector4& value) noexcept;
+
+        constexpr std::array LEGACY_TEXTURE_PATH_MEMBERS = {
+            &Engine::MaterialTexturePaths::baseColor, &Engine::MaterialTexturePaths::normal,
+            &Engine::MaterialTexturePaths::metallic, &Engine::MaterialTexturePaths::roughness,
+            &Engine::MaterialTexturePaths::metallicRoughness, &Engine::MaterialTexturePaths::ambientOcclusion,
+            &Engine::MaterialTexturePaths::emissive, &Engine::MaterialTexturePaths::opacity,
+        };
 
         flatbuffers::Offset<MaterialAssetData> createEmbeddedMaterial(flatbuffers::FlatBufferBuilder& builder,
             const Engine::MaterialAsset& material)
@@ -507,12 +515,28 @@ namespace Engine::Serialization
         {
             materials.reserve(model.materials.size());
             for (const MaterialResource& material : model.materials)
-                materials.push_back(createMaterial(builder, material));
+            {
+                MaterialResource relativeMaterial = material;
+                for (const auto member : LEGACY_TEXTURE_PATH_MEMBERS)
+                {
+                    std::filesystem::path relative;
+                    if (!relativizeAssetReference(material.textures.*member, model.sourcePath, path, relative))
+                        return false;
+                    relativeMaterial.textures.*member = relative.generic_string();
+                }
+                materials.push_back(createMaterial(builder, relativeMaterial));
+            }
         }
         std::vector<flatbuffers::Offset<ModelMaterialSlot>> materialSlots;
         materialSlots.reserve(model.materialSlots.size());
         for (const Engine::ModelMaterialSlot& slot : model.materialSlots)
-            materialSlots.push_back(createMaterialSlot(builder, slot));
+        {
+            Engine::ModelMaterialSlot relativeSlot = slot;
+            if (!relativizeAssetReference(slot.defaultMaterialPath, model.sourcePath, path,
+                relativeSlot.defaultMaterialPath))
+                return false;
+            materialSlots.push_back(createMaterialSlot(builder, relativeSlot));
+        }
         std::vector<flatbuffers::Offset<Animation>> animations;
         animations.reserve(model.animations.size());
         for (const AnimationResource& animation : model.animations)
@@ -530,16 +554,26 @@ namespace Engine::Serialization
         std::vector<flatbuffers::Offset<flatbuffers::String>> animationClipPaths;
         animationClipPaths.reserve(model.animationClipPaths.size());
         for (const std::filesystem::path& clipPath : model.animationClipPaths)
-            animationClipPaths.push_back(builder.CreateString(clipPath.generic_string()));
+        {
+            std::filesystem::path relative;
+            if (!relativizeAssetReference(clipPath, model.sourcePath, path, relative))
+                return false;
+            animationClipPaths.push_back(builder.CreateString(relative.generic_string()));
+        }
         std::vector<flatbuffers::Offset<MaterialAssetData>> embeddedMaterials;
         embeddedMaterials.reserve(model.embeddedMaterials.size());
         for (const Engine::MaterialAsset& material : model.embeddedMaterials)
-            embeddedMaterials.push_back(createEmbeddedMaterial(builder, material));
+        {
+            Engine::MaterialAsset relativeMaterial = material;
+            if (!relativizeTextureReferences(relativeMaterial.textures, model.sourcePath, path))
+                return false;
+            embeddedMaterials.push_back(createEmbeddedMaterial(builder, relativeMaterial));
+        }
 
         const auto root = CreateModelFile(builder, header, builder.CreateVector(meshes), builder.CreateVector(materials),
             model.skeleton ? createSkeleton(builder, *model.skeleton) : 0, builder.CreateVector(animations),
             builder.CreateVector(nodes), createBounds(builder, model.boundingBox, model.boundingSphere),
-            builder.CreateString(model.sourcePath.generic_string()), builder.CreateVector(materialSlots),
+            builder.CreateString(path.filename().generic_string()), builder.CreateVector(materialSlots),
             &skeletonAssetGuid, builder.CreateVectorOfStructs(animationClipGuids),
             builder.CreateVector(animationClipPaths), builder.CreateVector(embeddedMaterials));
         FinishModelFileBuffer(builder, root);
@@ -689,6 +723,27 @@ namespace Engine::Serialization
                             return false;
             }
         }
+        for (MaterialResource& material : model.materials)
+        {
+            for (const auto member : LEGACY_TEXTURE_PATH_MEMBERS)
+            {
+                std::filesystem::path resolved;
+                if (!resolveAssetReference(material.textures.*member, path, resolved))
+                    return false;
+                material.textures.*member = resolved.string();
+            }
+        }
+        for (Engine::MaterialAsset& material : model.embeddedMaterials)
+            if (!resolveTextureReferences(material.textures, path))
+                return false;
+        for (Engine::ModelMaterialSlot& slot : model.materialSlots)
+            if (!resolveAssetReference(slot.defaultMaterialPath, path, slot.defaultMaterialPath))
+                return false;
+        for (std::filesystem::path& clipPath : model.animationClipPaths)
+            if (!resolveAssetReference(clipPath, path, clipPath))
+                return false;
+        if (!resolveAssetReference(path, {}, model.sourcePath))
+            return false;
         destination = std::move(model);
         return true;
     }

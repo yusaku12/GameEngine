@@ -3,6 +3,7 @@
 #include "Assets\Animation\AnimationAssetBuilder.h"
 #include "Assets\Animation\AnimationAssetManager.h"
 #include "Assets\Material\MaterialManager.h"
+#include "Assets\Material\Serialization\TextureReferencePaths.h"
 #include "Assets\Model\Import\FbxModelImporter.h"
 #include "Assets\Model\Serialization\ModelSerializer.h"
 #include "Graphics\Texture\TextureManager.h"
@@ -39,6 +40,9 @@ namespace Engine
          */
         bool createMaterialSlots(ModelResource& model)
         {
+            for (MaterialAsset& material : model.embeddedMaterials)
+                if (!Serialization::resolveTextureReferences(material.textures, model.sourcePath))
+                    return false;
             if (model.materialSlots.size() < model.materials.size())
                 model.materialSlots.resize(model.materials.size());
             if (model.embeddedMaterials.size() < model.materialSlots.size())
@@ -555,6 +559,8 @@ namespace Engine
 
     MaterialHandle ModelManager::setMaterialSlotMaterial(const ModelHandle model, const std::size_t slotIndex, MaterialAsset material)
     {
+        if (!Serialization::resolveTextureReferences(material.textures, {}))
+            return MaterialHandle::Invalid();
         if (!material.guid.isValid())
             return MaterialHandle::Invalid();
         material.guid = AssetGUID::generate();

@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Assets\Model\Import\FbxModelImporter.h"
+#include "Core\Serialization\AssetReferencePaths.h"
 #include <fbxsdk.h>
 
 namespace Engine
@@ -145,10 +146,11 @@ namespace Engine
                 filename = texture->GetFileName();
             if (filename == nullptr || filename[0] == '\0')
                 return {};
-            std::filesystem::path resolved(std::u8string(reinterpret_cast<const char8_t*>(filename)));
-            if (resolved.is_relative())
-                resolved = modelPath.parent_path() / resolved;
-            return resolved.lexically_normal().string();
+            const std::filesystem::path reference(std::u8string(reinterpret_cast<const char8_t*>(filename)));
+            std::filesystem::path resolved;
+            if (!Serialization::resolveAssetReference(reference, modelPath, resolved))
+                return {};
+            return resolved.string();
         }
 
         std::string texturePath(FbxSurfaceMaterial* material, const char* propertyName,

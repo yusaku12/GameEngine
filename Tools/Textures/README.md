@@ -87,6 +87,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Textures\ConvertText
 
 ## Runtime integration
 
+### Portable texture references
+
+Material and model format version 2 stores texture hints relative to the file
+that owns them: a standalone `.mat` or an enclosing `.model`/`.mdl`.
+Loading resolves them from that file's directory, not the process working
+directory. Runtime paths and texture-cache keys may still be absolute; these
+are not serialized. Save As rebases references to keep the same texture target.
+Move the owning assets and textures together, preserving their directory layout.
+Parent-directory references are supported; cross-volume references fail saving
+instead of silently embedding a machine-specific absolute path.
+
+Version 1 files remain readable. Old absolute hints remain absolute until
+resaved; their original files must still be accessible for migration.
+Version 1 standalone material relative hints retain their working-directory
+semantics. Version 1 model relative hints use the model's directory.
+Resave existing assets before moving or packaging them. Conversion does not
+rewrite old assets automatically. Raw `TextureManager::load(path)` calls still
+interpret relative input against the working directory; persistent material
+references are resolved before reaching the texture manager.
+
 Point the texture asset path/material reference at the cooked `.dds`, rather
 than the authoring image. Conversion deliberately does not rewrite existing
 materials, GUID registrations or authoring images. Keep logical asset GUIDs

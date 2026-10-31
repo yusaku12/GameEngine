@@ -12,9 +12,9 @@ namespace Engine::Serialization
     public:
 
         /**
-         * @brief モデルをFlatBuffersバイナリとして保存する。
+         * @brief モデルをFlatBuffersバイナリとして保存する。Asset参照は保存先ファイル基準の相対パス。
          * @param path 保存先のアセットパス。
-         * @param model 保存するCPU側モデル。
+         * @param model 保存するCPU側モデル。相対参照入力はsourcePathの親ディレクトリ基準。
          * @return 保存に成功した場合はtrue。
          */
         bool save(const std::filesystem::path& path, const ModelResource& model) const;
@@ -22,7 +22,7 @@ namespace Engine::Serialization
         /**
          * @brief FlatBuffersバイナリからモデルを読み込む。
          * @param path 読み込むアセットパス。
-         * @param model 読み込み先のCPU側モデル。
+         * @param model 読み込み先のCPU側モデル。Asset参照とsourcePathは絶対パスへ解決される。
          * @return 検証と読み込みに成功した場合はtrue。
          */
         bool load(const std::filesystem::path& path, ModelResource& model) const;

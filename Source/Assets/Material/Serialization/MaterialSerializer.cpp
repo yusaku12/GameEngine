@@ -2,6 +2,7 @@
 #include <flatbuffers/flatbuffers.h>
 #include "Generated\FlatBuffers\Material_generated.h"
 #include "Assets\Material\Serialization\MaterialSerializer.h"
+#include "Assets\Material\Serialization\TextureReferencePaths.h"
 #include "Core\Logging\Logging.h"
 #include "Core\Serialization\FlatBufferReader.h"
 #include "Core\Serialization\FlatBufferWriter.h"
@@ -57,6 +58,10 @@ namespace Engine::Serialization
             return false;
         }
 
+        Engine::MaterialTextureReferences relativeTextures = material.textures;
+        if (!relativizeTextureReferences(relativeTextures, {}, path))
+            return false;
+
         flatbuffers::FlatBufferBuilder builder(512);
         const AssetGuid guid = toFlat(material.guid);
         const AssetGuid shaderGuid = toFlat(material.shaderGuid);
@@ -76,11 +81,11 @@ namespace Engine::Serialization
             material.renderState.depthWrite, material.renderState.renderQueueOffset);
         const auto textures = CreateMaterialTextureReferences(builder, &baseColorTexture, &normalTexture,
             &metallicRoughnessTexture, &ambientOcclusionTexture, &emissiveTexture,
-            builder.CreateString(material.textures.baseColorPath.generic_string()),
-            builder.CreateString(material.textures.normalPath.generic_string()),
-            builder.CreateString(material.textures.metallicRoughnessPath.generic_string()),
-            builder.CreateString(material.textures.ambientOcclusionPath.generic_string()),
-            builder.CreateString(material.textures.emissivePath.generic_string()));
+            builder.CreateString(relativeTextures.baseColorPath.generic_string()),
+            builder.CreateString(relativeTextures.normalPath.generic_string()),
+            builder.CreateString(relativeTextures.metallicRoughnessPath.generic_string()),
+            builder.CreateString(relativeTextures.ambientOcclusionPath.generic_string()),
+            builder.CreateString(relativeTextures.emissivePath.generic_string()));
 
         const auto data = CreateMaterialAssetData(builder, &guid, builder.CreateString(material.name), &shaderGuid,
             renderState, &baseColor, material.metallic, material.roughness, &emissiveColor,
@@ -182,6 +187,10 @@ namespace Engine::Serialization
             loaded.shaderKeywords = source->keyword_mask() & VALID_MATERIAL_KEYWORDS;
         }
 
+        // Version 1 material hints were working-directory-relative, not owner-relative.
+        const std::filesystem::path referenceOwner = file->header()->asset_version() >= 2 ? path : std::filesystem::path{};
+        if (!resolveTextureReferences(loaded.textures, referenceOwner))
+            return false;
         material = std::move(loaded);
         return true;
     }

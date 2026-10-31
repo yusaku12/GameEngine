@@ -117,6 +117,7 @@
     <ClInclude Include="Source\Assets\Material\MaterialManager.h" />
     <ClInclude Include="Source\Assets\Material\MaterialTypes.h" />
     <ClInclude Include="Source\Assets\Material\Serialization\MaterialSerializer.h" />
+    <ClInclude Include="Source\Assets\Material\Serialization\TextureReferencePaths.h" />
     <ClInclude Include="Source\Assets\Model\Import\FbxModelImporter.h" />
     <ClInclude Include="Source\Assets\Model\Resource\AnimationResource.h" />
     <ClInclude Include="Source\Assets\Model\Resource\MaterialResource.h" />
@@ -205,6 +206,7 @@
     <ClInclude Include="Source\Assets\Model\ModelManager.h" />
     <ClInclude Include="Source\Assets\Model\ModelTypes.h" />
     <ClInclude Include="Source\Core\Serialization\FlatBufferReader.h" />
+    <ClInclude Include="Source\Core\Serialization\AssetReferencePaths.h" />
     <ClInclude Include="Source\Core\Serialization\FlatBufferWriter.h" />
     <ClInclude Include="Source\Core\Serialization\SerializationVersions.h" />
     <ClInclude Include="Source\Graphics\Shader\ShaderTypes.h" />

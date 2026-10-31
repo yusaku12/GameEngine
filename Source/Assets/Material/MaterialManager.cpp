@@ -1,6 +1,7 @@
 ﻿#include "Pch.h"
 #include "Assets\Material\MaterialManager.h"
 #include "Assets\Material\Serialization\MaterialSerializer.h"
+#include "Assets\Material\Serialization\TextureReferencePaths.h"
 #include "Graphics\Texture\TextureManager.h"
 
 namespace Engine
@@ -104,6 +105,8 @@ namespace Engine
 
     MaterialHandle MaterialManager::create(MaterialAsset material, const std::filesystem::path& cacheKey)
     {
+        if (!Serialization::resolveTextureReferences(material.textures, {}))
+            return MaterialHandle::Invalid();
         const std::filesystem::path normalizedKey = cacheKey.empty() ? std::filesystem::path{} : normalizePath(cacheKey);
         if (!cacheKey.empty() && normalizedKey.empty())
             return MaterialHandle::Invalid();
@@ -122,6 +125,8 @@ namespace Engine
 
     bool MaterialManager::update(const MaterialHandle handle, MaterialAsset material)
     {
+        if (!Serialization::resolveTextureReferences(material.textures, {}))
+            return false;
         AssetGUID guid;
         {
             const std::scoped_lock lock(m_mutex);

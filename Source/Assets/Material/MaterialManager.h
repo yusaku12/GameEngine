@@ -28,7 +28,7 @@ namespace Engine
 
         /**
          * @brief メモリ上のMaterial Assetを登録する。無効GUIDには新しいGUIDを割り当てる。
-         * @param material 登録するMaterial Asset
+         * @param material 登録するMaterial Asset。相対Texture Hintは作業ディレクトリ基準で解決する。
          * @param cacheKey キャッシュキー
          */
         MaterialHandle create(MaterialAsset material, const std::filesystem::path& cacheKey = {});
@@ -36,7 +36,7 @@ namespace Engine
         /**
          * @brief Materialを新しい不変Snapshotへ置換する。
          * @param handle 更新対象Handle
-         * @param material 新しいMaterial値。GUIDは既存値を維持する
+         * @param material 新しいMaterial値。GUIDは既存値を維持し、相対Texture Hintは作業ディレクトリ基準で解決する。
          * @return 更新に成功した場合はtrue
          */
         bool update(MaterialHandle handle, MaterialAsset material);
