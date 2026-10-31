@@ -260,8 +260,7 @@
     <ClCompile Include="Source\Core\GameObject\GameObjectManager.cpp" />
     <ClCompile Include="Source\Core\Containers\String.cpp" />
     <ClCompile Include="Source\Core\Input\InputManager.cpp" />
-    <ClCompile Include="Source\Main.cpp" Condition="'$(GameSessionTests)'!='true'" />
-    <ClCompile Include="Tools\Runtime\GameSessionTests.cpp" Condition="'$(GameSessionTests)'=='true'" />
+    <ClCompile Include="Source\Main.cpp" />
     <ClCompile Include="Source\Core\Logging\Assert.cpp" />
     <ClCompile Include="Source\Core\Logging\Logger.cpp" />
     <ClCompile Include="Source\Core\Math\Random.cpp" />
@@ -466,11 +465,6 @@
     <PostBuildEvent>
       <Command>copy /Y "$(FBXSDKRoot)\lib\x64\release\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll"</Command>
     </PostBuildEvent>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(GameSessionTests)'=='true'">
-    <Link>
-      <SubSystem>Console</SubSystem>
-    </Link>
   </ItemDefinitionGroup>
   <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Schemas\FlatBuffers\Skeleton.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimationClip.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorController.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\ModelRendererComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\PhysicsComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\CameraComponent.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h;$(ProjectDir)Generated\FlatBuffers\Skeleton_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimationClip_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorController_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\ModelRendererComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\PhysicsComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\CameraComponent_generated.h">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />

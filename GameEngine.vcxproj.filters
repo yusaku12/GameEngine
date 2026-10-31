@@ -4,7 +4,6 @@
     <ClCompile Include="Source\Core\System\StartupOptions.cpp" />
     <ClCompile Include="Source\Core\System\GameSession.cpp" />
     <ClCompile Include="Source\Core\Scene\SceneClone.cpp" />
-    <ClCompile Include="Tools\Runtime\GameSessionTests.cpp" />
     <ClCompile Include="Source\Animation\Runtime\AnimatorInstance.cpp" />
     <ClCompile Include="Source\Assets\Animation\AnimatorControllerAsset.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\AnimatorComponent.cpp" />

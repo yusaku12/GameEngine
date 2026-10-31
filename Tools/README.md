@@ -49,21 +49,3 @@ global asset edits, files written by gameplay, or static variables.
 
 Camera settings and Main Camera preference are persisted in versioned
 FlatBuffers payloads. Legacy empty Camera payloads retain default settings.
-
-Run current-source regression tests (Visual Studio C++ tools required):
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Runtime\RunTests.ps1 -Configuration Debug
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Runtime\RunTests.ps1 -Configuration Release
-```
-
-Tests use the engine project's dependencies and compiler settings with isolated
-output/intermediate directories. They create a small `RuntimeFixture.scene`
-beside the test executable for standalone startup checks.
-
-After building the normal engine executable and running the regression tests,
-run `powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Runtime\SmokeTest.ps1 -Configuration Debug`
-(or `Release`) to verify standalone CLI failures, Unicode/space paths, Runtime
-camera-color pixels, resize and clean shutdown. This briefly opens its own window
-and uses Windows desktop composition to inspect it; an interactive desktop is
-required. It closes only processes it starts.
