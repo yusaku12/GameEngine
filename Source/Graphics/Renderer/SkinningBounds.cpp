@@ -91,7 +91,10 @@ namespace Engine
         for (std::size_t bone = 0; bone < MAX_SKINNING_BONES; ++bone)
             if (m_referencedBones.test(bone) && !isFiniteAffine(palette.constants.boneMatrices[bone]))
             {
-                LOG_ERROR("[SkinningBounds] Bone {} is not a finite affine transform; skipping culling.", bone);
+                const Matrix& matrix = palette.constants.boneMatrices[bone];
+                LOG_ERROR("[SkinningBounds] Bone {} is not a finite affine transform "
+                    "(last column: {}, {}, {}, {}); skipping culling.",
+                    bone, matrix._14, matrix._24, matrix._34, matrix._44);
                 return false;
             }
 

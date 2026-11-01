@@ -21,6 +21,51 @@ namespace Engine
                 columns[3][0], columns[3][1], columns[3][2], columns[3][3]);
         }
 
+        bool buildBindPoseCorrection(const Matrix& inverseBind, const Matrix& restPose,
+            const std::size_t bone, Matrix& correction)
+        {
+            for (const Matrix* const matrix : { &inverseBind, &restPose })
+            {
+                for (const auto& row : matrix->m)
+                    for (const float value : row)
+                        if (!std::isfinite(value))
+                        {
+                            LOG_ERROR("[Animator] Bone {} has a nonfinite bind transform.", bone);
+                            return false;
+                        }
+                if (matrix->_14 != 0.0f || matrix->_24 != 0.0f
+                    || matrix->_34 != 0.0f || matrix->_44 != 1.0f)
+                {
+                    LOG_ERROR("[Animator] Bone {} has a non-affine bind transform (last column: {}, {}, {}, {}).",
+                        bone, matrix->_14, matrix->_24, matrix->_34, matrix->_44);
+                    return false;
+                }
+            }
+            const Matrix bindTransform = inverseBind * restPose;
+            DirectX::XMVECTOR determinant;
+            Matrix inverse(DirectX::XMMatrixInverse(&determinant, bindTransform));
+            const float determinantValue = DirectX::XMVectorGetX(determinant);
+            if (!std::isfinite(determinantValue) || determinantValue == 0.0f)
+            {
+                LOG_ERROR("[Animator] Bone {} has a singular or overflowing bind transform.", bone);
+                return false;
+            }
+            for (const auto& row : inverse.m)
+                for (const float value : row)
+                    if (!std::isfinite(value))
+                    {
+                        LOG_ERROR("[Animator] Bone {} has a singular or overflowing bind transform.", bone);
+                        return false;
+                    }
+            // The inverse of an affine matrix has this exact column; a generic inverse rounds det/det.
+            inverse._14 = 0.0f;
+            inverse._24 = 0.0f;
+            inverse._34 = 0.0f;
+            inverse._44 = 1.0f;
+            correction = inverse;
+            return true;
+        }
+
         float wrapTime(const double time, const double duration) noexcept
         {
             double wrapped = std::fmod(time, duration);
@@ -120,8 +165,14 @@ namespace Engine
             return false;
         }
         for (std::size_t index = 0; index < m_bindPoseCorrections.size(); ++index)
-            m_bindPoseCorrections[index] = (m_skeleton->inverseBindPoses[index]
-                * toEngineMatrix(m_modelMatrices[index])).Invert();
+        {
+            if (!buildBindPoseCorrection(m_skeleton->inverseBindPoses[index],
+                toEngineMatrix(m_modelMatrices[index]), index, m_bindPoseCorrections[index]))
+            {
+                clear();
+                return false;
+            }
+        }
         for (auto& snapshot : m_snapshotRing)
         {
             snapshot = std::make_shared<SkinningPaletteSnapshot>();
@@ -271,8 +322,14 @@ namespace Engine
             return false;
         }
         for (std::size_t index = 0; index < m_bindPoseCorrections.size(); ++index)
-            m_bindPoseCorrections[index] = (m_skeleton->inverseBindPoses[index]
-                * toEngineMatrix(m_modelMatrices[index])).Invert();
+        {
+            if (!buildBindPoseCorrection(m_skeleton->inverseBindPoses[index],
+                toEngineMatrix(m_modelMatrices[index]), index, m_bindPoseCorrections[index]))
+            {
+                clear();
+                return false;
+            }
+        }
         for (auto& snapshot : m_snapshotRing)
         {
             snapshot = std::make_shared<SkinningPaletteSnapshot>();

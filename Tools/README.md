@@ -328,6 +328,12 @@ margin (including cancellation and normalization), and outward-rounded extents.
 Vertices near the shader's weight threshold contribute to both rigid and
 skinned ranges. Bone indices follow the shader's clamp to 255; unused palette
 slots retain the same identity-matrix behavior as GPU drawing.
+Animator bind-pose correction inverses preserve the exact affine last column
+`(0, 0, 0, 1)`: generic matrix inversion can round its homogeneous component away
+from one. Both clip and controller initialization reject nonfinite, singular
+or non-affine bind transforms explicitly. Bounds validation remains strict;
+invalid palette diagnostics include the last column rather than hiding failures
+with a tolerance or modifying the render-time palette.
 
 The renderer merges current mesh bounds for whole-model frustum rejection,
 then uses each mesh's pose bounds for frustum checks, transparent sorting and
