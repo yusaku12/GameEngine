@@ -8,7 +8,7 @@ namespace Engine
 {
     class DX12Fence;
     class DX12GraphicsPipeline;
-    class DX12OcclusionQueries;
+    class DX12GpuOcclusionCulling;
 
     /**
      * @brief 描画コマンド記録のために準備されたモデル描画データ
@@ -42,7 +42,7 @@ namespace Engine
         D3D12_RECT scissor{};                          //!< 描画対象の RenderItem のシザー矩形
         D3D12_VIEWPORT shadowViewport{};               //!< 描画対象の RenderItem のシャドウマップ用ビューポート
         D3D12_RECT shadowScissor{};                    //!< 描画対象の RenderItem のシャドウマップ用シザー矩形
-        const DX12OcclusionQueries* queries = nullptr; //!< 描画対象の RenderItem のオクルージョンクエリへの非所有参照
+        const DX12GpuOcclusionCulling* culling = nullptr; //!< 同フレーム色描画用GPU可視判定への非所有参照
     };
 
     /**
@@ -50,7 +50,8 @@ namespace Engine
      */
     struct DX12ModelRecordingStatistics
     {
-        std::uint32_t drawCallCount = 0;           //!< 描画コール数
+        std::uint32_t drawCallCount = 0;           //!< CPU提出したDirect Draw数
+        std::uint32_t indirectCallCount = 0;       //!< Count Buffer付きExecuteIndirectの提出数
         std::uint32_t instanceCount = 0;           //!< インスタンス描画数
         std::uint32_t psoSwitchCount = 0;          //!< パイプラインステート切り替え数
         std::uint32_t materialSwitchCount = 0;     //!< マテリアル切り替え数

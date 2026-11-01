@@ -22,12 +22,15 @@ $jobs = @(
     @{ Source = Join-Path $ShaderRoot "Model.hlsl"; Entry = "psDepthAlphaTest"; Target = "ps_6_0"; Output = "Model_psDepthAlphaTest_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "DebugPrimitive.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "DebugPrimitive_vsMain_vs.cso" },
     @{ Source = Join-Path $ShaderRoot "DebugPrimitive.hlsl"; Entry = "psMain"; Target = "ps_6_0"; Output = "DebugPrimitive_psMain_ps.cso" },
-    @{ Source = Join-Path $ShaderRoot "Occlusion.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "Occlusion_vsMain_vs.cso" }
+    @{ Source = Join-Path $ShaderRoot "HiZ.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "HiZ_csMain_cs.cso"; Optimize = $true },
+    @{ Source = Join-Path $ShaderRoot "Occlusion.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "Occlusion_csMain_cs.cso"; Optimize = $true }
 )
 
 foreach ($job in $jobs) {
     Write-Host "[ShaderCompiler] $($job.Entry) -> $($job.Output)"
-    & $Dxc -HV 2021 -E $job.Entry -T $job.Target -Fo (Join-Path $OutputRoot $job.Output) -I $ShaderRoot -Zi -Qembed_debug -Od $job.Source
+    $optimization = "-Od"
+    if ($job.Optimize) { $optimization = "-O3" }
+    & $Dxc -HV 2021 -E $job.Entry -T $job.Target -Fo (Join-Path $OutputRoot $job.Output) -I $ShaderRoot -Zi -Qembed_debug $optimization $job.Source
     if ($LASTEXITCODE -ne 0) { throw "DXC failed for $($job.Source)::$($job.Entry)" }
 }
 Write-Host "[ShaderCompiler] Shader compilation succeeded."

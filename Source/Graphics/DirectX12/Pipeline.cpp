@@ -162,4 +162,80 @@ namespace Engine
         nativeCommandList->SetPipelineState(m_pipelineState.Get());
         return true;
     }
+
+    bool DX12ComputePipeline::initialize(ID3D12Device& device, const DX12Shader& shader,
+        const std::span<const D3D12_ROOT_PARAMETER> parameters)
+    {
+        if (m_rootSignature != nullptr || m_pipelineState != nullptr || !shader.isCompiled()
+            || parameters.size() > (std::numeric_limits<UINT>::max)())
+        {
+            LOG_ERROR("[DX12] Invalid compute pipeline initialization.");
+            return false;
+        }
+        const D3D12_ROOT_SIGNATURE_DESC description{
+            static_cast<UINT>(parameters.size()), parameters.data(), 0, nullptr,
+            D3D12_ROOT_SIGNATURE_FLAG_NONE };
+        Microsoft::WRL::ComPtr<ID3DBlob> serialized;
+        Microsoft::WRL::ComPtr<ID3DBlob> errors;
+        HRESULT result = D3D12SerializeRootSignature(&description, D3D_ROOT_SIGNATURE_VERSION_1,
+            &serialized, &errors);
+        if (FAILED(result))
+        {
+            if (errors != nullptr)
+                LOG_ERROR("[DX12] Compute root signature serialization failed: {}",
+                    std::string_view(static_cast<const char*>(errors->GetBufferPointer()), errors->GetBufferSize()));
+            else
+                LOG_ERROR("[DX12] Compute root signature serialization failed (HRESULT: 0x{:08X}).",
+                    static_cast<unsigned long>(result));
+            return false;
+        }
+        Microsoft::WRL::ComPtr<ID3D12RootSignature> root;
+        result = device.CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(),
+            IID_PPV_ARGS(&root));
+        if (FAILED(result))
+        {
+            LOG_ERROR("[DX12] Compute root signature creation failed (HRESULT: 0x{:08X}).",
+                static_cast<unsigned long>(result));
+            return false;
+        }
+        D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineDescription{};
+        pipelineDescription.pRootSignature = root.Get();
+        pipelineDescription.CS = shader.getBytecode();
+        Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline;
+        result = device.CreateComputePipelineState(&pipelineDescription, IID_PPV_ARGS(&pipeline));
+        if (FAILED(result))
+        {
+            LOG_ERROR("[DX12] Compute pipeline creation failed (HRESULT: 0x{:08X}).",
+                static_cast<unsigned long>(result));
+            return false;
+        }
+        m_rootSignature = std::move(root);
+        m_pipelineState = std::move(pipeline);
+        return true;
+    }
+
+    void DX12ComputePipeline::finalize()
+    {
+        m_pipelineState.Reset();
+        m_rootSignature.Reset();
+    }
+
+    bool DX12ComputePipeline::bind(DX12CommandList& commandList) const
+    {
+        ID3D12GraphicsCommandList* const native = commandList.getForRecording();
+        if (native == nullptr || m_rootSignature == nullptr || m_pipelineState == nullptr)
+        {
+            LOG_ERROR("[DX12] Compute pipeline must be initialized and bound to a recording Command List.");
+            return false;
+        }
+        native->SetComputeRootSignature(m_rootSignature.Get());
+        native->SetPipelineState(m_pipelineState.Get());
+        return true;
+    }
+
+    void DX12ComputePipeline::swap(DX12ComputePipeline& other) noexcept
+    {
+        m_rootSignature.Swap(other.m_rootSignature);
+        m_pipelineState.Swap(other.m_pipelineState);
+    }
 } // namespace Engine

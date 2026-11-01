@@ -83,7 +83,7 @@
     <ClInclude Include="Source\Graphics\DirectX12\Queue.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Resource.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Renderer.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\OcclusionQueries.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\GpuOcclusionCulling.h" />
     <ClInclude Include="Source\Graphics\DirectX12\GpuProfiler.h" />
     <ClInclude Include="Source\Graphics\Renderer\RenderItem.h" />
     <ClInclude Include="Source\Graphics\Renderer\RenderQueue.h" />
@@ -219,7 +219,7 @@
     <ClCompile Include="Source\Graphics\DirectX12\Queue.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Resource.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Renderer.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\OcclusionQueries.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\GpuOcclusionCulling.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\GpuProfiler.cpp" />
     <ClCompile Include="Source\Graphics\Renderer\RenderQueue.cpp" />
     <ClCompile Include="Source\Graphics\Renderer\ModelRenderSubmission.cpp" />
@@ -320,6 +320,7 @@
     <None Include="Assets\Shaders\Model.hlsl" />
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
     <None Include="Assets\Shaders\Occlusion.hlsl" />
+    <None Include="Assets\Shaders\HiZ.hlsl" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
     <None Include="Schemas\FlatBuffers\CameraComponent.fbs" />
     <None Include="Schemas\FlatBuffers\LightComponent.fbs" />
@@ -456,7 +457,7 @@
   <Target Name="BuildDirectXTex" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'">
     <MSBuild Projects="$(ProjectDir)Library\DirectXTex-main\DirectXTex\DirectXTex_Desktop_2022_Win10.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=x64;PlatformToolset=$(PlatformToolset)" RemoveProperties="IntDir;OutDir" />
   </Target>
-  <Target Name="CompileShaders" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Assets\Shaders\DebugPrimitive.hlsl;$(ProjectDir)Assets\Shaders\Occlusion.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(ProjectDir)Tools\DXC\dxc.exe;$(ProjectDir)Tools\DXC\dxcompiler.dll;$(ProjectDir)Tools\DXC\dxil.dll" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Occlusion_vsMain_vs.cso">
+  <Target Name="CompileShaders" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Assets\Shaders\DebugPrimitive.hlsl;$(ProjectDir)Assets\Shaders\HiZ.hlsl;$(ProjectDir)Assets\Shaders\Occlusion.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(ProjectDir)Tools\DXC\dxc.exe;$(ProjectDir)Tools\DXC\dxcompiler.dll;$(ProjectDir)Tools\DXC\dxil.dll" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\HiZ_csMain_cs.cso;$(ProjectDir)Assets\Shaders\Compiled\Occlusion_csMain_cs.cso">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

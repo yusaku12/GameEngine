@@ -1,6 +1,6 @@
 ﻿#include "Pch.h"
 #include "Graphics\DirectX12\ModelCommandRecorder.h"
-#include "Graphics\DirectX12\OcclusionQueries.h"
+#include "Graphics\DirectX12\GpuOcclusionCulling.h"
 #include "Graphics\DirectX12\Pipeline.h"
 #include "Core\Threading\JobSystem.h"
 
@@ -74,6 +74,7 @@ namespace Engine
             }
             const auto& statistics = context.statistics;
             m_statistics.drawCallCount += statistics.drawCallCount;
+            m_statistics.indirectCallCount += statistics.indirectCallCount;
             m_statistics.instanceCount += statistics.instanceCount;
             m_statistics.psoSwitchCount += statistics.psoSwitchCount;
             m_statistics.materialSwitchCount += statistics.materialSwitchCount;
@@ -103,7 +104,6 @@ namespace Engine
         ID3D12GraphicsCommandList& native = *commandList.getForRecording();
         native.SetDescriptorHeaps(1, &state.textureHeap);
         native.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        native.SetPredication(nullptr, 0, D3D12_PREDICATION_OP_EQUAL_ZERO);
         const RenderPassType pass = draws.front().item->pass;
         if (pass == RenderPassType::Shadow)
         {
@@ -169,13 +169,17 @@ namespace Engine
             native.SetGraphicsRoot32BitConstants(8, 16, &properties.baseColor.x, 0);
             const std::uint32_t mask = item.materialProperties.getOverrideMask();
             native.SetGraphicsRoot32BitConstants(8, 1, &mask, 16);
-            if (state.queries != nullptr && pass >= RenderPassType::Opaque)
-                state.queries->setPredicate(native, draw.itemIndex);
-            native.DrawIndexedInstanced(item.indexCount, draw.instanceCount, item.indexStart, item.baseVertex, 0);
-            ++context.statistics.drawCallCount;
+            if (state.culling != nullptr && state.culling->execute(native, draw.itemIndex))
+            {
+                ++context.statistics.indirectCallCount;
+            }
+            else
+            {
+                native.DrawIndexedInstanced(item.indexCount, draw.instanceCount, item.indexStart, item.baseVertex, 0);
+                ++context.statistics.drawCallCount;
+            }
             context.statistics.instanceCount += draw.instanceCount;
         }
-        native.SetPredication(nullptr, 0, D3D12_PREDICATION_OP_EQUAL_ZERO);
         return commandList.close();
     }
 

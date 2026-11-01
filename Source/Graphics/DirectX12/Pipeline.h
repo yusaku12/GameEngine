@@ -79,4 +79,44 @@ namespace Engine
         Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature; //!< Root Signature
         Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState; //!< キャッシュ済み Graphics PSO
     };
+    /**
+     * @brief Compute Shader用のRoot SignatureとPSOを所有する。
+     * @thread_safety Mutation requires external synchronization. bind supports distinct Command Lists concurrently.
+     */
+    class DX12ComputePipeline
+    {
+    public:
+        GE_DISABLE_COPY_AND_MOVE(DX12ComputePipeline);
+        DX12ComputePipeline() = default;
+
+        /**
+         * @brief コンパイル済みCompute ShaderからPipelineを作成する。
+         * @param device 作成先Device。
+         * @param shader Compute Shader。
+         * @param parameters Root SignatureのParameter。
+         * @return 作成成功時true。
+         */
+        bool initialize(ID3D12Device& device, const DX12Shader& shader,
+            std::span<const D3D12_ROOT_PARAMETER> parameters);
+
+        /** @brief GPU使用完了後にPipelineを解放する。 */
+        void finalize();
+
+        /**
+         * @brief 記録中Command ListにPipelineを設定する。
+         * @param commandList 設定先。
+         * @return 設定成功時true。
+         */
+        bool bind(DX12CommandList& commandList) const;
+
+        /**
+         * @brief Pipelineの所有Resourceを交換する。
+         * @param other 交換先。
+         */
+        void swap(DX12ComputePipeline& other) noexcept;
+
+    private:
+        Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
+        Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState;
+    };
 } // namespace Engine

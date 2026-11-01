@@ -218,10 +218,19 @@ namespace Engine
         };
         m_debugVertexShaderID = m_shaderManager.registerShader(debugVertexShaderDesc);
         m_debugPixelShaderID = m_shaderManager.registerShader(debugPixelShaderDesc);
-        ShaderCompileDesc occlusionVertexShaderDesc = debugVertexShaderDesc;
-        occlusionVertexShaderDesc.sourcePath = "Assets/Shaders/Occlusion.hlsl";
-        occlusionVertexShaderDesc.outputPath = "Assets/Shaders/Compiled/Occlusion_vsMain_vs.cso";
-        m_occlusionVertexShaderID = m_shaderManager.registerShader(occlusionVertexShaderDesc);
+        const ShaderCompileDesc hizShaderDesc{
+            .sourcePath = "Assets/Shaders/HiZ.hlsl",
+            .outputPath = "Assets/Shaders/Compiled/HiZ_csMain_cs.cso",
+            .entryPoint = "csMain",
+            .stage = ShaderStage::Compute,
+            .debug = true,
+            .optimize = true,
+        };
+        m_hizShaderID = m_shaderManager.registerShader(hizShaderDesc);
+        ShaderCompileDesc occlusionShaderDesc = hizShaderDesc;
+        occlusionShaderDesc.sourcePath = "Assets/Shaders/Occlusion.hlsl";
+        occlusionShaderDesc.outputPath = "Assets/Shaders/Compiled/Occlusion_csMain_cs.cso";
+        m_occlusionShaderID = m_shaderManager.registerShader(occlusionShaderDesc);
 
         if (!m_shaderManager.loadAll())
         {
@@ -299,8 +308,8 @@ namespace Engine
             if (!buffer.finalize())
                 return false;
         m_modelInstanceConstants.clear();
-        for (DX12OcclusionQueries& queries : m_occlusionQueries)
-            if (!queries.finalize())
+        for (DX12GpuOcclusionCulling& culling : m_occlusionCulling)
+            if (!culling.finalize())
                 return false;
         if (!m_materialGpuCache.finalize())
             return false;
@@ -313,6 +322,7 @@ namespace Engine
         m_depthAlphaTestModelPipeline.finalize();
         m_modelPipeline.finalize();
         m_occlusionPipeline.finalize();
+        m_hizPipeline.finalize();
         m_shaderManager.shutdown();
         m_modelVertexShaderID = 0;
         m_modelPixelShaderID = 0;
@@ -320,7 +330,8 @@ namespace Engine
         m_depthAlphaTestPixelShaderID = 0;
         m_debugVertexShaderID = 0;
         m_debugPixelShaderID = 0;
-        m_occlusionVertexShaderID = 0;
+        m_occlusionShaderID = 0;
+        m_hizShaderID = 0;
         m_psoRebuildPending = false;
         for (DX12CommandList& commandList : m_commandLists)
             commandList.finalize();
@@ -451,10 +462,11 @@ namespace Engine
             {
                 if (ImGui::Begin("Renderer Statistics"))
                 {
-                    ImGui::Text("Visible Objects: %u", m_statistics.visibleObjects);
-                    ImGui::Text("Culled Objects: %u", m_statistics.culledObjects);
+                    ImGui::Text("Frustum-visible Objects: %u", m_statistics.visibleObjects);
+                    ImGui::Text("Frustum-culled Objects: %u", m_statistics.culledObjects);
                     ImGui::Text("Render Items: %u", m_statistics.renderItemCount);
-                    ImGui::Text("Submitted Model Draw Calls: %u", m_statistics.drawCallCount);
+                    ImGui::Text("Submitted Direct Draw Calls: %u", m_statistics.drawCallCount);
+                    ImGui::Text("Submitted ExecuteIndirect Calls: %u", m_statistics.indirectCallCount);
                     ImGui::Text("Submitted Model Batches: %u", m_statistics.batchCount);
                     ImGui::Text("Submitted Model Instances (all passes): %u", m_statistics.instanceCount);
                     ImGui::Checkbox("Model Instancing", &m_enableModelInstancing);
@@ -463,12 +475,16 @@ namespace Engine
                     ImGui::Text("Model Recording Threads: %u", m_statistics.modelRecordingThreadCount);
                     ImGui::Checkbox("GPU Occlusion Culling", &m_enableOcclusionCulling);
                     if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Same-frame color-pass culling. Tests batches with at least 256 indices; up to 4096 queries per frame. Compare GPU performance with this disabled.");
-                    ImGui::Text("Occlusion Queries (last submitted frame): %u", m_statistics.occlusionQueryCount);
-                    ImGui::Text("Occluded Batches (completed slot): %u / %u",
-                        m_statistics.occludedBatches, m_statistics.completedOcclusionQueries);
+                        ImGui::SetTooltip("Same-frame Hi-Z culling per static instance. Compacts visible instances and generates count-buffer indirect draws. Depth, shadows and transparent draws are unchanged.");
+                    ImGui::Text("Hi-Z Candidate Batches (last submitted frame): %u", m_statistics.occlusionBatchCount);
+                    const auto& completed = m_statistics.completedOcclusion;
+                    ImGui::Text("Executed Indirect Draws (completed slot): %u / %u",
+                        completed.batches - completed.occludedBatches, completed.batches);
+                    ImGui::Text("Occluded Color Batches (completed slot): %u", completed.occludedBatches);
+                    ImGui::Text("Occluded Color Instances (completed slot): %u / %u",
+                        completed.occludedInstances, completed.instances);
                     if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Completed GPU results are statistics only. Color draws use same-frame predicates; depth and shadows always draw.");
+                        ImGui::SetTooltip("Completed GPU results are statistics only, not current-frame object counts. Instances count per submesh. A zero command count executes no color Draw.");
                     ImGui::Text("PSO Switches: %u", m_statistics.psoSwitchCount);
                     ImGui::Text("Material Switches: %u", m_statistics.materialSwitchCount);
                     ImGui::Text("Vertex Buffer Switches: %u", m_statistics.vertexBufferSwitchCount);
@@ -492,8 +508,7 @@ namespace Engine
                 return false;
             }
         }
-        if (!m_occlusionQueries[frameIndex].collectCompletedResults(
-            m_frameStatistics.completedOcclusionQueries, m_frameStatistics.occludedBatches))
+        if (!m_occlusionCulling[frameIndex].collectCompletedResults(m_frameStatistics.completedOcclusion))
             return false;
         bool gpuMeasurementAvailable = false;
         std::uint64_t gpuFrameId = 0;
@@ -672,7 +687,7 @@ namespace Engine
         if (!m_modelRenderQueue.getItems().empty()
             && !m_modelInstanceBuffers[frameIndex].markUsed(submittedFenceValue))
             return false;
-        if (!m_occlusionQueries[frameIndex].markSubmitted(submittedFenceValue))
+        if (!m_occlusionCulling[frameIndex].markSubmitted(submittedFenceValue))
             return false;
 
         return true;
@@ -772,7 +787,7 @@ namespace Engine
         description.Height = height;
         description.DepthOrArraySize = 1;
         description.MipLevels = 1;
-        description.Format = DXGI_FORMAT_D32_FLOAT;
+        description.Format = DXGI_FORMAT_R32_TYPELESS;
         description.SampleDesc = { 1, 0 };
         description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
         description.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
@@ -795,7 +810,10 @@ namespace Engine
                 return false;
             m_depthStencilView = allocation->cpu;
         }
-        m_device.get()->CreateDepthStencilView(m_depthBuffer.get(), nullptr, m_depthStencilView.native);
+        D3D12_DEPTH_STENCIL_VIEW_DESC dsv{};
+        dsv.Format = DXGI_FORMAT_D32_FLOAT;
+        dsv.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        m_device.get()->CreateDepthStencilView(m_depthBuffer.get(), &dsv, m_depthStencilView.native);
         return true;
     }
 
@@ -864,13 +882,14 @@ namespace Engine
         const auto depthAlphaTestPixelShader = m_shaderManager.get(m_depthAlphaTestPixelShaderID);
         const auto debugVertexShader = m_shaderManager.get(m_debugVertexShaderID);
         const auto debugPixelShader = m_shaderManager.get(m_debugPixelShaderID);
-        const auto occlusionVertexShader = m_shaderManager.get(m_occlusionVertexShaderID);
+        const auto hizShader = m_shaderManager.get(m_hizShaderID);
+        const auto occlusionShader = m_shaderManager.get(m_occlusionShaderID);
         if (!modelVertexShader || !modelPixelShader || !alphaTestPixelShader || !depthAlphaTestPixelShader
-            || !debugVertexShader || !debugPixelShader || !occlusionVertexShader
+            || !debugVertexShader || !debugPixelShader || !hizShader || !occlusionShader
             || !modelVertexShader->isCompiled() || !modelPixelShader->isCompiled()
             || !alphaTestPixelShader->isCompiled() || !depthAlphaTestPixelShader->isCompiled()
             || !debugVertexShader->isCompiled() || !debugPixelShader->isCompiled()
-            || !occlusionVertexShader->isCompiled())
+            || !hizShader->isCompiled() || !occlusionShader->isCompiled())
         {
             LOG_ERROR("[DX12] 有効なModel Shaderがロードされていません");
             return false;
@@ -987,27 +1006,15 @@ namespace Engine
         DX12GraphicsPipeline nextTransparentModelPipeline;
         DX12GraphicsPipeline nextDepthOnlyModelPipeline;
         DX12GraphicsPipeline nextDepthAlphaTestModelPipeline;
-        D3D12_ROOT_PARAMETER queryConstants{};
-        queryConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        queryConstants.Constants.Num32BitValues = 5;
-        queryConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-        const std::array queryParameters = { queryConstants };
-        const DX12GraphicsPipelineConfig occlusionConfig{
-            .vertexShader = occlusionVertexShader.get(),
-            .rootParameters = queryParameters,
-            .renderTargetFormat = DXGI_FORMAT_UNKNOWN,
-            .depthStencilFormat = DXGI_FORMAT_D32_FLOAT,
-            .depthComparison = D3D12_COMPARISON_FUNC_LESS_EQUAL,
-            .enableDepthWrite = false,
-            .cullMode = D3D12_CULL_MODE_NONE,
-        };
-        DX12GraphicsPipeline nextOcclusionPipeline;
+        DX12ComputePipeline nextHiZPipeline;
+        DX12ComputePipeline nextOcclusionPipeline;
         if (!nextModelPipeline.initialize(*m_device.get(), opaqueModelConfig)
             || !nextAlphaTestModelPipeline.initialize(*m_device.get(), alphaTestModelConfig)
             || !nextTransparentModelPipeline.initialize(*m_device.get(), transparentModelConfig)
             || !nextDepthOnlyModelPipeline.initialize(*m_device.get(), depthOnlyModelConfig)
             || !nextDepthAlphaTestModelPipeline.initialize(*m_device.get(), depthAlphaTestModelConfig)
-            || !nextOcclusionPipeline.initialize(*m_device.get(), occlusionConfig)
+            || !DX12GpuOcclusionCulling::createPipelines(*m_device.get(), *hizShader, *occlusionShader,
+                nextHiZPipeline, nextOcclusionPipeline)
             || !DebugPrimitive::instance().rebuildPipeline(*debugVertexShader, *debugPixelShader)
             || !m_materialGpuCache.rebuildAll())
         {
@@ -1019,6 +1026,7 @@ namespace Engine
         m_depthOnlyModelPipeline.swap(nextDepthOnlyModelPipeline);
         m_depthAlphaTestModelPipeline.swap(nextDepthAlphaTestModelPipeline);
         m_occlusionPipeline.swap(nextOcclusionPipeline);
+        m_hizPipeline.swap(nextHiZPipeline);
         return true;
     }
 
@@ -1213,14 +1221,16 @@ namespace Engine
             native.OMSetRenderTargets(0, nullptr, FALSE, &state.depthTarget);
             native.RSSetViewports(1, &state.viewport);
             native.RSSetScissorRects(1, &state.scissor);
-            DX12OcclusionQueries& queries = m_occlusionQueries[frameIndex];
-            if ((m_enableOcclusionCulling && hasColor && !queries.record(queryList, *m_device.get(), m_directFence, m_occlusionPipeline,
-                m_modelRenderQueue, m_viewProjection, Vector2(state.viewport.Width, state.viewport.Height),
-                m_enableModelInstancing)) || !queryList.close())
+            DX12GpuOcclusionCulling& culling = m_occlusionCulling[frameIndex];
+            const bool cullColor = m_enableOcclusionCulling && hasColor
+                && m_cameraClearMode != CameraClearMode::Nothing;
+            if ((cullColor && !culling.record(queryList, *m_device.get(), m_directFence, m_depthBuffer,
+                m_hizPipeline, m_occlusionPipeline, m_modelRenderQueue, *m_modelInstanceBuffers[frameIndex].get(),
+                m_viewProjection, state.viewport, m_enableModelInstancing)) || !queryList.close())
                 return false;
-            m_frameStatistics.occlusionQueryCount = m_enableOcclusionCulling && hasColor ? queries.getQueryCount() : 0;
-            if (m_frameStatistics.occlusionQueryCount != 0)
-                state.queries = &queries;
+            m_frameStatistics.occlusionBatchCount = cullColor ? culling.getBatchCount() : 0;
+            if (m_frameStatistics.occlusionBatchCount != 0)
+                state.culling = &culling;
         }
 
         DX12ModelCommandRecorder& recorder = m_modelCommandRecorders[frameIndex];
@@ -1252,7 +1262,8 @@ namespace Engine
             m_executionLists.push_back(queryList.getForExecution());
         const auto& statistics = recorder.getStatistics();
         m_frameStatistics.drawCallCount = statistics.drawCallCount;
-        m_frameStatistics.batchCount = statistics.drawCallCount;
+        m_frameStatistics.indirectCallCount = statistics.indirectCallCount;
+        m_frameStatistics.batchCount = statistics.drawCallCount + statistics.indirectCallCount;
         m_frameStatistics.instanceCount = statistics.instanceCount;
         m_frameStatistics.psoSwitchCount = statistics.psoSwitchCount;
         m_frameStatistics.materialSwitchCount = statistics.materialSwitchCount;

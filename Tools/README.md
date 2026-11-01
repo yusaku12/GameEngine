@@ -253,3 +253,59 @@ is enabled. Pause freezes all mixing and preserves sample cursors; Step may
 initialize a source but never advances audio while paused. Resume continues
 playback. Stop, component disable/removal and shutdown destroy voices. Play
 copies share immutable cached WAV data but never share mutable voices.
+
+# GPU occlusion culling
+
+**GPU Occlusion Culling** in Renderer Statistics enables same-frame
+Hi-Z visibility and count-buffer `ExecuteIndirect` for Opaque/AlphaTest color
+draws. The existing depth pre-pass and shadow pass still draw all their submitted
+geometry. Transparent draws remain direct and retain their ordering.
+
+The standard-Z depth target is sampled as R32_FLOAT. A power-of-two-padded
+R32_FLOAT mip chain stores the **maximum** depth, including uncovered pixels
+at depth 1. Each static instance projects its world AABB on the GPU; the
+screen rectangle is expanded by two pixels and nearest depth is biased toward
+the camera. All overlapping Hi-Z cells at the selected mip must be in front
+of that rectangle before the instance is removed. Skinning, degenerate bounds,
+nonfinite projection and near-plane intersections stay visible. Culling is
+disabled for `CameraClearMode::Nothing`, which retains old depth.
+
+Instances are tested individually, even inside a shared draw batch. Visible
+128-byte instance constants are compacted into that batch's reserved range.
+Each batch receives a 24-byte packet: `D3D12_DRAW_INDEXED_ARGUMENTS` followed
+by a 32-bit command count. An empty batch has count 0: no color Draw executes,
+not merely a predicated Draw or a Draw with zero instances. CPU state setup
+and one `ExecuteIndirect` submission per candidate batch still occur.
+This is not CPU-side scene filtering or a single global multi-material indirect
+submission; CPU object preparation, depth and shadow costs remain.
+
+Resources and descriptors are frame-local and reused only after their fence
+completes. Hi-Z mip transitions keep source mips readable while the destination
+is writable; generated instances transition to shader-read and packets to
+indirect-argument state before color command lists execute. CPU readback is
+asynchronous statistics only and never determines current visibility.
+
+Statistics distinguish direct submissions, indirect submissions, and completed
+GPU color draws. **Frustum-visible Objects** is not an occlusion result.
+**Occluded Color Instances** counts submesh instances, not unique GameObjects.
+Completed-slot statistics can lag the current frame and return zero when that
+slot had culling disabled. Compare GPU frame time with culling enabled/disabled;
+Hi-Z construction and compaction cost can outweigh savings in small scenes.
+
+Focused GPU regressions build the engine, then test its actual culling resources
+and compute pipelines using the D3D12 debug layer and GPU-based validation:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Tests\RunGpuOcclusionTests.ps1 -Configuration Debug
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Tests\RunGpuOcclusionTests.ps1 -Configuration Release -Warp
+```
+
+These require the Windows Graphics Tools debug layer. Tests compare direct and
+indirect render-target pixels, inspect generated arguments and count executed
+IA vertices (zero for a fully hidden draw). They cover mixed batches, multi-wave
+compaction, instancing disabled, near-plane/camera movement, skinning bypass,
+depth equality, retained passes, NPOT dimensions/edge holes, fractional viewport
+offsets, empty queues, resize/reuse of two frame slots, signed base vertices,
+index offsets, ordered upload/culling/color command lists, and dispatch chunking
+beyond 65,535 batches. Run Debug and Release builds sequentially: dependency
+configuration uses shared build directories.
