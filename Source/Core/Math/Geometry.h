@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <array>
+#include <cfloat>
 #include "Core\Math\MathFunction.h"
 #include "Core\Math\MathTypes.h"
 
@@ -16,6 +18,16 @@ namespace Engine
 
     //! 視錐台
     using Frustum = DirectX::BoundingFrustum;
+
+    /**
+     * @brief Inward-facing clip planes for perspective or orthographic camera culling.
+     * @details Invalid frusta bypass culling. Plane coefficients are normalized and stored in double precision.
+     */
+    struct CameraFrustum
+    {
+        std::array<std::array<double, 4>, 6> planes{};
+        bool valid = false;
+    };
 
     //! 包含判定の結果
     using ContainmentType = DirectX::ContainmentType;
@@ -124,5 +136,53 @@ namespace Engine
     inline bool isVisible(const Frustum& frustum, const BoundingSphere& sphere)
     {
         return frustum.Contains(sphere) != DirectX::DISJOINT;
+    }
+
+    /**
+     * @brief Conservatively test an AABB against camera clip planes.
+     * @param frustum Perspective or orthographic world-space clip planes.
+     * @param box World-space bounds.
+     * @return True unless the bounds are entirely outside a plane.
+     */
+    inline bool isVisible(const CameraFrustum& frustum, const AABB& box) noexcept
+    {
+        if (!frustum.valid)
+            return true;
+        for (const auto& plane : frustum.planes)
+        {
+            const double x = plane[0] * box.Center.x;
+            const double y = plane[1] * box.Center.y;
+            const double z = plane[2] * box.Center.z;
+            const double radius = std::abs(plane[0]) * box.Extents.x
+                + std::abs(plane[1]) * box.Extents.y + std::abs(plane[2]) * box.Extents.z;
+            const double error = 16.0 * FLT_EPSILON
+                * std::max(1.0, std::abs(x) + std::abs(y) + std::abs(z) + std::abs(plane[3]) + radius);
+            if (x + y + z + plane[3] + radius < -error)
+                return false;
+        }
+        return true;
+    }
+
+    /**
+     * @brief Conservatively test a sphere against camera clip planes.
+     * @param frustum Perspective or orthographic world-space clip planes.
+     * @param sphere World-space bounds.
+     * @return True unless the sphere is entirely outside a plane.
+     */
+    inline bool isVisible(const CameraFrustum& frustum, const BoundingSphere& sphere) noexcept
+    {
+        if (!frustum.valid)
+            return true;
+        for (const auto& plane : frustum.planes)
+        {
+            const double x = plane[0] * sphere.Center.x;
+            const double y = plane[1] * sphere.Center.y;
+            const double z = plane[2] * sphere.Center.z;
+            const double error = 16.0 * FLT_EPSILON * std::max(1.0,
+                std::abs(x) + std::abs(y) + std::abs(z) + std::abs(plane[3]) + sphere.Radius);
+            if (x + y + z + plane[3] + sphere.Radius < -error)
+                return false;
+        }
+        return true;
     }
 } // namespace Engine

@@ -7,6 +7,7 @@
 #include "Graphics\Shader\Shader.h"
 #include "Graphics\Renderer\RenderQueue.h"
 #include "Graphics\Renderer\SkinningBounds.h"
+#include "Graphics\Camera\CameraUtils.h"
 
 namespace
 {
@@ -69,16 +70,25 @@ namespace
             require(cull.load({ "Assets\\Shaders\\Compiled\\Occlusion_csMain_cs.cso" }), "Load culling shader.");
             require(DX12GpuOcclusionCulling::createPipelines(*m_device.Get(), hiz, cull, m_hiz, m_cull), "Create culling pipelines.");
             require(vertex.load({ shaderDirectory / "vs.cso" }) && pixel.load({ shaderDirectory / "ps.cso" }), "Load test shaders.");
-            D3D12_ROOT_PARAMETER root{};
-            root.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
-            root.Descriptor.ShaderRegister = 5;
-            root.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+            std::array<D3D12_ROOT_PARAMETER, 2> roots{};
+            roots[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+            roots[0].Descriptor.ShaderRegister = 5;
+            roots[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+            roots[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
+            roots[1].Descriptor.ShaderRegister = 0;
+            roots[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
             require(m_graphics.initialize(*m_device.Get(), {
                 .vertexShader = &vertex, .pixelShader = &pixel,
-                .rootParameters = std::span(&root, 1),
+                .rootParameters = roots,
                 .depthStencilFormat = DXGI_FORMAT_D32_FLOAT,
                 .depthComparison = D3D12_COMPARISON_FUNC_LESS_EQUAL,
                 .enableDepthWrite = false, .cullMode = D3D12_CULL_MODE_NONE }), "Create graphics pipeline.");
+            require(m_equalGraphics.initialize(*m_device.Get(), {
+                .vertexShader = &vertex, .pixelShader = &pixel,
+                .rootParameters = roots,
+                .depthStencilFormat = DXGI_FORMAT_D32_FLOAT,
+                .depthComparison = D3D12_COMPARISON_FUNC_EQUAL,
+                .enableDepthWrite = false, .cullMode = D3D12_CULL_MODE_NONE }), "Create production depth-equality pipeline.");
             require(m_targets.initialize(*m_device.Get(), { .type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV, .capacity = 1 }), "Create RTV heap.");
             require(m_depthTargets.initialize(*m_device.Get(), { .type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV, .capacity = 1 }), "Create DSV heap.");
             m_rtv = m_targets.allocate()->cpu.native;
@@ -95,7 +105,8 @@ namespace
         void run(const char* name, const std::vector<TestObject>& objects, const std::uint32_t expectedOccluded,
             const bool instancing = true, const std::uint32_t width = 64, const std::uint32_t height = 64,
             const Matrix& projection = Matrix::Identity, std::optional<D3D12_VIEWPORT> cameraViewport = std::nullopt,
-            const std::optional<std::pair<std::uint32_t, std::uint32_t>> hole = std::nullopt, const float depthValue = 0.4f)
+            const std::optional<std::pair<std::uint32_t, std::uint32_t>> hole = std::nullopt,
+            const float depthValue = 0.4f, const bool equalDepth = false)
         {
             const D3D12_VIEWPORT viewport = cameraViewport.value_or(
                 D3D12_VIEWPORT{ 0, 0, static_cast<float>(width), static_cast<float>(height), 0, 1 });
@@ -145,6 +156,12 @@ namespace
                 instances.push_back({ item.worldMatrix * projection, item.worldMatrix });
             require(m_instances.initialize(*m_device.Get(), m_fence, std::max<std::size_t>(128, instances.size() * sizeof(Instance)))
                 && m_instances.write(std::as_bytes(std::span(instances))), "Upload test instances.");
+            D3D12_RESOURCE_DESC recordedDescription = m_instances.get()->GetDesc();
+            recordedDescription.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+            require(m_recordedInstances.initialize(*m_device.Get(), {
+                .description = recordedDescription })
+                && m_recordedReadback.initialize(*m_device.Get(), m_fence, recordedDescription.Width),
+                "Create actual vertex-shader instance capture.");
 
             D3D12_RESOURCE_DESC texture{};
             texture.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -200,6 +217,17 @@ namespace
             require(m_depth.transition(m_list, D3D12_RESOURCE_STATE_DEPTH_WRITE), "Transition depth.");
             require(m_list.close() && m_cullingList.begin(m_fence), "Begin culling pass.");
             m_cullingList.getForRecording()->OMSetRenderTargets(0, nullptr, FALSE, &m_dsv);
+            if (m_caseCount == 1)
+            {
+                for (const D3D12_VIEWPORT invalid : {
+                    D3D12_VIEWPORT{ 0, 0, static_cast<float>(width) + 1, static_cast<float>(height), 0, 1 },
+                    D3D12_VIEWPORT{ 0, 0, static_cast<float>(width), static_cast<float>(height) + 1, 0, 1 },
+                    D3D12_VIEWPORT{ -1, 0, static_cast<float>(width), static_cast<float>(height), 0, 1 },
+                    D3D12_VIEWPORT{ 0, 0, std::numeric_limits<float>::quiet_NaN(), static_cast<float>(height), 0, 1 } })
+                    require(!culling.record(m_cullingList, *m_device.Get(), m_fence, m_depth, m_hiz, m_cull,
+                        renderQueue, *m_instances.get(), projection, invalid, instancing),
+                        "Invalid viewport must still be rejected.");
+            }
             require(culling.record(m_cullingList, *m_device.Get(), m_fence, m_depth, m_hiz, m_cull, renderQueue,
                 *m_instances.get(), projection, viewport, instancing), "Record GPU culling.");
             require(m_cullingList.close() && m_colorList.begin(m_fence), "Begin color pass.");
@@ -208,7 +236,8 @@ namespace
             const auto drawImage = [&](const bool indirect, DX12ReadbackBuffer& image)
             {
                 require(m_color.transition(m_colorList, D3D12_RESOURCE_STATE_RENDER_TARGET), "Transition color.");
-                require(m_graphics.bind(m_colorList), "Bind test pipeline.");
+                require(m_recordedInstances.transition(m_colorList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS), "Transition instance capture.");
+                require((equalDepth ? m_equalGraphics : m_graphics).bind(m_colorList), "Bind test pipeline.");
                 native.OMSetRenderTargets(1, &m_rtv, FALSE, &m_dsv);
                 native.RSSetViewports(1, &viewport);
                 const D3D12_RECT scissor{ 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
@@ -225,6 +254,7 @@ namespace
                     const auto& item = items[first];
                     const auto count = instancing ? renderQueue.getInstanceBatchSize(first) : 1;
                     native.SetGraphicsRootShaderResourceView(0, m_instances.getGpuVirtualAddress() + first * sizeof(Instance));
+                    native.SetGraphicsRootUnorderedAccessView(1, m_recordedInstances.get()->GetGPUVirtualAddress() + first * sizeof(Instance));
                     if (!indirect || !culling.execute(native, first))
                         native.DrawIndexedInstanced(item.indexCount, static_cast<UINT>(count), item.indexStart, item.baseVertex, 0);
                     first += count;
@@ -244,6 +274,9 @@ namespace
                 destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
                 destination.PlacedFootprint = colorLayout;
                 native.CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+                require(m_recordedInstances.transition(m_colorList, D3D12_RESOURCE_STATE_COPY_SOURCE), "Transition captured instances.");
+                if (indirect)
+                    native.CopyBufferRegion(m_recordedReadback.get(), 0, m_recordedInstances.get(), 0, recordedDescription.Width);
             };
             drawImage(false, m_directImage);
             drawImage(true, m_indirectImage);
@@ -255,6 +288,7 @@ namespace
                 && m_colorList.markSubmitted(fence) && culling.markSubmitted(fence)
                 && m_instances.markUsed(fence) && m_indices.markUsed(fence) && m_depthUpload.markUsed(fence)
                 && m_directImage.markPending(fence) && m_indirectImage.markPending(fence)
+                && m_recordedReadback.markPending(fence)
                 && m_pipelineResults.markPending(fence) && m_fence.waitOnCpu(fence), "Submit test and wait.");
             require(culling.collectCompletedResults(completed), "Read GPU culling results.");
             require(completed.occludedInstances == expectedOccluded, name);
@@ -270,6 +304,20 @@ namespace
             for (std::uint32_t row = 0; row < height; ++row)
                 require(std::memcmp(direct.data() + row * colorLayout.Footprint.RowPitch,
                     indirect.data() + row * colorLayout.Footprint.RowPitch, width * 4) == 0, "Direct/Indirect image mismatch.");
+            if (equalDepth)
+            {
+                std::vector<Instance> captured(instances.size());
+                require(m_recordedReadback.read(std::as_writable_bytes(std::span(captured))), "Read actual shader instance sequence.");
+                std::size_t destination = 0;
+                for (const Instance& instance : instances)
+                    if (instance.world._43 == depthValue)
+                    {
+                        require(std::memcmp(&captured[destination], &instance, sizeof(Instance)) == 0,
+                            "Every visible instance must retain its source order and all 128 constant bytes.");
+                        ++destination;
+                    }
+                require(destination == instances.size() - expectedOccluded, "Stable-order reference must cover every visible instance.");
+            }
             checkDebugMessages();
             std::printf("PASS %s: %u/%u instances culled, %u/%u batches culled, %llu executed vertices\n",
                 name, completed.occludedInstances, completed.instances, completed.occludedBatches, completed.batches, pipeline.IAVertices);
@@ -280,6 +328,102 @@ namespace
             for (auto& frame : m_frames)
                 require(frame.finalize(), "Finalize frame culling.");
             checkDebugMessages();
+        }
+
+        void testCameraCulling()
+        {
+            const Matrix orthographic = CameraUtils::buildOrthographic(5, 1, 0.1f, 100);
+            const CameraFrustum orthographicFrustum = CameraUtils::buildWorldFrustum(orthographic, Matrix::Identity);
+            require(orthographicFrustum.valid, "Orthographic clip planes must be valid.");
+            const AABB visible(Vector3(1, 0, 1), Vector3(0.1f));
+            require(isVisible(orthographicFrustum, visible), "Orthographic interior bounds must remain visible.");
+            RenderItem item;
+            item.vertexBuffer = &m_vertexView;
+            item.indexBuffer = &m_indexView;
+            item.indexCount = 3;
+            item.worldBounds = visible;
+            RenderQueue queue;
+            require(queue.submit(item, &orthographicFrustum), "Production queue must retain orthographic interior bounds.");
+            const std::array outside{
+                Vector3(-6, 0, 1), Vector3(6, 0, 1), Vector3(0, -6, 1), Vector3(0, 6, 1),
+                Vector3(0, 0, -1), Vector3(0, 0, 101) };
+            for (const Vector3& center : outside)
+            {
+                item.worldBounds = AABB(center, Vector3(0.1f));
+                require(!queue.submit(item, &orthographicFrustum), "Orthographic bounds outside each plane must be culled.");
+                require(!isVisible(orthographicFrustum, BoundingSphere(center, 0.1f)), "Orthographic outside sphere.");
+            }
+            for (const Vector3& center : { Vector3(-5, 0, 1), Vector3(5, 0, 1), Vector3(0, -5, 1),
+                Vector3(0, 5, 1), Vector3(0, 0, 0.1f), Vector3(0, 0, 100) })
+            {
+                require(isVisible(orthographicFrustum, AABB(center, Vector3(0.1f))), "Clip-plane intersecting bounds stay visible.");
+                require(isVisible(orthographicFrustum, BoundingSphere(center, 0.1f)), "Clip-plane intersecting sphere stays visible.");
+            }
+            std::mt19937 random(803);
+            std::uniform_real_distribution<float> coordinate(-20, 20);
+            std::uniform_real_distribution<float> depth(-5, 110);
+            std::size_t checked = 0;
+            for (const Matrix& cameraWorld : { Matrix::Identity,
+                Matrix::CreateRotationY(0.7f) * Matrix::CreateTranslation(17, -4, 11),
+                Matrix::CreateScale(-2, 0.5f, 3) * Matrix::CreateRotationX(-0.4f)
+                    * Matrix::CreateTranslation(-10, 8, 3) })
+                for (Matrix projection : { orthographic, CameraUtils::buildPerspective(65, 1.3f, 0.1f, 100) })
+                {
+                    projection._31 += 0.003f;
+                    projection._32 -= 0.005f;
+                    const CameraFrustum frustum = CameraUtils::buildWorldFrustum(projection, cameraWorld);
+                    require(frustum.valid, "Transformed perspective/orthographic clip planes.");
+                    const Matrix viewProjection = cameraWorld.Invert() * projection;
+                    for (unsigned index = 0; index < 4096; ++index)
+                    {
+                        const Vector3 center = Vector3::Transform(Vector3(coordinate(random), coordinate(random), depth(random)), cameraWorld);
+                        const AABB bounds(center, Vector3(0.1f));
+                        std::array<bool, 6> outsidePlane;
+                        outsidePlane.fill(true);
+                        bool touchesPlane = false;
+                        std::array<Vector3, AABB::CORNER_COUNT> corners;
+                        bounds.GetCorners(corners.data());
+                        for (const Vector3& corner : corners)
+                        {
+                            const Vector4 clip = Vector4::Transform(Vector4(corner.x, corner.y, corner.z, 1), viewProjection);
+                            const std::array distances{ clip.w + clip.x, clip.w - clip.x, clip.w + clip.y,
+                                clip.w - clip.y, clip.z, clip.w - clip.z };
+                            for (std::size_t plane = 0; plane < distances.size(); ++plane)
+                            {
+                                outsidePlane[plane] = outsidePlane[plane] && distances[plane] < 0;
+                                touchesPlane = touchesPlane || std::abs(distances[plane]) < 0.005f;
+                            }
+                        }
+                        if (!touchesPlane)
+                        {
+                            const bool expected = std::none_of(outsidePlane.begin(), outsidePlane.end(), [](bool value) { return value; });
+                            require(isVisible(frustum, bounds) == expected, "Clip-plane culling must match vertex clip inequalities.");
+                            ++checked;
+                        }
+                    }
+                }
+            require(checked > 12000, "Camera culling reference must cover over 12000 bounds.");
+            const CameraFrustum invalid = CameraUtils::buildWorldFrustum(orthographic, Matrix::CreateScale(0));
+            require(!invalid.valid && isVisible(invalid, visible), "Singular camera must log and bypass culling.");
+            Matrix nonfinite = orthographic;
+            nonfinite._11 = std::numeric_limits<float>::quiet_NaN();
+            require(!CameraUtils::buildWorldFrustum(nonfinite, Matrix::Identity).valid, "Nonfinite projection must disable culling.");
+            std::printf("PASS camera clip planes: %zu AABBs, six orthographic faces, spheres and queue submission.\n", checked);
+
+            std::size_t viewportChecks = 0;
+            for (const Vector2& size : { Vector2(1, 1), Vector2(63, 37), Vector2(127, 71),
+                Vector2(1920, 1080), Vector2(3840, 2160) })
+                for (unsigned fraction = 0; fraction < 1000; ++fraction)
+                {
+                    const float origin = static_cast<float>(fraction) / 1000;
+                    const CameraViewport normalized{ origin, origin, 1.0f - origin, 1.0f - origin };
+                    const Viewport pixels = CameraUtils::toPixelViewport(normalized, size);
+                    require(pixels.x >= 0 && pixels.y >= 0 && pixels.width > 0 && pixels.height > 0
+                        && pixels.x + pixels.width <= size.x && pixels.y + pixels.height <= size.y,
+                        "Normalized viewport must remain inside the pixel target after float rounding.");
+                    ++viewportChecks;
+                }
+            std::printf("PASS normalized viewport conversion: %zu edge and fractional cases.\n", viewportChecks);
         }
 
         void testSkinningBounds(const std::filesystem::path& shaderDirectory)
@@ -450,8 +594,7 @@ namespace
             require(!boundsCache.calculate(palette, unsafeWorld, result), "GPU arithmetic overflow risk must bypass culling.");
 
             const Matrix projection(DirectX::XMMatrixPerspectiveFovLH(1, 1, 0.1f, 100));
-            Frustum frustum;
-            Frustum::CreateFromMatrix(frustum, projection);
+            const CameraFrustum frustum = CameraUtils::buildWorldFrustum(projection, Matrix::Identity);
             std::array<ModelVertex, 1> point{};
             point[0].boneWeights = Vector4(1, 0, 0, 0);
             SkinningBounds pointBounds;
@@ -503,13 +646,13 @@ namespace
         DX12Fence m_fence;
         DX12CommandList m_list, m_cullingList, m_colorList;
         DX12ComputePipeline m_hiz, m_cull;
-        DX12GraphicsPipeline m_graphics;
+        DX12GraphicsPipeline m_graphics, m_equalGraphics;
         std::array<DX12GpuOcclusionCulling, 2> m_frames;
         DX12DescriptorHeap m_targets, m_depthTargets;
         D3D12_CPU_DESCRIPTOR_HANDLE m_rtv{}, m_dsv{};
-        DX12Resource m_depth, m_color;
+        DX12Resource m_depth, m_color, m_recordedInstances;
         DX12UploadBuffer m_depthUpload, m_instances, m_indices;
-        DX12ReadbackBuffer m_directImage, m_indirectImage, m_pipelineResults;
+        DX12ReadbackBuffer m_directImage, m_indirectImage, m_pipelineResults, m_recordedReadback;
         D3D12_VERTEX_BUFFER_VIEW m_vertexView{};
         D3D12_INDEX_BUFFER_VIEW m_indexView{};
         ComPtr<ID3D12QueryHeap> m_queryHeap;
@@ -525,6 +668,7 @@ int main(const int argc, char** argv)
         require(Engine::Logger::instance().initialize({
             .useConsole = true, .useFile = false, .useDebugOutput = false }), "Initialize test logger.");
         Tests tests(argv[1], argc >= 3 && std::string_view(argv[2]) == "--warp");
+        tests.testCameraCulling();
         tests.testSkinningBounds(argv[1]);
         tests.run("fully hidden: zero Draw", { {} }, 1);
         tests.run("visible", { { Vector3(0, 0, 0.2f) } }, 0);
@@ -545,12 +689,44 @@ int main(const int argc, char** argv)
             0, true, 63, 37, Matrix::Identity, std::nullopt, std::pair{ 62u, 36u });
         tests.run("offset viewport", { {}, { Vector3(0.3f, 0, 0.2f) } }, 1, true, 127, 71,
             Matrix::Identity, D3D12_VIEWPORT{ 17.5f, 9.25f, 61.5f, 37.25f, 0, 1 });
+        const CameraViewport edge{ 0.001f, 0.001f, 0.999f, 0.999f };
+        const Viewport pixels = CameraUtils::toPixelViewport(edge, Vector2(1920, 1080));
+        tests.run("normalized viewport right/bottom edge", { {} }, 1, true, 1920, 1080, Matrix::Identity,
+            D3D12_VIEWPORT{ pixels.x, pixels.y, pixels.width, pixels.height, 0, 1 });
+        tests.run("pixel viewport right edge float overshoot", { {} }, 1, true, 1920, 64, Matrix::Identity,
+            D3D12_VIEWPORT{ edge.x * 1920, 0, edge.width * 1920, 64, 0, 1 });
+        tests.run("pixel viewport bottom edge float overshoot", { {} }, 1, true, 64, 1920, Matrix::Identity,
+            D3D12_VIEWPORT{ 0, edge.y * 1920, 64, edge.height * 1920, 0, 1 });
         tests.run("one-pixel target", { {} }, 1, true, 1, 1);
         tests.run("empty queue", {}, 0);
         std::vector<TestObject> largeBatch(257);
         for (std::size_t index = 0; index < largeBatch.size(); index += 3)
             largeBatch[index].center.z = 0.2f;
         tests.run("multi-wave compaction", largeBatch, 171);
+        for (const std::size_t count : { 63u, 64u, 65u, 127u, 128u, 129u, 257u, 1025u })
+        {
+            std::vector<TestObject> coplanar(count);
+            for (std::size_t index = 0; index < count; ++index)
+                coplanar[index].center = Vector3(-0.02f + 0.04f * static_cast<float>(index) / static_cast<float>(count - 1), 0, 0.2f);
+            const std::string name = "stable coplanar compaction " + std::to_string(count);
+            tests.run(name.c_str(), coplanar, 0, true, 64, 64, Matrix::Identity, std::nullopt, std::nullopt, 0.2f, true);
+            std::uint32_t hidden = 0;
+            for (std::size_t index = 0; index < count; ++index)
+                if (index % 3 == 0)
+                {
+                    coplanar[index].center.z = 0.8f;
+                    ++hidden;
+                }
+            const std::string mixedName = "stable filtered coplanar compaction " + std::to_string(count);
+            tests.run(mixedName.c_str(), coplanar, hidden, true, 64, 64, Matrix::Identity, std::nullopt, std::nullopt, 0.2f, true);
+        }
+        std::vector<TestObject> emptyTiles(257);
+        emptyTiles.front().center = Vector3(-0.02f, 0, 0.2f);
+        emptyTiles.back().center = Vector3(0.02f, 0, 0.2f);
+        tests.run("stable compaction across fully hidden tiles", emptyTiles, 255, true, 64, 64,
+            Matrix::Identity, std::nullopt, std::nullopt, 0.2f, true);
+        tests.run("multi-tile batch fully hidden", std::vector<TestObject>(129), 129, true, 64, 64,
+            Matrix::Identity, std::nullopt, std::nullopt, 0.2f, true);
         tests.run("camera movement has no stale results", { {} }, 0, true, 64, 64, Matrix::CreateTranslation(0, 0, -0.6f));
         const Matrix perspective(DirectX::XMMatrixPerspectiveFovLH(1.0f, 1.0f, 0.1f, 100.0f));
         tests.run("perspective depth", { { Vector3(0, 0, 5) } }, 1, true, 64, 64, perspective);

@@ -62,7 +62,7 @@ namespace Engine
          * @param queue Rendererと同じソート済みQueue。
          * @param instances Queue Index順に並んだ128-byte Instance Constants。
          * @param viewProjection CameraのView Projection。
-         * @param viewport Depth Target内のCamera Viewport。
+         * @param viewport Depth Target内のCamera Viewport。右端・下端のFloat丸め誤差のみ許容する。
          * @param instancing Rendererと同じバッチ分割設定。
          * @return 記録成功時true。
          */

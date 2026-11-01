@@ -29,15 +29,16 @@ namespace Engine::CameraUtils
      * @brief Projection行列からWorld Space Frustumを生成する。
      * @param projection Projection行列。
      * @param inverseView CameraのWorld行列。
-     * @return World Space Frustum。
+     * @return Perspective/Orthographic対応のWorld Space Clip Planes。不正行列はログを出しCullingを無効化する。
      */
-    Frustum buildWorldFrustum(const Matrix& projection, const Matrix& inverseView) noexcept;
+    CameraFrustum buildWorldFrustum(const Matrix& projection, const Matrix& inverseView) noexcept;
 
     /**
      * @brief 正規化Camera ViewportをPixel Viewportへ変換する。
      * @param viewport 正規化Viewport。
      * @param renderTargetSize Render TargetのPixel Size。
-     * @return Pixel単位のViewport。
+     * @return Pixel単位のViewport。丸めによる描画先の右端・下端の超過を防ぐ。
+     * @pre CameraComponentで検証済みの正規化Viewportと正のRender Target Sizeを渡す。
      */
     Viewport toPixelViewport(const CameraViewport& viewport, const Vector2& renderTargetSize) noexcept;
 } // namespace Engine::CameraUtils

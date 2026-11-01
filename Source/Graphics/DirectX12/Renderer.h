@@ -139,7 +139,7 @@ namespace Engine
          * @brief Model描画に使用するWorld Space視錐台を設定する。
          * @param frustum World Space視錐台
          */
-        void setFrustum(const Frustum& frustum) noexcept { m_frustum = frustum; }
+        void setFrustum(const CameraFrustum& frustum) noexcept { m_frustum = frustum; }
 
         /**
          * @brief 視錐台Cullingを無効化する。
@@ -323,7 +323,7 @@ namespace Engine
         Matrix m_viewProjection = Matrix::Identity;                                                       //!< CameraのView Projection行列
         Vector3 m_cameraPosition = Vector3::Zero;                                                         //!< Transparent sort用Camera座標
         Vector3 m_cameraForward = Vector3::UnitZ;                                                         //!< Transparent sort用Camera視線方向
-        std::optional<Frustum> m_frustum;                                                                 //!< World Space Camera Frustum
+        std::optional<CameraFrustum> m_frustum;                                                           //!< World Space Camera Clip Planes
         std::optional<Matrix> m_shadowViewProjection;                                                     //!< Light View Projection。未設定時はShadow passを省略
         CameraViewport m_cameraViewport{};                                                                //!< 描画先に対する正規化Camera Viewport
         CameraClearMode m_cameraClearMode = CameraClearMode::SolidColor;                                  //!< CameraのClear方式

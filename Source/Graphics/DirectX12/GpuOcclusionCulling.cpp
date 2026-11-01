@@ -255,8 +255,10 @@ namespace Engine
             || !std::isfinite(viewport.Width) || !std::isfinite(viewport.Height)
             || viewport.TopLeftX < 0.0f || viewport.TopLeftY < 0.0f
             || viewport.Width <= 0.0f || viewport.Height <= 0.0f
-            || viewport.TopLeftX + viewport.Width > static_cast<float>(description.Width)
-            || viewport.TopLeftY + viewport.Height > static_cast<float>(description.Height)
+            || static_cast<double>(viewport.TopLeftX) + viewport.Width
+                > static_cast<double>(description.Width) * (1.0 + 4.0 * FLT_EPSILON)
+            || static_cast<double>(viewport.TopLeftY) + viewport.Height
+                > static_cast<double>(description.Height) * (1.0 + 4.0 * FLT_EPSILON)
             || viewport.MinDepth != 0.0f || viewport.MaxDepth != 1.0f
             || items.size() > UINT32_MAX / INSTANCE_STRIDE
             || instances.GetDesc().Dimension != D3D12_RESOURCE_DIMENSION_BUFFER

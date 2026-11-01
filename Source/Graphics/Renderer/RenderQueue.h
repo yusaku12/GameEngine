@@ -39,7 +39,7 @@ namespace Engine
          * @param frustum Cullingに使う視錐台。nullptrの場合はCullingしない
          * @return Itemが可視で追加された場合はtrue
          */
-        bool submit(const RenderItem& item, const Frustum* frustum = nullptr);
+        bool submit(const RenderItem& item, const CameraFrustum* frustum = nullptr);
 
         /**
          * @brief Opaqueは状態順、Transparentは背面から前面へ並べ替える。

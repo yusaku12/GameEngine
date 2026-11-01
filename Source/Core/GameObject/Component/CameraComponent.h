@@ -168,7 +168,7 @@ namespace Engine
          * @brief World Space Frustumを取得する。
          * @return キャッシュされたFrustum。
          */
-        const Frustum& getFrustum() const noexcept;
+        const CameraFrustum& getFrustum() const noexcept;
 
         /**
          * @brief Screen座標をWorld座標へ変換する。
@@ -312,7 +312,7 @@ namespace Engine
         mutable Matrix m_inverseProjection = Matrix::Identity;      //!< Inverse Projection行列
         mutable Matrix m_inverseViewProjection = Matrix::Identity;  //!< Inverse View Projection行列
         mutable Matrix m_previousViewProjection = Matrix::Identity; //!< 前回提出時のView Projection行列
-        mutable Frustum m_frustum{};                                //!< World Space Frustum
+        mutable CameraFrustum m_frustum{};                          //!< World Space Clip Planes
         mutable std::uint64_t m_transformRevision = 0;              //!< Transformの更新回数
         mutable bool m_viewDirty = true;                            //!< View行列が更新されているか
         mutable bool m_projectionDirty = true;                      //!< Projection行列が更新されているか

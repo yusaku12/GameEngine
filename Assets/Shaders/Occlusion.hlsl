@@ -79,6 +79,7 @@ bool isVisible(Candidate candidate)
 }
 
 groupshared uint visibleCount;
+groupshared uint prefix[64];
 
 [numthreads(64, 1, 1)]
 void csMain(uint3 group : SV_GroupID, uint lane : SV_GroupIndex)
@@ -89,18 +90,35 @@ void csMain(uint3 group : SV_GroupID, uint lane : SV_GroupIndex)
         visibleCount = 0;
     GroupMemoryBarrierWithGroupSync();
 
-    for (uint instance = lane; instance < batch.instanceCount; instance += 64)
+    for (uint first = 0; first < batch.instanceCount; first += 64)
     {
+        const uint instance = first + lane;
         const uint sourceIndex = batch.first + instance;
-        if (isVisible(candidates[sourceIndex]))
+        bool visible = false;
+        if (instance < batch.instanceCount)
+            visible = isVisible(candidates[sourceIndex]);
+        prefix[lane] = visible ? 1 : 0;
+        GroupMemoryBarrierWithGroupSync();
+        // Stable inclusive scan, independent of wave size and lane scheduling.
+        for (uint offset = 1; offset < 64; offset *= 2)
         {
-            uint destination;
-            InterlockedAdd(visibleCount, 1, destination);
+            const uint addend = lane >= offset ? prefix[lane - offset] : 0;
+            GroupMemoryBarrierWithGroupSync();
+            prefix[lane] += addend;
+            GroupMemoryBarrierWithGroupSync();
+        }
+        if (visible)
+        {
+            const uint destination = visibleCount + prefix[lane] - 1;
             const uint sourceAddress = sourceIndex * 128;
             const uint destinationAddress = (batch.first + destination) * 128;
             for (uint offset = 0; offset < 128; offset += 16)
                 visibleInstances.Store4(destinationAddress + offset, instances.Load4(sourceAddress + offset));
         }
+        GroupMemoryBarrierWithGroupSync();
+        if (lane == 0)
+            visibleCount += prefix[63];
+        GroupMemoryBarrierWithGroupSync();
     }
     GroupMemoryBarrierWithGroupSync();
 

@@ -326,7 +326,7 @@ namespace Engine
         return getNormalizedCameraDirection(getGameObject(), Vector3::UnitY, Vector3::UnitY);
     }
 
-    const Frustum& CameraComponent::getFrustum() const noexcept
+    const CameraFrustum& CameraComponent::getFrustum() const noexcept
     {
         synchronizeViewProjection();
         if (m_frustumDirty)

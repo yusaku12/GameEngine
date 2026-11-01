@@ -284,6 +284,25 @@ completes. Hi-Z mip transitions keep source mips readable while the destination
 is writable; generated instances transition to shader-read and packets to
 indirect-argument state before color command lists execute. CPU readback is
 asynchronous statistics only and never determines current visibility.
+Compaction preserves the sorted queue's instance order using a group-wide
+prefix scan across consecutive 64-instance tiles, without depending on wave
+size or atomic scheduling. This preserves color-pass ordering for overlapping
+coplanar instances, including the production `EQUAL` depth comparison.
+
+Camera culling uses `CameraFrustum` world-space clip planes for perspective
+and orthographic projections, including jitter and transformed cameras.
+`CameraComponent::getFrustum`, `RenderView::frustum`, `DX12Renderer::setFrustum`
+and `RenderQueue::submit` use this type instead of `DirectX::BoundingFrustum`;
+use `CameraUtils::buildWorldFrustum` to construct it. The old math `Frustum`
+alias remains available for perspective-only DirectX collision queries.
+Invalid camera matrices log errors and disable clip-plane culling.
+
+Depth clears, model passes, Hi-Z and overlays share
+`CameraUtils::toPixelViewport`. Its conversion keeps normalized viewport edges
+inside the render target despite float rounding, and model scissor rectangles
+use the same floor/ceil convention as clears. Culling input validation permits
+only a small float-rounding overshoot at the right/bottom edge; genuinely
+out-of-range or nonfinite inputs still fail explicitly.
 
 Statistics distinguish direct submissions, indirect submissions, and completed
 GPU color draws. **Frustum-visible Objects** is not an occlusion result.
@@ -309,6 +328,14 @@ offsets, empty queues, resize/reuse of two frame slots, signed base vertices,
 index offsets, ordered upload/culling/color command lists, and dispatch chunking
 beyond 65,535 batches. Run Debug and Release builds sequentially: dependency
 configuration uses shared build directories.
+Additional regressions cover over 12,000 AABBs against reference clip-space
+inequalities, orthographic faces and spheres, queue submission, 5,000 normalized
+viewport conversions, right/bottom pixel rounding overshoot, invalid viewport
+rejection, and distinguishable coplanar instances at 64-lane tile boundaries
+with both all-visible and mixed-visibility batches.
+The vertex shader captures all 128 bytes of each executed instance's constants
+into a UAV; order regressions verify the entire surviving sequence, including
+fully hidden tiles and all-hidden multi-tile batches, not just the final image.
 
 ## Current-pose animation bounds
 

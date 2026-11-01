@@ -34,7 +34,7 @@ namespace Engine
     struct RenderView
     {
         CameraRenderData camera;                                               //!< Cameraのレンダリングデータ
-        Frustum frustum{};                                                     //!< CameraのFrustum
+        CameraFrustum frustum{};                                               //!< CameraのClip Planes
         CameraViewport viewport{};                                             //!< CameraのViewport
         CameraClearMode clearMode = CameraClearMode::SolidColor;               //!< Cameraのクリアモード
         Color backgroundColor = Color(0.08f, 0.16f, 0.24f, 1.0f);              //!< Cameraの背景色

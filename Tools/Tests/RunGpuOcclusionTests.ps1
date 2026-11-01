@@ -24,7 +24,7 @@ $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer
 $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($install)) { throw "Visual Studio C++ tools were not found." }
 $vcvars = Join-Path $install "VC\Auxiliary\Build\vcvars64.bat"
-$objects = @("Pch", "SimpleMath", "SkinningBounds", "GpuOcclusionCulling", "Pipeline", "Resource", "Command", "Descriptor", "Fence", "RenderQueue", "Shader", "Logger")
+$objects = @("Pch", "SimpleMath", "SkinningBounds", "GpuOcclusionCulling", "Pipeline", "Resource", "Command", "Descriptor", "Fence", "RenderQueue", "Shader", "Logger", "CameraUtils")
 $arguments = @("/nologo", "/std:c++20", "/EHsc", "/utf-8", "/W4", "/WX", "/external:W0")
 if ($Configuration -eq "Debug") { $arguments += @("/MTd", "/D_DEBUG", "/Od") }
 else { $arguments += @("/MT", "/DNDEBUG", "/O2") }

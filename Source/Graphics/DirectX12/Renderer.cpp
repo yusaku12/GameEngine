@@ -3,6 +3,7 @@
 #include "Graphics\DirectX12\Renderer.h"
 #include "Assets\Material\MaterialManager.h"
 #include "Graphics\Camera\CameraRenderSubmission.h"
+#include "Graphics\Camera\CameraUtils.h"
 #include "Graphics\Renderer\ModelRenderSubmission.h"
 #include "Graphics\Texture\TextureManager.h"
 #include "Core\Profiling\FrameProfiler.h"
@@ -537,16 +538,15 @@ namespace Engine
 
         ID3D12GraphicsCommandList* nativeCommandList = commandList.getForRecording();
         const D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_gameRenderTargetView.native;
-        const float viewportX = m_cameraViewport.x * static_cast<float>(m_renderWidth);
-        const float viewportY = m_cameraViewport.y * static_cast<float>(m_renderHeight);
-        const float viewportWidth = m_cameraViewport.width * static_cast<float>(m_renderWidth);
-        const float viewportHeight = m_cameraViewport.height * static_cast<float>(m_renderHeight);
-        const D3D12_VIEWPORT viewport{ viewportX, viewportY, viewportWidth, viewportHeight, 0.0f, 1.0f };
+        const Viewport pixelViewport = CameraUtils::toPixelViewport(m_cameraViewport,
+            Vector2(static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight)));
+        const D3D12_VIEWPORT viewport{ pixelViewport.x, pixelViewport.y,
+            pixelViewport.width, pixelViewport.height, pixelViewport.minDepth, pixelViewport.maxDepth };
         const D3D12_RECT scissorRect{
-            static_cast<LONG>(std::floor(viewportX)),
-            static_cast<LONG>(std::floor(viewportY)),
-            static_cast<LONG>(std::ceil(viewportX + viewportWidth)),
-            static_cast<LONG>(std::ceil(viewportY + viewportHeight))
+            static_cast<LONG>(std::floor(viewport.TopLeftX)),
+            static_cast<LONG>(std::floor(viewport.TopLeftY)),
+            static_cast<LONG>(std::ceil(viewport.TopLeftX + viewport.Width)),
+            static_cast<LONG>(std::ceil(viewport.TopLeftY + viewport.Height))
         };
         nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
         nativeCommandList->RSSetViewports(1, &viewport);
@@ -1154,7 +1154,7 @@ namespace Engine
                             .pass = pass,
                             .animationBoundsValid = submission.skinningPalette != nullptr && boundsCullable,
                         };
-                        const Frustum* const cullingFrustum = m_frustum ? &*m_frustum : nullptr;
+                        const CameraFrustum* const cullingFrustum = m_frustum ? &*m_frustum : nullptr;
                         const bool submitted = m_modelRenderQueue.submit(colorItem, cullingFrustum);
                         bool materialUsed = submitted;
                         if (submitted && pass != RenderPassType::Transparent)
@@ -1221,6 +1221,8 @@ namespace Engine
             return false;
         m_executionLists.push_back(commandList.getForExecution());
 
+        const Viewport pixelViewport = CameraUtils::toPixelViewport(m_cameraViewport,
+            Vector2(static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight)));
         DX12ModelRecordingState state{
             .textureHeap = TextureManager::instance().getDescriptorHeap().get(),
             .lighting = m_lightingBuffers[frameIndex].getGpuVirtualAddress(),
@@ -1229,15 +1231,13 @@ namespace Engine
             .depthTarget = m_depthStencilView.native,
             .shadowTarget = m_shadowDepthStencilView.native,
             .viewport = {
-                m_cameraViewport.x * static_cast<float>(m_renderWidth),
-                m_cameraViewport.y * static_cast<float>(m_renderHeight),
-                m_cameraViewport.width * static_cast<float>(m_renderWidth),
-                m_cameraViewport.height * static_cast<float>(m_renderHeight), 0.0f, 1.0f },
+                pixelViewport.x, pixelViewport.y, pixelViewport.width, pixelViewport.height,
+                pixelViewport.minDepth, pixelViewport.maxDepth },
         };
         state.scissor = {
-            static_cast<LONG>(state.viewport.TopLeftX), static_cast<LONG>(state.viewport.TopLeftY),
-            static_cast<LONG>(state.viewport.TopLeftX + state.viewport.Width),
-            static_cast<LONG>(state.viewport.TopLeftY + state.viewport.Height) };
+            static_cast<LONG>(std::floor(state.viewport.TopLeftX)), static_cast<LONG>(std::floor(state.viewport.TopLeftY)),
+            static_cast<LONG>(std::ceil(state.viewport.TopLeftX + state.viewport.Width)),
+            static_cast<LONG>(std::ceil(state.viewport.TopLeftY + state.viewport.Height)) };
         const D3D12_RESOURCE_DESC& shadowDescription = m_shadowMap.getDescription();
         state.shadowViewport = { 0.0f, 0.0f, static_cast<float>(shadowDescription.Width),
             static_cast<float>(shadowDescription.Height), 0.0f, 1.0f };

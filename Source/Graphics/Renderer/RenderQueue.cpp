@@ -26,7 +26,7 @@ namespace Engine
         m_items.reserve(capacity);
     }
 
-    bool RenderQueue::submit(const RenderItem& item, const Frustum* const frustum)
+    bool RenderQueue::submit(const RenderItem& item, const CameraFrustum* const frustum)
     {
         if (item.vertexBuffer == nullptr || item.indexBuffer == nullptr || item.indexCount == 0)
             return false;
