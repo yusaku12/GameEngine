@@ -1,6 +1,5 @@
 #pragma once
-#include <string>
-#include <filesystem>
+
 #include "Core\GameObject\Component.h"
 
 namespace Engine
