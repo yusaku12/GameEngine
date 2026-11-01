@@ -8,6 +8,9 @@
 #include "Graphics\Camera\CameraRenderSubmission.h"
 #include "Graphics\Renderer\ModelRenderSubmission.h"
 #include "Physics\PhysicsSystem.h"
+#include "Graphics\Lighting\LightingFrame.h"
+#include "Audio\AudioSystem.h"
+#include "UI\RuntimeUI.h"
 
 namespace Engine
 {
@@ -110,7 +113,9 @@ namespace Engine
             ModelRenderSubmissionQueue::instance().clear();
             CameraRenderSubmissionQueue::instance().clear();
             InputManager::instance().resetState();
+            RuntimeUI::instance().clear();
             m_state = PlayState::Playing;
+            AudioSystem::instance().setPaused(false);
             m_stepRequested = false;
             m_status.clear();
             LOG_INFO("[Play] Started isolated game session.");
@@ -139,6 +144,8 @@ namespace Engine
         SceneManager& manager = SceneManager::instance();
         if (!manager.discardScenes())
             return false;
+        AudioSystem::instance().stopAll();
+        AudioSystem::instance().setPaused(false);
         if (!manager.exchangeScenes(m_savedScenes, m_savedActive))
             return false;
         if (!manager.getPersistentScene()->exchangeGameObjects(*m_savedPersistent))
@@ -168,6 +175,7 @@ namespace Engine
         time.setPaused(m_savedTimePaused);
         PhysicsSystem::instance().setPaused(m_savedPhysicsPaused);
         InputManager::instance().resetState();
+        RuntimeUI::instance().clear();
         m_state = PlayState::Editing;
         m_stepRequested = false;
         m_stepThisFrame = false;
@@ -183,7 +191,10 @@ namespace Engine
             LOG_ERROR("[Play] Pause requires an active editor Play session.");
             return false;
         }
+        if (!AudioSystem::instance().setPaused(paused))
+            return false;
         m_state = paused ? PlayState::Paused : PlayState::Playing;
+        RuntimeUI::instance().clear();
         m_stepRequested = false;
         InputManager::instance().resetState();
         return true;
@@ -216,6 +227,7 @@ namespace Engine
     {
         SceneManager& manager = SceneManager::instance();
         TimeManager& time = TimeManager::instance();
+        RuntimeUI::instance().processInput(m_state == PlayState::Playing);
         if (m_state == PlayState::Playing || m_stepThisFrame)
         {
             manager.update(time.deltaTime());
@@ -250,6 +262,10 @@ namespace Engine
             manager.getPersistentScene()->submitRenderData();
             manager.processDestroyQueue();
         }
+        LightingFrame::instance().capture(manager.getActiveScene(), *manager.getPersistentScene());
+        RuntimeUI::instance().capture(manager.getActiveScene(), *manager.getPersistentScene());
+        if (m_state == PlayState::Playing)
+            AudioSystem::instance().update(manager.getActiveScene(), *manager.getPersistentScene(), time.deltaTime());
         if (m_mode == ExecutionMode::Editor)
             PhysicsSystem::instance().drawDebug();
     }
@@ -258,5 +274,6 @@ namespace Engine
     {
         if (m_mode == ExecutionMode::Editor && isPlaying())
             static_cast<void>(stop());
+        AudioSystem::instance().stopAll();
     }
 }

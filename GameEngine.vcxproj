@@ -20,6 +20,16 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Core\System\ExecutionMode.h" />
+    <ClInclude Include="Source\Core\GameObject\Component\LightComponent.h" />
+    <ClInclude Include="Source\Graphics\Lighting\LightingFrame.h" />
+    <ClInclude Include="Source\Audio\AudioSystem.h" />
+    <ClInclude Include="Source\UI\RuntimeUI.h" />
+    <ClInclude Include="Source\UI\RuntimeUIComponents.h" />
+    <ClInclude Include="Source\Graphics\UI\RuntimeUIRenderer.h" />
+    <ClInclude Include="Source\Audio\AudioSourceComponent.h" />
+    <ClInclude Include="Generated\FlatBuffers\LightComponent_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\RuntimeUI_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\AudioComponent_generated.h" />
     <ClInclude Include="Source\Core\System\GameSession.h" />
     <ClInclude Include="Source\Core\System\StartupOptions.h" />
     <ClInclude Include="Source\Core\Scene\SceneClone.h" />
@@ -183,6 +193,13 @@
   <ItemGroup>
     <ClCompile Include="Source\Animation\Runtime\AnimatorInstance.cpp" />
     <ClCompile Include="Source\Core\System\GameSession.cpp" />
+    <ClCompile Include="Source\Core\GameObject\Component\LightComponent.cpp" />
+    <ClCompile Include="Source\Graphics\Lighting\LightingFrame.cpp" />
+    <ClCompile Include="Source\Audio\AudioSystem.cpp" />
+    <ClCompile Include="Source\UI\RuntimeUI.cpp" />
+    <ClCompile Include="Source\UI\RuntimeUIComponents.cpp" />
+    <ClCompile Include="Source\Graphics\UI\RuntimeUIRenderer.cpp" />
+    <ClCompile Include="Source\Audio\AudioSourceComponent.cpp" />
     <ClCompile Include="Source\Core\System\StartupOptions.cpp" />
     <ClCompile Include="Source\Core\Scene\SceneClone.cpp" />
     <ClCompile Include="Source\Assets\Animation\AnimatorControllerAsset.cpp" />
@@ -313,6 +330,9 @@
     <None Include="Assets\Shaders\Occlusion.hlsl" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
     <None Include="Schemas\FlatBuffers\CameraComponent.fbs" />
+    <None Include="Schemas\FlatBuffers\LightComponent.fbs" />
+    <None Include="Schemas\FlatBuffers\RuntimeUI.fbs" />
+    <None Include="Schemas\FlatBuffers\AudioComponent.fbs" />
     <None Include="Schemas\FlatBuffers\Material.fbs" />
     <None Include="Schemas\FlatBuffers\Model.fbs" />
     <None Include="Schemas\FlatBuffers\Prefab.fbs" />
@@ -466,7 +486,7 @@
       <Command>copy /Y "$(FBXSDKRoot)\lib\x64\release\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
-  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Schemas\FlatBuffers\Skeleton.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimationClip.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorController.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\ModelRendererComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\PhysicsComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\CameraComponent.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h;$(ProjectDir)Generated\FlatBuffers\Skeleton_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimationClip_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorController_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\ModelRendererComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\PhysicsComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\CameraComponent_generated.h">
+  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Schemas\FlatBuffers\Skeleton.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimationClip.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorController.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\ModelRendererComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\PhysicsComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\CameraComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\LightComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\RuntimeUI.fbs;$(ProjectDir)Schemas\FlatBuffers\AudioComponent.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h;$(ProjectDir)Generated\FlatBuffers\Skeleton_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimationClip_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorController_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\ModelRendererComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\PhysicsComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\CameraComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\LightComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\RuntimeUI_generated.h;$(ProjectDir)Generated\FlatBuffers\AudioComponent_generated.h">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
   </Target>
   <Target Name="BuildOzzAnimation" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'" Inputs="$(ProjectDir)Library\ozz-animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\build_ozz.ps1" Outputs="$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration)\ozz_animation_offline$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration)\ozz_animation$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration)\ozz_base$(OzzLibraryPostfix).lib">

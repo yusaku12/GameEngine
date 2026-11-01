@@ -1,0 +1,14 @@
+namespace Engine.Serialization;
+table AudioComponentPayload {
+    path:string;
+    volume:float = 1;
+    pitch:float = 1;
+    loop:bool;
+    play_on_awake:bool = true;
+    spatial:bool;
+    min_distance:float = 1;
+    max_distance:float = 50;
+    listener:bool;
+}
+root_type AudioComponentPayload;
+file_identifier "AUDC";

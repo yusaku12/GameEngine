@@ -49,3 +49,107 @@ global asset edits, files written by gameplay, or static variables.
 
 Camera settings and Main Camera preference are persisted in versioned
 FlatBuffers payloads. Legacy empty Camera payloads retain default settings.
+
+# Lights and directional shadows
+
+Create a GameObject and add **Light** in the Inspector. Choose Directional, Point
+or Spot, then set color and intensity. Point and Spot use the object's world
+position and Range; Directional and Spot emit along local **+Z**, so rotate the
+Transform to aim them. Spot angles specify the full inner/outer cone angle.
+Enabled lights in the active and persistent scenes are also rendered while
+editing or paused. Up to 32 lights are supported; excess lights are logged.
+
+The first active Directional light with **Cast Shadow** enabled owns a 2048x2048
+dynamic shadow map. Set Shadow Distance, Shadow Bias and Normal Bias to suit the
+scene's scale. Its camera-relative projection is texel-stabilized and sampled
+with 3x3 PCF. Model Renderer's **Cast Shadows** controls individual casters;
+Opaque and AlphaTest materials cast shadows, Transparent materials do not.
+Point/Spot shadows, cascades and baked lighting are not provided.
+
+Scene lights replace the former hard-coded light direction. A scene with no
+enabled lights receives only the base ambient contribution (0.15) and emissive
+materials. Add a Directional light to existing scenes when direct lighting is
+desired. Light settings persist in scenes/prefabs and copy into isolated Play.
+
+# Screen-space Runtime UI
+
+1. Add **Canvas** to a root GameObject and set Reference Size and Sort Order.
+2. Create child GameObjects with **Rect Transform**. Anchor Min/Max interpolate
+   the parent's rectangle; Offset Min/Max specify its edges in Canvas units.
+   The Y axis points down. Equal anchors make a fixed-size rectangle; anchors
+   `(0,0)` and `(1,1)` with zero offsets stretch to fill the parent.
+3. Add **UI Image**, **UI Text** or **UI Button** after Rect Transform.
+   Images accept WIC-readable files (including PNG/JPEG/BMP); an empty path
+   draws a solid tinted rectangle. Text is UTF-8 and uses an installed font
+   family with Unicode shaping, wrapping, clipping and Left/Center/Right
+   alignment. Buttons provide normal, hover and pressed colors.
+   When Image and Button share an object, the button state modulates the image
+   tint instead of drawing an opaque image over the interaction colors.
+
+Canvases scale uniformly and center within the Game image/client area, preserving
+the reference aspect ratio. Drawing and hit testing are clipped to the Canvas.
+Parent RectTransforms provide nested layout; nested Canvases have independent
+reference sizes/order. Higher Sort Order and later sibling drawing win.
+UI draws over scene geometry before editor ImGui or Runtime presentation.
+Images and text layouts are cached; stale entries are released after 120 UI
+frames. Layouts, styles and resource paths persist in scenes/prefabs and Play.
+
+The Windows UI backend uses Direct2D/DirectWrite through D3D11On12. Some Windows
+SDK versions emit debug-layer diagnostic 916 when probing a native DX12
+resource for D3D11 sharing metadata. This is the interop metadata inquiry, not a
+render-target state/lifetime violation. Native image-effect pipelines can also
+report diagnostic 680 for their intentionally unbound optional depth/stencil
+view. The engine does not suppress either diagnostic.
+
+Set a button's **Click Event** name and register its handler from game code:
+
+```cpp
+Engine::RuntimeUI::instance().registerClickEvent("StartGame",
+    [](Engine::GameObject& runtimeButton)
+    {
+        runtimeButton.setName("Started");
+    });
+```
+
+Register each name once; unregister it when its owning game system is disposed.
+Handlers receive the runtime object, never the editing original. Closures must
+not retain pointers to editing objects or to objects destroyed on Stop.
+Handlers run on GameUpdate. Post main-thread-only session/editor operations via
+`MainThreadDispatcher::post` rather than executing them inside a click callback.
+Callbacks themselves are not serialized or cloned. An unregistered nonempty
+event is logged when clicked. A click requires press and release inside the
+same enabled, interactable button. Disabled topmost buttons block lower buttons.
+Losing Game view/window focus, Pause or Stop cancels pointer capture; editing
+and paused frames never dispatch clicks. Keyboard/gamepad navigation,
+world-space UI and general-purpose layout widgets are not provided.
+
+# WAV audio
+
+Add **Audio Source** to an emitter GameObject, set **WAV Path**, Volume, Pitch,
+Loop and Play On Awake. Paths are UTF-8 in saved configuration; relative paths
+are resolved from the application's working directory. WAV files support mono
+or stereo PCM (8/16/24/32-bit) and 32-bit IEEE float, 8-192 kHz, up to 512 MiB.
+RIFF chunks and WAVEFORMATEXTENSIBLE metadata are validated before playback.
+Compressed audio formats and streaming are not provided.
+
+Enable **3D Spatial** for a mono clip and add exactly one enabled
+**Audio Listener** across the active/persistent scenes (usually on the camera).
+Listener local +Z/+Y define forward/up. X3DAudio applies speaker panning and
+doppler; Min/Max Distance control attenuation and silence beyond the maximum.
+Without a listener spatial voices are explicitly logged and muted; with multiple
+listeners the first is used and the configuration error is logged.
+
+The default XAudio2 output device opens on first playback, not for `--help`,
+scene loading or a silent editor. Output/voice failures are logged, and device
+callbacks stop affected gameplay mixing rather than leaving silent queued
+voices indefinitely. A subsequent explicit play can reopen output.
+`AudioSourceComponent::play`, `pause`, `stop` and `isPlaying` are available to
+game code. `isPlaying` means buffers remain queued, including paused playback;
+`AudioSystem::playbackSeconds` returns consumed sample time, including loops.
+Changing a clip, loop or spatial mode stops its voice; call play to restart.
+
+Editing never starts voices. Play On Awake starts when the runtime component
+is enabled. Pause freezes all mixing and preserves sample cursors; Step may
+initialize a source but never advances audio while paused. Resume continues
+playback. Stop, component disable/removal and shutdown destroy voices. Play
+copies share immutable cached WAV data but never share mutable voices.

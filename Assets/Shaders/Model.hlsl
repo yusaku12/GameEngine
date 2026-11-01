@@ -57,6 +57,24 @@ Texture2D<float4> metallicRoughnessTexture : register(t2);
 Texture2D<float4> ambientOcclusionTexture : register(t3);
 Texture2D<float4> emissiveTexture : register(t4);
 SamplerState linearSampler : register(s0);
+Texture2D<float> shadowTexture : register(t6);
+SamplerComparisonState shadowSampler : register(s1);
+
+struct SceneLight
+{
+    float4 positionKind;
+    float4 colorRange;
+    float4 directionInner;
+    float4 parameters;
+};
+cbuffer LightingConstants : register(b4)
+{
+    row_major float4x4 shadowViewProjection;
+    float4 cameraPosition;
+    float4 shadowOptions;
+    float4 environment;
+    SceneLight lights[32];
+};
 
 struct VertexInput
 {
@@ -78,6 +96,7 @@ struct PixelInput
     float3 normal : NORMAL;
     float3 tangent : TANGENT;
     float3 bitangent : BITANGENT;
+    float3 worldPosition : TEXCOORD1;
 };
 
 row_major float3x3 getNormalMatrix(row_major float3x3 transform)
@@ -123,6 +142,7 @@ PixelInput vsMain(VertexInput input, uint instanceID : SV_InstanceID)
         localBitangent = normalize(mul(localBitangent, (float3x3)skinMatrix));
     }
     output.position = mul(localPosition, object.worldViewProjection);
+    output.worldPosition = mul(localPosition, object.worldMatrix).xyz;
     const float4 resolvedBaseColor = (propertyOverrideMask & PROPERTY_BASE_COLOR) != 0
         ? propertyBaseColor : baseColor;
     output.color = input.color * resolvedBaseColor;
@@ -133,6 +153,23 @@ PixelInput vsMain(VertexInput input, uint instanceID : SV_InstanceID)
     output.tangent = normalize(mul(localTangent, worldMatrix));
     output.bitangent = normalize(mul(localBitangent, worldMatrix));
     return output;
+}
+
+float shadowVisibility(float3 position, float3 normal)
+{
+    if (shadowOptions.x == 0)
+        return 1;
+    float4 projected = mul(float4(position + normal * shadowOptions.z, 1), shadowViewProjection);
+    float3 coordinate = projected.xyz / projected.w;
+    float2 uv = coordinate.xy * float2(0.5f, -0.5f) + 0.5f;
+    if (coordinate.z <= 0 || coordinate.z >= 1 || any(uv < 0) || any(uv > 1))
+        return 1;
+    float visibility = 0;
+    [unroll] for (int y = -1; y <= 1; ++y)
+        [unroll] for (int x = -1; x <= 1; ++x)
+            visibility += shadowTexture.SampleCmpLevelZero(shadowSampler,
+                uv + float2(x, y) * shadowOptions.w, coordinate.z - shadowOptions.y);
+    return visibility / 9;
 }
 
 float4 psMain(PixelInput input) : SV_TARGET
@@ -152,16 +189,47 @@ float4 psMain(PixelInput input) : SV_TARGET
     tangentNormal.xy *= resolvedNormalScale;
     const float3x3 tangentBasis = float3x3(normalize(input.tangent), normalize(input.bitangent), normalize(input.normal));
     const float3 normal = normalize(mul(tangentNormal, tangentBasis));
-    const float3 lightDirection = normalize(float3(0.4f, 0.8f, -0.3f));
-    const float diffuseLight = saturate(dot(normal, lightDirection));
     const float aoSample = ambientOcclusionTexture.Sample(linearSampler, input.texCoord).r;
     const float occlusion = lerp(1.0f, aoSample, saturate(resolvedOcclusionStrength));
-    const float3 diffuse = albedo.rgb * (1.0f - metallicValue) * (0.15f + 0.85f * diffuseLight);
-    const float3 specularColor = lerp(0.04f.xxx, albedo.rgb, metallicValue);
-    const float3 specular = specularColor * diffuseLight * (1.0f - roughnessValue * 0.75f);
+    float3 color = albedo.rgb * environment.rgb * occlusion;
+    float3 viewDirection = cameraPosition.xyz - input.worldPosition;
+    viewDirection /= max(length(viewDirection), 0.0001f);
+    const float3 f0 = lerp(0.04f.xxx, albedo.rgb, metallicValue);
+    const float roughnessSquared = pow(max(roughnessValue, 0.04f), 4);
+    for (uint index = 0; index < min((uint)environment.w, 32u); ++index)
+    {
+        const SceneLight light = lights[index];
+        float3 direction = -light.directionInner.xyz;
+        float attenuation = 1;
+        if (light.positionKind.w != 0)
+        {
+            float3 offset = light.positionKind.xyz - input.worldPosition;
+            float distance = length(offset);
+            direction = offset / max(distance, 0.0001f);
+            float fade = saturate(1 - pow(distance / light.colorRange.w, 4));
+            attenuation = fade * fade / max(distance * distance, 1);
+            if (light.positionKind.w == 2)
+                attenuation *= smoothstep(light.parameters.x, light.directionInner.w,
+                    dot(-direction, light.directionInner.xyz));
+        }
+        float nDotL = saturate(dot(normal, direction));
+        float nDotV = max(saturate(dot(normal, viewDirection)), 0.001f);
+        float3 halfVector = direction + viewDirection;
+        halfVector /= max(length(halfVector), 0.0001f);
+        float nDotH = saturate(dot(normal, halfVector));
+        float denominator = nDotH * nDotH * (roughnessSquared - 1) + 1;
+        float distribution = roughnessSquared / max(3.14159265f * denominator * denominator, 0.00001f);
+        float k = pow(roughnessValue + 1, 2) / 8;
+        float geometry = nDotV / (nDotV * (1 - k) + k) * nDotL / max(nDotL * (1 - k) + k, 0.0001f);
+        float3 fresnel = f0 + (1 - f0) * pow(1 - saturate(dot(viewDirection, halfVector)), 5);
+        float3 specular = distribution * geometry * fresnel / max(4 * nDotV * nDotL, 0.001f);
+        float3 diffuse = (1 - fresnel) * (1 - metallicValue) * albedo.rgb / 3.14159265f;
+        float visibility = light.parameters.y != 0 ? shadowVisibility(input.worldPosition, normal) : 1;
+        color += (diffuse + specular) * light.colorRange.rgb * nDotL * attenuation * visibility;
+    }
     const float3 emissive = emissiveTexture.Sample(linearSampler, input.texCoord).rgb
         * resolvedEmissiveColor * resolvedEmissiveIntensity;
-    return float4((diffuse + specular) * occlusion + emissive, albedo.a);
+    return float4(color + emissive, albedo.a);
 }
 
 float4 psAlphaTest(PixelInput input) : SV_TARGET
@@ -170,7 +238,7 @@ float4 psAlphaTest(PixelInput input) : SV_TARGET
     const float resolvedAlphaCutoff = (propertyOverrideMask & PROPERTY_ALPHA_CUTOFF) != 0
         ? propertyAlphaCutoff : alphaCutoff;
     clip(color.a - resolvedAlphaCutoff);
-    return color;
+    return psMain(input);
 }
 
 void psDepthAlphaTest(PixelInput input)

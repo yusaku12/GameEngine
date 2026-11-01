@@ -1,4 +1,5 @@
 ﻿#include "Pch.h"
+#include "UI\RuntimeUI.h"
 #include "Graphics\DirectX12\Renderer.h"
 #include "Assets\Material\MaterialManager.h"
 #include "Graphics\Camera\CameraRenderSubmission.h"
@@ -119,6 +120,17 @@ namespace Engine
 
         for (std::uint32_t frame = 0; frame < FRAME_COUNT; ++frame)
         {
+            if (!m_presentationLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT))
+            {
+                rollbackInitialization();
+                return false;
+            }
+            if (!m_lightingBuffers[frame].initialize(*m_device.get(), m_directFence,
+                (sizeof(LightingConstants) + 255u) & ~std::size_t{255}))
+            {
+                rollbackInitialization();
+                return false;
+            }
             if (!m_commandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT)
                 || !m_finishCommandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT)
                 || !m_queryCommandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT))
@@ -128,6 +140,11 @@ namespace Engine
             }
         }
 
+        if (!m_runtimeUi.initialize(*m_device.get(), *m_directQueue.get()))
+        {
+            rollbackInitialization();
+            return false;
+        }
         if (mode == ExecutionMode::Editor)
         {
             m_imguiSystem = std::make_unique<ImGuiSystem>();
@@ -232,6 +249,9 @@ namespace Engine
     {
         if (m_lastSubmittedFenceValue != 0 && !m_directFence.waitOnCpu(m_lastSubmittedFenceValue))
             return false;
+        m_runtimeUi.finalize();
+        for (auto& list : m_presentationLists)
+            list.finalize();
 
         if (m_imguiSystem != nullptr)
         {
@@ -245,6 +265,14 @@ namespace Engine
             return false;
 
         m_depthBuffer.finalize();
+        for (auto& buffer : m_lightingBuffers)
+            if (!buffer.finalize())
+                return false;
+        if (m_shadowSrv)
+        {
+            TextureManager::instance().getDescriptorHeap().release(m_shadowSrv->cpu.index);
+            m_shadowSrv.reset();
+        }
         m_gameRenderTarget.finalize();
         m_shadowMap.finalize();
         m_gameRtvHeap.finalize();
@@ -304,6 +332,7 @@ namespace Engine
             recorder.finalize();
         m_preparedModelDraws.clear();
         m_executionLists.clear();
+        m_queryListRecorded = false;
         m_renderFailed = false;
 
         m_frameFenceValues.fill(0);
@@ -408,6 +437,11 @@ namespace Engine
             m_psoRebuildPending = false;
         }
 
+        m_lighting = LightingFrame::instance().forCamera(m_cameraPosition, m_cameraForward);
+        if (hasCameraView && LightingFrame::instance().hasShadow())
+            m_shadowViewProjection = m_lighting.shadowViewProjection;
+        else
+            m_shadowViewProjection.reset();
         std::vector<ModelHandle> usedModels;
         std::vector<MaterialHandle> usedMaterials;
         buildModelRenderQueue(usedModels, usedMaterials);
@@ -473,6 +507,8 @@ namespace Engine
         }
 
         DX12CommandList& commandList = m_commandLists[frameIndex];
+        if (!m_lightingBuffers[frameIndex].write(std::as_bytes(std::span(&m_lighting, 1))))
+            return false;
         DX12Resource* const backBuffer = m_swapChain.getCurrentBackBuffer();
         if (backBuffer == nullptr || !commandList.begin(m_directFence)
             || !backBuffer->transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET)
@@ -520,30 +556,60 @@ namespace Engine
         if (!DebugPrimitive::instance().render(finishList, frameIndex, m_viewProjection, hasCameraView))
             return false;
 
+        const bool hasUi = !RuntimeUI::instance().draws().empty();
+        DX12CommandList* presentation = &finishList;
+        if (hasUi)
+        {
+            if (!finishList.close())
+                return false;
+            m_executionLists.push_back(finishList.getForExecution());
+            if (!m_directQueue.execute(m_executionLists))
+                return false;
+            const auto sceneFence = m_directFence.signal(*m_directQueue.get());
+            if (sceneFence == 0)
+                return false;
+            m_frameFenceValues[frameIndex] = sceneFence;
+            m_lastSubmittedFenceValue = sceneFence;
+            if (!markSceneSubmitted(frameIndex, sceneFence, usedModels, usedMaterials))
+                return false;
+            const bool uiSucceeded = m_runtimeUi.render(*m_gameRenderTarget.get(), RuntimeUI::instance().draws());
+            const auto uiFence = m_directFence.signal(*m_directQueue.get());
+            if (uiFence == 0)
+                return false;
+            m_frameFenceValues[frameIndex] = uiFence;
+            m_lastSubmittedFenceValue = uiFence;
+            if (!uiSucceeded)
+                return false;
+            presentation = &m_presentationLists[frameIndex];
+            if (!presentation->begin(m_directFence))
+                return false;
+            nativeCommandList = presentation->getForRecording();
+            m_executionLists.clear();
+        }
         if (m_mode == ExecutionMode::Runtime)
         {
-            if (!m_gameRenderTarget.transition(finishList, D3D12_RESOURCE_STATE_COPY_SOURCE)
-                || !backBuffer->transition(finishList, D3D12_RESOURCE_STATE_COPY_DEST))
+            if (!m_gameRenderTarget.transition(*presentation, D3D12_RESOURCE_STATE_COPY_SOURCE)
+                || !backBuffer->transition(*presentation, D3D12_RESOURCE_STATE_COPY_DEST))
                 return false;
             nativeCommandList->CopyResource(backBuffer->get(), m_gameRenderTarget.get());
-            if (!m_gameRenderTarget.transition(finishList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
+            if (!m_gameRenderTarget.transition(*presentation, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
                 return false;
         }
         else
         {
-            if (!m_gameRenderTarget.transition(finishList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
+            if (!m_gameRenderTarget.transition(*presentation, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
                 return false;
             const D3D12_CPU_DESCRIPTOR_HANDLE backBufferView = m_swapChain.getCurrentRtv().native;
             nativeCommandList->OMSetRenderTargets(1, &backBufferView, FALSE, nullptr);
             m_imguiSystem->render(*nativeCommandList);
         }
 
-        if (!backBuffer->transition(finishList, D3D12_RESOURCE_STATE_PRESENT)
-            || !m_gpuProfiler.endFrame(frameIndex, finishList)
-            || !finishList.close())
+        if (!backBuffer->transition(*presentation, D3D12_RESOURCE_STATE_PRESENT)
+            || !m_gpuProfiler.endFrame(frameIndex, *presentation)
+            || !presentation->close())
             return false;
 
-        ID3D12CommandList* const nativeExecutionList = finishList.getForExecution();
+        ID3D12CommandList* const nativeExecutionList = presentation->getForExecution();
         if (nativeExecutionList == nullptr)
             return false;
 
@@ -568,11 +634,22 @@ namespace Engine
         // Keep shutdown safe even if resource bookkeeping below fails.
         m_frameFenceValues[frameIndex] = submittedFenceValue;
         m_lastSubmittedFenceValue = submittedFenceValue;
-        if (!commandList.markSubmitted(submittedFenceValue)
-            || !finishList.markSubmitted(submittedFenceValue)
+        if (!presentation->markSubmitted(submittedFenceValue)
             || !m_gpuProfiler.markSubmitted(frameIndex, submittedFenceValue)
+            || (!hasUi && !markSceneSubmitted(frameIndex, submittedFenceValue, usedModels, usedMaterials)))
+            return false;
+        m_statistics = m_frameStatistics;
+        return presentSucceeded;
+    }
+
+    bool DX12Renderer::markSceneSubmitted(const std::uint32_t frameIndex, const std::uint64_t submittedFenceValue,
+        const std::span<const ModelHandle> usedModels, const std::span<const MaterialHandle> usedMaterials)
+    {
+        if (!m_commandLists[frameIndex].markSubmitted(submittedFenceValue)
+            || !m_lightingBuffers[frameIndex].markUsed(submittedFenceValue)
+            || !m_finishCommandLists[frameIndex].markSubmitted(submittedFenceValue)
             || !m_modelCommandRecorders[frameIndex].markSubmitted(submittedFenceValue)
-            || (m_frameStatistics.occlusionQueryCount != 0
+            || (m_queryListRecorded
                 && !m_queryCommandLists[frameIndex].markSubmitted(submittedFenceValue)))
             return false;
         if (!DebugPrimitive::instance().markFrameUsed(frameIndex, submittedFenceValue))
@@ -598,8 +675,7 @@ namespace Engine
         if (!m_occlusionQueries[frameIndex].markSubmitted(submittedFenceValue))
             return false;
 
-        m_statistics = m_frameStatistics;
-        return presentSucceeded;
+        return true;
     }
 
     bool DX12Renderer::resize(const std::uint32_t width, const std::uint32_t height)
@@ -633,6 +709,7 @@ namespace Engine
         if (m_device.get() == nullptr || m_gameRtvHeap.get() == nullptr || width == 0 || height == 0)
             return false;
 
+        m_runtimeUi.releaseTarget();
         m_gameRenderTarget.finalize();
         D3D12_RESOURCE_DESC description{};
         description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -735,7 +812,7 @@ namespace Engine
         description.Height = SHADOW_MAP_SIZE;
         description.DepthOrArraySize = 1;
         description.MipLevels = 1;
-        description.Format = DXGI_FORMAT_D32_FLOAT;
+        description.Format = DXGI_FORMAT_R32_TYPELESS;
         description.SampleDesc = { 1, 0 };
         description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
         description.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
@@ -757,7 +834,20 @@ namespace Engine
                 return false;
             m_shadowDepthStencilView = allocation->cpu;
         }
-        m_device.get()->CreateDepthStencilView(m_shadowMap.get(), nullptr, m_shadowDepthStencilView.native);
+        D3D12_DEPTH_STENCIL_VIEW_DESC dsv{};
+        dsv.Format = DXGI_FORMAT_D32_FLOAT;
+        dsv.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        m_device.get()->CreateDepthStencilView(m_shadowMap.get(), &dsv, m_shadowDepthStencilView.native);
+        if (!m_shadowSrv)
+            m_shadowSrv = TextureManager::instance().getDescriptorHeap().allocate();
+        if (!m_shadowSrv || !m_shadowSrv->gpu)
+            return false;
+        D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+        srv.Format = DXGI_FORMAT_R32_FLOAT;
+        srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srv.Texture2D.MipLevels = 1;
+        m_device.get()->CreateShaderResourceView(m_shadowMap.get(), &srv, m_shadowSrv->cpu.native);
         return true;
     }
 
@@ -821,10 +911,23 @@ namespace Engine
         materialProperties.Constants.RegisterSpace = 0;
         materialProperties.Constants.Num32BitValues = 17;
         materialProperties.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        D3D12_ROOT_PARAMETER lighting{};
+        lighting.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        lighting.Descriptor.ShaderRegister = 4;
+        lighting.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        D3D12_DESCRIPTOR_RANGE shadowRange{};
+        shadowRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        shadowRange.NumDescriptors = 1;
+        shadowRange.BaseShaderRegister = 6;
+        shadowRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        D3D12_ROOT_PARAMETER shadowTable{};
+        shadowTable.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        shadowTable.DescriptorTable = { 1, &shadowRange };
+        shadowTable.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         const std::array rootParameters = {
             objectConstants, bonePalette, materialConstants,
             textureTables[0], textureTables[1], textureTables[2], textureTables[3], textureTables[4],
-            materialProperties,
+            materialProperties, lighting, shadowTable,
         };
         const std::array staticSamplers = {
             D3D12_STATIC_SAMPLER_DESC{
@@ -840,6 +943,18 @@ namespace Engine
                 .MaxLOD = D3D12_FLOAT32_MAX,
                 .ShaderRegister = 0,
                 .RegisterSpace = 0,
+                .ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL,
+            },
+            D3D12_STATIC_SAMPLER_DESC{
+                .Filter = D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT,
+                .AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+                .AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+                .AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+                .MaxAnisotropy = 1,
+                .ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL,
+                .BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE,
+                .MaxLOD = D3D12_FLOAT32_MAX,
+                .ShaderRegister = 1,
                 .ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL,
             },
         };
@@ -1042,6 +1157,7 @@ namespace Engine
     bool DX12Renderer::renderModelQueue(DX12CommandList& commandList, const std::uint32_t frameIndex)
     {
         m_executionLists.clear();
+        m_queryListRecorded = false;
         {
             FrameProfiler::ScopedCpuTimer profile(FrameProfileMetric::DrawPreparation);
             if (!prepareModelDraws(frameIndex))
@@ -1049,15 +1165,21 @@ namespace Engine
         }
         const bool hasShadow = std::any_of(m_preparedModelDraws.begin(), m_preparedModelDraws.end(),
             [](const DX12PreparedModelDraw& draw) { return draw.item->pass == RenderPassType::Shadow; });
-        if (hasShadow)
+        if (m_shadowViewProjection.has_value())
+        {
+            if (!m_shadowMap.transition(commandList, D3D12_RESOURCE_STATE_DEPTH_WRITE))
+                return false;
             commandList.getForRecording()->ClearDepthStencilView(
                 m_shadowDepthStencilView.native, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+        }
         if (!commandList.close())
             return false;
         m_executionLists.push_back(commandList.getForExecution());
 
         DX12ModelRecordingState state{
             .textureHeap = TextureManager::instance().getDescriptorHeap().get(),
+            .lighting = m_lightingBuffers[frameIndex].getGpuVirtualAddress(),
+            .shadowTexture = m_shadowSrv->gpu->native,
             .colorTarget = m_gameRenderTargetView.native,
             .depthTarget = m_depthStencilView.native,
             .shadowTarget = m_shadowDepthStencilView.native,
@@ -1080,21 +1202,24 @@ namespace Engine
         const bool hasColor = std::any_of(m_preparedModelDraws.begin(), m_preparedModelDraws.end(),
             [](const DX12PreparedModelDraw& draw) { return draw.item->pass >= RenderPassType::Opaque; });
         DX12CommandList& queryList = m_queryCommandLists[frameIndex];
-        if (hasColor && m_enableOcclusionCulling)
+        if (hasColor || hasShadow)
         {
+            m_queryListRecorded = true;
             if (!queryList.begin(m_directFence))
+                return false;
+            if (!m_shadowMap.transition(queryList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
                 return false;
             ID3D12GraphicsCommandList& native = *queryList.getForRecording();
             native.OMSetRenderTargets(0, nullptr, FALSE, &state.depthTarget);
             native.RSSetViewports(1, &state.viewport);
             native.RSSetScissorRects(1, &state.scissor);
             DX12OcclusionQueries& queries = m_occlusionQueries[frameIndex];
-            if (!queries.record(queryList, *m_device.get(), m_directFence, m_occlusionPipeline,
+            if ((m_enableOcclusionCulling && hasColor && !queries.record(queryList, *m_device.get(), m_directFence, m_occlusionPipeline,
                 m_modelRenderQueue, m_viewProjection, Vector2(state.viewport.Width, state.viewport.Height),
-                m_enableModelInstancing) || !queryList.close())
+                m_enableModelInstancing)) || !queryList.close())
                 return false;
-            m_frameStatistics.occlusionQueryCount = queries.getQueryCount();
-            if (queries.getQueryCount() != 0)
+            m_frameStatistics.occlusionQueryCount = m_enableOcclusionCulling && hasColor ? queries.getQueryCount() : 0;
+            if (m_frameStatistics.occlusionQueryCount != 0)
                 state.queries = &queries;
         }
 
@@ -1105,12 +1230,12 @@ namespace Engine
                 state, m_enableParallelModelRecording))
                 return false;
         }
-        bool queryInserted = state.queries == nullptr;
+        bool queryInserted = !hasColor && !hasShadow;
         const auto ranges = recorder.getRanges();
         for (std::size_t index = 0; index < ranges.size(); ++index)
         {
             const RenderPassType pass = m_preparedModelDraws[ranges[index].first].item->pass;
-            if (!queryInserted && pass >= RenderPassType::Opaque)
+            if (!queryInserted && pass > RenderPassType::Shadow)
             {
                 m_executionLists.push_back(queryList.getForExecution());
                 queryInserted = true;
@@ -1123,6 +1248,8 @@ namespace Engine
             }
             m_executionLists.push_back(native);
         }
+        if (!queryInserted)
+            m_executionLists.push_back(queryList.getForExecution());
         const auto& statistics = recorder.getStatistics();
         m_frameStatistics.drawCallCount = statistics.drawCallCount;
         m_frameStatistics.batchCount = statistics.drawCallCount;

@@ -20,6 +20,8 @@
 #include "Graphics\Renderer\ModelRenderSubmission.h"
 #include "Graphics\Renderer\RenderQueue.h"
 #include "Graphics\Material\MaterialGpuCache.h"
+#include "Graphics\Lighting\LightingFrame.h"
+#include "Graphics\UI\RuntimeUIRenderer.h"
 
 namespace Engine
 {
@@ -183,6 +185,9 @@ namespace Engine
 
         ExecutionMode m_mode = ExecutionMode::Editor;
         bool m_editorOverlayEnabled = true;
+        /** @brief Tracks every scene resource as soon as its GPU command lists are submitted. */
+        bool markSceneSubmitted(std::uint32_t frameIndex, std::uint64_t fenceValue,
+            std::span<const ModelHandle> models, std::span<const MaterialHandle> materials);
 
         /**
          * @brief 現在フレームの描画を構築してGPUへ提出する。
@@ -273,6 +278,12 @@ namespace Engine
         DX12CpuDescriptorHandle m_depthStencilView;                                                       //!< 深度バッファの DSV
         DX12Resource m_shadowMap;                                                                         //!< ShadowCaster pass用Depth Buffer
         DX12CpuDescriptorHandle m_shadowDepthStencilView;                                                 //!< Shadow MapのDSV
+        std::array<DX12UploadBuffer, FRAME_COUNT> m_lightingBuffers;
+        LightingConstants m_lighting;
+        std::optional<DX12DescriptorAllocation> m_shadowSrv;
+        bool m_queryListRecorded = false;
+        RuntimeUIRenderer m_runtimeUi;
+        std::array<DX12CommandList, FRAME_COUNT> m_presentationLists;
         ShaderManager m_shaderManager;                                                                    //!< Shader のロード・キャッシュ・Hot Reload 管理
         ShaderID m_modelVertexShaderID = 0;                                                               //!< Model頂点Shader ID
         ShaderID m_modelPixelShaderID = 0;                                                                //!< Model Pixel Shader ID

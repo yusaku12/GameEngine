@@ -8,6 +8,7 @@
 #include "Graphics\DirectX12\Renderer.h"
 #include "Physics\PhysicsSystem.h"
 #include "Core\System\GameSession.h"
+#include "UI\RuntimeUI.h"
 
 namespace Engine
 {
@@ -134,6 +135,22 @@ namespace Engine
 
     void Window::updateFrameInput()
     {
+        const auto size = m_renderer.getGameViewSize();
+        RuntimeUI::instance().setRenderSize(Vector2(static_cast<float>(size[0]), static_cast<float>(size[1])));
+        if (GameSession::instance().mode() == ExecutionMode::Runtime)
+        {
+            POINT origin{};
+            RECT client{};
+            if (!ClientToScreen(m_hwnd, &origin) || !GetClientRect(m_hwnd, &client))
+            {
+                LOG_ERROR("[UI] Cannot resolve Runtime client input area.");
+                m_frameFailed = true;
+                return;
+            }
+            if (client.right > 0 && client.bottom > 0)
+                RuntimeUI::instance().setSurface(Vector2(static_cast<float>(origin.x), static_cast<float>(origin.y)),
+                    Vector2(static_cast<float>(client.right), static_cast<float>(client.bottom)), m_windowFocused);
+        }
         GameSession::instance().beginFrame(m_windowFocused);
     }
 

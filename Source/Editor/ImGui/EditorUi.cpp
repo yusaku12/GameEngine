@@ -17,6 +17,7 @@
 #include "Physics\PhysicsSystem.h"
 #include "Physics\PhysicsWorld.h"
 #include "Core\System\GameSession.h"
+#include "UI\RuntimeUI.h"
 #include <imgui.h>
 #include <ImGuizmo.h>
 
@@ -193,8 +194,10 @@ namespace Engine
 
     void EditorUi::drawGameView(const std::uint64_t textureId, std::uint32_t& width, std::uint32_t& height)
     {
+        RuntimeUI::instance().setSurface(Vector2::Zero, Vector2::One, false);
         if (!ImGui::Begin("Game"))
         {
+            RuntimeUI::instance().setSurface(Vector2::Zero, Vector2::One, false);
             GameSession::instance().setGameViewFocused(false);
             ImGui::End();
             return;
@@ -222,6 +225,9 @@ namespace Engine
             height = static_cast<std::uint32_t>(std::clamp(
                 std::lround(availableSize.y * framebufferScale.y), 1l, 16384l));
             ImGui::Image(static_cast<ImTextureID>(textureId), availableSize);
+            RuntimeUI::instance().setSurface(Vector2(cursorPosition.x, cursorPosition.y),
+                Vector2(availableSize.x, availableSize.y),
+                ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::GetIO().WantTextInput);
             if (!GameSession::instance().isPlaying())
                 drawSelectedObjectGizmo(cursorPosition, availableSize);
         }

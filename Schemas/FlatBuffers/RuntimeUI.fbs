@@ -1,0 +1,16 @@
+include "Common.fbs";
+namespace Engine.Serialization;
+table CanvasSettings { reference_size:Vec2; sort_order:int; }
+table RectSettings { anchor_min:Vec2; anchor_max:Vec2; offset_min:Vec2; offset_max:Vec2; }
+table ImageSettings { path:string; color:Vec4; }
+table TextSettings { text:string; font:string; size:float = 24; color:Vec4; alignment:ubyte; }
+table ButtonSettings { interactable:bool = true; event:string; normal:Vec4; hovered:Vec4; pressed:Vec4; }
+table RuntimeUIPayload {
+    canvas:CanvasSettings;
+    rect:RectSettings;
+    image:ImageSettings;
+    text:TextSettings;
+    button:ButtonSettings;
+}
+root_type RuntimeUIPayload;
+file_identifier "RUIP";

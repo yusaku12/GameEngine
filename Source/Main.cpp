@@ -9,6 +9,8 @@
 #include "Core\System\GameSession.h"
 #include "Core\System\StartupOptions.h"
 #include <shellapi.h>
+#include "Audio\AudioSystem.h"
+#include "UI\RuntimeUI.h"
 #pragma comment(lib, "Shell32.lib")
 
 namespace Engine
@@ -89,6 +91,8 @@ namespace Engine
      */
     static void finalizeCore()
     {
+        RuntimeUI::instance().shutdown();
+        AudioSystem::instance().shutdown();
         // ジョブシステムの終了処理を行うことで、ジョブの完了待ち中に発生したエラーをログに出力する
         JobSystem::instance().finalize();
 

@@ -33,6 +33,8 @@ namespace Engine
     struct DX12ModelRecordingState
     {
         ID3D12DescriptorHeap* textureHeap = nullptr;   //!< 描画対象の RenderItem のテクスチャ用ディスクリプタヒープへの非所有参照
+        D3D12_GPU_VIRTUAL_ADDRESS lighting = 0;         //!< Frame-local lighting constant buffer.
+        D3D12_GPU_DESCRIPTOR_HANDLE shadowTexture{};   //!< Directional shadow-map SRV.
         D3D12_CPU_DESCRIPTOR_HANDLE colorTarget{};     //!< 描画対象の RenderItem のカラーレンダーターゲットへの CPU ディスクリプタハンドル
         D3D12_CPU_DESCRIPTOR_HANDLE depthTarget{};     //!< 描画対象の RenderItem の深度レンダーターゲットへの CPU ディスクリプタハンドル
         D3D12_CPU_DESCRIPTOR_HANDLE shadowTarget{};    //!< 描画対象の RenderItem のシャドウレンダーターゲットへの CPU ディスクリプタハンドル

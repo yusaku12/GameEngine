@@ -132,6 +132,8 @@ namespace Engine
                 if (!draw.pipeline->bind(commandList))
                     return false;
                 pipeline = draw.pipeline;
+                native.SetGraphicsRootConstantBufferView(9, state.lighting);
+                native.SetGraphicsRootDescriptorTable(10, state.shadowTexture);
                 material = 0;
                 bones = 0;
                 ++context.statistics.psoSwitchCount;

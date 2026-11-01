@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <ClCompile Include="Source\Core\GameObject\Component\LightComponent.cpp" />
+    <ClCompile Include="Source\Graphics\Lighting\LightingFrame.cpp" />
+    <ClCompile Include="Source\Audio\AudioSystem.cpp" />
+    <ClCompile Include="Source\Audio\AudioSourceComponent.cpp" />
+    <ClCompile Include="Source\UI\RuntimeUI.cpp" />
+    <ClCompile Include="Source\UI\RuntimeUIComponents.cpp" />
+    <ClCompile Include="Source\Graphics\UI\RuntimeUIRenderer.cpp" />
     <ClCompile Include="Source\Core\System\StartupOptions.cpp" />
     <ClCompile Include="Source\Core\System\GameSession.cpp" />
     <ClCompile Include="Source\Core\Scene\SceneClone.cpp" />
@@ -291,5 +298,22 @@
     <None Include="Schemas\FlatBuffers\Scene.fbs" />
     <None Include="Schemas\FlatBuffers\ModelRendererComponent.fbs" />
     <None Include="Schemas\FlatBuffers\PhysicsComponent.fbs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Source\Core\GameObject\Component\LightComponent.h" />
+    <ClInclude Include="Source\Graphics\Lighting\LightingFrame.h" />
+    <ClInclude Include="Source\Audio\AudioSystem.h" />
+    <ClInclude Include="Source\Audio\AudioSourceComponent.h" />
+    <ClInclude Include="Source\UI\RuntimeUI.h" />
+    <ClInclude Include="Source\UI\RuntimeUIComponents.h" />
+    <ClInclude Include="Source\Graphics\UI\RuntimeUIRenderer.h" />
+    <ClInclude Include="Generated\FlatBuffers\LightComponent_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\AudioComponent_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\RuntimeUI_generated.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Schemas\FlatBuffers\LightComponent.fbs" />
+    <None Include="Schemas\FlatBuffers\AudioComponent.fbs" />
+    <None Include="Schemas\FlatBuffers\RuntimeUI.fbs" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,16 @@
+include "Common.fbs";
+namespace Engine.Serialization;
+table LightComponentPayload {
+    kind:ubyte;
+    color:Vec3;
+    intensity:float = 1;
+    range:float = 10;
+    inner_angle:float = 25;
+    outer_angle:float = 40;
+    casts_shadow:bool = false;
+    shadow_distance:float = 50;
+    shadow_bias:float = 0.001;
+    normal_bias:float = 0.02;
+}
+root_type LightComponentPayload;
+file_identifier "LGHT";
