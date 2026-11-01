@@ -447,7 +447,7 @@ namespace Engine
         m_modelRenderersToSubmit.clear();
     }
 
-    void GameObjectManager::submitRenderData() noexcept
+    void GameObjectManager::submitRenderData(const float animationDeltaTime) noexcept
     {
         if (isBusy())
         {
@@ -455,6 +455,20 @@ namespace Engine
             return;
         }
         const ScopedFlag updateScope(m_isUpdatingLifecycle);
+        if (animationDeltaTime > 0.0f)
+        {
+            for (const auto& object : m_objects)
+            {
+                if (!object->isActiveInHierarchy() || object->m_destroyRequested)
+                    continue;
+                if (auto* animator = object->getComponent<AnimatorComponent>();
+                    animator != nullptr && animator->isEnabled())
+                {
+                    animator->preparePendingUpdate();
+                    animator->evaluatePendingUpdate(animationDeltaTime);
+                }
+            }
+        }
         for (const auto& object : m_objects)
         {
             const bool active = object->isActiveInHierarchy() && !object->m_destroyRequested;

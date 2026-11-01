@@ -257,9 +257,11 @@ namespace Engine
                 }
             }
             CameraManager::instance().shutdown();
+            const float animationDeltaTime = m_state == PlayState::Editing
+                ? time.unscaledDeltaTime() : 0.0f;
             if (Scene* scene = manager.getActiveScene())
-                scene->submitRenderData();
-            manager.getPersistentScene()->submitRenderData();
+                scene->submitRenderData(animationDeltaTime);
+            manager.getPersistentScene()->submitRenderData(animationDeltaTime);
             manager.processDestroyQueue();
         }
         LightingFrame::instance().capture(manager.getActiveScene(), *manager.getPersistentScene());

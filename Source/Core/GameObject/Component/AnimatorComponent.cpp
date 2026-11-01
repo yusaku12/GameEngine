@@ -445,6 +445,11 @@ namespace Engine
 
     void AnimatorComponent::onUpdate([[maybe_unused]] const float deltaTime)
     {
+        preparePendingUpdate();
+    }
+
+    void AnimatorComponent::preparePendingUpdate()
+    {
         m_evaluationPending = false;
 
         if (!m_restorePending && !m_skeleton.isValid() && !m_clip.isValid() && !m_controller.isValid())

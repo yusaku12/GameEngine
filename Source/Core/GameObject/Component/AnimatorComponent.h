@@ -187,6 +187,8 @@ namespace Engine
 
         friend class GameObjectManager;
 
+        void preparePendingUpdate();
+
         /**
          * @brief 再生中のAnimator Instanceに適用するために保持されるパラメータ値。
          */

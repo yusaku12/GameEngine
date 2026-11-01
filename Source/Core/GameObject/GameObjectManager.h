@@ -98,10 +98,12 @@ namespace Engine
 
         /**
          * @brief Submits current camera/model data while editing or paused.
-         * @details Does not invoke Awake, Start, Update, LateUpdate or animation evaluation.
+         * @details Does not invoke gameplay lifecycle callbacks.
+         * @param animationDeltaTime Positive unscaled seconds to preview Animators while editing;
+         * zero retains the current pose while game execution is paused.
          * @thread_safety Call between frame jobs; no concurrent structural changes.
          */
-        void submitRenderData() noexcept;
+        void submitRenderData(float animationDeltaTime = 0.0f) noexcept;
 
         /**
          * @brief 名前でGameObjectを検索する。

@@ -115,11 +115,17 @@ LateUpdate, then remains paused. **Stop** destroys runtime objects and restores
 the original editor scenes, persistent objects, camera and selection.
 Closing the editor during Play also disposes the isolated session.
 
+While editing, enabled Animators on active objects preview their animation using
+unscaled frame time without starting game Play. Animator Inspector Play/Pause,
+clip selection and speed control the preview. Both the active scene and persistent
+objects are previewed. Game Play/Pause/Step retains its existing simulation timing;
+pausing game Play does not advance the editor preview.
+
 Scene editing/saving and transform gizmos are disabled during Play. Click the
 **Game** view to give gameplay keyboard/mouse/gamepad input; selecting another
 panel or losing window focus clears transient input and stops vibration.
-Editor camera navigation runs only while editing. Editing does not execute
-Awake/Start/Update/FixedUpdate/LateUpdate or enable physics actors.
+Editor camera navigation runs only while editing. Animation preview does not execute
+gameplay Awake/Start/Update/FixedUpdate/LateUpdate callbacks or enable physics actors.
 
 Components copy configuration through `Component::copyConfigurationTo`.
 The default uses versioned payload serialization; override it for configuration

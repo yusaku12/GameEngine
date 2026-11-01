@@ -38,7 +38,7 @@ namespace Engine
         bool step() noexcept;
         /** @brief Prepares time and input at the main-thread frame boundary. */
         void beginFrame(bool windowFocused);
-        /** @brief Runs gameplay or submits unchanged scene data while editing/paused. */
+        /** @brief Runs gameplay, previews editor animation, or submits frozen data while paused. */
         void update();
         /** @brief Releases a Play session before SceneManager shutdown. */
         void shutdown() noexcept;
