@@ -20,7 +20,7 @@ namespace Engine
         MaterialPropertyBlock materialProperties;                       //!< Renderer単位の数値Parameter Override
         std::shared_ptr<const SkinningPaletteSnapshot> skinningPalette; //!< Animation済みPalette Snapshot
         Matrix worldMatrix = Matrix::Identity;                          //!< モデルのワールド変換行列
-        AABB worldBounds{};                                             //!< モデルのワールド空間でのAABB
+        AABB worldBounds{};                                             //!< 静的ModelのWorld AABB。AnimationはRender側でPose Boundsを算出する
         std::uint32_t objectID = 0;                                     //!< オブジェクトID。レンダリングパスでの識別に使用される
         LayerID layer = 0;                                              //!< Camera Culling Maskで判定するLayer
         bool castShadows = true;                                        //!< シャドウをキャストするかどうか

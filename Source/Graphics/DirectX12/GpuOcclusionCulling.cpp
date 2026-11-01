@@ -281,7 +281,7 @@ namespace Engine
                 {
                     const RenderItem& instance = items[first + offset];
                     m_candidates[first + offset] = { Vector3(instance.worldBounds.Center),
-                        instance.skinningPalette == nullptr ? 1u : 0u, Vector3(instance.worldBounds.Extents), 0 };
+                        instance.hasCullableBounds() ? 1u : 0u, Vector3(instance.worldBounds.Extents), 0 };
                 }
             }
             first += batchSize;

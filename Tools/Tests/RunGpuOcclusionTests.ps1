@@ -17,12 +17,14 @@ foreach ($stage in @("vs", "ps")) {
     & $dxc -WX -HV 2021 -E "${stage}Main" -T "${stage}_6_0" -Fo (Join-Path $output "$stage.cso") (Join-Path $PSScriptRoot "GpuOcclusionTest.hlsl")
     if ($LASTEXITCODE -ne 0) { throw "Test shader compilation failed." }
 }
+& $dxc -WX -HV 2021 -O3 -E csMain -T cs_6_0 -I (Join-Path $root "Assets\Shaders") -Fo (Join-Path $output "skinning.cso") (Join-Path $PSScriptRoot "SkinningBoundsTest.hlsl")
+if ($LASTEXITCODE -ne 0) { throw "Production skinning bounds test shader compilation failed." }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
 $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($install)) { throw "Visual Studio C++ tools were not found." }
 $vcvars = Join-Path $install "VC\Auxiliary\Build\vcvars64.bat"
-$objects = @("Pch", "SimpleMath", "GpuOcclusionCulling", "Pipeline", "Resource", "Command", "Descriptor", "Fence", "RenderQueue", "Shader", "Logger")
+$objects = @("Pch", "SimpleMath", "SkinningBounds", "GpuOcclusionCulling", "Pipeline", "Resource", "Command", "Descriptor", "Fence", "RenderQueue", "Shader", "Logger")
 $arguments = @("/nologo", "/std:c++20", "/EHsc", "/utf-8", "/W4", "/WX", "/external:W0")
 if ($Configuration -eq "Debug") { $arguments += @("/MTd", "/D_DEBUG", "/Od") }
 else { $arguments += @("/MT", "/DNDEBUG", "/O2") }

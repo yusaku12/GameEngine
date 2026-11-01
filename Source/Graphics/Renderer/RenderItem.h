@@ -48,5 +48,9 @@ namespace Engine
         std::uint32_t meshID = 0;                                       //!< Mesh識別子
         float cameraDepth = 0.0f;                                       //!< Transparent sort用Camera視線方向深度
         RenderPassType pass = RenderPassType::Opaque;                   //!< 描画Pass
+        bool animationBoundsValid = false;                             //!< 現在のSkinning Paletteを包含するBoundsを算出済みか
+
+        /** @brief Static Boundsまたは検証済みPose Boundsをカリングに使用できるか。 @return 使用可能時true。 */
+        bool hasCullableBounds() const noexcept { return skinningPalette == nullptr || animationBoundsValid; }
     };
 } // namespace Engine

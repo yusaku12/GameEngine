@@ -21,7 +21,8 @@ namespace Engine
 
     /**
      * @brief 同フレームHi-Zで色描画Instanceを圧縮し、Indirect DrawとCommand Countを生成する。
-     * @details Depth/Shadow/Transparentは除外しない。結果のCPU回収は統計にのみ使用する。
+     * @details Depth/Shadow/Transparentは除外しない。検証済みPose BoundsがあればAnimationも判定する。
+     * 結果のCPU回収は統計にのみ使用する。
      * @thread_safety Mutation is render-thread only. execute supports distinct Command Lists concurrently after record.
      * Frame slotの再利用・解放前にGPU Fence完了とCommand recording jobsのjoinが必要。
      */

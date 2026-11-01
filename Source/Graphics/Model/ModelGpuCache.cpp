@@ -196,6 +196,9 @@ namespace Engine
             }
 
             auto mesh = std::make_unique<ModelGpuMesh>();
+            if (!mesh->skinningBounds.initialize(vertices))
+                LOG_WARNING("[ModelGpuCache] Animated bounds unavailable for mesh '{}'; animated culling will be bypassed.",
+                    sourceMesh.name);
             if (!mesh->vertexBuffer.initialize(*m_device->get(), *m_fence, vertexBufferSize)
                 || !mesh->indexBuffer.initialize(*m_device->get(), *m_fence, indexBufferSize)
                 || !mesh->vertexBuffer.write(std::as_bytes(vertices))

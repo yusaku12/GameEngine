@@ -2,6 +2,7 @@
 
 #include "Assets\Model\ModelManager.h"
 #include "Graphics\DirectX12\Resource.h"
+#include "Graphics\Renderer\SkinningBounds.h"
 
 namespace Engine
 {
@@ -18,6 +19,7 @@ namespace Engine
         D3D12_VERTEX_BUFFER_VIEW vertexBufferView{}; //!< 頂点Buffer View
         D3D12_INDEX_BUFFER_VIEW indexBufferView{};   //!< インデックスBuffer View
         Matrix nodeTransform = Matrix::Identity;     //!< Model RootからMesh Nodeまでの累積変換
+        SkinningBounds skinningBounds;              //!< 不変頂点から構築したボーン影響範囲
     };
 
     /**

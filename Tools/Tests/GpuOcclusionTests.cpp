@@ -6,6 +6,7 @@
 #include "Graphics\DirectX12\Fence.h"
 #include "Graphics\Shader\Shader.h"
 #include "Graphics\Renderer\RenderQueue.h"
+#include "Graphics\Renderer\SkinningBounds.h"
 
 namespace
 {
@@ -33,6 +34,7 @@ namespace
         RenderPassType pass = RenderPassType::Opaque;
         std::uint32_t indexStart = 3;
         std::int32_t baseVertex = 0;
+        std::shared_ptr<const SkinningPaletteSnapshot> palette;
     };
 
     class Tests
@@ -115,7 +117,26 @@ namespace
                 item.objectID = objectID++;
                 item.pass = object.pass;
                 if (object.skinned)
+                {
                     item.skinningPalette = std::make_shared<SkinningPaletteSnapshot>();
+                }
+                if (object.palette != nullptr)
+                {
+                    item.skinningPalette = object.palette;
+                    const std::array positions{ Vector3(-0.1f, -0.1f, 0), Vector3(0, 0.1f, 0), Vector3(0.1f, -0.1f, 0) };
+                    std::array<ModelVertex, 3> vertices{};
+                    for (std::size_t vertex = 0; vertex < vertices.size(); ++vertex)
+                    {
+                        vertices[vertex].position = positions[vertex];
+                        vertices[vertex].boneWeights = Vector4(1, 0, 0, 0);
+                    }
+                    SkinningBounds poseBounds;
+                    require(poseBounds.initialize(vertices), "Build animated triangle bounds.");
+                    item.animationBoundsValid = poseBounds.calculate(*object.palette, item.worldMatrix, item.worldBounds);
+                    require(item.animationBoundsValid, "Calculate animated triangle bounds.");
+                    // The test graphics shader draws rigid triangles; fold the same single-bone transform into its instance.
+                    item.worldMatrix = object.palette->constants.boneMatrices[0] * item.worldMatrix;
+                }
                 require(renderQueue.submit(item), "Submit test object.");
             }
             renderQueue.sort();
@@ -261,6 +282,200 @@ namespace
             checkDebugMessages();
         }
 
+        void testSkinningBounds(const std::filesystem::path& shaderDirectory)
+        {
+            struct Vertex
+            {
+                Vector3 position, normal, tangent, bitangent;
+                Vector4 color;
+                Vector2 texCoord;
+                std::array<std::uint32_t, 4> indices;
+                Vector4 weights;
+            };
+            static_assert(sizeof(Vertex) == 104 && offsetof(Vertex, indices) == 72);
+            std::mt19937 random(1729);
+            std::uniform_real_distribution<float> coordinate(-5.0f, 5.0f);
+            std::uniform_real_distribution<float> weight(0.0f, 1.0f);
+            std::uniform_int_distribution<std::uint16_t> bone(0, 255);
+            std::vector<ModelVertex> source(1024);
+            std::vector<Vertex> vertices;
+            for (std::size_t index = 0; index < source.size(); ++index)
+            {
+                ModelVertex& vertex = source[index];
+                vertex.position = Vector3(coordinate(random), coordinate(random), coordinate(random));
+                for (auto& influence : vertex.boneIndices)
+                    influence = bone(random);
+                vertex.boneWeights = Vector4(weight(random), weight(random), weight(random), weight(random));
+                if (index % 17 == 0)
+                    vertex.boneWeights = Vector4::Zero;
+                if (index % 19 == 0)
+                    vertex.boneWeights = Vector4(0.000005f, 0.000005f, 0, 0);
+                if (index % 23 == 0)
+                    vertex.boneWeights = Vector4(0.0000051f, 0.0000051f, 0, 0);
+                if (index % 29 == 0)
+                    vertex.boneIndices[0] = UINT16_MAX;
+                if (index % 31 == 0)
+                    vertex.boneWeights = Vector4(0.5f, 0.5f, 0.5f, 0.5f);
+                vertices.push_back({ vertex.position, vertex.normal, vertex.tangent, vertex.bitangent,
+                    vertex.color, vertex.texCoord, { vertex.boneIndices[0], vertex.boneIndices[1],
+                    vertex.boneIndices[2], vertex.boneIndices[3] }, vertex.boneWeights });
+            }
+            SkinningBounds boundsCache;
+            require(boundsCache.initialize(source), "Build influence bounds for randomized vertices.");
+            SkinningPaletteSnapshot palette;
+            palette.jointCount = MAX_SKINNING_BONES;
+            palette.constants.boneNormalMatrices.fill(Matrix::Identity);
+            for (Matrix& matrix : palette.constants.boneMatrices)
+                matrix = Matrix::CreateScale(coordinate(random), coordinate(random), coordinate(random))
+                    * Matrix::CreateRotationY(coordinate(random)) * Matrix::CreateRotationX(coordinate(random))
+                    * Matrix::CreateTranslation(coordinate(random) * 10, coordinate(random) * 10, coordinate(random) * 10);
+
+            DX12Shader shader;
+            require(shader.load({ shaderDirectory / "skinning.cso" }), "Load actual Model.vsMain bounds test.");
+            std::array<D3D12_ROOT_PARAMETER, 4> parameters{};
+            parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+            parameters[0].Descriptor.ShaderRegister = 1;
+            parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+            parameters[1].Descriptor.ShaderRegister = 5;
+            parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            const D3D12_DESCRIPTOR_RANGE range{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7, 0, 0 };
+            parameters[2].DescriptorTable = { 1, &range };
+            parameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
+            parameters[3].Descriptor.ShaderRegister = 0;
+            DX12ComputePipeline pipeline;
+            require(pipeline.initialize(*m_device.Get(), shader, parameters), "Build skinning test compute pipeline.");
+            DX12UploadBuffer vertexUpload, paletteUpload, objectUpload;
+            require(vertexUpload.initialize(*m_device.Get(), m_fence, vertices.size() * sizeof(Vertex))
+                && vertexUpload.write(std::as_bytes(std::span(vertices)))
+                && paletteUpload.initialize(*m_device.Get(), m_fence, sizeof(SkinningPaletteConstants))
+                && objectUpload.initialize(*m_device.Get(), m_fence, sizeof(Instance)), "Allocate skinning test uploads.");
+            DX12DescriptorHeap heap;
+            require(heap.initialize(*m_device.Get(), { .capacity = 1, .shaderVisible = true }), "Create vertex test SRV heap.");
+            const auto descriptor = heap.allocate();
+            require(descriptor && descriptor->gpu, "Allocate skinning test SRV.");
+            D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+            srv.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srv.Buffer.NumElements = static_cast<UINT>(vertices.size());
+            srv.Buffer.StructureByteStride = sizeof(Vertex);
+            m_device->CreateShaderResourceView(vertexUpload.get(), &srv, descriptor->cpu.native);
+            DX12Resource output;
+            D3D12_RESOURCE_DESC description{};
+            description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+            description.Width = vertices.size() * sizeof(Vector4);
+            description.Height = 1;
+            description.DepthOrArraySize = 1;
+            description.MipLevels = 1;
+            description.SampleDesc = { 1, 0 };
+            description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+            description.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+            require(output.initialize(*m_device.Get(), { .description = description }), "Create GPU skin positions.");
+            DX12ReadbackBuffer readback;
+            require(readback.initialize(*m_device.Get(), m_fence, description.Width), "Create skin positions readback.");
+            const std::array worlds{
+                Matrix::Identity,
+                Matrix::CreateScale(-1.5f, 0.25f, 3.0f) * Matrix::CreateRotationZ(0.8f)
+                    * Matrix::CreateTranslation(100, -50, 70),
+                Matrix::CreateTranslation(1000000, -1000000, 1000000),
+                Matrix::CreateScale(0.0f, 1.0f, 0.0f) };
+            for (std::size_t pose = 0; pose < worlds.size(); ++pose)
+            {
+                // Reuse the same influence cache while changing the current pose.
+                for (Matrix& matrix : palette.constants.boneMatrices)
+                    matrix *= Matrix::CreateTranslation(3.0f, -2.0f, 1.0f);
+                AABB bounds;
+                require(boundsCache.calculate(palette, worlds[pose], bounds), "Calculate current-pose world bounds.");
+                const Instance instance{ worlds[pose], worlds[pose] };
+                require(paletteUpload.write(std::as_bytes(std::span(&palette.constants, 1)))
+                    && objectUpload.write(std::as_bytes(std::span(&instance, 1)))
+                    && m_list.begin(m_fence) && pipeline.bind(m_list)
+                    && output.transition(m_list, D3D12_RESOURCE_STATE_UNORDERED_ACCESS), "Record skinning containment test.");
+                auto& native = *m_list.getForRecording();
+                ID3D12DescriptorHeap* const nativeHeap = heap.get();
+                native.SetDescriptorHeaps(1, &nativeHeap);
+                native.SetComputeRootConstantBufferView(0, paletteUpload.getGpuVirtualAddress());
+                native.SetComputeRootShaderResourceView(1, objectUpload.getGpuVirtualAddress());
+                native.SetComputeRootDescriptorTable(2, descriptor->gpu->native);
+                native.SetComputeRootUnorderedAccessView(3, output.get()->GetGPUVirtualAddress());
+                native.Dispatch(static_cast<UINT>((vertices.size() + 63) / 64), 1, 1);
+                require(output.transition(m_list, D3D12_RESOURCE_STATE_COPY_SOURCE), "Transition skinning output.");
+                native.CopyBufferRegion(readback.get(), 0, output.get(), 0, description.Width);
+                require(m_list.close(), "Close skinning test.");
+                ID3D12CommandList* const list = m_list.getForExecution();
+                m_queue->ExecuteCommandLists(1, &list);
+                const auto fence = m_fence.signal(*m_queue.Get());
+                require(fence != 0 && m_list.markSubmitted(fence) && vertexUpload.markUsed(fence)
+                    && paletteUpload.markUsed(fence) && objectUpload.markUsed(fence)
+                    && readback.markPending(fence) && m_fence.waitOnCpu(fence), "Submit skinning test.");
+                std::vector<Vector4> positions(vertices.size());
+                require(readback.read(std::as_writable_bytes(std::span(positions))), "Read production GPU skin positions.");
+                for (const Vector4& position : positions)
+                    require(std::isfinite(position.x) && std::isfinite(position.y) && std::isfinite(position.z)
+                        && bounds.Contains(DirectX::XMVectorSet(position.x, position.y, position.z, 1)) != DirectX::DISJOINT,
+                        "Bounds must contain every position produced by actual Model.vsMain.");
+                checkDebugMessages();
+            }
+            std::puts("PASS actual Model.vsMain: 4096 GPU-skinned vertices inside current-pose bounds.");
+
+            AABB sentinel(Vector3(1, 2, 3), Vector3(4, 5, 6));
+            AABB result = sentinel;
+            auto invalid = palette;
+            invalid.constants.boneMatrices[255]._41 = std::numeric_limits<float>::quiet_NaN();
+            require(!boundsCache.calculate(invalid, Matrix::Identity, result)
+                && result.Center.x == sentinel.Center.x && result.Extents.x == sentinel.Extents.x, "Invalid palette must preserve output.");
+            invalid = palette;
+            invalid.constants.boneMatrices[255]._14 = 0.1f;
+            require(!boundsCache.calculate(invalid, Matrix::Identity, result), "Projective bone must bypass culling.");
+            invalid = palette;
+            invalid.jointCount = 0;
+            require(!boundsCache.calculate(invalid, Matrix::Identity, result), "Invalid joint count must bypass culling.");
+            auto badVertex = source.front();
+            badVertex.boneWeights.x = -1;
+            SkinningBounds invalidCache;
+            require(!invalidCache.initialize(std::span(&badVertex, 1)), "Negative weights must disable bounds.");
+            badVertex.boneWeights = Vector4(std::numeric_limits<float>::infinity(), 0, 0, 0);
+            require(!invalidCache.initialize(std::span(&badVertex, 1)), "Nonfinite weights must disable bounds.");
+            require(!invalidCache.initialize({}), "Empty cache must fail.");
+            require(!invalidCache.calculate(palette, Matrix::Identity, result), "Uninitialized cache must fail safely.");
+            badVertex.boneWeights = Vector4(1, 0, 0, 0);
+            badVertex.position.x = std::numeric_limits<float>::quiet_NaN();
+            require(!invalidCache.initialize(std::span(&badVertex, 1)), "Nonfinite position must disable bounds.");
+            badVertex.position = Vector3(1, 2, 3);
+            require(invalidCache.initialize(std::span(&badVertex, 1))
+                && invalidCache.calculate(palette, Matrix::Identity, result), "Cache can be rebuilt after failure.");
+            Matrix unsafeWorld = Matrix::Identity;
+            unsafeWorld._14 = 0.1f;
+            require(!boundsCache.calculate(palette, unsafeWorld, result), "Projective world must bypass culling.");
+            unsafeWorld = Matrix::CreateScale(FLT_MAX);
+            require(!boundsCache.calculate(palette, unsafeWorld, result), "GPU arithmetic overflow risk must bypass culling.");
+
+            const Matrix projection(DirectX::XMMatrixPerspectiveFovLH(1, 1, 0.1f, 100));
+            Frustum frustum;
+            Frustum::CreateFromMatrix(frustum, projection);
+            std::array<ModelVertex, 1> point{};
+            point[0].boneWeights = Vector4(1, 0, 0, 0);
+            SkinningBounds pointBounds;
+            require(pointBounds.initialize(point), "Build single-bone frustum bounds.");
+            palette.constants.boneMatrices.fill(Matrix::Identity);
+            palette.constants.boneMatrices[0] = Matrix::CreateTranslation(100, 0, 5);
+            require(pointBounds.calculate(palette, Matrix::Identity, result) && !isVisible(frustum, result), "Animated offscreen bounds.");
+            RenderItem item;
+            item.vertexBuffer = &m_vertexView;
+            item.indexBuffer = &m_indexView;
+            item.indexCount = 3;
+            item.worldBounds = result;
+            item.skinningPalette = std::make_shared<SkinningPaletteSnapshot>(palette);
+            RenderQueue queue;
+            require(queue.submit(item, &frustum), "Unvalidated animation must remain submitted.");
+            item.animationBoundsValid = true;
+            require(!queue.submit(item, &frustum), "Validated offscreen animation must be frustum-culled.");
+            palette.constants.boneMatrices[0] = Matrix::CreateTranslation(0, 0, 5);
+            require(pointBounds.calculate(palette, Matrix::Identity, result) && isVisible(frustum, result), "Moving back into view uses current pose.");
+            item.worldBounds = result;
+            require(queue.submit(item, &frustum), "Animated mesh returning to view must be submitted.");
+            std::puts("PASS animated frustum and invalid-input safety.");
+        }
+
     private:
         void checkDebugMessages()
         {
@@ -310,12 +525,13 @@ int main(const int argc, char** argv)
         require(Engine::Logger::instance().initialize({
             .useConsole = true, .useFile = false, .useDebugOutput = false }), "Initialize test logger.");
         Tests tests(argv[1], argc >= 3 && std::string_view(argv[2]) == "--warp");
+        tests.testSkinningBounds(argv[1]);
         tests.run("fully hidden: zero Draw", { {} }, 1);
         tests.run("visible", { { Vector3(0, 0, 0.2f) } }, 0);
         tests.run("mixed batch: compact visible instance", { {}, { Vector3(0.3f, 0, 0.2f) } }, 1);
         tests.run("instancing disabled", { {}, { Vector3(-0.3f, 0, 0.2f) } }, 1, false);
         tests.run("near plane crossing", { { Vector3(0, 0, 0.01f) } }, 0);
-        tests.run("skinning stays visible", { { Vector3(0, 0, 0.8f), Vector3(0.15f), true } }, 0);
+        tests.run("unvalidated skinning stays visible", { { Vector3(0, 0, 0.8f), Vector3(0.15f), true } }, 0);
         tests.run("degenerate bounds stay visible", { { Vector3(0, 0, 0.8f), Vector3::Zero } }, 0);
         tests.run("depth equality stays visible", { { Vector3(0, 0, 0.4f), Vector3(0.15f) } }, 0);
         tests.run("transparent remains direct", { { Vector3(0, 0, 0.8f), Vector3(0.15f), false, RenderPassType::Transparent } }, 0);
@@ -343,6 +559,22 @@ int main(const int argc, char** argv)
             { Vector3(-0.3f, 0, 0.2f), Vector3(0.15f), false, RenderPassType::Opaque, 0, -1 },
             { Vector3(0.3f, 0, 0.2f) }, {} }, 1);
         tests.run("dispatch chunk boundary", std::vector<TestObject>(65536), 65536, false, 1, 1);
+        auto animated = std::make_shared<SkinningPaletteSnapshot>();
+        animated->jointCount = 1;
+        animated->constants.boneMatrices.fill(Matrix::Identity);
+        animated->constants.boneNormalMatrices.fill(Matrix::Identity);
+        TestObject animatedObject;
+        animatedObject.palette = animated;
+        tests.run("animated hidden bounds suppress Draw", { animatedObject }, 1);
+        animated->constants.boneMatrices[0] = Matrix::CreateTranslation(0, 0, -0.6f);
+        tests.run("animated pose returns in front of wall", { animatedObject }, 0);
+        animated->constants.boneMatrices[0] = Matrix::CreateTranslation(0, 0, -0.8f);
+        tests.run("animated near-plane bounds stay visible", { animatedObject }, 0);
+        animated->constants.boneMatrices[0] = Matrix::Identity;
+        animatedObject.pass = RenderPassType::Transparent;
+        tests.run("animated transparent draw remains direct", { animatedObject }, 0);
+        animatedObject.pass = RenderPassType::Shadow;
+        tests.run("animated shadow draw remains direct", { animatedObject }, 0);
         tests.finish();
         std::puts("All GPU occlusion tests passed with D3D12 debug layer and GPU-based validation.");
         Engine::Logger::instance().finalize();

@@ -169,7 +169,8 @@ namespace Engine
         /**
          * @brief 同一FrameのHi-Zに基づくGPU Indirect色描画を有効化する。
          * @param enabled 有効時は隠れたInstanceを圧縮し、全Instanceが隠れたバッチのDrawを実行しない。
-         * @details 深度・影・透明描画は維持する。SkinningとNear Plane交差は可視扱い。
+         * @details 深度・影・透明描画は維持する。アニメーションには同じ描画Paletteで算出したBoundsを使用する。
+         * Boundsを安全に算出できない場合とNear Plane交差は可視扱い。
          * DepthをクリアしないCameraClearMode::Nothingでは無効。
          * @thread_safety Render threadのみ。フレーム開始前に設定すること。
          */
@@ -308,6 +309,12 @@ namespace Engine
         MaterialGpuCache m_materialGpuCache;                                                              //!< MaterialHandle単位のGPU Resource Cache
         RenderQueue m_modelRenderQueue;                                                                   //!< 現在フレームのModel描画Queue
         std::vector<ModelRenderSubmission> m_modelSubmissions;                                            //!< Frame間で容量を再利用する提出Buffer
+        struct AnimatedMeshBounds
+        {
+            AABB worldBounds{};
+            bool valid = false;
+        };
+        std::vector<AnimatedMeshBounds> m_animatedMeshBounds;                                              //!< 現在SubmissionのPose Bounds。容量を再利用する
         std::array<std::vector<std::unique_ptr<DX12UploadBuffer>>, FRAME_COUNT> m_skinningPaletteBuffers; //!< Frame間で容量を再利用するSkinning Palette Buffer
         std::array<std::size_t, FRAME_COUNT> m_skinningPaletteBufferCursors{};                            //!< Frame間で容量を再利用するSkinning Palette Bufferのカーソル
         std::array<DX12UploadBuffer, FRAME_COUNT> m_modelInstanceBuffers;                                 //!< Fence完了後に再利用するInstance Buffer

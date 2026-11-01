@@ -36,6 +36,7 @@
     <ClCompile Include="Source\Graphics\DirectX12\Resource.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Renderer.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\GpuOcclusionCulling.cpp" />
+    <ClCompile Include="Source\Graphics\Renderer\SkinningBounds.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\GpuProfiler.cpp" />
     <ClCompile Include="Source\Graphics\Renderer\RenderQueue.cpp" />
     <ClCompile Include="Source\Graphics\Renderer\ModelRenderSubmission.cpp" />
@@ -179,6 +180,7 @@
     <ClInclude Include="Source\Graphics\DirectX12\Resource.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Renderer.h" />
     <ClInclude Include="Source\Graphics\DirectX12\GpuOcclusionCulling.h" />
+    <ClInclude Include="Source\Graphics\Renderer\SkinningBounds.h" />
     <ClInclude Include="Source\Graphics\DirectX12\GpuProfiler.h" />
     <ClInclude Include="Source\Graphics\Renderer\RenderItem.h" />
     <ClInclude Include="Source\Graphics\Renderer\RenderQueue.h" />

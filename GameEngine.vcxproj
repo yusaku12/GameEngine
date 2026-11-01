@@ -89,6 +89,7 @@
     <ClInclude Include="Source\Graphics\Renderer\RenderQueue.h" />
     <ClInclude Include="Source\Graphics\Renderer\ModelRenderSubmission.h" />
     <ClInclude Include="Source\Graphics\Renderer\SkinningPaletteSnapshot.h" />
+    <ClInclude Include="Source\Graphics\Renderer\SkinningBounds.h" />
     <ClInclude Include="Source\Graphics\Camera\CameraData.h" />
     <ClInclude Include="Source\Graphics\Camera\CameraManager.h" />
     <ClInclude Include="Source\Graphics\Camera\CameraRenderSubmission.h" />
@@ -220,6 +221,7 @@
     <ClCompile Include="Source\Graphics\DirectX12\Resource.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Renderer.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\GpuOcclusionCulling.cpp" />
+    <ClCompile Include="Source\Graphics\Renderer\SkinningBounds.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\GpuProfiler.cpp" />
     <ClCompile Include="Source\Graphics\Renderer\RenderQueue.cpp" />
     <ClCompile Include="Source\Graphics\Renderer\ModelRenderSubmission.cpp" />

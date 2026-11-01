@@ -308,6 +308,7 @@ namespace Engine
             if (!buffer.finalize())
                 return false;
         m_modelInstanceConstants.clear();
+        m_animatedMeshBounds.clear();
         for (DX12GpuOcclusionCulling& culling : m_occlusionCulling)
             if (!culling.finalize())
                 return false;
@@ -475,7 +476,7 @@ namespace Engine
                     ImGui::Text("Model Recording Threads: %u", m_statistics.modelRecordingThreadCount);
                     ImGui::Checkbox("GPU Occlusion Culling", &m_enableOcclusionCulling);
                     if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Same-frame Hi-Z culling per static instance. Compacts visible instances and generates count-buffer indirect draws. Depth, shadows and transparent draws are unchanged.");
+                        ImGui::SetTooltip("Same-frame Hi-Z culling per instance, including current-pose animation bounds. Invalid bounds stay visible. Depth, shadows and transparent draws are unchanged.");
                     ImGui::Text("Hi-Z Candidate Batches (last submitted frame): %u", m_statistics.occlusionBatchCount);
                     const auto& completed = m_statistics.completedOcclusion;
                     ImGui::Text("Executed Indirect Draws (completed slot): %u / %u",
@@ -1050,7 +1051,7 @@ namespace Engine
             }
 
             const bool submitsShadow = m_shadowViewProjection.has_value() && submission.castShadows;
-            const bool outsideCamera = submission.skinningPalette == nullptr && m_frustum
+            bool outsideCamera = submission.skinningPalette == nullptr && m_frustum
                 && !isVisible(*m_frustum, submission.worldBounds);
             if (outsideCamera)
                 ++m_frameStatistics.culledObjects;
@@ -1063,6 +1064,38 @@ namespace Engine
             if (gpuModel == nullptr || gpuModel->source == nullptr)
                 continue;
 
+            if (submission.skinningPalette != nullptr)
+            {
+                m_animatedMeshBounds.resize(gpuModel->meshes.size());
+                AABB objectBounds{};
+                bool hasBounds = false;
+                bool allBoundsValid = true;
+                for (std::size_t meshIndex = 0; meshIndex < gpuModel->meshes.size(); ++meshIndex)
+                {
+                    AnimatedMeshBounds& pose = m_animatedMeshBounds[meshIndex];
+                    pose = {};
+                    const auto& gpuMesh = gpuModel->meshes[meshIndex];
+                    if (gpuMesh == nullptr)
+                        continue;
+                    pose.valid = gpuMesh->skinningBounds.calculate(*submission.skinningPalette,
+                        gpuMesh->nodeTransform * submission.worldMatrix, pose.worldBounds);
+                    allBoundsValid = allBoundsValid && pose.valid;
+                    if (pose.valid)
+                    {
+                        if (hasBounds)
+                            AABB::CreateMerged(objectBounds, objectBounds, pose.worldBounds);
+                        else
+                            objectBounds = pose.worldBounds;
+                        hasBounds = true;
+                    }
+                }
+                outsideCamera = allBoundsValid && hasBounds && m_frustum && !isVisible(*m_frustum, objectBounds);
+                if (outsideCamera)
+                    ++m_frameStatistics.culledObjects;
+                if (outsideCamera && !submitsShadow)
+                    continue;
+            }
+
             bool objectVisible = false;
             bool modelResourceUsed = false;
             for (std::size_t meshIndex = 0; meshIndex < gpuModel->meshes.size(); ++meshIndex)
@@ -1074,6 +1107,10 @@ namespace Engine
                 const Matrix meshWorldMatrix = gpuMesh->nodeTransform * submission.worldMatrix;
                 AABB meshWorldBounds;
                 mesh.boundingBox.Transform(meshWorldBounds, meshWorldMatrix);
+                const bool boundsCullable = submission.skinningPalette == nullptr
+                    || m_animatedMeshBounds[meshIndex].valid;
+                if (submission.skinningPalette != nullptr && boundsCullable)
+                    meshWorldBounds = m_animatedMeshBounds[meshIndex].worldBounds;
 
                 const auto submitSubMesh = [&](const std::uint32_t indexStart, const std::uint32_t indexCount,
                     const std::uint32_t materialIndex)
@@ -1115,9 +1152,9 @@ namespace Engine
                                 + cameraRelativePosition.y * m_cameraForward.y
                                 + cameraRelativePosition.z * m_cameraForward.z,
                             .pass = pass,
+                            .animationBoundsValid = submission.skinningPalette != nullptr && boundsCullable,
                         };
-                        const Frustum* const cullingFrustum = colorItem.skinningPalette == nullptr && m_frustum
-                            ? &*m_frustum : nullptr;
+                        const Frustum* const cullingFrustum = m_frustum ? &*m_frustum : nullptr;
                         const bool submitted = m_modelRenderQueue.submit(colorItem, cullingFrustum);
                         bool materialUsed = submitted;
                         if (submitted && pass != RenderPassType::Transparent)

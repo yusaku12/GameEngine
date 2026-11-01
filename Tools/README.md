@@ -263,10 +263,10 @@ geometry. Transparent draws remain direct and retain their ordering.
 
 The standard-Z depth target is sampled as R32_FLOAT. A power-of-two-padded
 R32_FLOAT mip chain stores the **maximum** depth, including uncovered pixels
-at depth 1. Each static instance projects its world AABB on the GPU; the
+at depth 1. Each instance with safe bounds projects its world AABB on the GPU; the
 screen rectangle is expanded by two pixels and nearest depth is biased toward
 the camera. All overlapping Hi-Z cells at the selected mip must be in front
-of that rectangle before the instance is removed. Skinning, degenerate bounds,
+of that rectangle before the instance is removed. Unvalidated animation bounds, degenerate bounds,
 nonfinite projection and near-plane intersections stay visible. Culling is
 disabled for `CameraClearMode::Nothing`, which retains old depth.
 
@@ -309,3 +309,41 @@ offsets, empty queues, resize/reuse of two frame slots, signed base vertices,
 index offsets, ordered upload/culling/color command lists, and dispatch chunking
 beyond 65,535 batches. Run Debug and Release builds sequentially: dependency
 configuration uses shared build directories.
+
+## Current-pose animation bounds
+
+Animated models use the same immutable `SkinningPaletteSnapshot` for bounds
+and GPU drawing; no previous-frame pose, clip-wide estimate or fixed padding
+around bind-pose bounds determines visibility. GPU mesh creation caches the
+local minimum/maximum positions influenced by each bone, plus rigid vertices.
+For nonnegative weights, the shader's normalized linear blend lies inside the
+union of these transformed influence ranges. Each frame transforms range corners
+with the bone matrix followed by the exact mesh-node/world matrix. This handles
+model-space skinned meshes, mesh-local vertices, blended poses, nonuniform or
+negative scale, and unweighted vertices without CPU-skinning the entire mesh.
+
+Bounds arithmetic uses double precision, a magnitude-dependent float-error
+margin (including cancellation and normalization), and outward-rounded extents.
+Vertices near the shader's weight threshold contribute to both rigid and
+skinned ranges. Bone indices follow the shader's clamp to 255; unused palette
+slots retain the same identity-matrix behavior as GPU drawing.
+
+The renderer merges current mesh bounds for whole-model frustum rejection,
+then uses each mesh's pose bounds for frustum checks, transparent sorting and
+Opaque/AlphaTest Hi-Z. Offscreen shadow casters still submit their shadows.
+Skinning draw batching remains unchanged; this does not stop animation updates.
+No scene/prefab or asset schema migration is required.
+
+Invalid weights, unavailable influence caches, nonfinite/projective matrices,
+invalid palette counts or float-overflow risk are logged and disable animation
+bounds culling. `RenderItem::animationBoundsValid` defaults to false, so callers
+that only provide bind-pose bounds retain the previous safe animation bypass.
+Near-plane intersections also retain Hi-Z's visibility bypass.
+
+The GPU regression runner additionally invokes the **actual Model.vsMain**
+from a compute test and checks containment of 1,024 vertices in four changing
+poses/world transforms (4,096 positions per run). It covers 256 bones, clamped
+indices, mixed/unnormalized/zero/threshold weights, negative and nonuniform
+scale, singular transforms and large world coordinates. Further cases verify
+animation frustum rejection/re-entry, invalid-input bypass, and animated
+hidden/visible/near-plane indirect draws.

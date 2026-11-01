@@ -37,7 +37,7 @@ namespace Engine
             return false;
         }
 
-        if (frustum != nullptr && !isVisible(*frustum, item.worldBounds))
+        if (item.hasCullableBounds() && frustum != nullptr && !isVisible(*frustum, item.worldBounds))
         {
             ++m_statistics.culledItems;
             return false;
