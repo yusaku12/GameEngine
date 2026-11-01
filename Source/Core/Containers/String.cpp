@@ -45,6 +45,7 @@ namespace Engine
         }
         else
         {
+            m_storage = std::move(other.m_storage);
             m_data = other.m_data;
             m_size = other.m_size;
             m_capacity = other.m_capacity;
@@ -56,10 +57,7 @@ namespace Engine
         other.m_inline[0] = '\0';
     }
 
-    String::~String()
-    {
-        releaseStorage();
-    }
+    String::~String() = default;
 
     String& String::operator=(const String& other)
     {
@@ -84,6 +82,7 @@ namespace Engine
         }
         else
         {
+            m_storage = std::move(other.m_storage);
             m_data = other.m_data;
             m_capacity = other.m_capacity;
         }
@@ -172,16 +171,15 @@ namespace Engine
         if (newCapacity < capacity)
             newCapacity = capacity;
 
-        char* newData = new (std::nothrow) char[newCapacity + 1];
+        std::unique_ptr<char[]> newData(new (std::nothrow) char[newCapacity + 1]);
         GE_ASSERT_MSG(newData != nullptr, "文字列の確保に失敗しました ({} 文字)", newCapacity);
 
         if (newData == nullptr)
             return;
-        std::memcpy(newData, m_data, m_size + 1);
+        std::memcpy(newData.get(), m_data, m_size + 1);
 
-        releaseStorage();
-
-        m_data = newData;
+        m_storage = std::move(newData);
+        m_data = m_storage.get();
         m_capacity = newCapacity;
     }
 
@@ -321,8 +319,7 @@ namespace Engine
 
     void String::releaseStorage()
     {
-        if (!isInline())
-            delete[] m_data;
+        m_storage.reset();
 
         m_data = m_inline;
         m_capacity = INLINE_CAPACITY;

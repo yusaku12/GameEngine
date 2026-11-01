@@ -1,12 +1,15 @@
 ﻿#pragma once
 
+#include <memory>
+
 #include "Core\Containers\Hash.h"
 
 namespace Engine
 {
     /**
      * @brief 文字列
-    * 短い文字列は内部バッファへ格納し、長い場合のみ標準ヒープから確保する
+     * 短い文字列は内部バッファへ格納し、長い場合のみ標準ヒープから確保する
+     * @thread_safety Not thread-safe. Access must be synchronized externally.
      */
     class String
     {
@@ -158,8 +161,8 @@ namespace Engine
         String toLower() const;
 
         /**
-         * @brief 文字列を反転した文字列を返す
-         * @return String 反転後の文字列
+         * @brief null終端文字列への非所有ポインタを返す
+         * @return const char* 文字列の先頭のポインタ
          */
         const char* c_str() const { return m_data; }
 
@@ -247,7 +250,7 @@ namespace Engine
         bool isInline() const { return m_data == m_inline; }
 
         /**
-         * @brief 内部バッファを使用するように設定する
+         * @brief 指定された文字列をコピーする
          */
         void assign(const char* text, size_t size);
 
@@ -256,7 +259,8 @@ namespace Engine
          */
         void releaseStorage();
 
-        char* m_data;                         //!< 文字列の格納先（内部バッファかヒープを指す）
+        std::unique_ptr<char[]> m_storage;    //!< 長い文字列のヒープ領域を所有する
+        char* m_data;                         //!< 内部バッファかヒープ領域への非所有参照
         size_t m_size;                        //!< 文字数
         size_t m_capacity;                    //!< 確保済みの容量（終端文字を除く）
         char   m_inline[INLINE_CAPACITY + 1]; //!< 短い文字列用の内部バッファ

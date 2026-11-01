@@ -18,9 +18,6 @@
 //! アサートを有効にするか
 #define GE_ASSERT_ENABLED GE_DEBUG_BUILD
 
-//! メモリ追跡機能（リーク検出・破壊検出・フィルパターン）を有効にするか
-#define GE_MEMORY_TRACKING GE_DEBUG_BUILD
-
 //! 強制インライン化
 #define GE_FORCEINLINE __forceinline
 

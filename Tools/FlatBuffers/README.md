@@ -22,11 +22,18 @@ The batch equivalent is:
 Tools\FlatBuffers\build_schema.bat
 ```
 
-Both commands fail with a clear message when `flatc.exe` is unavailable. They generate all headers for every schema together, including the Physics component payloads.
+Both commands use the same PowerShell implementation and fail with a clear
+message when `flatc.exe` is unavailable. They discover every `.fbs` directly in
+`Schemas/FlatBuffers` and generate all headers together. After successful
+generation and output verification, orphaned `*_generated.h` headers are
+removed; files with other names are preserved.
 
 ## Normal Visual Studio build
 
-No manual generation is required. `GameEngine.vcxproj` runs the PowerShell generator before C++ compilation and tracks the schema files as inputs. A schema change therefore regenerates the headers before the affected C++ files compile.
+No manual generation is required. `GameEngine.vcxproj` runs the PowerShell
+generator before C++ compilation and tracks the schema files, compiler and
+schema-list manifest as inputs. Added, changed or removed schemas regenerate
+the headers before the affected C++ files compile.
 
 ## Using the model serializer
 

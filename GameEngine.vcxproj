@@ -1,14 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Debug|Win32">
-      <Configuration>Debug</Configuration>
-      <Platform>Win32</Platform>
-    </ProjectConfiguration>
-    <ProjectConfiguration Include="Release|Win32">
-      <Configuration>Release</Configuration>
-      <Platform>Win32</Platform>
-    </ProjectConfiguration>
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
       <Platform>x64</Platform>
@@ -357,19 +349,6 @@
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
-    <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
-    <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
@@ -390,12 +369,6 @@
   </ImportGroup>
   <ImportGroup Label="Shared">
   </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
@@ -405,33 +378,10 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <FBXSDKRoot Condition="'$(FBXSDKRoot)' == ''">$(ProgramW6432)\Autodesk\FBX\FBX SDK\2020.3.9</FBXSDKRoot>
+    <IntDir>$(ProjectDir)Build\GameEngine\$(Platform)\$(Configuration)\</IntDir>
+    <OutDir>$(ProjectDir)x64\$(Configuration)\</OutDir>
+    <FLATBUFFERS_FLATC_EXECUTABLE Condition="'$(FLATBUFFERS_FLATC_EXECUTABLE)' == ''">$(ProjectDir)Tools\FlatBuffers\flatc.exe</FLATBUFFERS_FLATC_EXECUTABLE>
   </PropertyGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
-      <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <ConformanceMode>true</ConformanceMode>
-    </ClCompile>
-    <Link>
-      <SubSystem>Console</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-    </Link>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
-      <FunctionLevelLinking>true</FunctionLevelLinking>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <ConformanceMode>true</ConformanceMode>
-    </ClCompile>
-    <Link>
-      <SubSystem>Console</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-    </Link>
-  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
@@ -486,19 +436,27 @@
       <Command>copy /Y "$(FBXSDKRoot)\lib\x64\release\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
-  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Schemas\FlatBuffers\Common.fbs;$(ProjectDir)Schemas\FlatBuffers\Material.fbs;$(ProjectDir)Schemas\FlatBuffers\Model.fbs;$(ProjectDir)Schemas\FlatBuffers\Prefab.fbs;$(ProjectDir)Schemas\FlatBuffers\Scene.fbs;$(ProjectDir)Schemas\FlatBuffers\Skeleton.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimationClip.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorController.fbs;$(ProjectDir)Schemas\FlatBuffers\AnimatorComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\ModelRendererComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\PhysicsComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\CameraComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\LightComponent.fbs;$(ProjectDir)Schemas\FlatBuffers\RuntimeUI.fbs;$(ProjectDir)Schemas\FlatBuffers\AudioComponent.fbs;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1" Outputs="$(ProjectDir)Generated\FlatBuffers\Common_generated.h;$(ProjectDir)Generated\FlatBuffers\Material_generated.h;$(ProjectDir)Generated\FlatBuffers\Model_generated.h;$(ProjectDir)Generated\FlatBuffers\Prefab_generated.h;$(ProjectDir)Generated\FlatBuffers\Scene_generated.h;$(ProjectDir)Generated\FlatBuffers\Skeleton_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimationClip_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorController_generated.h;$(ProjectDir)Generated\FlatBuffers\AnimatorComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\ModelRendererComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\PhysicsComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\CameraComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\LightComponent_generated.h;$(ProjectDir)Generated\FlatBuffers\RuntimeUI_generated.h;$(ProjectDir)Generated\FlatBuffers\AudioComponent_generated.h">
+  <ItemGroup>
+    <FlatBufferSchema Include="$(ProjectDir)Schemas\FlatBuffers\*.fbs" />
+  </ItemGroup>
+  <Target Name="CollectFlatBufferSchemas" BeforeTargets="GenerateFlatBuffers">
+    <Error Condition="'@(FlatBufferSchema)' == ''" Text="No FlatBuffers schemas were found." />
+    <MakeDir Directories="$(IntDir)" />
+    <WriteLinesToFile File="$(IntDir)FlatBuffers.schemas" Lines="@(FlatBufferSchema)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+  <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="@(FlatBufferSchema);$(IntDir)FlatBuffers.schemas;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1;$(FLATBUFFERS_FLATC_EXECUTABLE)" Outputs="@(FlatBufferSchema->'$(ProjectDir)Generated\FlatBuffers\%(Filename)_generated.h')">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
   </Target>
-  <Target Name="BuildOzzAnimation" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'" Inputs="$(ProjectDir)Library\ozz-animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\build_ozz.ps1" Outputs="$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration)\ozz_animation_offline$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration)\ozz_animation$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration)\ozz_base$(OzzLibraryPostfix).lib">
+  <Target Name="BuildOzzAnimation" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Animation\build_ozz.ps1&quot; -Configuration $(Configuration)" />
   </Target>
   <Target Name="BuildPhysX" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Physics\build_physx.ps1&quot; -Configuration $(Configuration)" />
   </Target>
-  <Target Name="RejectWin32PhysX" BeforeTargets="ClCompile" Condition="'$(Platform)'=='Win32'">
-    <Error Text="The PhysX integration requires the x64 platform. Select Debug|x64 or Release|x64." />
+  <Target Name="BuildDirectXTex" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'">
+    <MSBuild Projects="$(ProjectDir)Library\DirectXTex-main\DirectXTex\DirectXTex_Desktop_2022_Win10.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=x64;PlatformToolset=$(PlatformToolset)" RemoveProperties="IntDir;OutDir" />
   </Target>
-  <Target Name="CompileShaders" BeforeTargets="ClCompile" Condition="Exists('$(ProjectDir)Tools\DXC\dxc.exe')" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Assets\Shaders\DebugPrimitive.hlsl;$(ProjectDir)Assets\Shaders\Occlusion.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Occlusion_vsMain_vs.cso">
+  <Target Name="CompileShaders" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Assets\Shaders\DebugPrimitive.hlsl;$(ProjectDir)Assets\Shaders\Occlusion.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(ProjectDir)Tools\DXC\dxc.exe;$(ProjectDir)Tools\DXC\dxcompiler.dll;$(ProjectDir)Tools\DXC\dxil.dll" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Occlusion_vsMain_vs.cso">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -6,6 +6,7 @@
 #include "Core\CoreDefines.h"
 #include "Core\Logging\Logging.h"
 #include "Core\Containers\Containers.h"
+#include "Core\Containers\BitFlags.h"
 #include "Core\Math\Math.h"
 #include "Core\Threading\Threading.h"
 #include "Core\Time\HighResolutionTimer.h"
@@ -22,4 +23,3 @@
 #include "Core\Scene\SceneSerializer.h"
 #include "Core\Prefab\Prefab.h"
 #include "Core\Prefab\PrefabInstance.h"
-#include "Core\Containers\BitFlags.h"

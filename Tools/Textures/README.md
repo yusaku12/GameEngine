@@ -6,7 +6,7 @@ DirectXTex `texconv` source, not a downloaded executable.
 
 ## Build
 
-Run from the repository root with Visual Studio C++ tools and a Windows SDK:
+Run from the repository root with Visual Studio 2026 C++ tools (v145) and a Windows SDK:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Textures\BuildTexconv.ps1

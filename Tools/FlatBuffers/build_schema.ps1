@@ -22,8 +22,20 @@ if ([string]::IsNullOrWhiteSpace($Flatc)) {
 }
 
 if (-not (Test-Path $schema -PathType Container)) { throw "Schema directory was not found: $schema" }
+if (-not (Test-Path -LiteralPath $Flatc -PathType Leaf)) { throw "flatc.exe was not found: $Flatc" }
+$schemas = @(Get-ChildItem -LiteralPath $schema -Filter '*.fbs' -File | Sort-Object Name)
+if ($schemas.Count -eq 0) { throw "No FlatBuffers schemas were found: $schema" }
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 
-& $Flatc --cpp -o $output -I $schema (Join-Path $schema 'Common.fbs') (Join-Path $schema 'Material.fbs') (Join-Path $schema 'Model.fbs') (Join-Path $schema 'Prefab.fbs') (Join-Path $schema 'Scene.fbs') (Join-Path $schema 'Skeleton.fbs') (Join-Path $schema 'AnimationClip.fbs') (Join-Path $schema 'AnimatorController.fbs') (Join-Path $schema 'AnimatorComponent.fbs') (Join-Path $schema 'ModelRendererComponent.fbs') (Join-Path $schema 'PhysicsComponent.fbs') (Join-Path $schema 'CameraComponent.fbs') (Join-Path $schema 'LightComponent.fbs') (Join-Path $schema 'RuntimeUI.fbs') (Join-Path $schema 'AudioComponent.fbs')
+& $Flatc --cpp -o $output -I $schema $schemas.FullName
 if ($LASTEXITCODE -ne 0) { throw "FlatBuffers schema generation failed with exit code $LASTEXITCODE." }
+$expectedHeaders = @($schemas | ForEach-Object { "$($_.BaseName)_generated.h" })
+foreach ($header in $expectedHeaders) {
+    if (-not (Test-Path -LiteralPath (Join-Path $output $header) -PathType Leaf)) {
+        throw "FlatBuffers generation produced no header: $header"
+    }
+}
+Get-ChildItem -LiteralPath $output -Filter '*_generated.h' -File |
+    Where-Object { $_.Name -notin $expectedHeaders } |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
 Write-Host 'FlatBuffers schema generation completed successfully.'

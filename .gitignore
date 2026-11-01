@@ -10,3 +10,14 @@ Config/
 Log/
 *.vcxproj.user
 Generated/FlatBuffers/
+*.obj
+*.pch
+*.pdb
+*.ilk
+*.ipdb
+*.iobj
+*.idb
+*.tlog
+*.lastbuildstate
+*.recipe
+.texture-cook-*/

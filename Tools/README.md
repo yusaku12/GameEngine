@@ -1,3 +1,49 @@
+# Build and repository layout
+
+The engine supports **Debug x64** and **Release x64** only. Use Visual Studio
+2026 C++ tools (v145), the Windows SDK, and Autodesk FBX SDK 2020.3.9.
+The vendored DirectXTex project is built with the engine's selected toolset,
+without editing its upstream project file.
+`FBXSDKRoot` may be passed as an MSBuild property to select another SDK location.
+
+Build from a Visual Studio Developer PowerShell:
+
+```powershell
+MSBuild .\GameEngine.sln /m /p:Configuration=Debug /p:Platform=x64
+MSBuild .\GameEngine.sln /m /p:Configuration=Release /p:Platform=x64
+```
+
+The project builds PhysX, ozz-animation and DirectXTex and generates FlatBuffers
+headers and compiled shaders before compiling the engine. No existing dependency
+libraries or generated headers are required. DXC and flatc are supplied in
+`Tools`. Compilation errors are not bypassed; engine warnings remain errors.
+Each dependency's build system checks its own source dependencies on every
+engine build, so existing libraries do not mask changes to dependency source.
+
+- `Source`: engine and editor C++ source, including public extension APIs.
+- `Assets`: authoring assets and HLSL source; preserve scenes, prefabs and models.
+- `Schemas`: authoritative FlatBuffers schemas.
+- `Library`: third-party source and licenses. Do not treat upstream build scripts,
+  tests, documentation or sample data as engine-generated waste.
+- `Tools`: dependency builds and offline asset generation.
+- `Build`: regenerable dependency output and engine intermediate files.
+  Engine intermediates live in `Build\GameEngine\x64\<Configuration>`.
+- `Generated\FlatBuffers`: regenerable headers; never edit by hand.
+- `x64\<Configuration>`: executable, runtime DLL and debugging symbols.
+- `Config`, `Log`, `.vs`: local editor preferences, logs and IDE caches.
+  Preserve preferences; do not remove IDE caches while the IDE is using them.
+
+The old `GameEngine\x64` intermediates and compiler files formerly mixed into
+`x64\<Configuration>` are not needed after rebuilding with the current project.
+Keep `GameEngine.exe`, its `.pdb`, and `libfbxsdk.dll` in the executable directory.
+Ignored or untracked files are not automatically safe to delete.
+
+Initialize registered submodules with `git submodule update --init --recursive`.
+The current local PhysX, ImGui and spdlog checkouts also contain required files
+that are not registered in the parent repository; ImGui and spdlog have local
+changes. They are deliberately preserved. A fresh clone is not self-contained
+until those dependency sources and changes are supplied separately.
+
 # Component removal
 
 In the Inspector, click the **X** on an optional component header, or right-click

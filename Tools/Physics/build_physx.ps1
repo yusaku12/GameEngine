@@ -116,6 +116,7 @@ if ($LASTEXITCODE -ne 0) {
 $requiredLibraries = @(
     "PhysX_static_64.lib",
     "PhysXExtensions_static_64.lib",
+    "PhysXCharacterKinematic_static_64.lib",
     "PhysXCooking_static_64.lib",
     "PhysXCommon_static_64.lib",
     "PhysXPvdSDK_static_64.lib",
