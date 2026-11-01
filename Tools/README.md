@@ -80,26 +80,6 @@ does not write to a result buffer after an allocation failure.
 Smoothed frame time averages only recorded samples during startup; after ten
 samples it retains the existing ten-frame rolling average.
 
-## Core regression tests
-
-Run the standalone tests against the real engine sources; no additional test
-framework is required:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\Tests\RunCoreRegression.ps1 -Configuration Debug
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\Tests\RunCoreRegression.ps1 -Configuration Release
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\Tests\RunCoreRegression.ps1 -Configuration Debug -AddressSanitizer
-```
-
-The tests cover dependency chains, nested waits, group destruction/cancellation,
-overlapping-run rejection, allocation failures and counter overflow, concurrent
-scheduling during initialization/shutdown, string boundaries/encoding, dispatcher
-reentrancy/buffer reuse, and startup frame smoothing. Each case has a 20-second
-deadline so deadlocks fail instead of hanging the runner. Injected failure cases
-deliberately emit error logs. Binaries, objects and case logs stay under
-`Build\Tests\CoreRegression\<Configuration>`. AddressSanitizer requires the
-corresponding Visual Studio C++ component; its absence is a test build failure.
-
 # Component removal
 
 In the Inspector, click the **X** on an optional component header, or right-click
