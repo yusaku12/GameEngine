@@ -138,6 +138,7 @@ namespace Engine
             return false;
         }
 
+        m_workerCount.store(workerCount, std::memory_order_release);
         ThreadDebugStats::instance().setWorkerCount(workerCount);
 
         LOG_INFO("[Job] ジョブシステムを初期化しました (ワーカー {} スレッド)", workerCount);
@@ -164,7 +165,7 @@ namespace Engine
         }
 
         m_workers.clear();
-        m_jobs.clear();
+        m_workerCount.store(0, std::memory_order_release);
         ThreadDebugStats::instance().setWorkerCount(0);
 
         LOG_INFO("[Job] ジョブシステムを終了しました");
@@ -178,13 +179,36 @@ namespace Engine
         if (cancellationToken != nullptr && cancellationToken->isCancelled())
             return;
 
-        Job job{ std::move(function), counter, cancellationToken, nullptr };
+        submit(Job{ std::move(function), counter, cancellationToken, nullptr });
+    }
+
+    void JobSystem::submit(Job job)
+    {
+        JobCounter* const counter = job.counter;
         bool executeInline = false;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_pendingCount.load(std::memory_order_relaxed) == (std::numeric_limits<uint32_t>::max)())
+            {
+                LOG_ERROR("[Job] Cannot submit a job because the pending count would overflow.");
+                return;
+            }
             if (m_running.load(std::memory_order_acquire))
             {
-                m_jobs.push_back(std::move(job));
+                try
+                {
+                    m_jobs.push_back(std::move(job));
+                }
+                catch (const std::bad_alloc&)
+                {
+                    LOG_ERROR("[Job] Could not allocate space for a queued job.");
+                    throw;
+                }
+                catch (const std::length_error&)
+                {
+                    LOG_ERROR("[Job] Job queue capacity exceeded.");
+                    throw;
+                }
                 // Commit accounting after a successful allocation and before releasing the shutdown lock.
                 if (counter != nullptr && !counter->increment())
                 {
@@ -220,35 +244,7 @@ namespace Engine
         if (cancellationToken != nullptr && cancellationToken->isCancelled())
             return;
 
-        Job job{ std::move(function), counter, cancellationToken, dependency };
-        bool executeInline = false;
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            if (m_running.load(std::memory_order_acquire))
-            {
-                m_jobs.push_back(std::move(job));
-                if (counter != nullptr && !counter->increment())
-                {
-                    m_jobs.pop_back();
-                    return;
-                }
-                m_pendingCount.fetch_add(1, std::memory_order_relaxed);
-            }
-            else
-            {
-                if (counter != nullptr && !counter->increment())
-                    return;
-                m_pendingCount.fetch_add(1, std::memory_order_relaxed);
-                executeInline = true;
-            }
-        }
-
-        if (executeInline)
-        {
-            executeJob(job);
-            return;
-        }
-        m_condition.notify_one();
+        submit(Job{ std::move(function), counter, cancellationToken, dependency });
     }
 
     void JobSystem::scheduleWithContinuation(JobFunction function, Continuation continuation,
@@ -270,6 +266,10 @@ namespace Engine
                         if (jobFunction)
                             jobFunction();
                     }
+                    catch (const std::exception& exception)
+                    {
+                        LOG_ERROR("[Job] Continuation job failed: {}", exception.what());
+                    }
                     catch (...)
                     {
                         LOG_ERROR("[Job] 継続付きジョブの実行中に例外が発生しました");
@@ -279,34 +279,7 @@ namespace Engine
                 };
         }
 
-        bool executeInline = false;
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            if (m_running.load(std::memory_order_acquire))
-            {
-                m_jobs.push_back(std::move(job));
-                if (counter != nullptr && !counter->increment())
-                {
-                    m_jobs.pop_back();
-                    return;
-                }
-                m_pendingCount.fetch_add(1, std::memory_order_relaxed);
-            }
-            else
-            {
-                if (counter != nullptr && !counter->increment())
-                    return;
-                m_pendingCount.fetch_add(1, std::memory_order_relaxed);
-                executeInline = true;
-            }
-        }
-
-        if (executeInline)
-        {
-            executeJob(job);
-            return;
-        }
-        m_condition.notify_one();
+        submit(std::move(job));
     }
 
     void JobSystem::parallelFor(size_t count, const std::function<void(size_t)>& body, size_t grainSize)
@@ -322,7 +295,12 @@ namespace Engine
         const size_t suggested = count / workerCount + (count % workerCount != 0 ? 1 : 0);
         const size_t chunkSize = suggested > grainSize ? suggested : grainSize;
 
-        JobCounter counter;
+        struct PendingJobs
+        {
+            JobSystem& jobs;
+            JobCounter counter;
+            ~PendingJobs() { jobs.wait(counter); }
+        } pending{ *this };
 
         for (size_t begin = 0; begin < count;)
         {
@@ -333,12 +311,12 @@ namespace Engine
                 {
                     for (size_t index = begin; index < end; ++index)
                         body(index);
-                }, &counter);
+                }, &pending.counter);
 
             begin = end;
         }
 
-        wait(counter);
+        wait(pending.counter);
     }
 
     void JobSystem::wait(JobCounter& counter)
@@ -382,18 +360,20 @@ namespace Engine
 
             {
                 std::unique_lock<std::mutex> lock(m_mutex);
-                m_condition.wait(lock, [this] { return !m_jobs.empty() || !m_running.load(std::memory_order_acquire); });
-
-                if (m_jobs.empty())
+                while (!tryPopReadyJobLocked(job))
                 {
-                    if (!m_running.load(std::memory_order_acquire))
-                        break;
-
-                    continue;
+                    if (m_jobs.empty())
+                    {
+                        if (!m_running.load(std::memory_order_acquire))
+                            return;
+                        m_condition.wait(lock);
+                    }
+                    else
+                    {
+                        // Dependency completion and cancellation do not notify this queue.
+                        m_condition.wait_for(lock, std::chrono::milliseconds(1));
+                    }
                 }
-
-                job = std::move(m_jobs.front());
-                m_jobs.pop_front();
             }
 
             executeJob(job);
@@ -403,11 +383,21 @@ namespace Engine
     bool JobSystem::tryPopJob(Job& outJob)
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_jobs.empty())
+        return tryPopReadyJobLocked(outJob);
+    }
+
+    bool JobSystem::tryPopReadyJobLocked(Job& outJob)
+    {
+        const auto ready = std::find_if(m_jobs.begin(), m_jobs.end(), [](const Job& job)
+        {
+            return job.dependency == nullptr || job.dependency->isReady()
+                || (job.cancellationToken != nullptr && job.cancellationToken->isCancelled());
+        });
+        if (ready == m_jobs.end())
             return false;
 
-        outJob = std::move(m_jobs.front());
-        m_jobs.pop_front();
+        outJob = std::move(*ready);
+        m_jobs.erase(ready);
 
         return true;
     }
@@ -440,6 +430,10 @@ namespace Engine
         {
             if (job.function)
                 job.function();
+        }
+        catch (const std::exception& exception)
+        {
+            LOG_ERROR("[Job] Job failed: {}", exception.what());
         }
         catch (...) {
             LOG_ERROR("[Job] ジョブ実行中に例外が発生しました");

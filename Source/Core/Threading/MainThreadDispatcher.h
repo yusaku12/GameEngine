@@ -32,6 +32,7 @@ namespace Engine
         /**
          * @brief 現在キューにある処理をMain threadで実行する。
          * @details 実行中に追加された処理は次回の呼び出しで実行する。
+         * Reentrant dispatch is rejected; posted tasks remain queued for the next dispatch.
          */
         void dispatchPending();
 
@@ -39,5 +40,7 @@ namespace Engine
 
         std::mutex m_mutex;                         //!< Task queueを保護するMutex。
         std::vector<std::function<void()>> m_tasks; //!< Main threadで実行待ちのTask。
+        std::vector<std::function<void()>> m_dispatchTasks;
+        bool m_isDispatching = false;
     };
 } // namespace Engine

@@ -9,6 +9,7 @@ namespace Engine
      * フレーム間の経過時間、ゲーム時間、Fixed Update、Time Scale、Pauseなど、
      * ゲームエンジンに必要な包括的な時間管理機能を提供する。
      * Unity の Time クラスを参考に設計されている。
+     * @thread_safety Not thread-safe. Access must be synchronized at the frame boundary.
      */
     class TimeManager
     {
@@ -283,6 +284,7 @@ namespace Engine
         uint32_t m_fpsFrameCount = 0;                                          //!< FPS計測用フレームカウント
         double m_smoothDeltaTime = 0.0;                                        //!< 平滑化された Delta Time
         uint32_t m_smoothBufferIndex = 0;                                      //!< バッファのインデックス
+        uint32_t m_smoothSampleCount = 0;                                      //!< 有効なサンプル数
         bool m_paused = false;                                                 //!< ゲーム一時停止フラグ
         std::array<double, SMOOTH_SAMPLE_COUNT> m_smoothDeltaTimeBuffer = {};  //!< Smooth Delta Time 用バッファ
     };

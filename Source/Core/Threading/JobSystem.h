@@ -212,6 +212,8 @@ namespace Engine
      * @brief ジョブシステム
      * ワーカースレッド群へ処理を分散し、カウンタで完了を待ち合わせる
      * 待機中のスレッドも他のジョブを実行するため、入れ子の待機でも停止しない
+     * @thread_safety Scheduling, counters and waits are thread-safe.
+     * initialize()/finalize() must not be called from a job owned by this system.
      */
     class JobSystem
     {
@@ -253,12 +255,13 @@ namespace Engine
          * @brief ワーカースレッド数を取得する
          * @return uint32_t スレッド数
          */
-        uint32_t getWorkerCount() const { return static_cast<uint32_t>(m_workers.size()); }
+        uint32_t getWorkerCount() const { return m_workerCount.load(std::memory_order_acquire); }
 
         /**
          * @brief ジョブを投入する
          * @param function 実行する処理
          * @param counter 完了を数えるカウンタ（不要ならnullptr）
+         * @details counter must outlive every submitted job. Allocation failures propagate to the caller.
          * @param cancellationToken キャンセル可能なジョブトークン
          */
         void schedule(JobFunction function, JobCounter* counter = nullptr, const std::shared_ptr<CancellationToken>& cancellationToken = nullptr);
@@ -288,6 +291,7 @@ namespace Engine
          * @param count 処理する要素数
          * @param body 要素ごとの処理
          * @param grainSize 1ジョブが担当する最小要素数
+         * @details Submitted jobs are joined before returning, including when submission throws.
          */
         void parallelFor(size_t count, const std::function<void(size_t)>& body, size_t grainSize = 1);
 
@@ -299,6 +303,7 @@ namespace Engine
 
         /**
          * @brief 投入済みのジョブがすべて完了するまで待つ
+         * @details Must not be called from an unfinished job owned by this system.
          */
         void waitForAll();
 
@@ -345,6 +350,9 @@ namespace Engine
          */
         void executeJob(Job& job);
 
+        void submit(Job job);
+        bool tryPopReadyJobLocked(Job& outJob);
+
         std::vector<std::thread> m_workers;           //!< ワーカースレッド
         std::deque<Job>          m_jobs;              //!< 投入されたジョブ
         std::mutex               m_lifecycleMutex;    //!< 初期化・終了処理の直列化
@@ -352,17 +360,23 @@ namespace Engine
         std::condition_variable  m_condition;         //!< ジョブの到着を待つ条件変数
         std::atomic<uint32_t>    m_pendingCount{ 0 }; //!< 未完了のジョブ数
         std::atomic<bool>        m_running{ false };  //!< 稼働中か
+        std::atomic<uint32_t>    m_workerCount{ 0 };  //!< 公開するワーカースレッド数
     };
 
     /**
      * @brief 複数ジョブをまとめて実行するタスクグループ
      * 追加したジョブは同一カウンタで管理され、キャンセル可能
+     * @details Destruction cancels and joins outstanding jobs. Do not destroy a group from its own task.
+     * The supplied JobSystem must outlive the group. Mutations and overlapping runs are rejected while jobs are pending.
+     * @thread_safety Not thread-safe. Group operations must be synchronized externally.
      */
     class TaskGroup
     {
     public:
 
         TaskGroup() = default;
+        /** @brief Cancels queued work and joins running work before releasing captured state. */
+        ~TaskGroup() { cancel(); wait(); }
 
         GE_DISABLE_COPY_AND_MOVE(TaskGroup);
 
@@ -374,6 +388,11 @@ namespace Engine
         {
             if (!task)
                 return;
+            if (!m_counter.isComplete())
+            {
+                LOG_ERROR("[TaskGroup] Cannot add tasks while jobs are pending.");
+                return;
+            }
 
             m_tasks.push_back(task);
         }
@@ -388,6 +407,11 @@ namespace Engine
         {
             if (count == 0 || !body)
                 return;
+            if (!m_counter.isComplete())
+            {
+                LOG_ERROR("[TaskGroup] Cannot add ranges while jobs are pending.");
+                return;
+            }
 
             if (grainSize == 0)
                 grainSize = 1;
@@ -413,12 +437,28 @@ namespace Engine
         {
             if (m_tasks.empty() || m_cancelled.load(std::memory_order_acquire))
                 return;
+            if (!m_counter.isComplete())
+            {
+                LOG_ERROR("[TaskGroup] Cannot run a group while jobs are pending.");
+                return;
+            }
 
             const auto token = std::make_shared<CancellationToken>();
             m_cancellationToken = token;
+            m_jobSystem = &jobSystem;
 
-            for (const auto& task : m_tasks)
-                jobSystem.schedule(task, &m_counter, token);
+            try
+            {
+                for (const auto& task : m_tasks)
+                    jobSystem.schedule(task, &m_counter, token);
+            }
+            catch (...)
+            {
+                token->cancel();
+                wait();
+                LOG_ERROR("[TaskGroup] Submission failed; outstanding tasks were cancelled and joined.");
+                throw;
+            }
         }
 
         /**
@@ -430,30 +470,45 @@ namespace Engine
         {
             if (m_tasks.empty() || m_cancelled.load(std::memory_order_acquire))
                 return;
+            if (!m_counter.isComplete())
+            {
+                LOG_ERROR("[TaskGroup] Cannot run a group while jobs are pending.");
+                return;
+            }
 
             const auto token = std::make_shared<CancellationToken>();
             m_cancellationToken = token;
+            m_jobSystem = &jobSystem;
 
             const size_t effectiveGrain = std::max<size_t>(1u, grainSize);
             const size_t chunkCount = (m_tasks.size() - 1u) / effectiveGrain + 1u;
 
-            for (size_t chunkIndex = 0; chunkIndex < chunkCount; ++chunkIndex)
+            try
             {
-                const size_t begin = chunkIndex * effectiveGrain;
-                const size_t end = begin + std::min(effectiveGrain, m_tasks.size() - begin);
+                for (size_t chunkIndex = 0; chunkIndex < chunkCount; ++chunkIndex)
+                {
+                    const size_t begin = chunkIndex * effectiveGrain;
+                    const size_t end = begin + std::min(effectiveGrain, m_tasks.size() - begin);
 
-                jobSystem.schedule([this, begin, end, token]()
+                    jobSystem.schedule([this, begin, end, token]()
                     {
-                        if (token != nullptr && token->isCancelled())
-                            return;
-
                         for (size_t index = begin; index < end; ++index)
                         {
+                            if (token->isCancelled())
+                                break;
                             const auto& task = m_tasks[index];
                             if (task)
                                 task();
                         }
                     }, &m_counter, token);
+                }
+            }
+            catch (...)
+            {
+                token->cancel();
+                wait();
+                LOG_ERROR("[TaskGroup] Parallel submission failed; outstanding tasks were cancelled and joined.");
+                throw;
             }
         }
 
@@ -462,8 +517,8 @@ namespace Engine
          */
         void wait()
         {
-            while (!m_counter.isComplete())
-                std::this_thread::yield();
+            if (m_jobSystem != nullptr)
+                m_jobSystem->wait(m_counter);
         }
 
         /**
@@ -486,6 +541,7 @@ namespace Engine
 
         std::vector<JobSystem::JobFunction> m_tasks;            //!< 実行するジョブ群
         JobCounter m_counter;                                   //!< 完了数カウンタ
+        JobSystem* m_jobSystem = nullptr;                       //!< 待機先への非所有参照
         std::shared_ptr<CancellationToken> m_cancellationToken; //!< グループ全体のキャンセル状態
         std::atomic<bool> m_cancelled{ false };                 //!< グループがキャンセルされたか
     };

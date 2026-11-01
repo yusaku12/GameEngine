@@ -32,6 +32,7 @@ namespace Engine
 
         m_smoothDeltaTime = 0.0;
         m_smoothBufferIndex = 0;
+        m_smoothSampleCount = 0;
         std::fill(m_smoothDeltaTimeBuffer.begin(), m_smoothDeltaTimeBuffer.end(), 0.0);
 
         m_paused = false;
@@ -154,6 +155,7 @@ namespace Engine
         // リングバッファに現在の Delta Time を格納
         m_smoothDeltaTimeBuffer[m_smoothBufferIndex] = m_unscaledDeltaTime;
         m_smoothBufferIndex = (m_smoothBufferIndex + 1) % SMOOTH_SAMPLE_COUNT;
+        m_smoothSampleCount = std::min(m_smoothSampleCount + 1, SMOOTH_SAMPLE_COUNT);
 
         // バッファの平均を計算
         double sum = 0.0;
@@ -162,7 +164,7 @@ namespace Engine
             sum += value;
         }
 
-        m_smoothDeltaTime = sum / static_cast<double>(SMOOTH_SAMPLE_COUNT);
+        m_smoothDeltaTime = sum / static_cast<double>(m_smoothSampleCount);
     }
 
     void TimeManager::updateFpsStats() noexcept

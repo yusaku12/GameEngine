@@ -20,13 +20,24 @@ namespace Engine
 
     void MainThreadDispatcher::dispatchPending()
     {
-        std::vector<std::function<void()>> tasks;
+        if (m_isDispatching)
+        {
+            LOG_ERROR("[MainThreadDispatcher] Cannot re-enter pending task dispatch.");
+            return;
+        }
         {
             const std::scoped_lock lock(m_mutex);
-            tasks.swap(m_tasks);
+            m_dispatchTasks.swap(m_tasks);
         }
+        m_isDispatching = true;
+        struct DispatchScope
+        {
+            bool& active;
+            std::vector<std::function<void()>>& tasks;
+            ~DispatchScope() { tasks.clear(); active = false; }
+        } dispatchScope{ m_isDispatching, m_dispatchTasks };
 
-        for (const auto& task : tasks)
+        for (const auto& task : m_dispatchTasks)
         {
             try
             {

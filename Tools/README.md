@@ -44,6 +44,62 @@ that are not registered in the parent repository; ImGui and spdlog have local
 changes. They are deliberately preserved. A fresh clone is not self-contained
 until those dependency sources and changes are supplied separately.
 
+# Core scheduling and input boundaries
+
+`JobSystem` queues only ready dependencies for execution. A blocked dependent
+does not recursively take ownership of another blocked job, so producers queued
+after dependents can unblock a valid dependency chain. External dependency
+completion and cancellation are checked periodically by workers. Dependency
+cycles are still invalid; a job must not wait for a counter containing itself
+or call `waitForAll`, `initialize` or `finalize` on its own system.
+
+Scheduling/counters/waits are thread-safe; the published worker count is atomic.
+Counter and captured callback state must outlive all submitted jobs. Scheduling
+allocation failures propagate; `parallelFor` joins any jobs already submitted
+before unwinding. Job callback failures are logged and still complete accounting.
+Continuations retain the existing behavior of running after a failed body.
+
+`TaskGroup` rejects mutation and overlapping execution while jobs are pending.
+Group operations require external synchronization. Its `wait` helps execute
+ready jobs, including inside a worker; destruction cancels queued work and joins
+running work before releasing group storage. The supplied system must outlive
+the group, and tasks must not destroy or wait on their own group. Cancellation
+between tasks in a parallel chunk is observed without waiting for the whole chunk.
+
+`MainThreadDispatcher` retains task-buffer capacity across frames. Tasks posted
+during dispatch run on the next dispatch; recursively calling `dispatchPending`
+is rejected and logged. Callback exceptions are logged without dropping later
+callbacks or leaving dispatch permanently active.
+
+`String` rejects nonempty null sources and ranges into its unused capacity,
+preserving the previous value and logging the error. Appending a string literal
+has an unambiguous overload. Capacity/encoding failures are logged in Release
+as well as Debug. UTF-16 conversion rejects malformed surrogate sequences and
+does not write to a result buffer after an allocation failure.
+
+Smoothed frame time averages only recorded samples during startup; after ten
+samples it retains the existing ten-frame rolling average.
+
+## Core regression tests
+
+Run the standalone tests against the real engine sources; no additional test
+framework is required:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\Tests\RunCoreRegression.ps1 -Configuration Debug
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\Tests\RunCoreRegression.ps1 -Configuration Release
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\Tests\RunCoreRegression.ps1 -Configuration Debug -AddressSanitizer
+```
+
+The tests cover dependency chains, nested waits, group destruction/cancellation,
+overlapping-run rejection, allocation failures and counter overflow, concurrent
+scheduling during initialization/shutdown, string boundaries/encoding, dispatcher
+reentrancy/buffer reuse, and startup frame smoothing. Each case has a 20-second
+deadline so deadlocks fail instead of hanging the runner. Injected failure cases
+deliberately emit error logs. Binaries, objects and case logs stay under
+`Build\Tests\CoreRegression\<Configuration>`. AddressSanitizer requires the
+corresponding Visual Studio C++ component; its absence is a test build failure.
+
 # Component removal
 
 In the Inspector, click the **X** on an optional component header, or right-click

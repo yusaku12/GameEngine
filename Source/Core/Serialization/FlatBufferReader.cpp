@@ -12,10 +12,14 @@ namespace Engine::Serialization
         if (!file) {
             LOG_ERROR("Failed to open FlatBuffers asset: {}", path.string());
             return false;
-        } // namespace Engine::Serialization
+        }
 
         const std::streamsize fileSize = file.tellg();
-        if (fileSize <= 0) {
+        if (fileSize < 0) {
+            LOG_ERROR("Failed to determine FlatBuffers asset size: {}", path.string());
+            return false;
+        }
+        if (fileSize == 0) {
             LOG_ERROR("FlatBuffers asset is empty: {}", path.string());
             return false;
         }

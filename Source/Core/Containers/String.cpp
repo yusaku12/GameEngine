@@ -108,15 +108,22 @@ namespace Engine
         if (text == nullptr || text[0] == L'\0')
             return String();
 
-        const int length = ::WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
-        if (length <= 1)
+        const int length = ::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, nullptr, 0, nullptr, nullptr);
+        if (length == 0)
+        {
+            LOG_ERROR("[String] Could not measure UTF-8 conversion (Windows error: {}).", GetLastError());
+            return String();
+        }
+        if (length == 1)
             return String();
 
         String result;
         result.resize(static_cast<size_t>(length) - 1);
-        if (::WideCharToMultiByte(CP_UTF8, 0, text, -1, result.data(), length, nullptr, nullptr) != length)
+        if (result.size() != static_cast<size_t>(length) - 1)
+            return String();
+        if (::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, result.data(), length, nullptr, nullptr) != length)
         {
-            GE_ASSERT_MSG(false, "ワイド文字列からUTF-8への変換に失敗しました");
+            LOG_ERROR("[String] UTF-8 conversion failed (Windows error: {}).", GetLastError());
             return String();
         }
 
@@ -130,7 +137,7 @@ namespace Engine
 
         if (m_size > static_cast<size_t>((std::numeric_limits<int>::max)()))
         {
-            GE_ASSERT_MSG(false, "UTF-8文字列が変換可能な長さを超えています");
+            LOG_ERROR("[String] UTF-8 text exceeds the supported conversion length.");
             return std::wstring();
         }
 
@@ -139,7 +146,7 @@ namespace Engine
             m_data, sourceLength, nullptr, 0);
         if (length <= 0)
         {
-            GE_ASSERT_MSG(false, "UTF-8文字列からワイド文字列への変換に失敗しました");
+            LOG_ERROR("[String] UTF-16 conversion failed (Windows error: {}).", GetLastError());
             return std::wstring();
         }
 
@@ -147,7 +154,7 @@ namespace Engine
         if (::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
             m_data, sourceLength, result.data(), length) != length)
         {
-            GE_ASSERT_MSG(false, "UTF-8文字列からワイド文字列への変換に失敗しました");
+            LOG_ERROR("[String] UTF-16 conversion failed (Windows error: {}).", GetLastError());
             return std::wstring();
         }
 
@@ -162,7 +169,7 @@ namespace Engine
         constexpr size_t maxCapacity = (std::numeric_limits<size_t>::max)() - 1;
         if (capacity > maxCapacity)
         {
-            GE_ASSERT_MSG(false, "文字列の要求容量が上限を超えています");
+            LOG_ERROR("[String] Requested capacity exceeds the supported limit.");
             return;
         }
 
@@ -172,10 +179,11 @@ namespace Engine
             newCapacity = capacity;
 
         std::unique_ptr<char[]> newData(new (std::nothrow) char[newCapacity + 1]);
-        GE_ASSERT_MSG(newData != nullptr, "文字列の確保に失敗しました ({} 文字)", newCapacity);
-
         if (newData == nullptr)
+        {
+            LOG_ERROR("[String] Could not allocate storage for {} characters.", newCapacity);
             return;
+        }
         std::memcpy(newData.get(), m_data, m_size + 1);
 
         m_storage = std::move(newData);
@@ -204,13 +212,13 @@ namespace Engine
 
     void String::append(const char* text, size_t size)
     {
-        if (text == nullptr || size == 0)
+        if (!validateSource(text, size) || size == 0)
             return;
 
         constexpr size_t maxCapacity = (std::numeric_limits<size_t>::max)() - 1;
         if (size > maxCapacity - m_size)
         {
-            GE_ASSERT_MSG(false, "文字列の追加サイズが上限を超えています");
+            LOG_ERROR("[String] Appended text exceeds the supported capacity.");
             return;
         }
 
@@ -221,12 +229,6 @@ namespace Engine
         const size_t sourceOffset = aliasesStorage
             ? static_cast<size_t>(textAddress - dataAddress)
             : 0;
-        if (aliasesStorage && size > m_size - sourceOffset)
-        {
-            GE_ASSERT_MSG(false, "文字列追加元の範囲が有効な文字列を超えています");
-            return;
-        }
-
         const size_t newSize = m_size + size;
         reserve(newSize);
         if (newSize > m_capacity)
@@ -303,8 +305,8 @@ namespace Engine
 
     void String::assign(const char* text, size_t size)
     {
-        if (text == nullptr)
-            size = 0;
+        if (!validateSource(text, size))
+            return;
 
         reserve(size);
         if (size > m_capacity)
@@ -315,6 +317,29 @@ namespace Engine
 
         m_size = size;
         m_data[m_size] = '\0';
+    }
+
+    bool String::validateSource(const char* text, const size_t size) const
+    {
+        if (text == nullptr)
+        {
+            if (size == 0)
+                return true;
+            LOG_ERROR("[String] A nonempty source requires a valid pointer.");
+            return false;
+        }
+        const auto dataAddress = reinterpret_cast<std::uintptr_t>(m_data);
+        const auto textAddress = reinterpret_cast<std::uintptr_t>(text);
+        if (textAddress >= dataAddress && textAddress - dataAddress <= m_capacity)
+        {
+            const size_t offset = static_cast<size_t>(textAddress - dataAddress);
+            if (offset > m_size || size > m_size - offset)
+            {
+                LOG_ERROR("[String] Source range exceeds the current string.");
+                return false;
+            }
+        }
+        return true;
     }
 
     void String::releaseStorage()

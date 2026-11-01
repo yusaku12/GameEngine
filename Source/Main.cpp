@@ -81,7 +81,12 @@ namespace Engine
             return false;
 
         // ジョブシステムの初期化
-        JobSystem::instance().initialize();
+        if (!JobSystem::instance().initialize())
+        {
+            LOG_ERROR("[Startup] Could not initialize the job system.");
+            Logger::instance().finalize();
+            return false;
+        }
 
         return true;
     }

@@ -89,6 +89,8 @@ namespace Engine
          * @param text 追加する文字列
          */
         void append(std::string_view text) { append(text.data(), text.size()); }
+        /** @brief Appends a null-terminated string; nullptr is treated as empty. */
+        void append(const char* text) { append(text, textLength(text)); }
         void append(const String& text) { append(text.c_str(), text.size()); }
         void append(char character) { append(&character, 1); }
 
@@ -253,6 +255,8 @@ namespace Engine
          * @brief 指定された文字列をコピーする
          */
         void assign(const char* text, size_t size);
+
+        bool validateSource(const char* text, size_t size) const;
 
         /**
          * @brief ヒープから確保したメモリを解放する
