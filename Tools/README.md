@@ -311,32 +311,6 @@ Completed-slot statistics can lag the current frame and return zero when that
 slot had culling disabled. Compare GPU frame time with culling enabled/disabled;
 Hi-Z construction and compaction cost can outweigh savings in small scenes.
 
-Focused GPU regressions build the engine, then test its actual culling resources
-and compute pipelines using the D3D12 debug layer and GPU-based validation:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Tests\RunGpuOcclusionTests.ps1 -Configuration Debug
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\Tests\RunGpuOcclusionTests.ps1 -Configuration Release -Warp
-```
-
-These require the Windows Graphics Tools debug layer. Tests compare direct and
-indirect render-target pixels, inspect generated arguments and count executed
-IA vertices (zero for a fully hidden draw). They cover mixed batches, multi-wave
-compaction, instancing disabled, near-plane/camera movement, skinning bypass,
-depth equality, retained passes, NPOT dimensions/edge holes, fractional viewport
-offsets, empty queues, resize/reuse of two frame slots, signed base vertices,
-index offsets, ordered upload/culling/color command lists, and dispatch chunking
-beyond 65,535 batches. Run Debug and Release builds sequentially: dependency
-configuration uses shared build directories.
-Additional regressions cover over 12,000 AABBs against reference clip-space
-inequalities, orthographic faces and spheres, queue submission, 5,000 normalized
-viewport conversions, right/bottom pixel rounding overshoot, invalid viewport
-rejection, and distinguishable coplanar instances at 64-lane tile boundaries
-with both all-visible and mixed-visibility batches.
-The vertex shader captures all 128 bytes of each executed instance's constants
-into a UAV; order regressions verify the entire surviving sequence, including
-fully hidden tiles and all-hidden multi-tile batches, not just the final image.
-
 ## Current-pose animation bounds
 
 Animated models use the same immutable `SkinningPaletteSnapshot` for bounds
@@ -366,11 +340,3 @@ invalid palette counts or float-overflow risk are logged and disable animation
 bounds culling. `RenderItem::animationBoundsValid` defaults to false, so callers
 that only provide bind-pose bounds retain the previous safe animation bypass.
 Near-plane intersections also retain Hi-Z's visibility bypass.
-
-The GPU regression runner additionally invokes the **actual Model.vsMain**
-from a compute test and checks containment of 1,024 vertices in four changing
-poses/world transforms (4,096 positions per run). It covers 256 bones, clamped
-indices, mixed/unnormalized/zero/threshold weights, negative and nonuniform
-scale, singular transforms and large world coordinates. Further cases verify
-animation frustum rejection/re-entry, invalid-input bypass, and animated
-hidden/visible/near-plane indirect draws.
