@@ -2,6 +2,9 @@
 #include "UI\RuntimeUIComponents.h"
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Core\GameObject\GameObject.h"
+#include "Core\Scene\SceneManager.h"
+#include "Core\System\Dialog.h"
+#include "Core\Threading\MainThreadDispatcher.h"
 #include "Generated\FlatBuffers\RuntimeUI_generated.h"
 #include <imgui.h>
 
@@ -202,6 +205,56 @@ namespace Engine
         std::string path(String::fromWide(value.path.c_str()).view());
         bool changed = editString("Image Path", path);
         if (changed) value.path = String(path).toWide();
+        const GameObject* const object = getGameObject();
+        ImGui::BeginDisabled(object == nullptr);
+        if (ImGui::Button("Browse...") && object != nullptr)
+        {
+            const ObjectGUID objectGuid = object->getGUID();
+            const std::filesystem::path initialPath = value.path.empty() ? std::filesystem::path(L"Assets") : value.path;
+            const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+            MainThreadDispatcher::instance().post([objectGuid, initialPath, ownerWindow]
+                {
+                    static constexpr std::array filters = {
+                        FileDialogFilter{ L"Image Files", L"*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff;*.ico;*.wdp;*.jxr" },
+                        FileDialogFilter{ L"All Files", L"*.*" },
+                    };
+                    std::vector<std::filesystem::path> paths;
+                    const DialogResult result = Dialog::openFile(
+                        paths, L"Select UI Image", initialPath, filters, false, ownerWindow);
+                    if (result == DialogResult::Cancel)
+                        return;
+                    if (result != DialogResult::Ok || paths.size() != 1)
+                    {
+                        LOG_ERROR("[UI] Image file selection failed.");
+                        return;
+                    }
+
+                    SceneManager& scenes = SceneManager::instance();
+                    GameObject* target = nullptr;
+                    if (Scene* scene = scenes.getActiveScene())
+                        target = scene->find(objectGuid);
+                    if (target == nullptr)
+                        target = scenes.getPersistentScene()->find(objectGuid);
+                    UIImageComponent* component = target != nullptr ? target->getComponent<UIImageComponent>() : nullptr;
+                    if (component == nullptr)
+                    {
+                        LOG_WARNING("[UI] Image selection discarded because the target component no longer exists.");
+                        return;
+                    }
+                    auto settings = component->settings();
+                    settings.path = paths.front().lexically_normal();
+                    component->setSettings(settings);
+                });
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(value.path.empty());
+        if (ImGui::Button("Clear"))
+        {
+            value.path.clear();
+            changed = true;
+        }
+        ImGui::EndDisabled();
         changed |= ImGui::ColorEdit4("Tint", &value.color.x);
         if (changed) setSettings(value);
     }

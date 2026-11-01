@@ -79,8 +79,13 @@ desired. Light settings persist in scenes/prefabs and copy into isolated Play.
    The Y axis points down. Equal anchors make a fixed-size rectangle; anchors
    `(0,0)` and `(1,1)` with zero offsets stretch to fill the parent.
 3. Add **UI Image**, **UI Text** or **UI Button** after Rect Transform.
-   Images accept WIC-readable files (including PNG/JPEG/BMP); an empty path
-   draws a solid tinted rectangle. Text is UTF-8 and uses an installed font
+   In **UI Image**, click **Browse...** to select a WIC-readable image with the
+   Windows file dialog (including PNG/JPEG/BMP/GIF/TIFF and Unicode paths).
+   The current image is the initial selection; cancelling leaves it unchanged.
+   **Image Path** remains directly editable. **Clear** removes the image path
+   without changing Tint, restoring a solid tinted rectangle. Selected paths
+   are referenced in place, not imported or copied into the project.
+   Text is UTF-8 and uses an installed font
    family with Unicode shaping, wrapping, clipping and Left/Center/Right
    alignment. Buttons provide normal, hover and pressed colors.
    When Image and Button share an object, the button state modulates the image
