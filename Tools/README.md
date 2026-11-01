@@ -131,7 +131,14 @@ world-space UI and general-purpose layout widgets are not provided.
 # WAV audio
 
 Add **Audio Source** to an emitter GameObject, set **WAV Path**, Volume, Pitch,
-Loop and Play On Awake. Paths are UTF-8 in saved configuration; relative paths
+Loop and Play On Awake. Click **Browse...** to select a WAV file with the Windows
+file dialog, including Japanese/Unicode paths. The current file (or the Assets
+folder when empty) is the initial location. Selection validates and caches WAV
+data without opening an audio device or starting playback. Cancelling or selecting
+an invalid WAV leaves the existing clip and playback unchanged; failures are logged.
+**Clear** removes the clip and stops its voice without resetting playback settings.
+Direct **WAV Path** editing remains available. Files are referenced in place,
+not copied into the project. Paths are UTF-8 in saved configuration; relative paths
 are resolved from the application's working directory. WAV files support mono
 or stereo PCM (8/16/24/32-bit) and 32-bit IEEE float, 8-192 kHz, up to 512 MiB.
 RIFF chunks and WAVEFORMATEXTENSIBLE metadata are validated before playback.

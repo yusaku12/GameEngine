@@ -2,7 +2,10 @@
 #include "Audio\AudioSourceComponent.h"
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Core\GameObject\GameObject.h"
+#include "Core\Scene\SceneManager.h"
+#include "Core\System\Dialog.h"
 #include "Core\System\GameSession.h"
+#include "Core\Threading\MainThreadDispatcher.h"
 #include "Generated\FlatBuffers\AudioComponent_generated.h"
 #include <imgui.h>
 
@@ -142,6 +145,55 @@ namespace Engine
         std::copy_n(path.data(), std::min(path.size(), buffer.size() - 1), buffer.data());
         bool changed = ImGui::InputText("WAV Path", buffer.data(), buffer.size());
         if (changed) value.path = String(buffer.data()).toWide();
+        const GameObject* const object = getGameObject();
+        ImGui::BeginDisabled(object == nullptr);
+        if (ImGui::Button("Browse...") && object != nullptr)
+        {
+            const ObjectGUID objectGuid = object->getGUID();
+            const std::filesystem::path initialPath = value.path.empty() ? std::filesystem::path(L"Assets") : value.path;
+            const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+            MainThreadDispatcher::instance().post([objectGuid, initialPath, ownerWindow]
+                {
+                    static constexpr std::array filters = {
+                        FileDialogFilter{ L"WAV Audio", L"*.wav" },
+                    };
+                    std::vector<std::filesystem::path> paths;
+                    const DialogResult result = Dialog::openFile(
+                        paths, L"Select WAV Audio", initialPath, filters, false, ownerWindow);
+                    if (result == DialogResult::Cancel)
+                        return;
+                    if (result != DialogResult::Ok || paths.size() != 1)
+                    {
+                        LOG_ERROR("[Audio] WAV file selection failed.");
+                        return;
+                    }
+
+                    SceneManager& scenes = SceneManager::instance();
+                    GameObject* target = nullptr;
+                    if (Scene* scene = scenes.getActiveScene())
+                        target = scene->find(objectGuid);
+                    if (target == nullptr)
+                        target = scenes.getPersistentScene()->find(objectGuid);
+                    AudioSourceComponent* component = target != nullptr ? target->getComponent<AudioSourceComponent>() : nullptr;
+                    if (component == nullptr)
+                    {
+                        LOG_WARNING("[Audio] WAV selection discarded because the target component no longer exists.");
+                        return;
+                    }
+                    const AudioClipHandle clip = AudioSystem::instance().load(paths.front());
+                    if (clip.isValid())
+                        component->setClip(clip);
+                });
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(value.path.empty());
+        if (ImGui::Button("Clear"))
+        {
+            value.path.clear();
+            changed = true;
+        }
+        ImGui::EndDisabled();
         changed |= ImGui::SliderFloat("Volume", &value.volume, 0, 4);
         changed |= ImGui::SliderFloat("Pitch", &value.pitch, 0.25f, 4);
         changed |= ImGui::Checkbox("Loop", &value.loop);
