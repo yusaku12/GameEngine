@@ -73,6 +73,8 @@ namespace Engine
          * @return 自身のアクティブ状態
          */
         bool isActiveSelf() const noexcept { return m_activeSelf; }
+        /** @brief True after destruction has been queued; render-facing components must no longer participate. */
+        bool isDestroyRequested() const noexcept { return m_destroyRequested; }
 
         /**
          * @brief 親階層を含めたアクティブ状態を取得する。

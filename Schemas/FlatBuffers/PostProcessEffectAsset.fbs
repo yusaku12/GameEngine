@@ -1,0 +1,34 @@
+include "Common.fbs";
+namespace Engine.Serialization;
+
+enum PostProcessStageData:ubyte {
+    BeforeToneMapping,
+    AfterToneMapping
+}
+
+table PostProcessEffectParameterData {
+    name:string (required);
+    default_value:float;
+    minimum:float;
+    maximum:float;
+}
+
+table PostProcessEffectAssetData {
+    guid:AssetGuid;
+    name:string (required);
+    source_path:string (required);
+    compiled_bytecode_file:string (required);
+    entry_point:string (required);
+    stage:PostProcessStageData;
+    resolution_divisor:uint = 1;
+    parameters:[PostProcessEffectParameterData];
+}
+
+table PostProcessEffectAssetFile {
+    header:FileHeader (required);
+    asset:PostProcessEffectAssetData (required);
+}
+
+root_type PostProcessEffectAssetFile;
+file_identifier "PPEA";
+file_extension "posteffect";

@@ -620,7 +620,6 @@ Post Processingは独立Passとして管理する。
 
 代表:
 
-- SSAO
 - SSR
 - Bloom
 - DOF
@@ -643,7 +642,7 @@ Post Processingの順番はEffectの依存関係に基づいて決定する。
 ```text
 Scene HDR
  ↓
-SSAO / SSR
+SSR
  ↓
 Lighting
  ↓

@@ -22,9 +22,18 @@
 #include "Graphics\Material\MaterialGpuCache.h"
 #include "Graphics\Lighting\LightingFrame.h"
 #include "Graphics\UI\RuntimeUIRenderer.h"
+#include "Graphics\PostProcess\PostProcessPipeline.h"
 
 namespace Engine
 {
+    struct DX12FrameCapture;
+
+    /** @brief Deferred検証表示。FinalLighting以外はPostEffectを迂回する。 */
+    enum class DeferredDebugView
+    {
+        FinalLighting, Albedo, Normal, Metallic, Roughness, MaterialAO, Emission, Depth, ShadowMap,
+    };
+
     /**
      * @brief Model描画処理のフレーム統計。
      */
@@ -68,10 +77,11 @@ namespace Engine
          * @param width Back Buffer 幅
          * @param height Back Buffer 高さ
          * @param mode Editor UI or direct Runtime presentation.
+         * @param enableRuntimeUi Runtime UI機器を作成するか。UIを含まないGPU検証ではfalse。
          * @return 初期化に成功した場合は true
          */
         bool initialize(HWND hwnd, std::uint32_t width, std::uint32_t height,
-            ExecutionMode mode = ExecutionMode::Editor);
+            ExecutionMode mode = ExecutionMode::Editor, bool enableRuntimeUi = true);
 
         /** @brief Shows editor grid overlays only in editing frames. */
         void setEditorOverlayEnabled(bool enabled) noexcept { m_editorOverlayEnabled = enabled; }
@@ -183,10 +193,52 @@ namespace Engine
          */
         void setParallelModelRecordingEnabled(bool enabled) noexcept { m_enableParallelModelRecording = enabled; }
 
+        /**
+         * @brief GPU完了を待ち、直近の最終表示画像とDeferred時のHDRを読み戻す。
+         * @param destination 読み戻した画像。失敗時は空。
+         * @details Forward時はHDRが空。HDRにはPostEffectとUI適用前のScene Colorを保持する。
+         * @return 読み戻し成功時true。フレーム間の検証用で、毎フレームの使用は非推奨。
+         * @thread_safety Render thread only. No concurrent rendering or resource mutation.
+         */
+        bool captureFrame(DX12FrameCapture& destination);
+
+        /**
+         * @brief GPU完了後のD3D12 Debug Layerメッセージを検証する。
+         * @return Debug Layerが利用可能で警告・エラー・メッセージ欠落がない場合はtrue。
+         * @thread_safety Render thread only. No concurrent rendering.
+         */
+        bool validateDebugMessages();
+
+        /**
+         * @brief HDR/LDRのColorパス列を設定する。空の列は必須表示変換だけを実行する。
+         * @param passes Shader Snapshotとパラメータを所有コピーするパス定義。
+         * @return PSO構築成功時true。失敗時は既存列を維持する。
+         * @thread_safety Render thread only. フレーム間で呼ぶこと。GPU完了を待機する。
+         */
+        bool setPostProcessPasses(std::span<const PostProcessPassDescription> passes)
+        {
+            return m_postProcess.configure(passes);
+        }
+
+        /** @brief 直近のPostEffect記録統計。Render threadまたはフレーム完了後に読むこと。 */
+        const PostProcessStatistics& getPostProcessStatistics() const noexcept
+        {
+            return m_postProcess.statistics();
+        }
+        /** @brief Returns the last submitted Camera PostEffect snapshot. */
+        const PostProcessCameraSnapshot& getCameraPostProcessSnapshot() const noexcept { return m_cameraPostProcess; }
+
+        /** @brief Deferred/Forward経路を選択する。フレーム間のRender threadから呼ぶこと。 */
+        void setDeferredRenderingEnabled(bool enabled) noexcept { m_deferredRenderingEnabled = enabled; }
+
+        /** @brief 検証表示を選択する。不正値はログとfalse。フレーム間で呼ぶこと。 */
+        bool setDeferredDebugView(DeferredDebugView view);
+
     private:
 
         ExecutionMode m_mode = ExecutionMode::Editor;
         bool m_editorOverlayEnabled = true;
+        bool m_runtimeUiEnabled = true;
         /** @brief Tracks every scene resource as soon as its GPU command lists are submitted. */
         bool markSceneSubmitted(std::uint32_t frameIndex, std::uint64_t fenceValue,
             std::span<const ModelHandle> models, std::span<const MaterialHandle> materials);
@@ -219,6 +271,20 @@ namespace Engine
          * @return 作成に成功した場合はtrue。
          */
         bool createGameRenderTarget(std::uint32_t width, std::uint32_t height, const Color& clearColor);
+
+        /**
+         * @brief Deferred用のG-BufferとHDR Lighting Targetを作成または再作成する。
+         * @param width Texture幅。
+         * @param height Texture高さ。
+         * @return 作成に成功した場合はtrue。
+         */
+        bool createDeferredRenderTargets(std::uint32_t width, std::uint32_t height);
+
+        /** @brief G-Bufferを読み、HDR Lighting TargetへDeferred Lightingを記録する。 */
+        bool recordDeferredLighting(std::uint32_t frameIndex);
+
+        /** @brief G-Bufferデバッグ画像を表示する。通常PostEffect列を迂回する。 */
+        bool recordDeferredDebug(DX12CommandList& commandList, std::uint32_t frameIndex);
 
         /**
          * @brief ShadowCaster pass用Depth Bufferを作成する。
@@ -264,6 +330,16 @@ namespace Engine
         };
         static_assert(sizeof(ModelInstanceConstants) == sizeof(float) * 32);
 
+        struct DeferredPassConstants
+        {
+            Matrix inverseViewProjection = Matrix::Identity;
+            Vector4 viewport{};
+            Vector4 renderSize{};
+            Vector4 backgroundColor{};
+            Vector4 clipExposureDebug{};
+        };
+        static_assert(sizeof(DeferredPassConstants) == sizeof(float) * 32);
+
         //! Frame In Flight 数
         static constexpr std::uint32_t FRAME_COUNT = 2;
 
@@ -275,22 +351,43 @@ namespace Engine
         DX12DescriptorHeap m_gameRtvHeap;                                                                 //!< Game Texture用 RTV Heap
         DX12Resource m_gameRenderTarget;                                                                  //!< ImGui Game Viewへ表示するScene描画Texture
         DX12CpuDescriptorHandle m_gameRenderTargetView;                                                   //!< Game TextureのRTV
+        std::array<DX12Resource, 4> m_gbufferTargets;                                                     //!< Albedo、Normal、Material、Emission
+        std::array<DX12CpuDescriptorHandle, 4> m_gbufferRenderTargetViews{};                              //!< G-Buffer RTV
+        std::array<std::optional<DX12DescriptorAllocation>, 4> m_gbufferShaderViews{};                    //!< G-Buffer SRV
+        DX12Resource m_deferredLightingTarget;                                                           //!< HDR Lighting / Transparent target
+        DX12CpuDescriptorHandle m_deferredLightingRenderTargetView{};                                   //!< HDR Lighting RTV
+        std::optional<DX12DescriptorAllocation> m_deferredLightingShaderView;                            //!< HDR Lighting SRV
+        std::optional<DX12DescriptorAllocation> m_depthShaderView;                                      //!< 深度再構築用SRV
         DX12DescriptorHeap m_dsvHeap;                                                                     //!< 深度バッファ用 DSV Heap
         DX12Resource m_depthBuffer;                                                                       //!< 画面描画用深度バッファ
         DX12CpuDescriptorHandle m_depthStencilView;                                                       //!< 深度バッファの DSV
         DX12Resource m_shadowMap;                                                                         //!< ShadowCaster pass用Depth Buffer
         DX12CpuDescriptorHandle m_shadowDepthStencilView;                                                 //!< Shadow MapのDSV
         std::array<DX12UploadBuffer, FRAME_COUNT> m_lightingBuffers;
+        std::array<DX12UploadBuffer, FRAME_COUNT> m_deferredConstantsBuffers;
+        DeferredPassConstants m_deferredConstants;
         LightingConstants m_lighting;
         std::optional<DX12DescriptorAllocation> m_shadowSrv;
         bool m_queryListRecorded = false;
         RuntimeUIRenderer m_runtimeUi;
+        PostProcessPipeline m_postProcess;
+        bool m_postProcessRecorded = false;
+        PostProcessCameraSnapshot m_cameraPostProcess; //!< Value-only settings from the current RenderView.
         std::array<DX12CommandList, FRAME_COUNT> m_presentationLists;
         ShaderManager m_shaderManager;                                                                    //!< Shader のロード・キャッシュ・Hot Reload 管理
         ShaderID m_modelVertexShaderID = 0;                                                               //!< Model頂点Shader ID
         ShaderID m_modelPixelShaderID = 0;                                                                //!< Model Pixel Shader ID
         ShaderID m_alphaTestPixelShaderID = 0;                                                            //!< Alpha Test Pixel Shader ID
         ShaderID m_depthAlphaTestPixelShaderID = 0;                                                       //!< Depth Alpha Test Pixel Shader ID
+        ShaderID m_gbufferPixelShaderID = 0;
+        ShaderID m_gbufferAlphaTestPixelShaderID = 0;
+        ShaderID m_deferredVertexShaderID = 0;
+        ShaderID m_deferredLightingPixelShaderID = 0;
+        ShaderID m_deferredDebugPixelShaderID = 0;
+        ShaderID m_postProcessVertexShaderID = 0;
+        ShaderID m_postProcessToneMappingShaderID = 0;
+        ShaderID m_postProcessOutputShaderID = 0;
+        std::array<ShaderID, POST_PROCESS_BUILTIN_ENTRIES.size()> m_postProcessBuiltinShaderIDs{};
         ShaderID m_debugVertexShaderID = 0;                                                               //!< Debug Primitive頂点Shader ID
         ShaderID m_debugPixelShaderID = 0;                                                                //!< Debug Primitive Pixel Shader ID
         ShaderID m_hizShaderID = 0;                                                                       //!< Hi-Z生成Compute Shader ID
@@ -301,6 +398,11 @@ namespace Engine
         DX12GraphicsPipeline m_transparentModelPipeline;                                                  //!< 透明Model描画用Graphics PSO
         DX12GraphicsPipeline m_depthOnlyModelPipeline;                                                    //!< Opaque Depth/Shadow描画用Graphics PSO
         DX12GraphicsPipeline m_depthAlphaTestModelPipeline;                                               //!< Alpha Test Depth/Shadow描画用Graphics PSO
+        DX12GraphicsPipeline m_gbufferModelPipeline;
+        DX12GraphicsPipeline m_gbufferAlphaTestModelPipeline;
+        DX12GraphicsPipeline m_deferredTransparentModelPipeline;
+        DX12GraphicsPipeline m_deferredLightingPipeline;
+        DX12GraphicsPipeline m_deferredDebugPipeline;
         DX12ComputePipeline m_hizPipeline;                                                                //!< Hi-Z生成PSO
         DX12ComputePipeline m_occlusionPipeline;                                                          //!< 可視Instance圧縮・Indirect生成PSO
         std::array<DX12GpuOcclusionCulling, FRAME_COUNT> m_occlusionCulling;                               //!< GPU完了後に再利用するFrame別Hi-Z Resource
@@ -321,6 +423,9 @@ namespace Engine
         std::vector<ModelInstanceConstants> m_modelInstanceConstants;                                     //!< CPU側のInstance転送データ。容量を再利用する
         bool m_enableModelInstancing = true;                                                              //!< 非透明Modelの互換Drawをまとめる
         Matrix m_viewProjection = Matrix::Identity;                                                       //!< CameraのView Projection行列
+        Matrix m_inverseViewProjection = Matrix::Identity;
+        float m_cameraNearClip = 0.1f;
+        float m_cameraFarClip = 1000.0f;
         Vector3 m_cameraPosition = Vector3::Zero;                                                         //!< Transparent sort用Camera座標
         Vector3 m_cameraForward = Vector3::UnitZ;                                                         //!< Transparent sort用Camera視線方向
         std::optional<CameraFrustum> m_frustum;                                                           //!< World Space Camera Clip Planes
@@ -334,6 +439,7 @@ namespace Engine
         std::array<DX12CommandList, FRAME_COUNT> m_commandLists;                                          //!< Frame ごとの Command List
         std::array<DX12CommandList, FRAME_COUNT> m_finishCommandLists;                                    //!< Frame ごとの Command List
         std::array<DX12CommandList, FRAME_COUNT> m_queryCommandLists;                                     //!< Frame ごとの Command List
+        std::array<DX12CommandList, FRAME_COUNT> m_deferredLightingCommandLists;
         std::array<DX12ModelCommandRecorder, FRAME_COUNT> m_modelCommandRecorders;                        //!< Frame ごとの Model Command Recorder
         std::vector<DX12PreparedModelDraw> m_preparedModelDraws;                                          //!< 構築済みの Model Draw
         std::vector<ID3D12CommandList*> m_executionLists;                                                 //!< 実行用 Command List
@@ -344,6 +450,11 @@ namespace Engine
         std::uint64_t m_lastSubmittedFenceValue = 0;                                                      //!< 直近に提出した Fence 値
         std::uint32_t m_renderWidth = 0;                                                                  //!< Game Render Targetの幅
         std::uint32_t m_renderHeight = 0;                                                                 //!< Game Render Targetの高さ
+        bool m_deferredFrameActive = false;
+        bool m_deferredPassRecorded = false;
+        int m_deferredDebugView = 0;
+        bool m_deferredRenderingEnabled = true;
+        float m_exposure = 1.0f;
         std::uint32_t m_requestedGameWidth = 0;                                                           //!< ImGui Game Viewが要求する描画幅
         std::uint32_t m_requestedGameHeight = 0;                                                          //!< ImGui Game Viewが要求する描画高さ
         RendererStatistics m_frameStatistics;                                                             //!< 直近フレームの描画統計

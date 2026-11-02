@@ -1,7 +1,8 @@
 ﻿#pragma once
-
 #include "Core\GameObject\Component.h"
 #include "Graphics\Camera\CameraData.h"
+#include "Graphics\PostProcess\PostProcessVolumeResolver.h"
+#include "Assets\PostProcess\PostProcessProfile.h"
 
 namespace Engine
 {
@@ -214,6 +215,10 @@ namespace Engine
          * @return 描画対象LayerのBit Mask。
          */
         std::uint32_t getCullingMask() const noexcept { return m_cullingMask; }
+        /** @brief Sets the Volume selection mask independently of geometry culling. */
+        void setPostProcessVolumeMask(std::uint32_t mask) noexcept { m_postProcessVolumeMask = mask; }
+        /** @brief Gets the Volume selection mask; default includes all layers. */
+        std::uint32_t getPostProcessVolumeMask() const noexcept { return m_postProcessVolumeMask; }
 
         /**
          * @brief Clear方式を設定する。
@@ -244,6 +249,25 @@ namespace Engine
          * @return D3D12 Resourceを含まないRenderView。
          */
         RenderView buildRenderView() const noexcept;
+
+        /** @brief Enables resolved Profile/Camera effects in Deferred rendering. */
+        void setPostProcessEnabled(bool enabled) noexcept { m_postProcessEnabled = enabled; }
+        /** @brief Returns the camera Profile opt-in. */
+        bool isPostProcessEnabled() const noexcept { return m_postProcessEnabled; }
+        /** @brief Sets a finite camera contribution in [0,1]; invalid inputs log and preserve state. */
+        bool setPostProcessWeight(float weight) noexcept;
+        /** @brief Returns the authored camera contribution. */
+        float getPostProcessWeight() const noexcept { return m_postProcessWeight; }
+        /** @brief Assigns a registered shared Profile, or clears it with an empty handle. */
+        bool setPostProcessProfile(PostProcessProfileHandle handle);
+        /** @brief Returns the shared Profile handle; local overrides never modify that asset. */
+        PostProcessProfileHandle getPostProcessProfile() const noexcept { return m_postProcessProfile; }
+        /** @brief Replaces validated local overrides; failure leaves existing values untouched. */
+        bool setPostProcessOverrides(const PostProcessSettings& settings);
+        /** @brief Returns local authored values and explicit override flags. */
+        const PostProcessSettings& getPostProcessOverrides() const noexcept { return m_postProcessOverrides; }
+        /** @brief Copies in-memory Profile references and camera values, excluding runtime frame history. */
+        bool copyConfigurationTo(Component& destination) const override;
 
         /** @brief Returns the version of persisted camera configuration. */
         std::uint32_t getPayloadVersion() const noexcept override;
@@ -304,6 +328,13 @@ namespace Engine
         std::uint32_t m_cullingMask = std::numeric_limits<std::uint32_t>::max();   //!< 描画対象LayerのBit Mask
         CameraClearMode m_clearMode = CameraClearMode::SolidColor;                 //!< Clear方式
         Color m_backgroundColor = Color(0.08f, 0.16f, 0.24f, 1.0f);                //!< 背景Clear Color
+        std::uint32_t m_postProcessVolumeMask = UINT32_MAX;                        //!< Volume layers, independent of geometry.
+        mutable std::vector<PostProcessVolumeLayer> m_volumeScratch;              //!< Main-thread collection capacity reused per Camera.
+        bool m_postProcessEnabled = false;                                        //!< PostEffect opt-in.
+        float m_postProcessWeight = 1.0f;                                          //!< Contribution, 0-1.
+        PostProcessProfileHandle m_postProcessProfile;                             //!< Shared asset reference.
+        PostProcessSettings m_postProcessOverrides;                                //!< Camera-local authoring.
+        mutable bool m_missingProfileReported = false;                             //!< Avoid repeating a stale-reference diagnostic.
 
         mutable Matrix m_view = Matrix::Identity;                   //!< View行列
         mutable Matrix m_projection = Matrix::Identity;             //!< Projection行列

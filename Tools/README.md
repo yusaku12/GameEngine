@@ -102,6 +102,439 @@ Launch from the project root:
 .\x64\Debug\GameEngine.exe --help
 ```
 
+## PostEffect Phase 0/1/2/3/4 validation
+
+Run the deterministic GPU validation from the project root with a **Debug x64**
+build. It uses the hardware D3D12 renderer with Debug Layer and GPU-based
+validation, a hidden Runtime window, and procedurally generated geometry and
+materials. It does not load or modify the editor scene or preferences. Runtime UI
+interop is not initialized in this UI-free mode; normal launches retain it.
+
+```powershell
+.\x64\Debug\GameEngine.exe --validate-rendering ".\Build\RenderingBaseline"
+```
+
+The output directory must be new or empty; existing baselines are not overwritten.
+This option cannot be combined with `--runtime` or `--scene`. The process exits
+automatically with code 0 only after all checks and saves succeed. Release builds
+cannot pass the required Debug Layer checks.
+
+The fixture contains middle gray, an HDR highlight `(4, 2, 1)`, linear albedo,
+transparent-over-opaque blending, and visible/discarded alpha-tested panels.
+Camera, background, ambient lighting, exposure (1), and geometry remain fixed.
+For baseline, repeat, serial command recording, odd-size resize (641x359), and
+restored size (1280x720), three frames exercise both in-flight slots before capture.
+Same-size captures must match bit-for-bit. Resize captures must independently pass
+the same analytical probes. Saved DDS/PNG images are decoded again and must match
+the GPU readback bit-for-bit.
+
+Each case saves `*-hdr.dds` (linear RGBA16F, preserving values above 1) and
+`*-display.png` (sRGB-encoded final RGBA8). Every final pixel is compared against
+an independent CPU implementation of the current tone-map fit and sRGB encoding,
+with at most 2 byte levels of RGB error. HDR probes use a 0.003 absolute tolerance
+for half-float and G-Buffer quantization. Nonfinite/negative HDR, unexpected final
+alpha, D3D12 warnings/errors, and discarded debug messages fail validation.
+`white.dds` is the generated fixture texture; `results.json` records successful
+checks. An incomplete directory without a successful process exit is not a valid
+baseline.
+
+Keep a known-good directory unchanged and run subsequent checks into a different
+directory. These tests establish the Runtime HDR/composite baseline; they do not
+certify perspective cameras, shadows, real asset textures, or editor UI.
+
+Phase 1 also checks empty/disabled lists (one required output draw, no temporary
+textures), eight HDR identity passes over 30 frames, repeated pool reuse, LDR
+identity passes, HDR/LDR stage ordering, half-resolution processing including odd
+sizes, fractional camera viewports, and descriptor release after replacement and
+resize. Half-resolution output is compared pixel-by-pixel against independent CPU
+bilinear resampling with half-float intermediate quantization, still with at most
+2 byte levels of error. Cropped-view probes and unchanged pixels outside the
+camera viewport are checked separately. Debug views and Forward/`Nothing` rendering
+must remain identical with optional effects on/off. Invalid stage, divisor, and
+nonfinite parameter tests intentionally log three application errors; accepting
+these inputs or replacing the previous valid list fails validation. D3D12 diagnostics
+must still contain **zero** warnings/errors. The version 2 report records draw and
+pool counts in addition to image results.
+
+## PostEffect Phase 1 execution contract
+
+`DX12Renderer::setPostProcessPasses` copies an ordered list of
+`PostProcessPassDescription` snapshots between frames on the render thread.
+Each definition owns an immutable compiled pixel-shader snapshot and 16 float
+parameters. Invalid configurations log and return false without replacing the
+current list. Successful replacement waits for the last GPU use and releases
+obsolete temporary targets. Shared shaders are nonmutable for their entire
+snapshot lifetime; replacing bytecode requires submitting a new snapshot/list.
+
+The current Deferred color path is:
+
+```text
+G-Buffer -> HDR lighting -> transparent geometry
+         -> BeforeToneMapping color passes
+         -> Bloom -> color filter / contrast / saturation
+         -> exposure + tone mapping (linear HDR -> linear LDR)
+         -> AfterToneMapping color passes
+         -> Vignette -> FXAA
+         -> sRGB encoding -> debug grid / Runtime UI / editor UI -> presentation
+```
+
+Both stages preserve registration order **within** their stage, regardless of
+where their definitions appeared in the list. All optional targets are linear
+RGBA16F. `resolutionDivisor` (1-16) uses ceil-divided full-target dimensions;
+reduced camera bounds cover complete temporary texels, and sampling is clamped
+to the source viewport. Full-size passes retain the exact original camera bounds.
+A target is never used simultaneously as input and output.
+Returned textures may be reused later in the same command list, but cross-frame
+reuse and destruction wait for the associated scene-submission fence. Forward,
+`Nothing` camera clear mode, and G-Buffer debug views bypass the list.
+
+Without enabled LDR passes, Vignette or FXAA, tone mapping and sRGB encoding are fused into the
+final output pass. Therefore an empty or entirely disabled list adds no scratch
+texture and preserves the Phase 0 images bit-for-bit. Exposure is applied once.
+With LDR effects enabled, the tone-mapped intermediate is linear half-float, not
+sRGB. Display alpha is 1. `captureFrame` retains scene HDR **before** optional
+effects and captures final display after UI; Forward captures have no HDR image.
+
+Pixel shaders include `Assets/Shaders/PostProcess.hlsli`, use `PostProcessVertex`,
+and call `loadInputColor(input.position.xy)`. Root bindings are `t0` (input color),
+`s0` (linear clamp), `b0` (source/target viewport, exposure, conversion flag), and
+`b1` (four `float4` parameter vectors). Built-ins additionally use `t1` (secondary
+color input) and `b2` (its viewport); old single-input shader bindings are unchanged.
+Full-resolution identical viewports use
+integer texture loads to preserve exact copies. `ColorOutput.hlsli` shares the
+tone-map fit and sRGB implementation with Deferred debug display.
+
+This is deliberately a small color-only graphics-pass foundation, not a full
+render graph. Depth/normal inputs, compute passes, history,
+and custom shader asset/hot-reload tracking are later phases. Profile authoring
+is implemented separately in Phase 2 below.
+Common output shaders participate in the existing ShaderManager reload flow;
+user-supplied snapshots are replaced explicitly. The validation scale shader is
+a diagnostic fixture, not a production effect.
+
+## PostEffect Phase 2 Profiles and Camera authoring
+
+Select a **Camera** in the Inspector and expand **Post Effects**. This phase
+defines and persists Bloom, fixed exposure, color adjustments, Vignette, and FXAA
+settings. Phase 3 executes these resolved settings in Deferred rendering. Existing
+renderer exposure and the diagnostic/custom pass API remain available.
+
+- **Enable Post Effects** opts this camera into Profile rendering (default off).
+  **Weight** is a finite contribution in `[0,1]`; Phase 3 blends parameters from
+  neutral values, except FXAA, which blends original/filtered linear LDR images.
+- **New Profile**, **Open Profile...**, and **Shared Profile** create/load/select
+  a shared asset. **Edit Shared Profile** changes its immutable published
+  snapshot, affecting all referencing cameras. **Make Unique** creates a new,
+  unsaved GUID and assigns it to this camera without modifying the source.
+- **Save Profile** atomically writes the existing file. **Save Profile As...**
+  writes `.postprofile` and updates that asset's registered path. **Reload
+  (discard edits)** explicitly replaces authored values from disk, only on
+  successful verification. The Inspector marks unsaved edits.
+- A checkbox to the left of each parameter means **override**. Unchecked
+  parameters retain their authored values but inherit the preceding layer's
+  value. The effect's Enabled switch is also overridable, so a camera can
+  explicitly disable an enabled Profile effect.
+- **Camera Overrides** are independent, serialized values, not shared asset
+  edits. **Reset Overrides** restores neutral defaults and clears override flags.
+  Resolution order is engine defaults -> enabled Profile overrides -> enabled
+  local parameter overrides. Phase 4 blends Volumes before these Camera layers.
+
+`PostProcessProfileManager` uses generation-checked handles and owns immutable
+`shared_ptr<const PostProcessProfile>` snapshots. Updating a Profile does not
+mutate old snapshots. The CPU-only `RenderView::postProcess` contains resolved
+values, camera enable and weight, with no manager handles or GPU resources.
+Subsequent edits cannot change a queued render view. Fixed exposure is expressed
+in EV stops, contrast/saturation in percent, and colors in **linear RGB**;
+scalar/color ranges are shared between the Inspector and validation.
+
+Scene/Prefab Camera payload v3 stores enable, weight, local values/flags, Volume
+layer mask, and
+Profile GUID plus a normalized absolute path encoded as UTF-8. Existing v1
+Cameras and legacy empty payloads remain compatible with neutral PostEffect
+defaults. Launching the project does not require any new Profile assets.
+GUID mismatches, stale references, unsupported versions, nonfinite/out-of-range
+values, and truncated files are diagnosed rather than silently accepted.
+The manager rejects a second registered path with the same GUID; copy assets
+using **Make Unique**, not a filesystem copy, to create independent identities.
+Moving files outside the editor requires reassigning the Profile; this phase
+does not introduce an asset database/automatic relocation.
+
+**Save a new Profile before saving its referencing Scene/Prefab.** Scene files
+save references, not shared asset edits; save the Profile separately to persist
+those edits. In-memory Play cloning works even before the first Profile save:
+only immutable assets are shared and local overrides remain independent.
+Inspector editing remains disabled during Play as in the existing editor.
+
+`--validate-rendering` now runs Profile and Camera authoring checks first, writes
+`authoring-results.json` plus isolated files under `authoring-fixtures`, and
+then runs the Phase 0/1 GPU regressions. It tests all setting values and override
+flags, inclusive scalar bounds and invalid inputs, atomic saves/path conflicts,
+reload failures, Unicode references, Camera v0/v1/v2/v3/v4/v5 compatibility, Scene/Prefab
+round trips, actual Play scene cloning, Windows path case aliases, and queued
+snapshot independence. A headless ImGui context expands all authoring sections
+and exercises the camera enable checkbox and New Profile button without writing
+editor preferences or opening native dialogs.
+Expected negative tests log application errors, clearly bracketed in the log;
+only their rejection and preservation of previous state count as success.
+Finally, a nonneutral, zero-weight authoring snapshot is submitted to the GPU:
+it must be delivered intact while leaving both baseline images unchanged.
+D3D12 diagnostics must still contain zero warnings/errors. The combined
+`results.json` is version 7 and links to authoring, built-in effects, custom
+effects, Volume, and Phase 6/7 reports.
+
+## PostEffect Phase 3 built-in effects
+
+Camera Weight 0, disabled cameras and neutral effect settings retain the one-draw,
+zero-allocation baseline path. Exposure and color adjustments fuse into display
+conversion when no LDR pass is needed. Settings changes do not rebuild PSOs or
+wait for GPU fences; the existing fence-aware pool handles temporary resources.
+Forward, `Nothing` clear mode and G-Buffer debug views bypass camera effects.
+UI and the editor grid remain after post-processing. Removing the active Camera
+clears its PostEffect snapshot.
+
+- **Bloom** uses a soft threshold, ceil-half downsampling and up to six levels
+  (stopping at 1x1), a normalized nine-tap tent reconstruction and an additive HDR
+  composite. Scatter blends local/low-frequency energy without multiplying a
+  constant field's brightness by pyramid depth. Threshold is **scene-referred**,
+  before renderer exposure or EV adjustment. Intensity is multiplied by Weight.
+- **Fixed exposure** multiplies renderer exposure by `exp2(EV * Weight)` once.
+  No automatic exposure/history is introduced. Tone-map inputs are clamped to
+  RGBA16F's finite maximum to avoid overflow at extreme EV.
+- **Color adjustments** apply a linear RGB filter blended from white, contrast
+  blended from 1 around middle gray (0.18), then Rec.709 saturation blended from 1,
+  all in HDR before exposure/tone mapping. Negative colors are clamped to zero.
+- **Vignette** blends its linear RGB color after tone mapping. Intensity blends
+  from zero; smoothness controls radial falloff, and roundness blends between
+  viewport-normalized and aspect-correct distance.
+- **FXAA** detects directional edges using perceptual luminance and bounded
+  endpoint searches, combines edge and subpixel reconstruction, and blends the
+  filtered **linear LDR** result by Weight. Luminance comparisons use 12-bit
+  fractional precision to stabilize nearly equal edges across floating-point
+  contraction differences. sRGB encoding remains final-only.
+
+All built-in shaders participate in ShaderManager dependency/hot-reload tracking.
+Rebuild constructs all candidate PSOs before replacing the previous pipelines.
+Bloom's multi-input passes never alias their output with either source.
+Sampling honors Direct3D's implicit viewport scissor (floor right/bottom), so
+fractional viewports never sample the undrawn bottom/right rows of temporary
+targets. This fixes the old reduced-resolution cropped-viewport display fixture;
+the remaining Phase 2 baseline images stay bit-for-bit unchanged.
+
+`effects-results.json` records independent CPU/GPU per-pixel comparisons, still
+limited to **2 RGB byte levels**, raw scene HDR preservation, alpha, draw counts,
+Bloom depth, bounded fence-aware target/descriptor reuse and zero D3D12 warnings
+or errors. Tests include EV limits, weighted colors and effects, threshold/scatter
+limits, constant-field Bloom normalization, rotated diagonal FXAA (at least 10%
+lower squared edge energy), combined custom HDR/LDR stages over 30 frames,
+fractional/odd viewports, 1x1, single-row/column targets, disabled/zero-weight/neutral
+values and Camera removal. Saved DDS/PNG files are round-trip verified. Keep
+the Phase 0/1/2 baselines unchanged; save Phase 3 results into a new directory.
+
+## PostEffect Phase 4 Volumes
+
+Add a **PostProcessVolume** component to a GameObject and assign/create a shared
+`.postprofile` in its Inspector. It uses the same Profile open/edit/save/reload/
+Make Unique controls as Camera. No physics collider or physics update is required.
+One Volume component is permitted per object. Camera **Enable Post Effects** is
+the overall gate; **Volume Layer Mask** is an independent hexadecimal 32-bit mask
+over Volume GameObject Layers. Mask `00000000` excludes Volumes without disabling
+Camera Profile/Overrides.
+
+Only the active Scene and persistent Scene participate, matching the engine's
+rendered scenes. Disabled components, inactive hierarchies and objects/ancestors
+queued for destruction are excluded. Unassigned Profiles contribute nothing.
+Stale Profile handles are diagnosed once and skipped, without stale component
+registrations after removal or Play scene swaps.
+
+### Shapes and ordering
+
+- **Global** applies its Weight everywhere and ignores its Transform.
+- **Box** uses a local center and positive local full size. It follows the
+  engine's world TRS, including hierarchy, rotation, nonuniform and mirrored scale.
+  Falloff uses the world-space distance to the oriented Box, including corners.
+- **Sphere** uses a local center and positive local radius; world radius is
+  local radius times the largest absolute world scale axis.
+- **Blend Distance** is a shell **outside** the shape measured in world units.
+  Inside/on the shape the influence is full Volume Weight. Outside,
+  `Weight * smoothstep(0,1,1-distance/BlendDistance)` falls smoothly to zero.
+  Distance zero is a deliberately hard boundary. Invalid/degenerate local world
+  transforms are diagnosed and skipped until recovered.
+
+Lower **Priority** is applied first. Equal priorities are ordered by persistent
+GameObject GUID, then Scene GUID as a cross-scene tie-breaker, not enumeration
+order or memory addresses. The complete order is:
+
+```text
+neutral defaults -> spatial Volumes (Priority/GUID)
+                 -> Camera Profile overrides -> Camera local overrides
+                 -> global Camera Weight -> built-in GPU effects
+```
+
+Only parameters with their override checkbox enabled participate. Numeric/color
+values interpolate by the Volume influence; Enabled switches interpolate a
+separate continuous contribution from 0 to 1. An unchecked switch preserves the
+previous contribution. A higher-priority explicit disabled switch fades the
+preceding effect out rather than abruptly replacing it.
+
+Numeric and Enabled interpolation are **independent**, and Camera Weight is
+applied once afterwards. For example, from neutral settings an exposure Profile
+with Enabled=true and EV=4 at Volume influence 0.5 resolves EV=2 and an Enabled
+contribution of 0.5, producing EV=1 at Camera Weight=1. If Enabled is inherited
+at full contribution, only the numeric interpolation applies. Bloom/Vignette
+intensity, exposure EV and color adjustments use their own continuous contribution;
+FXAA blends its original/filtered result. This avoids Boolean boundary popping
+without adding temporal history or camera-dependent GPU configuration.
+
+### Persistence and validation
+
+Volume payload v1 stores all geometry, priority, weight and saved Profile GUID/
+UTF-8 path. Camera v3 adds the Volume mask; v0/v1/v2 restore an all-layers mask.
+Scene/Prefab save requires the referenced Profile to be saved first, and never
+saves shared Profile edits implicitly. Invalid payloads, GUID/path mismatches and
+failed saves retain the previous configuration/output. In-memory Play cloning
+supports unsaved Profiles, shares immutable assets, and independently copies
+Camera and Volume configuration. No new asset is needed by existing scenes.
+
+Each Camera reuses a CPU-only collection workspace; no component/asset pointers
+escape into RenderView, and subsequent Profile/Transform edits cannot change a
+queued snapshot. Disabled/zero-weight Cameras skip Volume collection. Allocation
+failure is explicitly diagnosed and disables that Camera's effects for the frame.
+No Volume change rebuilds PSOs or forces GPU waits.
+
+The GPU validation also writes `volume-results.json`, versioned Volume/Scene/
+Prefab fixtures, and captured moving-Camera results. It checks spatial faces/
+corners/shells, mirrored and parent transforms, ordering, masks, disabled/inactive/
+destroyed objects, ignored scenes, persistent scenes, snapshot isolation,
+workspace reuse, all scalar/color/switch descriptors, Unicode cold loading,
+old Camera versions, malformed payloads and failure preservation. Headless ImGui
+renders all three shapes and exercises New Profile creation. GPU cases compare
+the actual Camera Volume snapshot with independently predicted settings and verify
+all saved images round-trip; the effect suite additionally compares continuous
+contributions to independent CPU pixel references with at most 2 RGB byte levels.
+Native dialogs and arbitrary real-world scenes are not covered by these fixtures.
+Keep all Phase 0-4 baselines unchanged and validate into a new output directory.
+
+## PostEffect Phase 5 custom HLSL Effect assets
+
+Create a **Custom Effect** from the shared Profile Inspector for either a Camera
+or a Volume. Choose an HLSL source file, set an entry point and the linear color
+stage, then **Apply & Compile**. A saved `.posteffect` stores the asset GUID,
+source path, entry point, stage, resolution divisor and parameter metadata.
+Profiles store ordered references to these assets plus their enabled state and
+parameter values. Save the Effect asset before saving any Profile that refers to
+it. Profile format v2 adds custom Effects; version 1 Profiles still load with an
+empty Effect list.
+
+Custom Effects use the existing fullscreen Root Signature and
+`Assets/Shaders/PostProcess.hlsli` contract; they do not declare their own root
+signature, resources, or samplers. A Pixel Shader accepts `PostProcessVertex`,
+returns `float4 : SV_Target0`, samples the input with `loadInputColor`, and
+reads up to 16 scalar constants from `parameters[0..3]`. The Inspector exposes
+only the asset-declared parameters with their authored bounds. The source must
+include `PostProcess.hlsli` (or otherwise match its exact b0/b1/t0/t1/b2/s0
+bindings), for example:
+
+```hlsl
+#include "PostProcess.hlsli"
+
+float4 psTint(PostProcessVertex input) : SV_Target0
+{
+    const float4 source = loadInputColor(input.position.xy);
+    return float4(source.rgb * parameters[0].x + parameters[0].yzw, source.a);
+}
+```
+
+`Assets/Shaders/PostProcessExample.hlsl` is the corresponding project sample.
+The source color domain follows the asset stage: **Before Tone Mapping** is
+linear HDR; **After Tone Mapping** is linear LDR, before final sRGB encoding.
+The resolution divisor is bounded to 1-16. Custom shader output is blended over
+the preceding image using the combined Volume influence and Camera Weight, which
+keeps shape boundaries continuous and preserves source alpha. Profile effect
+lists are applied in their authored order; Volume lists follow the existing
+Priority/GUID ordering, then the Camera Profile list follows them. Camera local
+overrides remain limited to built-in settings.
+
+DXC compiles during Effect creation or **Apply & Compile**. Successful bytecode
+is loaded into a new immutable Shader snapshot before the asset is updated;
+compile failure preserves the previous working snapshot. Runtime loading uses
+the generated `.cso` referenced by the asset and does not invoke DXC. Keep the
+generated `Assets/Shaders/Compiled/PostProcessCustom` bytecode alongside the
+project assets when packaging or moving a project. Recompiles use unique cache
+files so a failed descriptor save cannot replace bytecode referenced by the last
+saved asset.
+
+Effects run through the same linear RGBA16F temporary targets and fixed b0/b1/t0/
+t1/b2 bindings as built-in passes. A custom shader cannot access scene depth,
+motion vectors, arbitrary textures, UAVs, or temporal history; those belong to
+later effect phases. Compiled PSOs are cached per immutable Shader snapshot and
+rebuilt transactionally when the shared fullscreen vertex shader changes.
+
+Phase 5 validation writes `custom-effects-results.json` and HDR/LDR display
+captures. It compiles and cold-loads a custom asset, round-trips Profile
+references and parameter values, checks legacy Profile v1 compatibility,
+verifies failed compilation preserves the old Shader, compares both stages to
+an independent CPU display reference, exercises fractional Volume/Camera
+contributions, and checks Profile effect ordering through the real Camera
+snapshot path. Saved DDS/PNG round-trips and D3D12 diagnostics remain required.
+
+## PostEffect Phase 6 depth, color grading and automatic exposure
+
+Phase 6 adds depth-of-field and exponential fog using the active Camera's
+linearized deferred depth buffer. Depth-of-field uses the configured focus
+distance/range and maximum blur radius; fog uses density, start distance and
+color. Both run before tone mapping and require a matching Camera depth target.
+The Camera near/far planes and projection type are captured with the immutable
+PostEffect snapshot, so queued views use the same depth interpretation they were
+authored with.
+
+Color grading accepts a **linear 2D strip LUT** with dimensions `N*N` by `N`,
+where `N` is 16-64. Blue selects adjacent horizontal slices; red and green
+address each slice. Runtime supports uncompressed `R8G8B8A8_UNORM` and
+`R16G16B16A16_FLOAT` texture data and interpolates between blue slices. The LUT
+is applied after tone mapping and custom After Tone Mapping effects, before
+vignette and FXAA. The Inspector registers the selected texture asset and stores
+its GUID/path reference in the Profile or Camera payload.
+
+Automatic exposure computes the current frame's log-average HDR luminance using
+a bounded half-resolution reduction chain, then derives EV from key,
+compensation and minimum/maximum limits. Phase 7 adds per-Camera temporal
+adaptation using separate brighten/darken rates. The result is applied during
+tone mapping, after the HDR reduction and bloom stage.
+
+Phase 6 validation writes `phase6-results.json` and captures for neutral and
+active DOF, depth-based fog, a generated invert-red strip LUT, current-frame
+automatic exposure, and the combined stack. Checks compare raw HDR against the
+neutral baseline, verify the LUT and exposure against independent CPU
+references, assert effect/draw counts and output changes, round-trip saved
+captures, and require zero D3D12 diagnostics.
+
+## PostEffect Phase 7 temporal exposure history
+
+Automatic exposure keeps the GPU-resident adapted EV in a ping-pong 1x1 history
+texture. Each frame approaches the current log-average target with
+`1 - exp(-speed * deltaTime)`, selecting the brighten rate when EV rises and
+the darken rate when EV falls. A zero delta freezes a valid history; the first
+sample initializes immediately so startup does not fade from an arbitrary
+exposure. History is associated with the active Camera GameObject GUID and is
+invalidated when the Camera changes, automatic exposure is inactive, or render
+targets are released/resized. This avoids readback stalls and stale exposure
+leaking across Cameras.
+
+The two rates are authorable Profile/Volume/Camera settings and default to
+3.0 inverse seconds for increasing exposure and 1.0 inverse second for
+decreasing exposure. Older Camera v4 and Profile v3 payloads missing these
+Phase 7 fields load with those defaults. Delta time comes from the active Camera's
+simulation update, so paused simulation holds the exposure history.
+
+Phase 7 validation writes `phase7-results.json` and checks immediate first
+sample, both adaptation directions, convergence, zero-delta freeze, Camera
+history isolation, and reset after disabling automatic exposure. Captured
+outputs are checked against an independent CPU recurrence and saved-image
+round-trips; each active case also checks HDR invariance, pass counts, and
+D3D12 diagnostics.
+
+## Runtime and Play behavior
+
 Runtime requires an existing saved scene. Invalid arguments or unreadable scenes
 are logged and exit with a nonzero code. Runtime loads compiled shaders and draws
 directly to the window without ImGui, editor panels, or the editor grid.

@@ -36,6 +36,9 @@ namespace Engine
         D3D12_GPU_VIRTUAL_ADDRESS lighting = 0;         //!< Frame-local lighting constant buffer.
         D3D12_GPU_DESCRIPTOR_HANDLE shadowTexture{};   //!< Directional shadow-map SRV.
         D3D12_CPU_DESCRIPTOR_HANDLE colorTarget{};     //!< 描画対象の RenderItem のカラーレンダーターゲットへの CPU ディスクリプタハンドル
+        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 4> geometryTargets{}; //!< Deferred Geometry Pass MRT
+        D3D12_CPU_DESCRIPTOR_HANDLE deferredTarget{};  //!< HDR target for deferred transparent draws
+        bool deferred = false;                          //!< Route opaque draws through the G-Buffer
         D3D12_CPU_DESCRIPTOR_HANDLE depthTarget{};     //!< 描画対象の RenderItem の深度レンダーターゲットへの CPU ディスクリプタハンドル
         D3D12_CPU_DESCRIPTOR_HANDLE shadowTarget{};    //!< 描画対象の RenderItem のシャドウレンダーターゲットへの CPU ディスクリプタハンドル
         D3D12_VIEWPORT viewport{};                     //!< 描画対象の RenderItem のビューポート

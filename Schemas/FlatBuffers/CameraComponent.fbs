@@ -1,4 +1,5 @@
 include "Common.fbs";
+include "PostProcessSettings.fbs";
 
 namespace Engine.Serialization;
 
@@ -13,6 +14,12 @@ table CameraComponentPayload {
     background:Vec4;
     culling_mask:uint = 4294967295;
     main_camera:bool;
+    post_process_enabled:bool;
+    post_process_weight:float = 1;
+    post_process_profile_guid:AssetGuid;
+    post_process_profile_path:string;
+    post_process_overrides:PostProcessSettingsData;
+    post_process_volume_mask:uint = 4294967295;
 }
 
 root_type CameraComponentPayload;

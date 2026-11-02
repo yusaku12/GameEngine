@@ -1,0 +1,23 @@
+include "PostProcessSettings.fbs";
+namespace Engine.Serialization;
+
+table PostProcessEffectInstanceData {
+    guid:AssetGuid;
+    path:string (required);
+    enabled:bool = true;
+    parameters:[float] (required);
+}
+
+table PostProcessProfileData {
+    guid:AssetGuid;
+    name:string (required);
+    settings:PostProcessSettingsData (required);
+    custom_effects:[PostProcessEffectInstanceData];
+}
+table PostProcessProfileFile {
+    header:FileHeader (required);
+    profile:PostProcessProfileData (required);
+}
+root_type PostProcessProfileFile;
+file_identifier "PPPF";
+file_extension "postprofile";

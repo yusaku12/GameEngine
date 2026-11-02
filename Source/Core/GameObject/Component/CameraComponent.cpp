@@ -1,4 +1,5 @@
 ﻿#include "Pch.h"
+#include "Core\Scene\SceneManager.h"
 #include "Core\GameObject\Component\CameraComponent.h"
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Core\GameObject\GameObject.h"
@@ -7,6 +8,11 @@
 #include "Graphics\Camera\CameraUtils.h"
 #include "Core\Serialization\SerializationVersions.h"
 #include "Generated\FlatBuffers\CameraComponent_generated.h"
+#include "Assets\PostProcess\PostProcessProfileManager.h"
+#include "Assets\PostProcess\PostProcessEffectAssetManager.h"
+#include "Assets\PostProcess\Serialization\PostProcessProfileSerializer.h"
+#include "Editor\PostProcess\PostProcessInspector.h"
+#include "Core\Containers\String.h"
 #include <imgui.h>
 
 namespace Engine
@@ -470,7 +476,106 @@ namespace Engine
         result.clearMode = m_clearMode;
         result.backgroundColor = m_backgroundColor;
         result.cullingMask = m_cullingMask;
+        const auto profile = PostProcessProfileManager::instance().get(m_postProcessProfile);
+        const bool missingProfile = m_postProcessProfile.isValid() && !profile;
+        if (missingProfile && !m_missingProfileReported)
+        {
+            LOG_ERROR("[Camera] PostEffect Profile handle is stale; camera Profile effects are disabled.");
+            m_missingProfileReported = true;
+        }
+        result.postProcess.enabled = m_postProcessEnabled && !missingProfile;
+        result.postProcess.weight = m_postProcessWeight;
+        result.postProcess.nearClip = m_nearClip;
+        result.postProcess.farClip = m_farClip;
+        result.postProcess.perspectiveProjection = m_projectionMode == CameraProjectionMode::Perspective;
+        if (const auto* const gameObject = getGameObject())
+            result.postProcess.cameraGuid = gameObject->getGUID();
+        if (result.postProcess.enabled && m_postProcessWeight > 0)
+        {
+            auto& scenes = SceneManager::instance();
+            const std::array<const Scene*, 2> sources{ scenes.getActiveScene(), scenes.getPersistentScene() };
+            if (!resolvePostProcessVolumes(result.postProcess, result.camera.position, m_postProcessVolumeMask, sources, m_volumeScratch))
+            {
+                LOG_ERROR("[Camera] Volume resolution failed; this Camera's PostEffects are disabled for this frame.");
+                result.postProcess.enabled = false;
+            }
+        }
+        if (profile)
+        {
+            blendPostProcessLayer(result.postProcess, profile->settings, 1);
+            if (result.postProcess.enabled && m_postProcessWeight > 0)
+                for (const auto& effect : profile->customEffects)
+                    if (effect.enabled && !appendPostProcessEffectSnapshot(
+                        result.postProcess, effect.effect, effect.parameters, 1))
+                    {
+                        LOG_ERROR("[Camera] Custom Effect snapshot failed; this Camera's PostEffects are disabled for this frame.");
+                        result.postProcess.enabled = false;
+                        break;
+                    }
+        }
+        blendPostProcessLayer(result.postProcess, m_postProcessOverrides, 1);
         return result;
+    }
+
+    bool CameraComponent::setPostProcessWeight(const float weight) noexcept
+    {
+        if (!std::isfinite(weight) || weight < 0 || weight > 1)
+        {
+            LOG_ERROR("[Camera] PostEffect weight must be finite and in [0,1].");
+            return false;
+        }
+        m_postProcessWeight = weight;
+        return true;
+    }
+
+    bool CameraComponent::setPostProcessProfile(const PostProcessProfileHandle handle)
+    {
+        if (handle != PostProcessProfileHandle{} && !PostProcessProfileManager::instance().get(handle))
+        {
+            LOG_ERROR("[Camera] Cannot assign an invalid PostEffect Profile handle.");
+            return false;
+        }
+        m_postProcessProfile = handle;
+        m_missingProfileReported = false;
+        return true;
+    }
+
+    bool CameraComponent::setPostProcessOverrides(const PostProcessSettings& settings)
+    {
+        if (!validatePostProcessSettings(settings))
+            return false;
+        m_postProcessOverrides = settings;
+        return true;
+    }
+
+    bool CameraComponent::copyConfigurationTo(Component& destination) const
+    {
+        auto* const target = dynamic_cast<CameraComponent*>(&destination);
+        if (target == nullptr)
+        {
+            LOG_ERROR("[Play] Camera clone type mismatch.");
+            return false;
+        }
+        target->m_projectionMode = m_projectionMode;
+        target->m_fieldOfViewDegrees = m_fieldOfViewDegrees;
+        target->m_nearClip = m_nearClip;
+        target->m_farClip = m_farClip;
+        target->m_orthographicSize = m_orthographicSize;
+        target->setViewport(m_viewport);
+        target->m_clearMode = m_clearMode;
+        target->m_backgroundColor = m_backgroundColor;
+        target->m_cullingMask = m_cullingMask;
+        target->m_mainCameraPreferred = m_mainCameraPreferred || CameraManager::instance().getMainCamera() == this;
+        target->m_postProcessEnabled = m_postProcessEnabled;
+        target->m_postProcessWeight = m_postProcessWeight;
+        target->m_postProcessProfile = m_postProcessProfile;
+        target->m_postProcessOverrides = m_postProcessOverrides;
+        target->m_postProcessVolumeMask = m_postProcessVolumeMask;
+        target->m_volumeScratch.clear();
+        target->m_missingProfileReported = false;
+        target->invalidateProjection();
+        target->m_hasPreviousViewProjection = false;
+        return true;
     }
 
     std::uint32_t CameraComponent::getPayloadVersion() const noexcept
@@ -480,15 +585,24 @@ namespace Engine
 
     bool CameraComponent::serializePayload(std::vector<std::uint8_t>& payload) const
     {
+        Serialization::PostProcessProfileReference reference;
+        if (!Serialization::writePostProcessProfileReference(m_postProcessProfile, reference))
+            return false;
         flatbuffers::FlatBufferBuilder builder(128);
         const Serialization::Vec4 viewport(m_viewport.x, m_viewport.y, m_viewport.width, m_viewport.height);
         const Serialization::Vec4 background(m_backgroundColor.x, m_backgroundColor.y,
             m_backgroundColor.z, m_backgroundColor.w);
+        const Serialization::AssetGuid guid(reference.guid.high, reference.guid.low);
+        const auto overrides = Serialization::writePostProcessSettings(builder, m_postProcessOverrides);
+        if (overrides.IsNull())
+            return false;
+        const auto path = builder.CreateString(reference.path);
         const auto root = Serialization::CreateCameraComponentPayload(builder,
             static_cast<std::uint8_t>(m_projectionMode), m_fieldOfViewDegrees, m_nearClip,
             m_farClip, m_orthographicSize, &viewport, static_cast<std::uint8_t>(m_clearMode),
             &background, m_cullingMask,
-            m_mainCameraPreferred || CameraManager::instance().getMainCamera() == this);
+            m_mainCameraPreferred || CameraManager::instance().getMainCamera() == this,
+            m_postProcessEnabled, m_postProcessWeight, &guid, path, overrides, m_postProcessVolumeMask);
         Serialization::FinishCameraComponentPayloadBuffer(builder, root);
         payload.assign(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
         return true;
@@ -498,14 +612,23 @@ namespace Engine
         const std::span<const std::uint8_t> payload)
     {
         if (version == 0 && payload.empty())
+        {
+            m_postProcessEnabled = false;
+            m_postProcessWeight = 1;
+            m_postProcessProfile = {};
+            m_postProcessOverrides = {};
+            m_postProcessVolumeMask = UINT32_MAX;
+            m_volumeScratch.clear();
+            m_missingProfileReported = false;
             return true;
+        }
         if (payload.size() < 8)
         {
             LOG_ERROR("[Camera] Camera payload is truncated.");
             return false;
         }
         flatbuffers::Verifier verifier(payload.data(), payload.size());
-        if (version != Serialization::CURRENT_CAMERA_COMPONENT_VERSION
+        if ((version < 1 || version > Serialization::CURRENT_CAMERA_COMPONENT_VERSION)
             || !Serialization::VerifyCameraComponentPayloadBuffer(verifier))
         {
             LOG_ERROR("[Camera] Invalid camera payload or version.");
@@ -531,6 +654,25 @@ namespace Engine
             LOG_ERROR("[Camera] Invalid serialized camera settings.");
             return false;
         }
+        PostProcessSettings postOverrides;
+        PostProcessProfileHandle profileHandle;
+        bool postEnabled = false;
+        float postWeight = 1;
+        if (version >= 2)
+        {
+            const auto* const guid = source->post_process_profile_guid();
+            const auto* const path = source->post_process_profile_path();
+            postWeight = source->post_process_weight();
+            postEnabled = source->post_process_enabled();
+            if (!std::isfinite(postWeight) || postWeight < 0 || postWeight > 1 || guid == nullptr || path == nullptr
+                || !Serialization::readPostProcessSettings(source->post_process_overrides(), postOverrides))
+            {
+                LOG_ERROR("[Camera] Invalid serialized PostEffect configuration.");
+                return false;
+            }
+            if (!Serialization::readPostProcessProfileReference({ { guid->high(), guid->low() }, path->str() }, profileHandle))
+                return false;
+        }
         m_projectionMode = static_cast<CameraProjectionMode>(source->projection_mode());
         m_fieldOfViewDegrees = source->field_of_view();
         m_nearClip = source->near_clip();
@@ -540,6 +682,13 @@ namespace Engine
         m_backgroundColor = Color(background->x(), background->y(), background->z(), background->w());
         m_cullingMask = source->culling_mask();
         m_mainCameraPreferred = source->main_camera();
+        m_postProcessEnabled = postEnabled;
+        m_postProcessWeight = postWeight;
+        m_postProcessProfile = profileHandle;
+        m_postProcessOverrides = postOverrides;
+        m_postProcessVolumeMask = version >= 3 ? source->post_process_volume_mask() : UINT32_MAX;
+        m_volumeScratch.clear();
+        m_missingProfileReported = false;
         setViewport({ viewport->x(), viewport->y(), viewport->z(), viewport->w() });
         invalidateProjection();
         m_hasPreviousViewProjection = false;
@@ -556,12 +705,13 @@ namespace Engine
         CameraManager::instance().registerCamera(this);
     }
 
-    void CameraComponent::onLateUpdate([[maybe_unused]] const float deltaTime)
+    void CameraComponent::onLateUpdate(const float deltaTime)
     {
         if (CameraManager::instance().getActiveCamera() != this)
             return;
 
-        const RenderView view = buildRenderView();
+        RenderView view = buildRenderView();
+        view.postProcess.deltaTimeSeconds = deltaTime;
         CameraRenderSubmissionQueue::instance().submit(view);
         m_previousViewProjection = view.camera.viewProjection;
         m_hasPreviousViewProjection = true;
@@ -579,6 +729,7 @@ namespace Engine
 
     void CameraComponent::onImGui()
     {
+        drawPostProcessInspector(*this);
         int projectionMode = static_cast<int>(m_projectionMode);
         constexpr const char* projectionModes[] = { "Perspective", "Orthographic" };
         if (ImGui::Combo("Projection", &projectionMode, projectionModes, std::size(projectionModes)))

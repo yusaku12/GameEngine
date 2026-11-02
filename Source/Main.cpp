@@ -3,11 +3,13 @@
 #include "Core\Scene\SceneManager.h"
 #include "Core\System\Window.h"
 #include "Graphics\Camera\CameraManager.h"
+#include "Assets\PostProcess\PostProcessProfileManager.h"
 #include "Graphics\DirectX12\Renderer.h"
 #include "Physics\PhysicsSystem.h"
 #include "Core\Scene\SceneSerializer.h"
 #include "Core\System\GameSession.h"
 #include "Core\System\StartupOptions.h"
+#include "Graphics\Validation\RenderingValidation.h"
 #include <shellapi.h>
 #include "Audio\AudioSystem.h"
 #include "UI\RuntimeUI.h"
@@ -96,6 +98,7 @@ namespace Engine
      */
     static void finalizeCore()
     {
+        PostProcessProfileManager::instance().clear();
         RuntimeUI::instance().shutdown();
         AudioSystem::instance().shutdown();
         // ジョブシステムの終了処理を行うことで、ジョブの完了待ち中に発生したエラーをログに出力する
@@ -130,14 +133,16 @@ namespace Engine
             return -1;
         if (!validArguments)
         {
-            LOG_ERROR("[Startup] {} Usage: GameEngine.exe [--runtime --scene <scene file>] [--help]",
+            LOG_ERROR("[Startup] {} Usage: GameEngine.exe [--runtime --scene <scene file>] "
+                "[--validate-rendering <output directory>] [--help]",
                 arguments == nullptr ? "Could not decode command line." : argumentError);
             finalizeCore();
             return -1;
         }
         if (options.showHelp)
         {
-            LOG_INFO("Usage: GameEngine.exe [--runtime --scene <scene file>] [--help]");
+            LOG_INFO("Usage: GameEngine.exe [--runtime --scene <scene file>] "
+                "[--validate-rendering <output directory>] [--help]");
             finalizeCore();
             return 0;
         }
@@ -149,7 +154,8 @@ namespace Engine
             return -1;
         }
 
-        if (options.mode == ExecutionMode::Runtime)
+        const bool renderingValidation = !options.renderingValidationDirectory.empty();
+        if (options.mode == ExecutionMode::Runtime && !renderingValidation)
         {
             Scene* scene = SceneManager::instance().createScene("RuntimeScene");
             if (scene == nullptr || !Serialization::SceneSerializer{}.load(options.scenePath, *scene))
@@ -211,7 +217,8 @@ namespace Engine
             return -1;
         }
 
-        ShowWindow(hwnd, cmdShow);
+        if (!renderingValidation)
+            ShowWindow(hwnd, cmdShow);
 
         int result = 0;
         {
@@ -220,7 +227,7 @@ namespace Engine
 
             // DirectX 12 レンダラーの初期化
             DX12Renderer renderer;
-            if (!renderer.initialize(hwnd, SCREEN_WIDTH, SCREEN_HEIGHT, options.mode))
+            if (!renderer.initialize(hwnd, SCREEN_WIDTH, SCREEN_HEIGHT, options.mode, !renderingValidation))
             {
                 // 描画スレッドの役割をメインスレッドに戻す
                 setCurrentThreadRole(ThreadRole::Main);
@@ -233,13 +240,24 @@ namespace Engine
 
             CameraManager::instance().setRenderTargetSize(SCREEN_WIDTH, SCREEN_HEIGHT);
 
-            Window window(hwnd, renderer);
-            SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&window));
+            if (renderingValidation)
+            {
+                result = runRenderingValidation(renderer, options.renderingValidationDirectory) ? 0 : -1;
+                setCurrentThreadRole(ThreadRole::Main);
+                GameSession::instance().shutdown();
+            }
+            else
+            {
+                Window window(hwnd, renderer);
+                SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&window));
 
-            // Window / Input / Message Pump はMain Threadで処理する
+                // Window / Input / Message Pump はMain Threadで処理する
+                setCurrentThreadRole(ThreadRole::Main);
+                result = window.run();
+                GameSession::instance().shutdown();
+                SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+            }
             setCurrentThreadRole(ThreadRole::Main);
-            result = window.run();
-            GameSession::instance().shutdown();
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
 
             // GPUリソースの終了処理は描画側の役割として扱う
@@ -252,6 +270,8 @@ namespace Engine
 
             // ComponentをSingleton Managerより先にMain Threadで破棄する
             setCurrentThreadRole(ThreadRole::Main);
+            if (renderingValidation)
+                DestroyWindow(hwnd);
             SceneManager::instance().shutdown();
             CameraManager::instance().shutdown();
             ModelManager::instance().clear();

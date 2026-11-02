@@ -24,8 +24,29 @@
     <ClInclude Include="Generated\FlatBuffers\AudioComponent_generated.h" />
     <ClInclude Include="Source\Core\System\GameSession.h" />
     <ClInclude Include="Source\Core\System\StartupOptions.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\FrameCapture.h" />
+    <ClInclude Include="Source\Graphics\Validation\RenderingValidation.h" />
+    <ClInclude Include="Source\Graphics\PostProcess\PostProcessPipeline.h" />
+    <ClInclude Include="Source\Graphics\PostProcess\PostProcessTargetPool.h" />
     <ClInclude Include="Source\Core\Scene\SceneClone.h" />
     <ClInclude Include="Generated\FlatBuffers\CameraComponent_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\PostProcessSettings_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\PostProcessProfile_generated.h" />
+    <ClInclude Include="Source\Graphics\PostProcess\PostProcessSettings.h" />
+    <ClInclude Include="Source\Graphics\PostProcess\PostProcessVolumeResolver.h" />
+    <ClInclude Include="Source\Core\GameObject\Component\PostProcessVolumeComponent.h" />
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessProfile.h" />
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessProfileManager.h" />
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessEffectAsset.h" />
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessEffectAssetManager.h" />
+    <ClInclude Include="Source\Assets\PostProcess\Serialization\PostProcessEffectSerializer.h" />
+    <ClInclude Include="Source\Assets\PostProcess\Serialization\PostProcessProfileSerializer.h" />
+    <ClInclude Include="Generated\FlatBuffers\PostProcessEffectAsset_generated.h" />
+    <ClInclude Include="Source\Editor\PostProcess\PostProcessInspector.h" />
+    <ClInclude Include="Source\Graphics\Validation\PostProcessAuthoringValidation.h" />
+    <ClInclude Include="Source\Graphics\Validation\PostProcessEffectsValidation.h" />
+    <ClInclude Include="Source\Graphics\Validation\PostProcessVolumeValidation.h" />
+    <ClInclude Include="Source\Graphics\Validation\PostProcessCustomEffectValidation.h" />
     <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimationClip_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimatorController_generated.h" />
@@ -194,6 +215,10 @@
     <ClCompile Include="Source\Graphics\UI\RuntimeUIRenderer.cpp" />
     <ClCompile Include="Source\Audio\AudioSourceComponent.cpp" />
     <ClCompile Include="Source\Core\System\StartupOptions.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\FrameCapture.cpp" />
+    <ClCompile Include="Source\Graphics\Validation\RenderingValidation.cpp" />
+    <ClCompile Include="Source\Graphics\PostProcess\PostProcessPipeline.cpp" />
+    <ClCompile Include="Source\Graphics\PostProcess\PostProcessTargetPool.cpp" />
     <ClCompile Include="Source\Core\Scene\SceneClone.cpp" />
     <ClCompile Include="Source\Assets\Animation\AnimatorControllerAsset.cpp" />
     <ClCompile Include="Source\Assets\Animation\AnimationAssetBuilder.cpp" />
@@ -209,6 +234,18 @@
     <ClCompile Include="Source\Assets\Model\Serialization\ModelSerializer.cpp" />
     <ClCompile Include="Source\Assets\Model\ModelManager.cpp" />
     <ClCompile Include="Source\Core\Serialization\FlatBufferReader.cpp" />
+    <ClCompile Include="Source\Graphics\PostProcess\PostProcessSettings.cpp" />
+    <ClCompile Include="Source\Graphics\PostProcess\PostProcessVolumeResolver.cpp" />
+    <ClCompile Include="Source\Core\GameObject\Component\PostProcessVolumeComponent.cpp" />
+    <ClCompile Include="Source\Assets\PostProcess\PostProcessProfileManager.cpp" />
+    <ClCompile Include="Source\Assets\PostProcess\PostProcessEffectAssetManager.cpp" />
+    <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessEffectSerializer.cpp" />
+    <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessProfileSerializer.cpp" />
+    <ClCompile Include="Source\Editor\PostProcess\PostProcessInspector.cpp" />
+    <ClCompile Include="Source\Graphics\Validation\PostProcessAuthoringValidation.cpp" />
+    <ClCompile Include="Source\Graphics\Validation\PostProcessEffectsValidation.cpp" />
+    <ClCompile Include="Source\Graphics\Validation\PostProcessVolumeValidation.cpp" />
+    <ClCompile Include="Source\Graphics\Validation\PostProcessCustomEffectValidation.cpp" />
     <ClCompile Include="Source\Core\Serialization\FlatBufferWriter.cpp" />
     <ClCompile Include="Source\Assets\Model\Import\FbxModelImporter.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Command.cpp" />
@@ -320,11 +357,21 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Shaders\Model.hlsl" />
+    <None Include="Assets\Shaders\Deferred.hlsl" />
+    <None Include="Assets\Shaders\PostProcess.hlsl" />
+    <None Include="Assets\Shaders\PostProcessEffects.hlsl" />
+    <None Include="Assets\Shaders\PostProcessExample.hlsl" />
+    <None Include="Assets\Shaders\PostProcess.hlsli" />
+    <None Include="Assets\Shaders\ColorOutput.hlsli" />
+    <None Include="Assets\Shaders\PostProcessValidation.hlsl" />
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
     <None Include="Assets\Shaders\Occlusion.hlsl" />
     <None Include="Assets\Shaders\HiZ.hlsl" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
     <None Include="Schemas\FlatBuffers\CameraComponent.fbs" />
+    <None Include="Schemas\FlatBuffers\PostProcessSettings.fbs" />
+    <None Include="Schemas\FlatBuffers\PostProcessProfile.fbs" />
+    <None Include="Schemas\FlatBuffers\PostProcessEffectAsset.fbs" />
     <None Include="Schemas\FlatBuffers\LightComponent.fbs" />
     <None Include="Schemas\FlatBuffers\RuntimeUI.fbs" />
     <None Include="Schemas\FlatBuffers\AudioComponent.fbs" />
@@ -459,7 +506,10 @@
   <Target Name="BuildDirectXTex" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'">
     <MSBuild Projects="$(ProjectDir)Library\DirectXTex-main\DirectXTex\DirectXTex_Desktop_2022_Win10.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=x64;PlatformToolset=$(PlatformToolset)" RemoveProperties="IntDir;OutDir" />
   </Target>
-  <Target Name="CompileShaders" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Assets\Shaders\DebugPrimitive.hlsl;$(ProjectDir)Assets\Shaders\HiZ.hlsl;$(ProjectDir)Assets\Shaders\Occlusion.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(ProjectDir)Tools\DXC\dxc.exe;$(ProjectDir)Tools\DXC\dxcompiler.dll;$(ProjectDir)Tools\DXC\dxil.dll" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\HiZ_csMain_cs.cso;$(ProjectDir)Assets\Shaders\Compiled\Occlusion_csMain_cs.cso">
+  <Target Name="CompileShaders" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Assets\Shaders\Deferred.hlsl;$(ProjectDir)Assets\Shaders\PostProcess.hlsl;$(ProjectDir)Assets\Shaders\PostProcessEffects.hlsl;$(ProjectDir)Assets\Shaders\PostProcess.hlsli;$(ProjectDir)Assets\Shaders\ColorOutput.hlsli;$(ProjectDir)Assets\Shaders\PostProcessValidation.hlsl;$(ProjectDir)Assets\Shaders\DebugPrimitive.hlsl;$(ProjectDir)Assets\Shaders\HiZ.hlsl;$(ProjectDir)Assets\Shaders\Occlusion.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(ProjectDir)Tools\DXC\dxc.exe;$(ProjectDir)Tools\DXC\dxcompiler.dll;$(ProjectDir)Tools\DXC\dxil.dll" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psGBuffer_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psGBufferAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Deferred_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Deferred_psLighting_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Deferred_psDebug_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcess_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcess_psToneMapping_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcess_psOutput_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomPrefilter_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomDownsample_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomUpsample_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomComposite_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psVignette_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psFxaa_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessValidation_psScale_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\HiZ_csMain_cs.cso;$(ProjectDir)Assets\Shaders\Compiled\Occlusion_csMain_cs.cso">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
+  </Target>
+  <Target Name="CompilePhase6PostProcessShaders" BeforeTargets="ClCompile" DependsOnTargets="CompileShaders" Inputs="$(ProjectDir)Assets\Shaders\PostProcessEffects.hlsl;$(ProjectDir)Assets\Shaders\PostProcess.hlsl;$(ProjectDir)Assets\Shaders\PostProcess.hlsli;$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(ProjectDir)Tools\DXC\dxc.exe" Outputs="$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psDepthOfField_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psFog_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psColorGradingLut_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psAutoExposureDownsample_ps.cso">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

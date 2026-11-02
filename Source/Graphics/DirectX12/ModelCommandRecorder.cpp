@@ -111,10 +111,24 @@ namespace Engine
             native.RSSetViewports(1, &state.shadowViewport);
             native.RSSetScissorRects(1, &state.shadowScissor);
         }
+        else if (pass == RenderPassType::DepthOnly)
+        {
+            native.OMSetRenderTargets(0, nullptr, FALSE, &state.depthTarget);
+            native.RSSetViewports(1, &state.viewport);
+            native.RSSetScissorRects(1, &state.scissor);
+        }
+        else if (state.deferred && (pass == RenderPassType::Opaque || pass == RenderPassType::AlphaTest))
+        {
+            native.OMSetRenderTargets(static_cast<UINT>(state.geometryTargets.size()),
+                state.geometryTargets.data(), FALSE, &state.depthTarget);
+            native.RSSetViewports(1, &state.viewport);
+            native.RSSetScissorRects(1, &state.scissor);
+        }
         else
         {
-            native.OMSetRenderTargets(pass == RenderPassType::DepthOnly ? 0 : 1,
-                pass == RenderPassType::DepthOnly ? nullptr : &state.colorTarget, FALSE, &state.depthTarget);
+            const D3D12_CPU_DESCRIPTOR_HANDLE target = state.deferred
+                ? state.deferredTarget : state.colorTarget;
+            native.OMSetRenderTargets(1, &target, FALSE, &state.depthTarget);
             native.RSSetViewports(1, &state.viewport);
             native.RSSetScissorRects(1, &state.scissor);
         }

@@ -241,6 +241,57 @@ float4 psAlphaTest(PixelInput input) : SV_TARGET
     return psMain(input);
 }
 
+struct GBufferOutput
+{
+    float4 albedo : SV_Target0;
+    float4 normal : SV_Target1;
+    float4 material : SV_Target2;
+    float4 emission : SV_Target3;
+};
+
+GBufferOutput psGBuffer(PixelInput input)
+{
+    const float resolvedMetallic = (propertyOverrideMask & PROPERTY_METALLIC) != 0 ? propertyMetallic : metallic;
+    const float resolvedRoughness = (propertyOverrideMask & PROPERTY_ROUGHNESS) != 0 ? propertyRoughness : roughness;
+    const float3 resolvedEmissiveColor = (propertyOverrideMask & PROPERTY_EMISSIVE_COLOR) != 0
+        ? propertyEmissiveColor : emissiveColor;
+    const float resolvedEmissiveIntensity = (propertyOverrideMask & PROPERTY_EMISSIVE_INTENSITY) != 0
+        ? propertyEmissiveIntensity : emissiveIntensity;
+    const float resolvedNormalScale = (propertyOverrideMask & PROPERTY_NORMAL_SCALE) != 0
+        ? propertyNormalScale : normalScale;
+    const float resolvedOcclusionStrength = (propertyOverrideMask & PROPERTY_OCCLUSION_STRENGTH) != 0
+        ? propertyOcclusionStrength : occlusionStrength;
+
+    const float4 albedo = input.color * baseColorTexture.Sample(linearSampler, input.texCoord);
+    const float4 metallicRoughnessSample = metallicRoughnessTexture.Sample(linearSampler, input.texCoord);
+    const float metallicValue = saturate(resolvedMetallic * metallicRoughnessSample.b);
+    const float roughnessValue = saturate(resolvedRoughness * metallicRoughnessSample.g);
+    float3 tangentNormal = normalTexture.Sample(linearSampler, input.texCoord).xyz * 2.0f - 1.0f;
+    tangentNormal.xy *= resolvedNormalScale;
+    const float3x3 tangentBasis = float3x3(normalize(input.tangent), normalize(input.bitangent), normalize(input.normal));
+    const float3 normal = normalize(mul(tangentNormal, tangentBasis));
+    const float aoSample = ambientOcclusionTexture.Sample(linearSampler, input.texCoord).r;
+    const float occlusion = lerp(1.0f, aoSample, saturate(resolvedOcclusionStrength));
+    const float3 emission = emissiveTexture.Sample(linearSampler, input.texCoord).rgb
+        * resolvedEmissiveColor * resolvedEmissiveIntensity;
+
+    GBufferOutput output;
+    output.albedo = albedo;
+    output.normal = float4(normal, 1.0f);
+    output.material = float4(metallicValue, roughnessValue, occlusion, 1.0f);
+    output.emission = float4(emission, 1.0f);
+    return output;
+}
+
+GBufferOutput psGBufferAlphaTest(PixelInput input)
+{
+    const float4 color = input.color * baseColorTexture.Sample(linearSampler, input.texCoord);
+    const float resolvedAlphaCutoff = (propertyOverrideMask & PROPERTY_ALPHA_CUTOFF) != 0
+        ? propertyAlphaCutoff : alphaCutoff;
+    clip(color.a - resolvedAlphaCutoff);
+    return psGBuffer(input);
+}
+
 void psDepthAlphaTest(PixelInput input)
 {
     const float alpha = input.color.a * baseColorTexture.Sample(linearSampler, input.texCoord).a;

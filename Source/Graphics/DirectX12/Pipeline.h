@@ -18,6 +18,7 @@ namespace Engine
         std::span<const D3D12_ROOT_PARAMETER> rootParameters;                                     //!< Root Signature Parameter
         std::span<const D3D12_STATIC_SAMPLER_DESC> staticSamplers;                                //!< Static Sampler
         DXGI_FORMAT renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM;                              //!< Render Target Format
+        std::span<const DXGI_FORMAT> renderTargetFormats;                                        //!< Multiple Render Target Formats
         DXGI_FORMAT depthStencilFormat = DXGI_FORMAT_UNKNOWN;                                     //!< Depth Stencil Format
         D3D12_PRIMITIVE_TOPOLOGY_TYPE primitiveTopology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; //!< Primitive Topology 種別
         D3D12_COMPARISON_FUNC depthComparison = D3D12_COMPARISON_FUNC_LESS;                       //!< 深度比較関数

@@ -1,0 +1,18 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+table PostProcessVolumeComponentPayload {
+    shape:ubyte;
+    priority:float;
+    weight:float = 1;
+    blend_distance:float;
+    center:Vec3;
+    box_size:Vec3;
+    sphere_radius:float = 0.5;
+    profile_guid:AssetGuid;
+    profile_path:string;
+}
+
+root_type PostProcessVolumeComponentPayload;
+file_identifier "PPVC";

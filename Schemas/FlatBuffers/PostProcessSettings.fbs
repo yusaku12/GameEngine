@@ -1,0 +1,52 @@
+include "Common.fbs";
+namespace Engine.Serialization;
+
+struct PostProcessFloat { value:float; overridden:bool; }
+struct PostProcessBool { value:bool; overridden:bool; }
+struct PostProcessColor { value:Vec3; overridden:bool; }
+
+table PostProcessLutReference {
+    guid:AssetGuid;
+    path:string (required);
+    overridden:bool;
+}
+
+table PostProcessSettingsData {
+    bloom_enabled:PostProcessBool;
+    bloom_intensity:PostProcessFloat;
+    bloom_threshold:PostProcessFloat;
+    bloom_scatter:PostProcessFloat;
+    exposure_enabled:PostProcessBool;
+    exposure_ev:PostProcessFloat;
+    color_adjustments_enabled:PostProcessBool;
+    contrast:PostProcessFloat;
+    saturation:PostProcessFloat;
+    color_filter:PostProcessColor;
+    vignette_enabled:PostProcessBool;
+    vignette_intensity:PostProcessFloat;
+    vignette_smoothness:PostProcessFloat;
+    vignette_roundness:PostProcessFloat;
+    vignette_color:PostProcessColor;
+    fxaa_enabled:PostProcessBool;
+    fxaa_subpixel:PostProcessFloat;
+    fxaa_edge_threshold:PostProcessFloat;
+    fxaa_edge_threshold_min:PostProcessFloat;
+    depth_of_field_enabled:PostProcessBool;
+    depth_of_field_focus_distance:PostProcessFloat;
+    depth_of_field_focus_range:PostProcessFloat;
+    depth_of_field_max_blur:PostProcessFloat;
+    fog_enabled:PostProcessBool;
+    fog_density:PostProcessFloat;
+    fog_start_distance:PostProcessFloat;
+    fog_color:PostProcessColor;
+    color_grading_lut_enabled:PostProcessBool;
+    color_grading_lut_intensity:PostProcessFloat;
+    color_grading_lut_asset:PostProcessLutReference;
+    auto_exposure_enabled:PostProcessBool;
+    auto_exposure_key:PostProcessFloat;
+    auto_exposure_min_ev:PostProcessFloat;
+    auto_exposure_max_ev:PostProcessFloat;
+    auto_exposure_compensation:PostProcessFloat;
+    auto_exposure_speed_up:PostProcessFloat;
+    auto_exposure_speed_down:PostProcessFloat;
+}

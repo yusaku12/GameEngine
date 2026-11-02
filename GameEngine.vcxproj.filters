@@ -9,6 +9,22 @@
     <ClCompile Include="Source\UI\RuntimeUIComponents.cpp" />
     <ClCompile Include="Source\Graphics\UI\RuntimeUIRenderer.cpp" />
     <ClCompile Include="Source\Core\System\StartupOptions.cpp" />
+    <ClCompile Include="Source\Graphics\DirectX12\FrameCapture.cpp" />
+    <ClCompile Include="Source\Graphics\Validation\RenderingValidation.cpp" />
+    <ClCompile Include="Source\Graphics\PostProcess\PostProcessPipeline.cpp" />
+    <ClCompile Include="Source\Graphics\PostProcess\PostProcessSettings.cpp" />
+    <ClCompile Include="Source\Graphics\PostProcess\PostProcessVolumeResolver.cpp" />
+    <ClCompile Include="Source\Core\GameObject\Component\PostProcessVolumeComponent.cpp" />
+    <ClCompile Include="Source\Assets\PostProcess\PostProcessProfileManager.cpp" />
+    <ClCompile Include="Source\Assets\PostProcess\PostProcessEffectAssetManager.cpp" />
+    <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessEffectSerializer.cpp" />
+    <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessProfileSerializer.cpp" />
+    <ClCompile Include="Source\Editor\PostProcess\PostProcessInspector.cpp" />
+    <ClCompile Include="Source\Graphics\Validation\PostProcessAuthoringValidation.cpp" />
+    <ClCompile Include="Source\Graphics\Validation\PostProcessEffectsValidation.cpp" />
+    <ClCompile Include="Source\Graphics\Validation\PostProcessVolumeValidation.cpp" />
+    <ClCompile Include="Source\Graphics\Validation\PostProcessCustomEffectValidation.cpp" />
+    <ClCompile Include="Source\Graphics\PostProcess\PostProcessTargetPool.cpp" />
     <ClCompile Include="Source\Core\System\GameSession.cpp" />
     <ClCompile Include="Source\Core\Scene\SceneClone.cpp" />
     <ClCompile Include="Source\Animation\Runtime\AnimatorInstance.cpp" />
@@ -107,6 +123,27 @@
   <ItemGroup>
     <ClInclude Include="Source\Core\System\ExecutionMode.h" />
     <ClInclude Include="Source\Core\System\StartupOptions.h" />
+    <ClInclude Include="Source\Graphics\DirectX12\FrameCapture.h" />
+    <ClInclude Include="Source\Graphics\Validation\RenderingValidation.h" />
+    <ClInclude Include="Source\Graphics\PostProcess\PostProcessPipeline.h" />
+    <ClInclude Include="Source\Graphics\PostProcess\PostProcessSettings.h" />
+    <ClInclude Include="Source\Graphics\PostProcess\PostProcessVolumeResolver.h" />
+    <ClInclude Include="Source\Core\GameObject\Component\PostProcessVolumeComponent.h" />
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessProfile.h" />
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessProfileManager.h" />
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessEffectAsset.h" />
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessEffectAssetManager.h" />
+    <ClInclude Include="Source\Assets\PostProcess\Serialization\PostProcessEffectSerializer.h" />
+    <ClInclude Include="Source\Assets\PostProcess\Serialization\PostProcessProfileSerializer.h" />
+    <ClInclude Include="Source\Editor\PostProcess\PostProcessInspector.h" />
+    <ClInclude Include="Source\Graphics\Validation\PostProcessAuthoringValidation.h" />
+    <ClInclude Include="Source\Graphics\Validation\PostProcessEffectsValidation.h" />
+    <ClInclude Include="Source\Graphics\Validation\PostProcessVolumeValidation.h" />
+    <ClInclude Include="Source\Graphics\Validation\PostProcessCustomEffectValidation.h" />
+    <ClInclude Include="Generated\FlatBuffers\PostProcessSettings_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\PostProcessProfile_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\PostProcessEffectAsset_generated.h" />
+    <ClInclude Include="Source\Graphics\PostProcess\PostProcessTargetPool.h" />
     <ClInclude Include="Source\Core\System\GameSession.h" />
     <ClInclude Include="Source\Core\Scene\SceneClone.h" />
     <ClInclude Include="Generated\FlatBuffers\CameraComponent_generated.h" />
@@ -281,6 +318,16 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Shaders\Model.hlsl" />
+    <None Include="Assets\Shaders\Deferred.hlsl" />
+    <None Include="Assets\Shaders\PostProcess.hlsl" />
+    <None Include="Assets\Shaders\PostProcessEffects.hlsl" />
+    <None Include="Assets\Shaders\PostProcessExample.hlsl" />
+    <None Include="Schemas\FlatBuffers\PostProcessSettings.fbs" />
+    <None Include="Schemas\FlatBuffers\PostProcessProfile.fbs" />
+    <None Include="Schemas\FlatBuffers\PostProcessEffectAsset.fbs" />
+    <None Include="Assets\Shaders\PostProcess.hlsli" />
+    <None Include="Assets\Shaders\ColorOutput.hlsli" />
+    <None Include="Assets\Shaders\PostProcessValidation.hlsl" />
     <None Include="Assets\Shaders\Occlusion.hlsl" />
     <None Include="Assets\Shaders\HiZ.hlsl" />
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />

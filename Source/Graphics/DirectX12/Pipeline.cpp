@@ -28,7 +28,21 @@ namespace Engine
             return false;
         }
 
-        const bool requiresPixelShader = config.renderTargetFormat != DXGI_FORMAT_UNKNOWN;
+        if (config.renderTargetFormats.size() > D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT)
+        {
+            LOG_ERROR("[DX12] Graphics Pipeline の Render Target 数がDirectX 12の上限を超えています");
+            return false;
+        }
+        for (const DXGI_FORMAT format : config.renderTargetFormats)
+        {
+            if (format == DXGI_FORMAT_UNKNOWN)
+            {
+                LOG_ERROR("[DX12] Graphics Pipeline の MRT Format に UNKNOWN は指定できません");
+                return false;
+            }
+        }
+        const bool requiresPixelShader = !config.renderTargetFormats.empty()
+            || config.renderTargetFormat != DXGI_FORMAT_UNKNOWN;
         if (config.vertexShader == nullptr || !config.vertexShader->isCompiled()
             || (requiresPixelShader && config.pixelShader == nullptr)
             || (config.pixelShader != nullptr && !config.pixelShader->isCompiled()))
@@ -126,9 +140,17 @@ namespace Engine
         description.DepthStencilState.BackFace = description.DepthStencilState.FrontFace;
         description.InputLayout = { config.inputLayout.data(), static_cast<UINT>(config.inputLayout.size()) };
         description.PrimitiveTopologyType = config.primitiveTopology;
-        description.NumRenderTargets = config.renderTargetFormat == DXGI_FORMAT_UNKNOWN ? 0 : 1;
-        if (description.NumRenderTargets != 0)
+        description.NumRenderTargets = static_cast<UINT>(config.renderTargetFormats.size());
+        if (!config.renderTargetFormats.empty())
+        {
+            std::copy(config.renderTargetFormats.begin(), config.renderTargetFormats.end(),
+                description.RTVFormats);
+        }
+        else if (config.renderTargetFormat != DXGI_FORMAT_UNKNOWN)
+        {
+            description.NumRenderTargets = 1;
             description.RTVFormats[0] = config.renderTargetFormat;
+        }
         description.DSVFormat = config.depthStencilFormat;
         description.SampleDesc = { 1, 0 };
 

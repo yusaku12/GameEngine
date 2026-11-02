@@ -44,7 +44,7 @@ namespace Engine
     }
 
     bool DX12Renderer::initialize(const HWND hwnd, const std::uint32_t width, const std::uint32_t height,
-        const ExecutionMode mode)
+        const ExecutionMode mode, const bool enableRuntimeUi)
     {
         if (hwnd == nullptr || width == 0 || height == 0)
             return false;
@@ -53,6 +53,7 @@ namespace Engine
             return false;
         m_mode = mode;
         m_editorOverlayEnabled = mode == ExecutionMode::Editor;
+        m_runtimeUiEnabled = enableRuntimeUi;
 
         const auto rollbackInitialization = [this]
             {
@@ -75,6 +76,12 @@ namespace Engine
             || !m_modelGpuCache.initialize(m_device, m_directFence)
             || !m_materialGpuCache.initialize(m_device, m_directFence)
             || !DebugPrimitive::instance().initialize(m_device, m_directFence))
+        {
+            rollbackInitialization();
+            return false;
+        }
+        if (!m_postProcess.initialize(*m_device.get(), m_directFence,
+            TextureManager::instance().getDescriptorHeap()))
         {
             rollbackInitialization();
             return false;
@@ -103,7 +110,7 @@ namespace Engine
 
         if (!m_gameRtvHeap.initialize(*m_device.get(), {
                 .type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
-                .capacity = 1,
+                .capacity = 6,
                 .shaderVisible = false,
             })
             || !m_dsvHeap.initialize(*m_device.get(), {
@@ -113,7 +120,8 @@ namespace Engine
                 })
                 || !createGameRenderTarget(width, height, m_cameraClearColor)
             || !createDepthBuffer(width, height)
-            || !createShadowMap())
+                || !createDeferredRenderTargets(width, height)
+                || !createShadowMap())
         {
             rollbackInitialization();
             return false;
@@ -132,16 +140,23 @@ namespace Engine
                 rollbackInitialization();
                 return false;
             }
+            if (!m_deferredConstantsBuffers[frame].initialize(*m_device.get(), m_directFence,
+                (sizeof(DeferredPassConstants) + 255u) & ~std::size_t{255}))
+            {
+                rollbackInitialization();
+                return false;
+            }
             if (!m_commandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT)
                 || !m_finishCommandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT)
-                || !m_queryCommandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT))
+                || !m_queryCommandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT)
+                || !m_deferredLightingCommandLists[frame].initialize(*m_device.get(), DX12CommandQueueType::DIRECT))
             {
                 rollbackInitialization();
                 return false;
             }
         }
 
-        if (!m_runtimeUi.initialize(*m_device.get(), *m_directQueue.get()))
+        if (enableRuntimeUi && !m_runtimeUi.initialize(*m_device.get(), *m_directQueue.get()))
         {
             rollbackInitialization();
             return false;
@@ -193,10 +208,61 @@ namespace Engine
         alphaTestPixelShaderDesc.outputPath = "Assets/Shaders/Compiled/Model_psAlphaTest_ps.cso";
         alphaTestPixelShaderDesc.entryPoint = "psAlphaTest";
         m_alphaTestPixelShaderID = m_shaderManager.registerShader(alphaTestPixelShaderDesc);
+        ShaderCompileDesc gbufferPixelShaderDesc = modelPixelShaderDesc;
+        gbufferPixelShaderDesc.outputPath = "Assets/Shaders/Compiled/Model_psGBuffer_ps.cso";
+        gbufferPixelShaderDesc.entryPoint = "psGBuffer";
+        m_gbufferPixelShaderID = m_shaderManager.registerShader(gbufferPixelShaderDesc);
+        gbufferPixelShaderDesc.outputPath = "Assets/Shaders/Compiled/Model_psGBufferAlphaTest_ps.cso";
+        gbufferPixelShaderDesc.entryPoint = "psGBufferAlphaTest";
+        m_gbufferAlphaTestPixelShaderID = m_shaderManager.registerShader(gbufferPixelShaderDesc);
         ShaderCompileDesc depthAlphaTestPixelShaderDesc = modelPixelShaderDesc;
         depthAlphaTestPixelShaderDesc.outputPath = "Assets/Shaders/Compiled/Model_psDepthAlphaTest_ps.cso";
         depthAlphaTestPixelShaderDesc.entryPoint = "psDepthAlphaTest";
         m_depthAlphaTestPixelShaderID = m_shaderManager.registerShader(depthAlphaTestPixelShaderDesc);
+        const ShaderCompileDesc deferredVertexShaderDesc{
+            .sourcePath = "Assets/Shaders/Deferred.hlsl",
+            .outputPath = "Assets/Shaders/Compiled/Deferred_vsMain_vs.cso",
+            .entryPoint = "vsMain",
+            .stage = ShaderStage::Vertex,
+            .shaderModel = ShaderModel::SM_6_0,
+            .languageVersion = HlslLanguageVersion::Hlsl2021,
+            .debug = true,
+            .optimize = false,
+        };
+        m_deferredVertexShaderID = m_shaderManager.registerShader(deferredVertexShaderDesc);
+        ShaderCompileDesc deferredPixelShaderDesc{
+            .sourcePath = "Assets/Shaders/Deferred.hlsl",
+            .outputPath = "Assets/Shaders/Compiled/Deferred_psLighting_ps.cso",
+            .entryPoint = "psLighting",
+            .stage = ShaderStage::Pixel,
+            .shaderModel = ShaderModel::SM_6_0,
+            .languageVersion = HlslLanguageVersion::Hlsl2021,
+            .debug = true,
+            .optimize = false,
+        };
+        m_deferredLightingPixelShaderID = m_shaderManager.registerShader(deferredPixelShaderDesc);
+        deferredPixelShaderDesc.outputPath = "Assets/Shaders/Compiled/Deferred_psDebug_ps.cso";
+        deferredPixelShaderDesc.entryPoint = "psDebug";
+        m_deferredDebugPixelShaderID = m_shaderManager.registerShader(deferredPixelShaderDesc);
+        ShaderCompileDesc postProcessDesc = deferredVertexShaderDesc;
+        postProcessDesc.sourcePath = "Assets/Shaders/PostProcess.hlsl";
+        postProcessDesc.outputPath = "Assets/Shaders/Compiled/PostProcess_vsMain_vs.cso";
+        m_postProcessVertexShaderID = m_shaderManager.registerShader(postProcessDesc);
+        postProcessDesc.stage = ShaderStage::Pixel;
+        postProcessDesc.entryPoint = "psToneMapping";
+        postProcessDesc.outputPath = "Assets/Shaders/Compiled/PostProcess_psToneMapping_ps.cso";
+        m_postProcessToneMappingShaderID = m_shaderManager.registerShader(postProcessDesc);
+        postProcessDesc.entryPoint = "psOutput";
+        postProcessDesc.outputPath = "Assets/Shaders/Compiled/PostProcess_psOutput_ps.cso";
+        m_postProcessOutputShaderID = m_shaderManager.registerShader(postProcessDesc);
+        postProcessDesc.sourcePath = "Assets/Shaders/PostProcessEffects.hlsl";
+        for (std::size_t index = 0; index < POST_PROCESS_BUILTIN_ENTRIES.size(); ++index)
+        {
+            postProcessDesc.entryPoint = POST_PROCESS_BUILTIN_ENTRIES[index];
+            postProcessDesc.outputPath = std::filesystem::path("Assets\\Shaders\\Compiled")
+                / (std::string("PostProcessEffects_") + POST_PROCESS_BUILTIN_ENTRIES[index] + "_ps.cso");
+            m_postProcessBuiltinShaderIDs[index] = m_shaderManager.registerShader(postProcessDesc);
+        }
         const ShaderCompileDesc debugVertexShaderDesc{
             .sourcePath = "Assets/Shaders/DebugPrimitive.hlsl",
             .outputPath = "Assets/Shaders/Compiled/DebugPrimitive_vsMain_vs.cso",
@@ -259,6 +325,9 @@ namespace Engine
     {
         if (m_lastSubmittedFenceValue != 0 && !m_directFence.waitOnCpu(m_lastSubmittedFenceValue))
             return false;
+        if (!m_postProcess.finalize())
+            return false;
+        m_postProcessRecorded = false;
         m_runtimeUi.finalize();
         for (auto& list : m_presentationLists)
             list.finalize();
@@ -275,9 +344,36 @@ namespace Engine
             return false;
 
         m_depthBuffer.finalize();
+        for (DX12Resource& target : m_gbufferTargets)
+            target.finalize();
+        m_deferredLightingTarget.finalize();
         for (auto& buffer : m_lightingBuffers)
             if (!buffer.finalize())
                 return false;
+        for (auto& buffer : m_deferredConstantsBuffers)
+            if (!buffer.finalize())
+                return false;
+        for (auto& view : m_gbufferShaderViews)
+        {
+            if (view)
+            {
+                if (!TextureManager::instance().getDescriptorHeap().release(view->cpu.index))
+                    LOG_ERROR("[Renderer] Failed to release a G-Buffer SRV descriptor.");
+                view.reset();
+            }
+        }
+        if (m_depthShaderView)
+        {
+            if (!TextureManager::instance().getDescriptorHeap().release(m_depthShaderView->cpu.index))
+                LOG_ERROR("[Renderer] Failed to release the depth SRV descriptor.");
+            m_depthShaderView.reset();
+        }
+        if (m_deferredLightingShaderView)
+        {
+            if (!TextureManager::instance().getDescriptorHeap().release(m_deferredLightingShaderView->cpu.index))
+                LOG_ERROR("[Renderer] Failed to release the HDR lighting SRV descriptor.");
+            m_deferredLightingShaderView.reset();
+        }
         if (m_shadowSrv)
         {
             TextureManager::instance().getDescriptorHeap().release(m_shadowSrv->cpu.index);
@@ -288,6 +384,8 @@ namespace Engine
         m_gameRtvHeap.finalize();
         m_dsvHeap.finalize();
         m_gameRenderTargetView = {};
+        m_gbufferRenderTargetViews = {};
+        m_deferredLightingRenderTargetView = {};
         m_depthStencilView = {};
         m_shadowDepthStencilView = {};
 
@@ -319,6 +417,11 @@ namespace Engine
             return false;
 
         m_transparentModelPipeline.finalize();
+        m_deferredTransparentModelPipeline.finalize();
+        m_gbufferAlphaTestModelPipeline.finalize();
+        m_gbufferModelPipeline.finalize();
+        m_deferredLightingPipeline.finalize();
+        m_deferredDebugPipeline.finalize();
         m_alphaTestModelPipeline.finalize();
         m_depthOnlyModelPipeline.finalize();
         m_depthAlphaTestModelPipeline.finalize();
@@ -330,6 +433,15 @@ namespace Engine
         m_modelPixelShaderID = 0;
         m_alphaTestPixelShaderID = 0;
         m_depthAlphaTestPixelShaderID = 0;
+        m_gbufferPixelShaderID = 0;
+        m_gbufferAlphaTestPixelShaderID = 0;
+        m_deferredVertexShaderID = 0;
+        m_deferredLightingPixelShaderID = 0;
+        m_deferredDebugPixelShaderID = 0;
+        m_postProcessVertexShaderID = 0;
+        m_postProcessToneMappingShaderID = 0;
+        m_postProcessOutputShaderID = 0;
+        m_postProcessBuiltinShaderIDs.fill(0);
         m_debugVertexShaderID = 0;
         m_debugPixelShaderID = 0;
         m_occlusionShaderID = 0;
@@ -340,6 +452,8 @@ namespace Engine
         for (DX12CommandList& commandList : m_finishCommandLists)
             commandList.finalize();
         for (DX12CommandList& commandList : m_queryCommandLists)
+            commandList.finalize();
+        for (DX12CommandList& commandList : m_deferredLightingCommandLists)
             commandList.finalize();
         for (DX12ModelCommandRecorder& recorder : m_modelCommandRecorders)
             recorder.finalize();
@@ -352,10 +466,18 @@ namespace Engine
         m_lastSubmittedFenceValue = 0;
         m_renderWidth = 0;
         m_renderHeight = 0;
+        m_deferredFrameActive = false;
+        m_deferredPassRecorded = false;
+        m_postProcessRecorded = false;
+        m_deferredDebugView = 0;
+        m_cameraPostProcess = {};
         m_frustum.reset();
         m_shadowViewProjection.reset();
         m_viewProjection = Matrix::Identity;
+        m_inverseViewProjection = Matrix::Identity;
         m_cameraPosition = Vector3::Zero;
+        m_cameraNearClip = 0.1f;
+        m_cameraFarClip = 1000.0f;
         m_cameraForward = Vector3::UnitZ;
         m_cameraViewport = {};
         m_cameraClearMode = CameraClearMode::SolidColor;
@@ -399,16 +521,25 @@ namespace Engine
         else
         {
             m_viewProjection = Matrix::Identity;
+            m_inverseViewProjection = Matrix::Identity;
             m_cameraPosition = Vector3::Zero;
             m_cameraForward = Vector3::UnitZ;
+            m_cameraNearClip = 0.1f;
+            m_cameraFarClip = 1000.0f;
             m_frustum.reset();
             m_shadowViewProjection.reset();
             m_cameraViewport = {};
             m_cameraClearMode = CameraClearMode::SolidColor;
             m_cameraClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);
             m_cameraCullingMask = 0;
+            m_cameraPostProcess = {};
         }
 
+        m_deferredFrameActive = m_deferredRenderingEnabled
+            && m_cameraClearMode != CameraClearMode::Nothing;
+        m_deferredPassRecorded = false;
+        m_postProcessRecorded = false;
+        m_postProcess.resetStatistics();
         const bool clearsColor = m_cameraClearMode == CameraClearMode::SolidColor
             || m_cameraClearMode == CameraClearMode::Skybox;
         const bool renderTargetNeedsResize = m_requestedGameWidth != 0 && m_requestedGameHeight != 0
@@ -419,13 +550,17 @@ namespace Engine
         {
             if (m_lastSubmittedFenceValue != 0 && !m_directFence.waitOnCpu(m_lastSubmittedFenceValue))
                 return false;
+            if (renderTargetNeedsResize && !m_postProcess.releaseTargets())
+                return false;
             if (!createGameRenderTarget(m_requestedGameWidth, m_requestedGameHeight, m_cameraClearColor)
                 || (m_imguiSystem != nullptr
                     && !m_imguiSystem->updateGameTextureView(*m_device.get(), *m_gameRenderTarget.get())))
             {
                 return false;
             }
-            if (renderTargetNeedsResize && !createDepthBuffer(m_requestedGameWidth, m_requestedGameHeight))
+            if (renderTargetNeedsResize
+                && (!createDepthBuffer(m_requestedGameWidth, m_requestedGameHeight)
+                    || !createDeferredRenderTargets(m_requestedGameWidth, m_requestedGameHeight)))
                 return false;
             m_renderWidth = m_requestedGameWidth;
             m_renderHeight = m_requestedGameHeight;
@@ -465,6 +600,21 @@ namespace Engine
                 if (ImGui::Begin("Renderer Statistics"))
                 {
                     ImGui::Text("Frustum-visible Objects: %u", m_statistics.visibleObjects);
+                    ImGui::Checkbox("Deferred Rendering", &m_deferredRenderingEnabled);
+                    if (m_deferredFrameActive)
+                    {
+                        static constexpr const char* DEFERRED_VIEWS[] = {
+                            "Final Lighting", "Albedo", "Normal", "Metallic", "Roughness",
+                            "Material AO", "Emission", "Depth", "Shadow Map"
+                        };
+                        ImGui::SliderFloat("Exposure", &m_exposure, 0.1f, 4.0f);
+                        ImGui::Combo("G-Buffer View", &m_deferredDebugView,
+                            DEFERRED_VIEWS, static_cast<int>(std::size(DEFERRED_VIEWS)));
+                    }
+                    else
+                    {
+                        ImGui::TextUnformatted("Forward rendering is active.");
+                    }
                     ImGui::Text("Frustum-culled Objects: %u", m_statistics.culledObjects);
                     ImGui::Text("Render Items: %u", m_statistics.renderItemCount);
                     ImGui::Text("Submitted Direct Draw Calls: %u", m_statistics.drawCallCount);
@@ -523,13 +673,36 @@ namespace Engine
             return false;
         }
 
+        const Viewport pixelViewport = CameraUtils::toPixelViewport(m_cameraViewport,
+            Vector2(static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight)));
+        m_deferredConstants = {
+            .inverseViewProjection = m_inverseViewProjection,
+            .viewport = Vector4(pixelViewport.x, pixelViewport.y, pixelViewport.width, pixelViewport.height),
+            .renderSize = Vector4(static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight), 0, 0),
+            .backgroundColor = Vector4(m_cameraClearColor.x, m_cameraClearColor.y,
+                m_cameraClearColor.z, m_cameraClearColor.w),
+            .clipExposureDebug = Vector4(m_cameraNearClip, m_cameraFarClip, m_exposure,
+                static_cast<float>(std::clamp(m_deferredDebugView, 0, 8))),
+        };
         DX12CommandList& commandList = m_commandLists[frameIndex];
-        if (!m_lightingBuffers[frameIndex].write(std::as_bytes(std::span(&m_lighting, 1))))
+        if (!m_lightingBuffers[frameIndex].write(std::as_bytes(std::span(&m_lighting, 1)))
+            || (m_deferredFrameActive
+                && !m_deferredConstantsBuffers[frameIndex].write(
+                    std::as_bytes(std::span(&m_deferredConstants, 1)))))
             return false;
         DX12Resource* const backBuffer = m_swapChain.getCurrentBackBuffer();
         if (backBuffer == nullptr || !commandList.begin(m_directFence)
-            || !backBuffer->transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET)
-            || !m_gameRenderTarget.transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET))
+            || !backBuffer->transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET))
+        {
+            return false;
+        }
+        if (m_deferredFrameActive)
+        {
+            for (DX12Resource& target : m_gbufferTargets)
+                if (!target.transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET))
+                    return false;
+        }
+        else if (!m_gameRenderTarget.transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET))
         {
             return false;
         }
@@ -538,8 +711,6 @@ namespace Engine
 
         ID3D12GraphicsCommandList* nativeCommandList = commandList.getForRecording();
         const D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_gameRenderTargetView.native;
-        const Viewport pixelViewport = CameraUtils::toPixelViewport(m_cameraViewport,
-            Vector2(static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight)));
         const D3D12_VIEWPORT viewport{ pixelViewport.x, pixelViewport.y,
             pixelViewport.width, pixelViewport.height, pixelViewport.minDepth, pixelViewport.maxDepth };
         const D3D12_RECT scissorRect{
@@ -548,11 +719,30 @@ namespace Engine
             static_cast<LONG>(std::ceil(viewport.TopLeftX + viewport.Width)),
             static_cast<LONG>(std::ceil(viewport.TopLeftY + viewport.Height))
         };
-        nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
+        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 4> gbufferViews{};
+        for (std::size_t index = 0; index < gbufferViews.size(); ++index)
+            gbufferViews[index] = m_gbufferRenderTargetViews[index].native;
+        if (m_deferredFrameActive)
+        {
+            nativeCommandList->OMSetRenderTargets(static_cast<UINT>(gbufferViews.size()),
+                gbufferViews.data(), FALSE, &m_depthStencilView.native);
+        }
+        else
+        {
+            nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
+        }
         nativeCommandList->RSSetViewports(1, &viewport);
         nativeCommandList->RSSetScissorRects(1, &scissorRect);
-        if (m_cameraClearMode == CameraClearMode::SolidColor || m_cameraClearMode == CameraClearMode::Skybox)
+        if (m_deferredFrameActive)
+        {
+            constexpr float CLEAR_COLOR[4]{};
+            for (const DX12CpuDescriptorHandle& view : m_gbufferRenderTargetViews)
+                nativeCommandList->ClearRenderTargetView(view.native, CLEAR_COLOR, 0, nullptr);
+        }
+        else if (m_cameraClearMode == CameraClearMode::SolidColor || m_cameraClearMode == CameraClearMode::Skybox)
+        {
             nativeCommandList->ClearRenderTargetView(renderTargetView, &m_cameraClearColor.x, 1, &scissorRect);
+        }
         if (m_cameraClearMode != CameraClearMode::Nothing)
             nativeCommandList->ClearDepthStencilView(
                 m_depthStencilView.native, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 1, &scissorRect);
@@ -563,6 +753,25 @@ namespace Engine
         DX12CommandList& finishList = m_finishCommandLists[frameIndex];
         if (!finishList.begin(m_directFence))
             return false;
+        if (m_deferredFrameActive)
+        {
+            if (m_deferredDebugView != 0)
+            {
+                if (!recordDeferredDebug(finishList, frameIndex))
+                    return false;
+            }
+            else
+            {
+                const PostProcessImage input{
+                    &m_deferredLightingTarget, *m_deferredLightingShaderView->gpu, m_deferredLightingRenderTargetView };
+                const PostProcessImage output{ &m_gameRenderTarget, {}, m_gameRenderTargetView };
+                const PostProcessImage depth{ &m_depthBuffer, *m_depthShaderView->gpu, {} };
+                if (!m_postProcess.record(finishList, input, output, viewport, m_exposure,
+                    m_cameraPostProcess, &depth))
+                    return false;
+                m_postProcessRecorded = true;
+            }
+        }
         nativeCommandList = finishList.getForRecording();
         nativeCommandList->OMSetRenderTargets(1, &renderTargetView, FALSE, &m_depthStencilView.native);
         nativeCommandList->RSSetViewports(1, &viewport);
@@ -573,6 +782,11 @@ namespace Engine
             return false;
 
         const bool hasUi = !RuntimeUI::instance().draws().empty();
+        if (hasUi && !m_runtimeUiEnabled)
+        {
+            LOG_ERROR("[Renderer] Runtime UI draws were submitted while Runtime UI is disabled.");
+            return false;
+        }
         DX12CommandList* presentation = &finishList;
         if (hasUi)
         {
@@ -661,12 +875,17 @@ namespace Engine
     bool DX12Renderer::markSceneSubmitted(const std::uint32_t frameIndex, const std::uint64_t submittedFenceValue,
         const std::span<const ModelHandle> usedModels, const std::span<const MaterialHandle> usedMaterials)
     {
+        if (m_postProcessRecorded && !m_postProcess.markSubmitted(submittedFenceValue))
+            return false;
         if (!m_commandLists[frameIndex].markSubmitted(submittedFenceValue)
             || !m_lightingBuffers[frameIndex].markUsed(submittedFenceValue)
             || !m_finishCommandLists[frameIndex].markSubmitted(submittedFenceValue)
             || !m_modelCommandRecorders[frameIndex].markSubmitted(submittedFenceValue)
             || (m_queryListRecorded
-                && !m_queryCommandLists[frameIndex].markSubmitted(submittedFenceValue)))
+                && !m_queryCommandLists[frameIndex].markSubmitted(submittedFenceValue))
+            || (m_deferredPassRecorded
+                && (!m_deferredConstantsBuffers[frameIndex].markUsed(submittedFenceValue)
+                    || !m_deferredLightingCommandLists[frameIndex].markSubmitted(submittedFenceValue))))
             return false;
         if (!DebugPrimitive::instance().markFrameUsed(frameIndex, submittedFenceValue))
             return false;
@@ -767,13 +986,17 @@ namespace Engine
     void DX12Renderer::setRenderView(const RenderView& view) noexcept
     {
         m_viewProjection = view.camera.viewProjection;
+        m_inverseViewProjection = view.camera.inverseViewProjection;
         m_cameraPosition = view.camera.position;
+        m_cameraNearClip = view.camera.nearClip;
+        m_cameraFarClip = view.camera.farClip;
         m_cameraForward = view.camera.forward;
         m_frustum = view.frustum;
         m_cameraViewport = view.viewport;
         m_cameraClearMode = view.clearMode;
         m_cameraClearColor = view.backgroundColor;
         m_cameraCullingMask = view.cullingMask;
+        m_cameraPostProcess = view.postProcess;
     }
 
     bool DX12Renderer::createDepthBuffer(const std::uint32_t width, const std::uint32_t height)
@@ -815,6 +1038,135 @@ namespace Engine
         dsv.Format = DXGI_FORMAT_D32_FLOAT;
         dsv.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
         m_device.get()->CreateDepthStencilView(m_depthBuffer.get(), &dsv, m_depthStencilView.native);
+        if (!m_depthShaderView)
+            m_depthShaderView = TextureManager::instance().getDescriptorHeap().allocate();
+        if (!m_depthShaderView || !m_depthShaderView->gpu)
+        {
+            LOG_ERROR("[Renderer] Failed to allocate the depth SRV descriptor.");
+            return false;
+        }
+        D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+        srv.Format = DXGI_FORMAT_R32_FLOAT;
+        srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srv.Texture2D.MipLevels = 1;
+        m_device.get()->CreateShaderResourceView(m_depthBuffer.get(), &srv, m_depthShaderView->cpu.native);
+        return true;
+    }
+
+    bool DX12Renderer::createDeferredRenderTargets(const std::uint32_t width, const std::uint32_t height)
+    {
+        if (m_device.get() == nullptr || m_gameRtvHeap.get() == nullptr
+            || width == 0 || height == 0)
+        {
+            LOG_ERROR("[Renderer] Cannot create deferred targets with an invalid device or size.");
+            return false;
+        }
+
+        constexpr std::array formats = {
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_FORMAT_R16G16B16A16_FLOAT,
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_FORMAT_R16G16B16A16_FLOAT,
+        };
+        for (const DXGI_FORMAT format : formats)
+        {
+            D3D12_FEATURE_DATA_FORMAT_SUPPORT support{ .Format = format };
+            const HRESULT result = m_device.get()->CheckFeatureSupport(
+                D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support));
+            const D3D12_FORMAT_SUPPORT1 required =
+                D3D12_FORMAT_SUPPORT1_RENDER_TARGET | D3D12_FORMAT_SUPPORT1_SHADER_LOAD;
+            if (FAILED(result) || (support.Support1 & required) != required)
+            {
+                LOG_ERROR("[Renderer] G-Buffer format {} lacks render-target or shader-load support (HRESULT: 0x{:08X}).",
+                    static_cast<unsigned int>(format), static_cast<unsigned long>(result));
+                return false;
+            }
+        }
+        const auto createTarget = [&](DX12Resource& resource, const DXGI_FORMAT format,
+            const DX12CpuDescriptorHandle& renderTargetView,
+            const DX12DescriptorAllocation& shaderView) -> bool
+        {
+            D3D12_RESOURCE_DESC description{};
+            description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+            description.Width = width;
+            description.Height = height;
+            description.DepthOrArraySize = 1;
+            description.MipLevels = 1;
+            description.Format = format;
+            description.SampleDesc = { 1, 0 };
+            description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+            description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+            D3D12_CLEAR_VALUE clearValue{};
+            clearValue.Format = format;
+            const DX12ResourceConfig config{
+                .description = description,
+                .initialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                .clearValue = &clearValue,
+            };
+            if (!resource.initialize(*m_device.get(), config))
+                return false;
+
+            m_device.get()->CreateRenderTargetView(resource.get(), nullptr, renderTargetView.native);
+            D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+            srv.Format = format;
+            srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srv.Texture2D.MipLevels = 1;
+            m_device.get()->CreateShaderResourceView(resource.get(), &srv, shaderView.cpu.native);
+            return true;
+        };
+
+        for (std::size_t index = 0; index < m_gbufferTargets.size(); ++index)
+        {
+            if (m_gbufferRenderTargetViews[index].native.ptr == 0)
+            {
+                const auto allocation = m_gameRtvHeap.allocate();
+                if (!allocation)
+                {
+                    LOG_ERROR("[Renderer] Failed to allocate G-Buffer RTV {}.", index);
+                    return false;
+                }
+                m_gbufferRenderTargetViews[index] = allocation->cpu;
+            }
+            if (!m_gbufferShaderViews[index])
+                m_gbufferShaderViews[index] = TextureManager::instance().getDescriptorHeap().allocate();
+            if (!m_gbufferShaderViews[index] || !m_gbufferShaderViews[index]->gpu)
+            {
+                LOG_ERROR("[Renderer] Failed to allocate G-Buffer SRV {}.", index);
+                return false;
+            }
+            if (!createTarget(m_gbufferTargets[index], formats[index],
+                m_gbufferRenderTargetViews[index], *m_gbufferShaderViews[index]))
+            {
+                LOG_ERROR("[Renderer] Failed to create G-Buffer target {}.", index);
+                return false;
+            }
+        }
+
+        if (m_deferredLightingRenderTargetView.native.ptr == 0)
+        {
+            const auto allocation = m_gameRtvHeap.allocate();
+            if (!allocation)
+            {
+                LOG_ERROR("[Renderer] Failed to allocate HDR lighting RTV.");
+                return false;
+            }
+            m_deferredLightingRenderTargetView = allocation->cpu;
+        }
+        if (!m_deferredLightingShaderView)
+            m_deferredLightingShaderView = TextureManager::instance().getDescriptorHeap().allocate();
+        if (!m_deferredLightingShaderView || !m_deferredLightingShaderView->gpu)
+        {
+            LOG_ERROR("[Renderer] Failed to allocate HDR lighting SRV.");
+            return false;
+        }
+        if (!createTarget(m_deferredLightingTarget, DXGI_FORMAT_R16G16B16A16_FLOAT,
+            m_deferredLightingRenderTargetView, *m_deferredLightingShaderView))
+        {
+            LOG_ERROR("[Renderer] Failed to create HDR lighting target.");
+            return false;
+        }
         return true;
     }
 
@@ -870,6 +1222,150 @@ namespace Engine
         return true;
     }
 
+    bool DX12Renderer::recordDeferredLighting(const std::uint32_t frameIndex)
+    {
+        if (frameIndex >= FRAME_COUNT || !m_deferredFrameActive
+            || m_deferredLightingShaderView == std::nullopt
+            || m_depthShaderView == std::nullopt
+            || m_shadowSrv == std::nullopt
+            || !m_deferredLightingShaderView->gpu || !m_depthShaderView->gpu || !m_shadowSrv->gpu)
+        {
+            LOG_ERROR("[Renderer] Deferred Lighting resources are not ready.");
+            return false;
+        }
+        for (const auto& view : m_gbufferShaderViews)
+        {
+            if (!view || !view->gpu)
+            {
+                LOG_ERROR("[Renderer] A G-Buffer SRV is not ready for Deferred Lighting.");
+                return false;
+            }
+        }
+
+        DX12CommandList& commandList = m_deferredLightingCommandLists[frameIndex];
+        if (!commandList.begin(m_directFence))
+            return false;
+        for (DX12Resource& target : m_gbufferTargets)
+            if (!target.transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
+                return false;
+        if (!m_depthBuffer.transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
+            || !m_deferredLightingTarget.transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET))
+            return false;
+
+        ID3D12GraphicsCommandList* const native = commandList.getForRecording();
+        ID3D12DescriptorHeap* const descriptorHeap = TextureManager::instance().getDescriptorHeap().get();
+        if (native == nullptr || descriptorHeap == nullptr)
+        {
+            LOG_ERROR("[Renderer] Deferred Lighting is missing a command list or shader-visible heap.");
+            return false;
+        }
+        native->SetDescriptorHeaps(1, &descriptorHeap);
+        native->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        native->OMSetRenderTargets(1, &m_deferredLightingRenderTargetView.native, FALSE, nullptr);
+        const Viewport pixelViewport = CameraUtils::toPixelViewport(m_cameraViewport,
+            Vector2(static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight)));
+        const D3D12_VIEWPORT viewport{ pixelViewport.x, pixelViewport.y,
+            pixelViewport.width, pixelViewport.height, pixelViewport.minDepth, pixelViewport.maxDepth };
+        const D3D12_RECT scissor{
+            static_cast<LONG>(std::floor(viewport.TopLeftX)),
+            static_cast<LONG>(std::floor(viewport.TopLeftY)),
+            static_cast<LONG>(std::ceil(viewport.TopLeftX + viewport.Width)),
+            static_cast<LONG>(std::ceil(viewport.TopLeftY + viewport.Height)),
+        };
+        native->RSSetViewports(1, &viewport);
+        native->RSSetScissorRects(1, &scissor);
+        if (!m_deferredLightingPipeline.bind(commandList))
+            return false;
+
+        native->SetGraphicsRootConstantBufferView(0, m_lightingBuffers[frameIndex].getGpuVirtualAddress());
+        native->SetGraphicsRootConstantBufferView(1, m_deferredConstantsBuffers[frameIndex].getGpuVirtualAddress());
+        native->SetGraphicsRootDescriptorTable(2, m_gbufferShaderViews[0]->gpu->native);
+        native->SetGraphicsRootDescriptorTable(3, m_gbufferShaderViews[1]->gpu->native);
+        native->SetGraphicsRootDescriptorTable(4, m_gbufferShaderViews[2]->gpu->native);
+        native->SetGraphicsRootDescriptorTable(5, m_gbufferShaderViews[3]->gpu->native);
+        native->SetGraphicsRootDescriptorTable(6, m_depthShaderView->gpu->native);
+        native->SetGraphicsRootDescriptorTable(7, m_gbufferShaderViews[0]->gpu->native);
+        native->SetGraphicsRootDescriptorTable(8, m_shadowSrv->gpu->native);
+        native->DrawInstanced(3, 1, 0, 0);
+        if (!m_depthBuffer.transition(commandList, D3D12_RESOURCE_STATE_DEPTH_WRITE)
+            || !commandList.close())
+            return false;
+
+        m_deferredPassRecorded = true;
+        return true;
+    }
+
+    bool DX12Renderer::recordDeferredDebug(DX12CommandList& commandList, const std::uint32_t frameIndex)
+    {
+        if (frameIndex >= FRAME_COUNT || !m_deferredLightingShaderView || !m_deferredLightingShaderView->gpu
+            || !m_depthShaderView || !m_depthShaderView->gpu
+            || !m_shadowSrv || !m_shadowSrv->gpu)
+        {
+            LOG_ERROR("[Renderer] Deferred debug resources are not ready.");
+            return false;
+        }
+        for (const auto& view : m_gbufferShaderViews)
+        {
+            if (!view || !view->gpu)
+            {
+                LOG_ERROR("[Renderer] A G-Buffer SRV is not ready for Deferred debug.");
+                return false;
+            }
+        }
+        if (!m_deferredLightingTarget.transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
+            || !m_gameRenderTarget.transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET))
+            return false;
+
+        ID3D12GraphicsCommandList* const native = commandList.getForRecording();
+        ID3D12DescriptorHeap* const descriptorHeap = TextureManager::instance().getDescriptorHeap().get();
+        if (native == nullptr || descriptorHeap == nullptr)
+        {
+            LOG_ERROR("[Renderer] Deferred debug is missing a command list or shader-visible heap.");
+            return false;
+        }
+        native->SetDescriptorHeaps(1, &descriptorHeap);
+        native->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        native->OMSetRenderTargets(1, &m_gameRenderTargetView.native, FALSE, nullptr);
+        const Viewport pixelViewport = CameraUtils::toPixelViewport(m_cameraViewport,
+            Vector2(static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight)));
+        const D3D12_VIEWPORT viewport{ pixelViewport.x, pixelViewport.y,
+            pixelViewport.width, pixelViewport.height, pixelViewport.minDepth, pixelViewport.maxDepth };
+        const D3D12_RECT scissor{
+            static_cast<LONG>(std::floor(viewport.TopLeftX)),
+            static_cast<LONG>(std::floor(viewport.TopLeftY)),
+            static_cast<LONG>(std::ceil(viewport.TopLeftX + viewport.Width)),
+            static_cast<LONG>(std::ceil(viewport.TopLeftY + viewport.Height)),
+        };
+        native->RSSetViewports(1, &viewport);
+        native->RSSetScissorRects(1, &scissor);
+        if (!m_deferredDebugPipeline.bind(commandList))
+            return false;
+
+        native->SetGraphicsRootConstantBufferView(0, m_lightingBuffers[frameIndex].getGpuVirtualAddress());
+        native->SetGraphicsRootConstantBufferView(1, m_deferredConstantsBuffers[frameIndex].getGpuVirtualAddress());
+        native->SetGraphicsRootDescriptorTable(2, m_gbufferShaderViews[0]->gpu->native);
+        native->SetGraphicsRootDescriptorTable(3, m_gbufferShaderViews[1]->gpu->native);
+        native->SetGraphicsRootDescriptorTable(4, m_gbufferShaderViews[2]->gpu->native);
+        native->SetGraphicsRootDescriptorTable(5, m_gbufferShaderViews[3]->gpu->native);
+        native->SetGraphicsRootDescriptorTable(6, m_depthShaderView->gpu->native);
+        native->SetGraphicsRootDescriptorTable(7, m_deferredLightingShaderView->gpu->native);
+        native->SetGraphicsRootDescriptorTable(8, m_shadowSrv->gpu->native);
+        native->DrawInstanced(3, 1, 0, 0);
+        return true;
+    }
+
+    bool DX12Renderer::setDeferredDebugView(const DeferredDebugView view)
+    {
+        const int value = static_cast<int>(view);
+        if (value < 0 || value > static_cast<int>(DeferredDebugView::ShadowMap))
+        {
+            LOG_ERROR("[Renderer] Invalid Deferred debug view {}.", value);
+            return false;
+        }
+        m_deferredDebugView = value;
+        return true;
+    }
+
     bool DX12Renderer::processImGuiMessage(const HWND hwnd, const UINT message, const WPARAM wparam, const LPARAM lparam)
     {
         return m_imguiSystem != nullptr && m_imguiSystem->processMessage(hwnd, message, wparam, lparam);
@@ -881,14 +1377,33 @@ namespace Engine
         const auto modelPixelShader = m_shaderManager.get(m_modelPixelShaderID);
         const auto alphaTestPixelShader = m_shaderManager.get(m_alphaTestPixelShaderID);
         const auto depthAlphaTestPixelShader = m_shaderManager.get(m_depthAlphaTestPixelShaderID);
+        const auto gbufferPixelShader = m_shaderManager.get(m_gbufferPixelShaderID);
+        const auto gbufferAlphaTestPixelShader = m_shaderManager.get(m_gbufferAlphaTestPixelShaderID);
+        const auto deferredVertexShader = m_shaderManager.get(m_deferredVertexShaderID);
+        const auto deferredLightingPixelShader = m_shaderManager.get(m_deferredLightingPixelShaderID);
+        const auto deferredDebugPixelShader = m_shaderManager.get(m_deferredDebugPixelShaderID);
+        const auto postProcessVertexShader = m_shaderManager.get(m_postProcessVertexShaderID);
+        const auto postProcessToneMappingShader = m_shaderManager.get(m_postProcessToneMappingShaderID);
+        const auto postProcessOutputShader = m_shaderManager.get(m_postProcessOutputShaderID);
+        PostProcessBuiltinShaders postProcessBuiltins;
+        for (std::size_t index = 0; index < postProcessBuiltins.size(); ++index)
+            postProcessBuiltins[index] = m_shaderManager.get(m_postProcessBuiltinShaderIDs[index]);
         const auto debugVertexShader = m_shaderManager.get(m_debugVertexShaderID);
         const auto debugPixelShader = m_shaderManager.get(m_debugPixelShaderID);
         const auto hizShader = m_shaderManager.get(m_hizShaderID);
         const auto occlusionShader = m_shaderManager.get(m_occlusionShaderID);
         if (!modelVertexShader || !modelPixelShader || !alphaTestPixelShader || !depthAlphaTestPixelShader
+            || !gbufferPixelShader || !gbufferAlphaTestPixelShader || !deferredVertexShader
+            || !deferredLightingPixelShader || !deferredDebugPixelShader
+            || !postProcessVertexShader || !postProcessToneMappingShader || !postProcessOutputShader
             || !debugVertexShader || !debugPixelShader || !hizShader || !occlusionShader
             || !modelVertexShader->isCompiled() || !modelPixelShader->isCompiled()
             || !alphaTestPixelShader->isCompiled() || !depthAlphaTestPixelShader->isCompiled()
+            || !gbufferPixelShader->isCompiled() || !gbufferAlphaTestPixelShader->isCompiled()
+            || !deferredVertexShader->isCompiled() || !deferredLightingPixelShader->isCompiled()
+            || !deferredDebugPixelShader->isCompiled()
+            || !postProcessVertexShader->isCompiled() || !postProcessToneMappingShader->isCompiled()
+            || !postProcessOutputShader->isCompiled()
             || !debugVertexShader->isCompiled() || !debugPixelShader->isCompiled()
             || !hizShader->isCompiled() || !occlusionShader->isCompiled())
         {
@@ -997,6 +1512,20 @@ namespace Engine
         DX12GraphicsPipelineConfig opaqueModelConfig = modelConfig;
         opaqueModelConfig.enableDepthWrite = false;
         opaqueModelConfig.depthComparison = D3D12_COMPARISON_FUNC_EQUAL;
+        constexpr std::array gbufferFormats = {
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_FORMAT_R16G16B16A16_FLOAT,
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_FORMAT_R16G16B16A16_FLOAT,
+        };
+        DX12GraphicsPipelineConfig gbufferModelConfig = opaqueModelConfig;
+        gbufferModelConfig.pixelShader = gbufferPixelShader.get();
+        gbufferModelConfig.renderTargetFormat = DXGI_FORMAT_UNKNOWN;
+        gbufferModelConfig.renderTargetFormats = gbufferFormats;
+        DX12GraphicsPipelineConfig gbufferAlphaTestModelConfig = gbufferModelConfig;
+        gbufferAlphaTestModelConfig.pixelShader = gbufferAlphaTestPixelShader.get();
+        DX12GraphicsPipelineConfig deferredTransparentModelConfig = transparentModelConfig;
+        deferredTransparentModelConfig.renderTargetFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
         DX12GraphicsPipelineConfig depthOnlyModelConfig = modelConfig;
         depthOnlyModelConfig.pixelShader = nullptr;
         depthOnlyModelConfig.renderTargetFormat = DXGI_FORMAT_UNKNOWN;
@@ -1007,17 +1536,67 @@ namespace Engine
         DX12GraphicsPipeline nextTransparentModelPipeline;
         DX12GraphicsPipeline nextDepthOnlyModelPipeline;
         DX12GraphicsPipeline nextDepthAlphaTestModelPipeline;
+        DX12GraphicsPipeline nextGBufferModelPipeline;
+        DX12GraphicsPipeline nextGBufferAlphaTestModelPipeline;
+        DX12GraphicsPipeline nextDeferredTransparentModelPipeline;
+        DX12GraphicsPipeline nextDeferredLightingPipeline;
+        DX12GraphicsPipeline nextDeferredDebugPipeline;
         DX12ComputePipeline nextHiZPipeline;
         DX12ComputePipeline nextOcclusionPipeline;
+
+        D3D12_ROOT_PARAMETER deferredLightingConstants{};
+        deferredLightingConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        deferredLightingConstants.Descriptor.ShaderRegister = 4;
+        deferredLightingConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        D3D12_ROOT_PARAMETER deferredPassConstants{};
+        deferredPassConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        deferredPassConstants.Descriptor.ShaderRegister = 5;
+        deferredPassConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        std::array<D3D12_DESCRIPTOR_RANGE, 7> deferredRanges{};
+        std::array<D3D12_ROOT_PARAMETER, 7> deferredTextureTables{};
+        for (std::uint32_t index = 0; index < deferredRanges.size(); ++index)
+        {
+            deferredRanges[index].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            deferredRanges[index].NumDescriptors = 1;
+            deferredRanges[index].BaseShaderRegister = index;
+            deferredRanges[index].RegisterSpace = 0;
+            deferredRanges[index].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+            deferredTextureTables[index].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            deferredTextureTables[index].DescriptorTable = { 1, &deferredRanges[index] };
+            deferredTextureTables[index].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        }
+        std::array<D3D12_ROOT_PARAMETER, 9> deferredRootParameters{};
+        deferredRootParameters[0] = deferredLightingConstants;
+        deferredRootParameters[1] = deferredPassConstants;
+        std::copy(deferredTextureTables.begin(), deferredTextureTables.end(),
+            deferredRootParameters.begin() + 2);
+        const std::array deferredStaticSamplers{ staticSamplers[1] };
+        const DX12GraphicsPipelineConfig deferredLightingConfig{
+            .vertexShader = deferredVertexShader.get(),
+            .pixelShader = deferredLightingPixelShader.get(),
+            .rootParameters = deferredRootParameters,
+            .staticSamplers = deferredStaticSamplers,
+            .renderTargetFormat = DXGI_FORMAT_R16G16B16A16_FLOAT,
+        };
+        DX12GraphicsPipelineConfig deferredDebugConfig = deferredLightingConfig;
+        deferredDebugConfig.pixelShader = deferredDebugPixelShader.get();
+        deferredDebugConfig.renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+
         if (!nextModelPipeline.initialize(*m_device.get(), opaqueModelConfig)
             || !nextAlphaTestModelPipeline.initialize(*m_device.get(), alphaTestModelConfig)
             || !nextTransparentModelPipeline.initialize(*m_device.get(), transparentModelConfig)
             || !nextDepthOnlyModelPipeline.initialize(*m_device.get(), depthOnlyModelConfig)
             || !nextDepthAlphaTestModelPipeline.initialize(*m_device.get(), depthAlphaTestModelConfig)
+            || !nextGBufferModelPipeline.initialize(*m_device.get(), gbufferModelConfig)
+            || !nextGBufferAlphaTestModelPipeline.initialize(*m_device.get(), gbufferAlphaTestModelConfig)
+            || !nextDeferredTransparentModelPipeline.initialize(*m_device.get(), deferredTransparentModelConfig)
+            || !nextDeferredLightingPipeline.initialize(*m_device.get(), deferredLightingConfig)
+            || !nextDeferredDebugPipeline.initialize(*m_device.get(), deferredDebugConfig)
             || !DX12GpuOcclusionCulling::createPipelines(*m_device.get(), *hizShader, *occlusionShader,
                 nextHiZPipeline, nextOcclusionPipeline)
             || !DebugPrimitive::instance().rebuildPipeline(*debugVertexShader, *debugPixelShader)
-            || !m_materialGpuCache.rebuildAll())
+            || !m_materialGpuCache.rebuildAll()
+            || !m_postProcess.rebuild(postProcessVertexShader, postProcessToneMappingShader, postProcessOutputShader, postProcessBuiltins))
         {
             return false;
         }
@@ -1026,6 +1605,11 @@ namespace Engine
         m_transparentModelPipeline.swap(nextTransparentModelPipeline);
         m_depthOnlyModelPipeline.swap(nextDepthOnlyModelPipeline);
         m_depthAlphaTestModelPipeline.swap(nextDepthAlphaTestModelPipeline);
+        m_gbufferModelPipeline.swap(nextGBufferModelPipeline);
+        m_gbufferAlphaTestModelPipeline.swap(nextGBufferAlphaTestModelPipeline);
+        m_deferredTransparentModelPipeline.swap(nextDeferredTransparentModelPipeline);
+        m_deferredLightingPipeline.swap(nextDeferredLightingPipeline);
+        m_deferredDebugPipeline.swap(nextDeferredDebugPipeline);
         m_occlusionPipeline.swap(nextOcclusionPipeline);
         m_hizPipeline.swap(nextHiZPipeline);
         return true;
@@ -1228,6 +1812,11 @@ namespace Engine
             .lighting = m_lightingBuffers[frameIndex].getGpuVirtualAddress(),
             .shadowTexture = m_shadowSrv->gpu->native,
             .colorTarget = m_gameRenderTargetView.native,
+            .geometryTargets = {
+                m_gbufferRenderTargetViews[0].native, m_gbufferRenderTargetViews[1].native,
+                m_gbufferRenderTargetViews[2].native, m_gbufferRenderTargetViews[3].native },
+            .deferredTarget = m_deferredLightingRenderTargetView.native,
+            .deferred = m_deferredFrameActive,
             .depthTarget = m_depthStencilView.native,
             .shadowTarget = m_shadowDepthStencilView.native,
             .viewport = {
@@ -1277,7 +1866,10 @@ namespace Engine
                 state, m_enableParallelModelRecording))
                 return false;
         }
+        if (m_deferredFrameActive && !recordDeferredLighting(frameIndex))
+            return false;
         bool queryInserted = !hasColor && !hasShadow;
+        bool deferredInserted = !m_deferredFrameActive;
         const auto ranges = recorder.getRanges();
         for (std::size_t index = 0; index < ranges.size(); ++index)
         {
@@ -1286,6 +1878,11 @@ namespace Engine
             {
                 m_executionLists.push_back(queryList.getForExecution());
                 queryInserted = true;
+            }
+            if (!deferredInserted && pass == RenderPassType::Transparent)
+            {
+                m_executionLists.push_back(m_deferredLightingCommandLists[frameIndex].getForExecution());
+                deferredInserted = true;
             }
             ID3D12CommandList* const native = recorder.getForExecution(index);
             if (native == nullptr)
@@ -1297,6 +1894,8 @@ namespace Engine
         }
         if (!queryInserted)
             m_executionLists.push_back(queryList.getForExecution());
+        if (!deferredInserted)
+            m_executionLists.push_back(m_deferredLightingCommandLists[frameIndex].getForExecution());
         const auto& statistics = recorder.getStatistics();
         m_frameStatistics.drawCallCount = statistics.drawCallCount;
         m_frameStatistics.indirectCallCount = statistics.indirectCallCount;
@@ -1370,11 +1969,17 @@ namespace Engine
             }
             else if (item.pass == RenderPassType::AlphaTest)
             {
-                requiredPipeline = &m_alphaTestModelPipeline;
+                requiredPipeline = m_deferredFrameActive
+                    ? &m_gbufferAlphaTestModelPipeline : &m_alphaTestModelPipeline;
             }
             else if (item.pass == RenderPassType::Transparent)
             {
-                requiredPipeline = &m_transparentModelPipeline;
+                requiredPipeline = m_deferredFrameActive
+                    ? &m_deferredTransparentModelPipeline : &m_transparentModelPipeline;
+            }
+            else if (item.pass == RenderPassType::Opaque && m_deferredFrameActive)
+            {
+                requiredPipeline = &m_gbufferModelPipeline;
             }
             if (currentMaterial != item.material)
             {

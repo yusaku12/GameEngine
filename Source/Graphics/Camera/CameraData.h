@@ -4,6 +4,7 @@
 #include <limits>
 #include "Core\Math\Geometry.h"
 #include "Graphics\Camera\CameraTypes.h"
+#include "Graphics\PostProcess\PostProcessSettings.h"
 
 namespace Engine
 {
@@ -39,5 +40,6 @@ namespace Engine
         CameraClearMode clearMode = CameraClearMode::SolidColor;               //!< Cameraのクリアモード
         Color backgroundColor = Color(0.08f, 0.16f, 0.24f, 1.0f);              //!< Cameraの背景色
         std::uint32_t cullingMask = std::numeric_limits<std::uint32_t>::max(); //!< CameraのCulling Mask
+        PostProcessCameraSnapshot postProcess;                                 //!< CPU-only resolved authoring snapshot.
     };
 } // namespace Engine

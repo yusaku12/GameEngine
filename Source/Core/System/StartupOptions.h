@@ -13,6 +13,7 @@ namespace Engine
     {
         ExecutionMode mode = ExecutionMode::Editor;
         std::filesystem::path scenePath;
+        std::filesystem::path renderingValidationDirectory;
         bool showHelp = false;
 
         /**
