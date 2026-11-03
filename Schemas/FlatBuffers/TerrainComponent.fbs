@@ -1,3 +1,5 @@
+include "TerrainMaterial.fbs";
+
 namespace Engine.Serialization;
 
 table TerrainNoiseSettings {
@@ -25,6 +27,7 @@ table TerrainComponentPayload {
     uv_repeat_z:float = 1;
     cast_shadows:bool = true;
     noise_settings:TerrainNoiseSettings;
+    material_settings:TerrainMaterialData;
 }
 
 root_type TerrainComponentPayload;

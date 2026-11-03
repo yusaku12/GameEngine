@@ -1,4 +1,5 @@
 ﻿#include "Pch.h"
+#include "Terrain\TerrainMaterialSerialization.h"
 #include <flatbuffers/flatbuffers.h>
 #include "Generated\FlatBuffers\Model_generated.h"
 #include "Assets\Model\Serialization\ModelSerializer.h"
@@ -31,8 +32,21 @@ namespace Engine::Serialization
         };
 
         flatbuffers::Offset<MaterialAssetData> createEmbeddedMaterial(flatbuffers::FlatBufferBuilder& builder,
-            const Engine::MaterialAsset& material)
+            const Engine::MaterialAsset& material, const std::filesystem::path& sourcePath,
+            const std::filesystem::path& destinationPath)
         {
+            flatbuffers::Offset<TerrainMaterialData> terrain;
+            if (material.terrain)
+            {
+                auto resolved = *material.terrain;
+                if (material.renderState.surfaceType != Engine::MaterialSurfaceType::Opaque
+                    || !resolveTerrainMaterialTextures(resolved, sourcePath)
+                    || !writeTerrainMaterial(builder, resolved, terrain, destinationPath))
+                {
+                    LOG_ERROR("[ModelSerializer] Invalid embedded terrain material.");
+                    return {};
+                }
+            }
             const AssetGuid guid = toFlat(material.guid);
             const AssetGuid shaderGuid = toFlat(material.shaderGuid);
             const AssetGuid baseColorTexture = toFlat(material.textures.baseColor);
@@ -58,10 +72,11 @@ namespace Engine::Serialization
             return CreateMaterialAssetData(builder, &guid, builder.CreateString(material.name), &shaderGuid,
                 renderState, &baseColor, material.metallic, material.roughness, &emissiveColor,
                 material.emissiveIntensity, material.normalScale, material.occlusionStrength,
-                material.alphaCutoff, textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS);
+                material.alphaCutoff, textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS, terrain);
         }
 
-        bool readEmbeddedMaterial(const MaterialAssetData* source, Engine::MaterialAsset& material)
+        bool readEmbeddedMaterial(const MaterialAssetData* source, Engine::MaterialAsset& material,
+            const std::filesystem::path& owner)
         {
             if (source == nullptr || source->guid() == nullptr)
                 return false;
@@ -120,6 +135,16 @@ namespace Engine::Serialization
                 ? textures->ambient_occlusion_path()->str() : "";
             material.textures.emissivePath = textures->emissive_path() != nullptr ? textures->emissive_path()->str() : "";
             material.shaderKeywords = source->keyword_mask();
+            if (source->terrain())
+            {
+                material.terrain.emplace();
+                if (material.renderState.surfaceType != Engine::MaterialSurfaceType::Opaque
+                    || !readTerrainMaterial(source->terrain(), *material.terrain, owner))
+                {
+                    LOG_ERROR("[ModelSerializer] Invalid embedded terrain material.");
+                    return false;
+                }
+            }
             return true;
         }
 
@@ -567,7 +592,10 @@ namespace Engine::Serialization
             Engine::MaterialAsset relativeMaterial = material;
             if (!relativizeTextureReferences(relativeMaterial.textures, model.sourcePath, path))
                 return false;
-            embeddedMaterials.push_back(createEmbeddedMaterial(builder, relativeMaterial));
+            const auto embedded = createEmbeddedMaterial(builder, relativeMaterial, model.sourcePath, path);
+            if (embedded.IsNull())
+                return false;
+            embeddedMaterials.push_back(embedded);
         }
 
         const auto root = CreateModelFile(builder, header, builder.CreateVector(meshes), builder.CreateVector(materials),
@@ -673,7 +701,7 @@ namespace Engine::Serialization
             for (const MaterialAssetData* embeddedMaterial : *embeddedMaterials)
             {
                 model.embeddedMaterials.emplace_back();
-                if (!readEmbeddedMaterial(embeddedMaterial, model.embeddedMaterials.back()))
+                if (!readEmbeddedMaterial(embeddedMaterial, model.embeddedMaterials.back(), path))
                     return false;
             }
         }

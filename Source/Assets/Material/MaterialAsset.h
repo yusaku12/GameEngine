@@ -1,6 +1,8 @@
 ﻿#pragma once
 
 #include <string>
+#include <optional>
+#include "Terrain\TerrainMaterial.h"
 #include "Assets\Material\MaterialTypes.h"
 #include "Core\Math\MathTypes.h"
 
@@ -37,7 +39,7 @@ namespace Engine
     };
 
     /**
-     * @brief シリアライズ可能な固定Standard PBR Material Asset。
+     * @brief Standard PBR Material Asset with optional opaque terrain layers.
      * @details GPU API型を保持せず、MaterialManagerから不変Snapshotとして公開する。
      */
     struct MaterialAsset
@@ -56,5 +58,6 @@ namespace Engine
         float alphaCutoff = 0.5f;                            //!< アルファカットオフ値
         MaterialTextureReferences textures;                  //!< 使用するテクスチャ参照
         MaterialKeywordMask shaderKeywords = 0;              //!< シェーダーキーワードマスク
+        std::optional<TerrainMaterialSettings> terrain;       //!< Opaque terrain layers; vertex colors carry blend weights.
     };
 } // namespace Engine

@@ -1,0 +1,30 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+table TerrainLayerData {
+    color:Vec4 (required);
+    metallic:float = 0;
+    roughness:float = 1;
+    normal_scale:float = 1;
+    uv_repeat:float = 1;
+    minimum_height:float = 0;
+    maximum_height:float = 1;
+    height_blend:float = 0.1;
+    minimum_slope:float = 0;
+    maximum_slope:float = 90;
+    slope_blend:float = 5;
+    strength:float = 1;
+    base_color_texture:AssetGuid;
+    normal_texture:AssetGuid;
+    metallic_roughness_texture:AssetGuid;
+    base_color_path:string;
+    normal_path:string;
+    metallic_roughness_path:string;
+}
+
+table TerrainMaterialData {
+    enabled:bool = false;
+    layer_count:uint = 4;
+    layers:[TerrainLayerData] (required);
+}

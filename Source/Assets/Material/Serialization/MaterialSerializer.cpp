@@ -7,6 +7,7 @@
 #include "Core\Serialization\FlatBufferReader.h"
 #include "Core\Serialization\FlatBufferWriter.h"
 #include "Core\Serialization\SerializationVersions.h"
+#include "Terrain\TerrainMaterialSerialization.h"
 
 namespace Engine::Serialization
 {
@@ -63,6 +64,17 @@ namespace Engine::Serialization
             return false;
 
         flatbuffers::FlatBufferBuilder builder(512);
+        flatbuffers::Offset<TerrainMaterialData> terrain;
+        if (material.terrain)
+        {
+            auto resolved = *material.terrain;
+            if (material.renderState.surfaceType != Engine::MaterialSurfaceType::Opaque
+                || !resolveTerrainMaterialTextures(resolved) || !writeTerrainMaterial(builder, resolved, terrain, path))
+            {
+                LOG_ERROR("[MaterialSerializer] Invalid terrain material.");
+                return false;
+            }
+        }
         const AssetGuid guid = toFlat(material.guid);
         const AssetGuid shaderGuid = toFlat(material.shaderGuid);
         const AssetGuid baseColorTexture = toFlat(material.textures.baseColor);
@@ -90,7 +102,7 @@ namespace Engine::Serialization
         const auto data = CreateMaterialAssetData(builder, &guid, builder.CreateString(material.name), &shaderGuid,
             renderState, &baseColor, material.metallic, material.roughness, &emissiveColor,
             material.emissiveIntensity, material.normalScale, material.occlusionStrength, material.alphaCutoff,
-            textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS);
+            textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS, terrain);
         const auto header = CreateFileHeader(builder, CURRENT_SCHEMA_VERSION, CURRENT_MATERIAL_VERSION, 0);
         FinishMaterialFileBuffer(builder, CreateMaterialFile(builder, header, data));
         return FlatBufferWriter{}.saveAtomic(path,
@@ -191,6 +203,16 @@ namespace Engine::Serialization
         const std::filesystem::path referenceOwner = file->header()->asset_version() >= 2 ? path : std::filesystem::path{};
         if (!resolveTextureReferences(loaded.textures, referenceOwner))
             return false;
+        if (source->terrain())
+        {
+            loaded.terrain.emplace();
+            if (loaded.renderState.surfaceType != Engine::MaterialSurfaceType::Opaque
+                || !readTerrainMaterial(source->terrain(), *loaded.terrain, path))
+            {
+                LOG_ERROR("[MaterialSerializer] Invalid serialized terrain material.");
+                return false;
+            }
+        }
         material = std::move(loaded);
         return true;
     }

@@ -1401,6 +1401,7 @@ namespace Engine
             }
         }
         if (!m_deferredLightingTarget.transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
+            || !m_depthBuffer.transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
             || !m_gameRenderTarget.transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET))
             return false;
 
@@ -1439,7 +1440,7 @@ namespace Engine
         native->SetGraphicsRootDescriptorTable(7, m_deferredLightingShaderView->gpu->native);
         native->SetGraphicsRootDescriptorTable(8, m_shadowSrv->gpu->native);
         native->DrawInstanced(3, 1, 0, 0);
-        return true;
+        return m_depthBuffer.transition(commandList, D3D12_RESOURCE_STATE_DEPTH_WRITE);
     }
 
     bool DX12Renderer::setDeferredDebugView(const DeferredDebugView view)
@@ -1547,11 +1548,24 @@ namespace Engine
         shadowTable.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         shadowTable.DescriptorTable = { 1, &shadowRange };
         shadowTable.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        const std::array rootParameters = {
+        std::array<D3D12_DESCRIPTOR_RANGE, TERRAIN_LAYER_TEXTURE_COUNT> terrainRanges{};
+        std::array<D3D12_ROOT_PARAMETER, 11 + TERRAIN_LAYER_TEXTURE_COUNT> rootParameters = {
             objectConstants, bonePalette, materialConstants,
             textureTables[0], textureTables[1], textureTables[2], textureTables[3], textureTables[4],
             materialProperties, lighting, shadowTable,
         };
+        for (std::uint32_t index = 0; index < terrainRanges.size(); ++index)
+        {
+            auto& range = terrainRanges[index];
+            range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            range.NumDescriptors = 1;
+            range.BaseShaderRegister = 7 + index;
+            range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+            auto& parameter = rootParameters[11 + index];
+            parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            parameter.DescriptorTable = { 1, &range };
+            parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        }
         const std::array staticSamplers = {
             D3D12_STATIC_SAMPLER_DESC{
                 .Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR,
@@ -1794,7 +1808,8 @@ namespace Engine
 
                         MaterialHandle materialHandle = materialIndex < submission.materials.size()
                             ? submission.materials[materialIndex] : MaterialHandle::Invalid();
-                        MaterialGpuResource* const gpuMaterial = m_materialGpuCache.getOrCreate(materialHandle);
+                        MaterialGpuResource* const gpuMaterial = m_materialGpuCache.getOrCreate(materialHandle,
+                            materialIndex == 0 ? submission.materialSnapshot : nullptr);
                         if (gpuMaterial == nullptr || gpuMaterial->source == nullptr)
                             return;
                         materialHandle = gpuMaterial->handle;
@@ -1815,6 +1830,7 @@ namespace Engine
                             .pipelineID = static_cast<std::uint32_t>(pass),
                             .shaderVariantID = gpuMaterial->shaderVariantID,
                             .material = materialHandle,
+                            .materialSnapshot = materialIndex == 0 ? submission.materialSnapshot : nullptr,
                             .surfaceType = gpuMaterial->source->renderState.surfaceType,
                             .materialProperties = submission.materialProperties,
                             .textureID = gpuMaterial->baseColorTexture.index,
@@ -2065,8 +2081,10 @@ namespace Engine
         std::unordered_map<const SkinningPaletteSnapshot*,
             std::unordered_map<std::uint32_t, DX12UploadBuffer*>> uploadedPalettes;
         MaterialHandle currentMaterial;
+        std::shared_ptr<const MaterialAsset> currentMaterialSnapshot;
         D3D12_GPU_VIRTUAL_ADDRESS materialAddress = 0;
         std::array<D3D12_GPU_DESCRIPTOR_HANDLE, 5> textures{};
+        std::array<D3D12_GPU_DESCRIPTOR_HANDLE, TERRAIN_LAYER_TEXTURE_COUNT> terrainTextures{};
         m_preparedModelDraws.reserve(items.size());
 
         for (std::size_t itemIndex = 0; itemIndex < items.size();)
@@ -2094,9 +2112,9 @@ namespace Engine
             {
                 requiredPipeline = &m_gbufferModelPipeline;
             }
-            if (currentMaterial != item.material)
+            if (currentMaterial != item.material || currentMaterialSnapshot != item.materialSnapshot)
             {
-                const MaterialGpuResource* const currentMaterialResource = m_materialGpuCache.getOrCreate(item.material);
+                const MaterialGpuResource* const currentMaterialResource = m_materialGpuCache.getOrCreate(item.material, item.materialSnapshot);
                 if (currentMaterialResource == nullptr || currentMaterialResource->constantBuffer.getGpuVirtualAddress() == 0)
                 {
                     LOG_ERROR("[Renderer] Failed to resolve material for draw {}.", itemIndex);
@@ -2122,6 +2140,18 @@ namespace Engine
                     textures[textureIndex] = textureInfo->srv;
                 }
                 currentMaterial = item.material;
+                currentMaterialSnapshot = item.materialSnapshot;
+                for (std::size_t index = 0; index < terrainTextures.size(); ++index)
+                {
+                    const Texture* texture = textureManager.get(currentMaterialResource->terrainTextures[index]);
+                    const TextureResourceInfo* info = texture != nullptr ? texture->getResourceInfo() : nullptr;
+                    if (info == nullptr)
+                    {
+                        LOG_ERROR("[Renderer] Failed to resolve terrain texture {} for draw {}.", index, itemIndex);
+                        return false;
+                    }
+                    terrainTextures[index] = info->srv;
+                }
             }
             const DX12UploadBuffer* bonePalette = item.bonePaletteBuffer;
             if (item.skinningPalette != nullptr)
@@ -2162,6 +2192,7 @@ namespace Engine
                 .material = materialAddress,
                 .bones = bonePalette->getGpuVirtualAddress(),
                 .textures = textures,
+                .terrainTextures = terrainTextures,
                 });
             itemIndex += batchSize;
         }

@@ -809,12 +809,13 @@ bounds culling. `RenderItem::animationBoundsValid` defaults to false, so callers
 that only provide bind-pose bounds retain the previous safe animation bypass.
 Near-plane intersections also retain Hi-Z's visibility bypass.
 
-# Terrain Phase 1/2: Heightmap, mesh generation and Perlin/FBM
+# Terrain Phase 1/2/3: Heightmaps, procedural generation and layered materials
 
 In the Hierarchy context menu choose **Create Terrain**, or add the **Terrain**
 component to an existing GameObject. A new component contains a flat 65x65 grid.
 It renders in both the editor and Play/Runtime through the existing model
-pipeline, using the default material. It does not need a Model Renderer.
+pipeline, using the default material until terrain layers are explicitly enabled.
+It does not need a Model Renderer.
 
 The Terrain Inspector provides:
 
@@ -852,8 +853,8 @@ triangles, area-weighted smooth normals, orthonormal tangent frames, UVs and
 mesh/model bounds. Rebuilds retire the previous model handle; queued immutable
 CPU snapshots and GPU fences keep already submitted geometry safe.
 
-These phases intentionally do **not** implement terrain material layers,
-world-space height queries, collision, chunks, terrain LOD, asynchronous
+These phases intentionally do **not** implement world-space height queries,
+collision, chunks, terrain LOD, asynchronous
 generation, erosion, compute generation or vegetation. Generation/import is
 synchronous and should be triggered by an authoring action, not every frame.
 
@@ -917,8 +918,77 @@ Importing an image, creating a flat grid or rebuilding dimensions keeps the last
 noise recipe available for future generation, even though the current heights
 may no longer match it. Unapplied Inspector recipe edits are not saved.
 Version 1 terrain payloads still load their original samples unchanged and get
-the default recipe; their next save writes version 2. Invalid/missing version 2
+the default recipe; their next save writes version 3. Invalid/missing version 2+
 recipes are rejected without replacing the existing terrain.
+
+## Terrain material layers (Phase 3)
+
+Open **Terrain Material Layers**, check **Enable Layered Material**, edit the
+layer controls, then click **Apply Terrain Material**. Edits are drafts until
+applied; Scene/Prefab saves store applied values only. **Reset Layer Draft**
+restores disabled soil/grass/rock/snow defaults without immediately changing the
+surface. Existing terrain remains white/default unless layers are enabled.
+
+There are 1..4 ordered, opaque PBR layers. Layer 0 fills uncovered regions;
+each subsequent layer overlays all previous layers according to its coverage:
+
+`coverage = strength * heightBand(sample) * slopeBand(localSlopeDegrees)`
+
+Within an inclusive minimum/maximum interval, a band is 1. Outside it, it falls
+smoothly to 0 over the configured blend width (smoothstep); a zero width gives
+a hard inclusive boundary. The overlay multiplies previous weights by
+`1 - coverage` and receives `coverage` itself. Weights remain nonnegative and
+sum to 1, including gaps and overlapping ranges. A higher layer wins when its
+coverage is 1; reduce its strength for a partial overlay. Base-layer ranges and
+strength are intentionally unused because it always fills the remainder.
+
+- **Height** is the original normalized heightmap sample, not world Y or a
+  per-map minimum/maximum remapping. Height offset/scale do not change this
+  normalized band selection.
+- **Slope** is the angle between the generated smooth vertex normal and local
+  +Y, in degrees. Changing physical dimensions/height scale recalculates it.
+  Object/parent transforms move the finished surface without changing its local
+  automatic layer selection.
+- Coverage is calculated at heightmap vertices and interpolated across
+  triangles; textures and PBR values blend per pixel. Use sufficient heightmap
+  resolution for narrow transitions. No splatmap or brush painting is included.
+
+Each layer has a linear RGB tint, metallic and roughness factors `[0,1]`,
+normal scale `[0,2]`, UV repeat `[0.001,10000]`, and optional **BaseColor**,
+**Normal** and **Metallic-Roughness** textures. Layer UV repeat multiplies the
+terrain mesh's UV Repeat X/Z; sampling wraps. BaseColor is sRGB decoded, while
+Normal and Metallic-Roughness are linear data. Metallic uses the blue channel,
+roughness the green channel, multiplied by their layer factors. Missing textures
+use white BaseColor, flat tangent-space normal and neutral white MR, so scalar
+factors work without a texture. Failed texture loads log a warning and use those
+same defaults, following the standard material system. BaseColor alpha is not
+used: terrain layers are opaque. Normal vectors blend in a common tangent frame,
+are renormalized, and follow the terrain's object transform.
+
+Height intervals must be ordered in `[0,1]`, slope intervals in `[0,90]`;
+height blend width is `[0,1]`, slope blend width `[0,90]`, and strength `[0,1]`.
+All stored slots, including inactive layers, must be valid and finite. Texture
+references use GUIDs plus path hints; selecting a texture stages its reference,
+and **Clear** stages removal. Textures remain external assets and must be kept
+available. Component hints follow existing component persistence (resolved paths);
+standalone/embedded material asset hints are relative to their owning file.
+
+`TerrainComponent::setMaterialSettings` applies settings transactionally and
+`getMaterialSettings` returns the applied settings. Rebuilding/importing/noise
+generation preserves the applied surface and recomputes its blend weights.
+Materials are immutable shared CPU assets in MaterialManager, not a new
+MaterialComponent. Each terrain owns its generated model/material handles;
+Scene/Prefab/Play clones have independent handles but share texture references.
+Queued immutable geometry/material snapshots and GPU fences remain valid after
+regeneration or component destruction, including before the first GPU upload.
+Both Forward and Deferred use the same surface-sampling implementation.
+
+Terrain payload version 3 adds complete layer settings. Versions 1 and 2
+without layer data load with layers disabled, preserving their previous look.
+Invalid version 3 material data preserves the existing terrain on failure.
+Material/model asset version 3 also supports the optional terrain extension;
+versions 1 and 2 remain readable. The standard material property layout and
+override block remain unchanged.
 
 ## Terrain validation
 
@@ -947,5 +1017,16 @@ resolution invariance, shared domain edges, maximum grid size and parameter
 boundaries, generation rollback, version 1 migration, recipe Scene/Prefab/Play
 roundtrips, Inspector **Generate Noise**, and actual FBM/Perlin GPU rendering.
 Generated noise persistence fixtures are `noise.scene` and `noise.prefab`.
+Phase 3 checks layer validation, ordered height/slope coverage, fallback and
+normalization, malformed payload rollback, Inspector enable/apply/reset,
+version 1/2 migration, Scene/Prefab/Play and standalone/embedded material
+roundtrips. GPU readbacks verify all four texture slots, sRGB/linear channels,
+untextured scalar factors, per-layer UV repeat, normal scale/rotation and
+weighted PBR/normal blending, smooth height bands, slope updates, disabled
+appearance, Forward/Deferred lighting, and queued material snapshots after
+regeneration/destruction. Multiple snapshots sharing a handle must not be
+instanced together or released before their submission fence. Layer fixtures
+include `layers.scene`, `layers.prefab`, `layers.matl`, `layers.model`,
+three generated textures and the `terrain-layers` captures.
 Expected invalid-input tests emit error logs; the process exit code and final
 PASS report determine success.

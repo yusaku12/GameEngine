@@ -3,6 +3,7 @@
 #include "Graphics\DirectX12\Command.h"
 #include "Graphics\Renderer\CommandRecordingRange.h"
 #include "Graphics\Renderer\RenderItem.h"
+#include "Terrain\TerrainMaterial.h"
 
 namespace Engine
 {
@@ -24,6 +25,7 @@ namespace Engine
         D3D12_GPU_VIRTUAL_ADDRESS material = 0;                //!< 描画対象の RenderItem の MaterialPropertyBlock への GPU 仮想アドレス
         D3D12_GPU_VIRTUAL_ADDRESS bones = 0;                   //!< 描画対象の RenderItem のボーンデータへの GPU 仮想アドレス
         std::array<D3D12_GPU_DESCRIPTOR_HANDLE, 5> textures{}; //!< 描画対象の RenderItem のテクスチャへの GPU ディスクリプタハンドル
+        std::array<D3D12_GPU_DESCRIPTOR_HANDLE, TERRAIN_LAYER_TEXTURE_COUNT> terrainTextures{}; //!< 描画対象の RenderItem のテクスチャへの GPU ディスクリプタハンドル
     };
 
     /**

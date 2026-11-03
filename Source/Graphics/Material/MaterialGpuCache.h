@@ -37,8 +37,9 @@ namespace Engine
         /**
          * @brief Material GPU Resourceを取得し、未作成なら遅延作成する。失敗時はError MaterialへFallbackする。
          * @param handle MaterialHandle
+         * @param snapshot Optional immutable procedural snapshot, retained even after the handle is unloaded.
          */
-        MaterialGpuResource* getOrCreate(MaterialHandle handle);
+        MaterialGpuResource* getOrCreate(MaterialHandle handle, std::shared_ptr<const MaterialAsset> snapshot = {});
 
         /**
          * @brief Material Bufferへ最終使用Fence値を記録する。
@@ -71,9 +72,11 @@ namespace Engine
         /**
          * @brief MaterialHandleからMaterialGpuResourceを作成する。
          * @param handle MaterialHandle
+         * @param snapshot Optional immutable source; otherwise resolves the handle from MaterialManager.
          * @return 作成に成功した場合はMaterialGpuResourceのunique_ptr、失敗時はnullptr
          */
-        std::unique_ptr<MaterialGpuResource> createResource(MaterialHandle handle);
+        std::unique_ptr<MaterialGpuResource> createResource(MaterialHandle handle,
+            std::shared_ptr<const MaterialAsset> snapshot = {});
 
         DX12Device* m_device = nullptr;                                                      //!< DX12Device参照
         DX12Fence* m_fence = nullptr;                                                        //!< DX12Fence参照

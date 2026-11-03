@@ -10,6 +10,7 @@
 namespace Engine
 {
     class DX12UploadBuffer;
+    struct MaterialAsset;
 
     /**
      * @brief RenderItemが描画されるパス。
@@ -40,6 +41,7 @@ namespace Engine
         std::uint32_t pipelineID = 0;                                   //!< PSO識別子
         ShaderVariantID shaderVariantID = 0;                            //!< 解決済みShader Variant識別子
         MaterialHandle material;                                        //!< 全Model間で一意なMaterial識別子
+        std::shared_ptr<const MaterialAsset> materialSnapshot;           //!< Optional immutable procedural material.
         MaterialSurfaceType surfaceType = MaterialSurfaceType::Opaque;  //!< 明示的なSurface分類
         MaterialPropertyBlock materialProperties;                       //!< Draw単位の数値Parameter Override
         std::uint32_t textureID = 0;                                    //!< 主Texture識別子

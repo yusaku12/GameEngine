@@ -169,9 +169,12 @@ namespace Engine
                 native.SetGraphicsRootConstantBufferView(2, draw.material);
                 for (std::uint32_t texture = 0; texture < draw.textures.size(); ++texture)
                     native.SetGraphicsRootDescriptorTable(3 + texture, draw.textures[texture]);
+                for (std::uint32_t texture = 0; texture < draw.terrainTextures.size(); ++texture)
+                    native.SetGraphicsRootDescriptorTable(11 + texture, draw.terrainTextures[texture]);
                 material = draw.material;
                 ++context.statistics.materialSwitchCount;
-                context.statistics.textureSwitchCount += static_cast<std::uint32_t>(draw.textures.size());
+                context.statistics.textureSwitchCount += static_cast<std::uint32_t>(
+                    draw.textures.size() + draw.terrainTextures.size());
             }
             if (bones != draw.bones)
             {

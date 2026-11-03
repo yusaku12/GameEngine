@@ -1,7 +1,11 @@
 #include "Pch.h"
 #include "Terrain\TerrainValidation.h"
 #include "Terrain\TerrainMeshBuilder.h"
+#include "Terrain\TerrainMaterialSerialization.h"
+#include "Assets\Material\MaterialManager.h"
+#include "Assets\Material\Serialization\MaterialSerializer.h"
 #include "Assets\Model\ModelManager.h"
+#include "Assets\Model\Serialization\ModelSerializer.h"
 #include "Core\GameObject\Component\TerrainComponent.h"
 #include "Core\Prefab\PrefabSerializer.h"
 #include "Core\Profiling\FrameProfiler.h"
@@ -14,10 +18,12 @@
 #include "Graphics\DirectX12\FrameCapture.h"
 #include "Graphics\DirectX12\Renderer.h"
 #include "Graphics\Renderer\ModelRenderSubmission.h"
+#include "Graphics\Texture\TextureManager.h"
 #include <cmath>
 #include <cstring>
 #include <limits>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <wincodec.h>
 
 namespace Engine
@@ -477,7 +483,7 @@ namespace Engine
                 if (!checks.expect(!terrain->deserializePayload(1, std::span(payload).first(size))
                     && terrain->getModel() == original, "truncated payload preserves terrain"))
                     return false;
-            if (!checks.expect(!terrain->deserializePayload(3, payload), "reject unknown payload version"))
+            if (!checks.expect(!terrain->deserializePayload(4, payload), "reject unknown payload version"))
                 return false;
             flatbuffers::FlatBufferBuilder builder;
             const std::array<float, 4> invalidSamples = { 0, 0, 0, std::numeric_limits<float>::quiet_NaN() };
@@ -616,7 +622,7 @@ namespace Engine
                 return false;
             std::vector<std::uint8_t> payload;
             TerrainComponent restored;
-            if (!checks.expect(terrain->serializePayload(payload) && terrain->getPayloadVersion() == 2
+            if (!checks.expect(terrain->serializePayload(payload) && terrain->getPayloadVersion() == 3
                 && restored.deserializePayload(2, payload) && restored.getNoiseSettings() == settings
                 && sameHeights(restored.getHeightmap(), generated), "version 2 noise recipe and samples roundtrip"))
                 return false;
@@ -625,7 +631,7 @@ namespace Engine
                 return false;
 
             const auto previous = restored.getModel();
-            for (const std::uint32_t version : { 0u, 3u })
+            for (const std::uint32_t version : { 0u, 4u })
                 if (!checks.expect(!restored.deserializePayload(version, payload) && restored.getModel() == previous,
                     "reject unsupported terrain payload versions"))
                     return false;
@@ -658,9 +664,9 @@ namespace Engine
                 return false;
             std::vector<std::uint8_t> upgraded;
             TerrainComponent migrated;
-            if (!checks.expect(restored.serializePayload(upgraded) && migrated.deserializePayload(2, upgraded)
+            if (!checks.expect(restored.serializePayload(upgraded) && migrated.deserializePayload(3, upgraded)
                 && sameHeights(migrated.getHeightmap(), restored.getHeightmap())
-                && migrated.getNoiseSettings() == TerrainNoiseSettings{}, "legacy payload upgrades to version 2"))
+                && migrated.getNoiseSettings() == TerrainNoiseSettings{}, "legacy payload upgrades to version 3"))
                 return false;
 
             if (!checks.expect(Serialization::SceneSerializer{}.save(directory / L"noise.scene", scene), "save noise terrain scene"))
@@ -728,6 +734,7 @@ namespace Engine
             TerrainComponent* selected = &terrain;
             ImVec2 rebuildButton;
             ImVec2 noiseButton;
+            ImGuiID materialHeader = 0, enableLayers = 0, applyLayers = 0, resetLayers = 0;
             bool locateNoiseButton = false;
             const auto frame = [&]
             {
@@ -736,6 +743,10 @@ namespace Engine
                 ImGui::SetNextWindowSize({ 1500, 1900 }, ImGuiCond_Always);
                 ImGui::Begin("Terrain Inspector Validation", nullptr, ImGuiWindowFlags_NoSavedSettings);
                 const auto origin = ImGui::GetCursorScreenPos();
+                materialHeader = ImGui::GetID("Terrain Material Layers");
+                enableLayers = ImGui::GetID("Enable Layered Material");
+                applyLayers = ImGui::GetID("Apply Terrain Material");
+                resetLayers = ImGui::GetID("Reset Layer Draft");
                 selected->drawImGui();
                 if (locateNoiseButton)
                 {
@@ -763,8 +774,23 @@ namespace Engine
             io.AddMouseButtonEvent(0, true); frame();
             io.AddMouseButtonEvent(0, false); frame();
             Heightmap expected;
-            return checks.expect(generateTerrainNoise({}, expected) && noiseTerrain.getModel().isValid()
-                && sameHeights(noiseTerrain.getHeightmap(), expected), "Inspector Generate Noise applies default FBM recipe");
+            if (!checks.expect(generateTerrainNoise({}, expected) && noiseTerrain.getModel().isValid()
+                && sameHeights(noiseTerrain.getHeightmap(), expected), "Inspector Generate Noise applies default FBM recipe"))
+                return false;
+            ImGui::ActivateItemByID(materialHeader); frame();
+            ImGui::ActivateItemByID(enableLayers); frame();
+            if (!checks.expect(!noiseTerrain.getMaterialSettings().enabled, "Inspector material edits are staged until Apply"))
+                return false;
+            ImGui::ActivateItemByID(applyLayers); frame();
+            if (!checks.expect(noiseTerrain.getMaterialSettings().enabled && noiseTerrain.getMaterial().isValid(),
+                "Inspector Apply Terrain Material creates layered surface"))
+                return false;
+            ImGui::ActivateItemByID(resetLayers); frame();
+            if (!checks.expect(noiseTerrain.getMaterialSettings().enabled, "Inspector Reset Layer Draft does not alter applied material"))
+                return false;
+            ImGui::ActivateItemByID(applyLayers); frame();
+            return checks.expect(!noiseTerrain.getMaterialSettings().enabled && !noiseTerrain.getMaterial().isValid(),
+                "Inspector applying disabled draft restores default material");
         }
 
         bool renderFrame(DX12Renderer& renderer, Scene* scene)
@@ -877,6 +903,569 @@ namespace Engine
                 before->pixels + 128 * before->rowPitch + 128 * 4, 3) != 0, "forward terrain actually draws");
         }
 
+        bool sameSurface(const TerrainMaterialSettings& left, const TerrainMaterialSettings& right)
+        {
+            flatbuffers::FlatBufferBuilder a;
+            flatbuffers::FlatBufferBuilder b;
+            flatbuffers::Offset<Serialization::TerrainMaterialData> aRoot, bRoot;
+            if (!Serialization::writeTerrainMaterial(a, left, aRoot) || !Serialization::writeTerrainMaterial(b, right, bRoot))
+                return false;
+            a.Finish(aRoot);
+            b.Finish(bRoot);
+            return a.GetSize() == b.GetSize() && std::memcmp(a.GetBufferPointer(), b.GetBufferPointer(), a.GetSize()) == 0;
+        }
+
+        bool validateLayerWeights(Checks& checks)
+        {
+            TerrainMaterialSettings settings;
+            settings.enabled = true;
+            if (!checks.expect(validateTerrainMaterial(settings), "default soil grass rock snow settings"))
+                return false;
+            for (auto& layer : settings.layers)
+                layer = TerrainLayer{};
+            settings.layers[1].strength = 0.5f;
+            settings.layers[2].strength = 0.25f;
+            settings.layers[3].strength = 0.5f;
+            const auto weights = terrainLayerWeights(settings, 0.5f, 45);
+            if (!checks.close(weights.x, 0.1875f, "ordered base remainder")
+                || !checks.close(weights.y, 0.1875f, "ordered grass remainder")
+                || !checks.close(weights.z, 0.125f, "ordered rock remainder")
+                || !checks.close(weights.w, 0.5f, "last layer priority"))
+                return false;
+            settings.layerCount = 2;
+            settings.layers[1].minimumHeight = 0.5f;
+            settings.layers[1].heightBlend = 0.25f;
+            settings.layers[1].minimumSlope = 40;
+            settings.layers[1].slopeBlend = 20;
+            settings.layers[1].strength = 1;
+            const auto soft = terrainLayerWeights(settings, 0.375f, 30);
+            if (!checks.close(soft.x, 0.75f, "combined height and slope soft remainder")
+                || !checks.close(soft.y, 0.25f, "height and slope smoothstep product")
+                || !checks.close(soft.z + soft.w, 0, "inactive layer weights zero"))
+                return false;
+            settings.layers[1].heightBlend = settings.layers[1].slopeBlend = 0;
+            if (!checks.close(terrainLayerWeights(settings, 0.5f, 40).y, 1, "zero falloff includes exact band edge")
+                || !checks.close(terrainLayerWeights(settings, 0.499f, 40).x, 1, "uncovered regions use base layer"))
+                return false;
+            settings = {};
+            bool normalized = true;
+            for (int h = 0; h <= 100; ++h)
+                for (int s = 0; s <= 90; ++s)
+                {
+                    const auto value = terrainLayerWeights(settings, static_cast<float>(h) / 100, static_cast<float>(s));
+                    normalized = normalized && value.x >= 0 && value.y >= 0 && value.z >= 0 && value.w >= 0
+                        && std::abs(value.x + value.y + value.z + value.w - 1) < 0.000002f;
+                }
+            if (!checks.expect(normalized, "9191 height-slope samples have nonnegative normalized weights"))
+                return false;
+            const std::array fields = {
+                &TerrainLayer::metallic, &TerrainLayer::roughness, &TerrainLayer::normalScale, &TerrainLayer::uvRepeat,
+                &TerrainLayer::minimumHeight, &TerrainLayer::maximumHeight, &TerrainLayer::heightBlend,
+                &TerrainLayer::minimumSlope, &TerrainLayer::maximumSlope, &TerrainLayer::slopeBlend, &TerrainLayer::strength,
+            };
+            for (const auto field : fields)
+                for (const float invalid : { std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(), -1.0f })
+                {
+                    auto bad = settings;
+                    bad.layerCount = 1;
+                    bad.layers[3].*field = invalid;
+                    if (!checks.expect(!validateTerrainMaterial(bad), "invalid inactive layer field rejected"))
+                        return false;
+                }
+            for (const std::uint32_t count : { 0u, 5u, UINT32_MAX })
+            {
+                auto bad = settings;
+                bad.layerCount = count;
+                if (!checks.expect(!validateTerrainMaterial(bad), "invalid layer count rejected"))
+                    return false;
+            }
+            const std::array upperBounds = { 1.0f, 1.0f, 2.0f, 10000.0f, 1.0f, 1.0f, 1.0f, 90.0f, 90.0f, 90.0f, 1.0f };
+            for (std::size_t index = 0; index < fields.size(); ++index)
+            {
+                auto bad = settings;
+                bad.layers[0].*fields[index] = upperBounds[index] + 1;
+                if (!checks.expect(!validateTerrainMaterial(bad), "layer numeric upper bound enforced"))
+                    return false;
+            }
+            for (const Vector4 color : { Vector4(-0.1f, 1, 1, 1), Vector4(1, 1.1f, 1, 1),
+                Vector4(1, 1, std::numeric_limits<float>::quiet_NaN(), 1), Vector4(1, 1, 1, 0.5f) })
+            {
+                auto bad = settings;
+                bad.layers[0].color = color;
+                if (!checks.expect(!validateTerrainMaterial(bad), "opaque linear layer color bounds"))
+                    return false;
+            }
+            auto bad = settings;
+            bad.layers[0].minimumHeight = 0.9f;
+            bad.layers[0].maximumHeight = 0.2f;
+            if (!checks.expect(!validateTerrainMaterial(bad), "inverted height range rejected"))
+                return false;
+            bad = settings;
+            bad.layers[0].minimumSlope = 80;
+            bad.layers[0].maximumSlope = 10;
+            if (!checks.expect(!validateTerrainMaterial(bad), "inverted slope range rejected"))
+                return false;
+            bad = settings;
+            bad.layers[0].normalPath = L"path-only.png";
+            if (!checks.expect(!validateTerrainMaterial(bad), "path without GUID rejected"))
+                return false;
+            Heightmap heights;
+            ModelResource model;
+            const std::array<float, 4> ramp = { 0, 1, 0, 1 };
+            settings.enabled = true;
+            settings.layerCount = 2;
+            settings.layers[1] = TerrainLayer{};
+            settings.layers[1].minimumSlope = 40;
+            settings.layers[1].heightBlend = 0;
+            if (!checks.expect(heights.assign(2, 2, ramp) && buildTerrainModel(heights, { 4, 4, 4, 0, 1, 1 }, model)
+                && applyTerrainLayerWeights(heights, settings, model), "slope layer fixture"))
+                return false;
+            for (const auto& vertex : model.meshes[0].vertices)
+                if (!checks.close(vertex.color.y, 1, "45-degree local slope selects overlay"))
+                    return false;
+            if (!checks.expect(buildTerrainModel(heights, { 4, 4, 0, 0, 1, 1 }, model)
+                && applyTerrainLayerWeights(heights, settings, model)
+                && model.meshes[0].vertices[0].color == Vector4(1, 0, 0, 0), "zero height scale recalculates slope masks"))
+                return false;
+            settings.enabled = false;
+            if (!checks.expect(applyTerrainLayerWeights(heights, settings, model)
+                && model.meshes[0].vertices[0].color == Vector4::One, "disabled layers preserve standard white vertices"))
+                return false;
+            model.meshes[0].vertices.pop_back();
+            return checks.expect(!applyTerrainLayerWeights(heights, settings, model), "mismatched layer geometry rejected");
+        }
+
+        bool writeLayerTextures(Checks& checks, const std::filesystem::path& directory, TerrainLayer& layer)
+        {
+            const std::array names = { L"layer-color.png", L"layer-normal.png", L"layer-mr.png" };
+            const std::array references = { std::pair{ &layer.baseColorTexture, &layer.baseColorPath },
+                std::pair{ &layer.normalTexture, &layer.normalPath }, std::pair{ &layer.metallicRoughnessTexture, &layer.metallicRoughnessPath } };
+            for (std::size_t channel = 0; channel < names.size(); ++channel)
+            {
+                DirectX::ScratchImage image;
+                if (!checks.expect(SUCCEEDED(image.Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM, 16, 16, 1, 1)), "layer texture allocation"))
+                    return false;
+                const auto* pixels = image.GetImage(0, 0, 0);
+                for (std::size_t row = 0; row < 16; ++row)
+                    for (std::size_t column = 0; column < 16; ++column)
+                    {
+                        const std::array<std::uint8_t, 4> color = channel == 0
+                            ? (column < 8 ? std::array<std::uint8_t, 4>{ 128, 128, 128, 255 }
+                                : std::array<std::uint8_t, 4>{ 32, 64, 192, 255 })
+                            : (channel == 1 ? std::array<std::uint8_t, 4>{ 204, 128, 230, 255 }
+                                : std::array<std::uint8_t, 4>{ 23, 128, 204, 255 });
+                        std::memcpy(pixels->pixels + row * pixels->rowPitch + column * 4, color.data(), 4);
+                    }
+                *references[channel].second = std::filesystem::absolute(directory / names[channel]).lexically_normal();
+                if (!checks.expect(SUCCEEDED(DirectX::SaveToWICFile(*pixels, DirectX::WIC_FLAGS_NONE,
+                    DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG), references[channel].second->c_str())), "save layer texture"))
+                    return false;
+                *references[channel].first = TextureManager::instance().registerAssetPath(*references[channel].second);
+                if (!checks.expect(references[channel].first->isValid(), "register layer texture GUID"))
+                    return false;
+            }
+            return true;
+        }
+
+        bool validateLayerPersistence(Checks& checks, const std::filesystem::path& directory, const TerrainLayer& textured)
+        {
+            Scene scene(ObjectGUID::generate(), "Layered terrain");
+            auto* object = scene.createGameObject("Layers");
+            auto* terrain = object ? object->addComponent<TerrainComponent>() : nullptr;
+            TerrainMaterialSettings settings;
+            settings.enabled = true;
+            settings.layers[2] = textured;
+            settings.layers[2].minimumSlope = 35;
+            settings.layers[2].metallic = 0.3f;
+            settings.layers[2].roughness = 0.75f;
+            settings.layers[2].normalScale = 0.6f;
+            settings.layers[2].uvRepeat = 7;
+            settings.layers[3].strength = 0.4f;
+            if (!checks.expect(terrain && terrain->setMaterialSettings(settings)
+                && terrain->getMaterial().isValid(), "apply layered component material"))
+                return false;
+            const auto material = MaterialManager::instance().get(terrain->getMaterial());
+            if (!checks.expect(material && material->terrain && sameSurface(*material->terrain, settings),
+                "immutable generated material contains complete layers"))
+                return false;
+            const auto originalModel = terrain->getModel();
+            const auto originalMaterial = terrain->getMaterial();
+            std::vector<std::uint8_t> payload;
+            TerrainComponent restored;
+            if (!checks.expect(terrain->serializePayload(payload) && restored.deserializePayload(3, payload)
+                && sameSurface(restored.getMaterialSettings(), settings)
+                && restored.getMaterial() != originalMaterial, "version 3 layered material roundtrip with independent ownership"))
+                return false;
+            auto bad = settings;
+            bad.layers[3].uvRepeat = 0;
+            if (!checks.expect(!terrain->setMaterialSettings(bad)
+                && terrain->getModel() == originalModel && terrain->getMaterial() == originalMaterial
+                && sameSurface(terrain->getMaterialSettings(), settings), "failed surface apply preserves all resources and settings"))
+                return false;
+            bad = settings;
+            bad.layers[0].baseColorTexture = AssetGUID::generate();
+            bad.layers[0].baseColorPath = textured.baseColorPath;
+            if (!checks.expect(!terrain->setMaterialSettings(bad) && terrain->getMaterial() == originalMaterial,
+                "conflicting texture GUID registration preserves terrain"))
+                return false;
+            flatbuffers::FlatBufferBuilder missing;
+            const std::array<float, 4> samples{};
+            const auto noise = Serialization::CreateTerrainNoiseSettings(missing);
+            const auto root = Serialization::CreateTerrainComponentPayload(missing, 2, 2,
+                missing.CreateVector(samples.data(), samples.size()), 4, 4, 1, 0, 1, 1, true, noise);
+            Serialization::FinishTerrainComponentPayloadBuffer(missing, root);
+            if (!checks.expect(!terrain->deserializePayload(3, { missing.GetBufferPointer(), missing.GetSize() })
+                && terrain->getMaterial() == originalMaterial, "version 3 requires material table")
+                || !checks.expect(restored.deserializePayload(2, { missing.GetBufferPointer(), missing.GetSize() })
+                    && !restored.getMaterialSettings().enabled && !restored.getMaterial().isValid(),
+                    "legacy version 2 retains default standard terrain appearance"))
+                return false;
+            for (int invalid = 0; invalid < 4; ++invalid)
+            {
+                flatbuffers::FlatBufferBuilder malformed;
+                const Serialization::Vec4 color(1, 1, 1, 1);
+                const auto layer = Serialization::CreateTerrainLayerData(malformed, &color, 0,
+                    invalid == 2 ? std::numeric_limits<float>::quiet_NaN() : 1);
+                const std::vector layers(invalid == 1 ? 0u : 4u, layer);
+                const auto surface = Serialization::CreateTerrainMaterialData(malformed, true, invalid == 0 ? 5u : 4u,
+                    malformed.CreateVector(layers));
+                const auto recipe = Serialization::CreateTerrainNoiseSettings(malformed);
+                const auto component = Serialization::CreateTerrainComponentPayload(malformed, 2, 2,
+                    malformed.CreateVector(samples.data(), samples.size()), 4, 4, 1, 0, 1, 1, true, recipe, surface);
+                Serialization::FinishTerrainComponentPayloadBuffer(malformed, component);
+                const auto bytes = std::span(malformed.GetBufferPointer(), malformed.GetSize());
+                const auto input = invalid == 3 ? bytes.first(8) : bytes;
+                if (!checks.expect(!terrain->deserializePayload(3, input) && terrain->getModel() == originalModel
+                    && terrain->getMaterial() == originalMaterial && sameSurface(terrain->getMaterialSettings(), settings),
+                    "malformed layer payload preserves applied terrain transactionally"))
+                    return false;
+            }
+            Scene loaded(ObjectGUID::generate(), "Layer reload");
+            if (!checks.expect(Serialization::SceneSerializer{}.save(directory / L"layers.scene", scene)
+                && Serialization::SceneSerializer{}.load(directory / L"layers.scene", loaded), "layer scene persistence"))
+                return false;
+            const auto* loadedObject = loaded.find(object->getGUID());
+            const auto* loadedTerrain = loadedObject ? loadedObject->getComponent<TerrainComponent>() : nullptr;
+            if (!checks.expect(loadedTerrain && sameSurface(loadedTerrain->getMaterialSettings(), settings), "scene retains texture GUIDs and all layer controls"))
+                return false;
+            TerrainNoiseSettings recipe;
+            recipe.width = 9;
+            recipe.height = 17;
+            if (!checks.expect(restored.setMaterialSettings(settings) && restored.generateNoise(recipe, { 8, 8, 4, 0, 1, 1 })
+                && sameSurface(restored.getMaterialSettings(), settings), "noise regeneration retains applied material and recomputes layer weights"))
+                return false;
+            Scene clone(ObjectGUID::generate(), "Layer clone");
+            const SceneClonePair pair{ scene, clone };
+            if (!checks.expect(cloneScenes(std::span(&pair, 1)), "layer scene Play clone"))
+                return false;
+            const auto* cloneObject = clone.find(object->getGUID());
+            const auto* cloneTerrain = cloneObject ? cloneObject->getComponent<TerrainComponent>() : nullptr;
+            if (!checks.expect(cloneTerrain && sameSurface(cloneTerrain->getMaterialSettings(), settings)
+                && cloneTerrain->getMaterial() != originalMaterial, "clone owns independent material with shared texture references"))
+                return false;
+            Prefab prefab, loadedPrefab;
+            Scene instances(ObjectGUID::generate(), "Layer instances");
+            if (!checks.expect(prefab.capture(*object) && Serialization::PrefabSerializer{}.save(directory / L"layers.prefab", prefab)
+                && Serialization::PrefabSerializer{}.load(directory / L"layers.prefab", loadedPrefab), "layer prefab save and load"))
+                return false;
+            const auto* instance = loadedPrefab.instantiate(instances);
+            const auto* instanceTerrain = instance ? instance->getComponent<TerrainComponent>() : nullptr;
+            if (!checks.expect(instanceTerrain && sameSurface(instanceTerrain->getMaterialSettings(), settings), "prefab retains full layered surface"))
+                return false;
+            MaterialAsset savedMaterial = *material;
+            MaterialAsset loadedMaterial;
+            if (!checks.expect(Serialization::MaterialSerializer{}.save(directory / L"layers.matl", savedMaterial)
+                && Serialization::MaterialSerializer{}.load(directory / L"layers.matl", loadedMaterial)
+                && loadedMaterial.terrain && sameSurface(*loadedMaterial.terrain, settings), "standalone material rebases and resolves layer texture hints"))
+                return false;
+            auto embedded = *ModelManager::instance().get(originalModel);
+            embedded.embeddedMaterials = { savedMaterial };
+            embedded.materialSlots = { { "Terrain", savedMaterial.guid, {} } };
+            ModelResource loadedModel;
+            if (!checks.expect(Serialization::ModelSerializer{}.save(directory / L"layers.model", embedded)
+                && Serialization::ModelSerializer{}.load(directory / L"layers.model", loadedModel)
+                && loadedModel.embeddedMaterials.size() == 1 && loadedModel.embeddedMaterials[0].terrain
+                && sameSurface(*loadedModel.embeddedMaterials[0].terrain, settings), "embedded model material retains terrain data and owner-relative references"))
+                return false;
+            auto& queue = ModelRenderSubmissionQueue::instance();
+            queue.clear();
+            scene.submitRenderData();
+            std::vector<ModelRenderSubmission> submissions;
+            queue.consume(submissions);
+            if (!checks.expect(submissions.size() == 1 && submissions[0].materialSnapshot == material,
+                "queued terrain captures immutable material"))
+                return false;
+            settings.enabled = false;
+            if (!checks.expect(terrain->setMaterialSettings(settings)
+                && MaterialManager::instance().get(originalMaterial) == nullptr
+                && submissions[0].materialSnapshot->terrain->enabled
+                && !terrain->getMaterial().isValid()
+                && sameSurface(cloneTerrain->getMaterialSettings(), *material->terrain),
+                "disable retires material without changing queued snapshots or clones"))
+                return false;
+            savedMaterial.renderState.surfaceType = MaterialSurfaceType::Transparent;
+            return checks.expect(!MaterialManager::instance().create(savedMaterial).isValid()
+                && !MaterialManager::instance().update(cloneTerrain->getMaterial(), savedMaterial)
+                && !Serialization::MaterialSerializer{}.save(directory / L"invalid-layer.matl", savedMaterial),
+                "layered material create update and save reject transparent state");
+        }
+
+        float decodeSrgb(const float value)
+        {
+            return value <= 0.04045f ? value / 12.92f : std::pow((value + 0.055f) / 1.055f, 2.4f);
+        }
+
+        bool expectLayerPixel(Checks& checks, const DX12FrameCapture& capture, const std::size_t x,
+            const std::size_t y, const Vector3& expected, const char* label)
+        {
+            const auto* image = capture.display.GetImage(0, 0, 0);
+            if (!checks.expect(image && image->format == DXGI_FORMAT_R8G8B8A8_UNORM && x < image->width && y < image->height,
+                "layer capture format and bounds"))
+                return false;
+            const auto* pixel = image->pixels + y * image->rowPitch + x * 4;
+            const Vector3 actual(decodeSrgb(static_cast<float>(pixel[0]) / 255),
+                decodeSrgb(static_cast<float>(pixel[1]) / 255), decodeSrgb(static_cast<float>(pixel[2]) / 255));
+            const bool matches = Vector3::Distance(actual, expected) < 0.018f;
+            if (!matches)
+                LOG_ERROR("[TerrainValidation] Pixel ({},{}): actual=({},{},{}) expected=({},{},{}).",
+                    x, y, actual.x, actual.y, actual.z, expected.x, expected.y, expected.z);
+            return checks.expect(matches, label);
+        }
+
+        bool validateLayerRendering(Checks& checks, DX12Renderer& renderer, const std::filesystem::path& directory,
+            const TerrainLayer& textured)
+        {
+            Scene scene(ObjectGUID::generate(), "Layer rendering");
+            auto* object = scene.createGameObject("Layered terrain");
+            auto* terrain = object ? object->addComponent<TerrainComponent>() : nullptr;
+            Heightmap heights;
+            const TerrainMeshSettings mesh{ 4, 4, 0, 0, 1, 1 };
+            if (!checks.expect(terrain && heights.createFlat(65, 65, 0.5f) && terrain->setTerrain(heights, mesh),
+                "layer GPU terrain fixture"))
+                return false;
+            renderer.setDeferredRenderingEnabled(true);
+            renderer.setOcclusionCullingEnabled(false);
+            const auto captureView = [&](const DeferredDebugView view, DX12FrameCapture& capture)
+            {
+                if (!renderer.setDeferredDebugView(view))
+                    return false;
+                for (int frame = 0; frame < 2; ++frame)
+                    if (!checks.expect(renderFrame(renderer, &scene), "render layered PBR surface"))
+                        return false;
+                return checks.expect(renderer.captureFrame(capture) && renderer.validateDebugMessages(), "capture layered surface without D3D12 diagnostics");
+            };
+            TerrainMaterialSettings settings;
+            settings.enabled = true;
+            DX12FrameCapture capture;
+            for (std::size_t selected = 0; selected < TERRAIN_LAYER_COUNT; ++selected)
+            {
+                settings.layerCount = static_cast<std::uint32_t>(selected + 1);
+                for (auto& layer : settings.layers)
+                {
+                    layer = TerrainLayer{};
+                    layer.strength = 0;
+                }
+                auto& layer = settings.layers[selected];
+                layer = textured;
+                layer.strength = 1;
+                layer.color = Vector4(0.5f, 1, 0.75f, 1);
+                layer.metallic = 0.5f;
+                layer.roughness = 0.6f;
+                layer.normalScale = 0.5f;
+                if (!checks.expect(terrain->setMaterialSettings(settings), "apply each of four textured GPU slots")
+                    || !captureView(DeferredDebugView::Albedo, capture)
+                    || !expectLayerPixel(checks, capture, 104, 128, Vector3(0.10793f, 0.21586f, 0.16190f),
+                        "BaseColor is sRGB decoded and multiplied by linear layer color")
+                    || !captureView(DeferredDebugView::Metallic, capture)
+                    || !expectLayerPixel(checks, capture, 104, 128, Vector3(0.4f), "Metallic uses linear blue texture channel and layer factor")
+                    || !captureView(DeferredDebugView::Roughness, capture)
+                    || !expectLayerPixel(checks, capture, 104, 128, Vector3(0.30118f), "Roughness uses linear green texture channel and layer factor")
+                    || !captureView(DeferredDebugView::Normal, capture)
+                    || !expectLayerPixel(checks, capture, 104, 128, Vector3(0.67482f, 0.96844f, 0.49771f),
+                        "Normal uses linear data, layer scale and terrain tangent frame"))
+                    return false;
+                layer.uvRepeat = 2;
+                if (!checks.expect(terrain->setMaterialSettings(settings), "apply per-layer UV repeat")
+                    || !captureView(DeferredDebugView::Albedo, capture)
+                    || !expectLayerPixel(checks, capture, 104, 128, Vector3(0.00722f, 0.05127f, 0.39534f),
+                        "each layer UV repeat changes the sampled texture region"))
+                    return false;
+            }
+            settings = {};
+            settings.enabled = true;
+            const std::array colors = { Vector4(0.4f, 0, 0, 1), Vector4(0, 0.5f, 0, 1),
+                Vector4(0, 0, 0.6f, 1), Vector4(0.7f, 0.7f, 0.7f, 1) };
+            for (std::size_t index = 0; index < TERRAIN_LAYER_COUNT; ++index)
+            {
+                settings.layers[index] = TerrainLayer{};
+                settings.layers[index].color = colors[index];
+                settings.layers[index].minimumHeight = static_cast<float>(index) * 0.25f;
+                settings.layers[index].heightBlend = 0.125f;
+            }
+            std::vector<float> ramp(65 * 2);
+            for (std::size_t index = 0; index < ramp.size(); ++index)
+                ramp[index] = static_cast<float>(index % 65) / 64;
+            if (!checks.expect(heights.assign(65, 2, ramp) && terrain->setTerrain(heights, mesh)
+                && terrain->setMaterialSettings(settings), "automatic four-height-band GPU fixture")
+                || !captureView(DeferredDebugView::Albedo, capture))
+                return false;
+            for (std::size_t index = 0; index < TERRAIN_LAYER_COUNT; ++index)
+                if (!expectLayerPixel(checks, capture, 80 + index * 32, 128,
+                    Vector3(colors[index].x, colors[index].y, colors[index].z), "four height bands select expected colors"))
+                    return false;
+            const float vertexPosition = (88.5f - 64) * 0.5f;
+            const float leftVertex = std::floor(vertexPosition);
+            const float fraction = vertexPosition - leftVertex;
+            const auto leftWeights = terrainLayerWeights(settings, leftVertex / 64, 0);
+            const auto rightWeights = terrainLayerWeights(settings, (leftVertex + 1) / 64, 0);
+            const float grassWeight = std::lerp(leftWeights.y, rightWeights.y, fraction);
+            if (!expectLayerPixel(checks, capture, 88, 128, Vector3(0.4f * (1 - grassWeight), 0.5f * grassWeight, 0),
+                "interpolated vertex weights produce smooth per-pixel layer transitions")
+                || !checks.expect(capture.save(directory, L"terrain-layers"), "save automatic layer capture"))
+                return false;
+
+            settings.layerCount = 2;
+            settings.layers[1].minimumHeight = 0;
+            settings.layers[1].minimumSlope = 40;
+            settings.layers[1].slopeBlend = 0;
+            if (!checks.expect(terrain->setTerrain(heights, { 4, 4, 4, 0, 1, 1 })
+                && terrain->setMaterialSettings(settings), "steep GPU terrain fixture")
+                || !captureView(DeferredDebugView::Albedo, capture)
+                || !expectLayerPixel(checks, capture, 128, 128, Vector3(0, 0.5f, 0), "slope band selects steep surface")
+                || !checks.expect(terrain->setTerrain(heights, mesh), "flatten geometry without changing normalized heights")
+                || !captureView(DeferredDebugView::Albedo, capture)
+                || !expectLayerPixel(checks, capture, 128, 128, Vector3(0.4f, 0, 0), "slope mask updates after mesh settings change"))
+                return false;
+            settings.layerCount = 1;
+            settings.layers[0] = textured;
+            settings.layers[0].color = Vector4::One;
+            settings.layers[0].normalScale = 0;
+            if (!checks.expect(terrain->setMaterialSettings(settings), "normal scale zero fixture")
+                || !captureView(DeferredDebugView::Normal, capture)
+                || !expectLayerPixel(checks, capture, 104, 128, Vector3(0.5f, 1, 0.5f), "zero normal scale restores geometric normal"))
+                return false;
+            settings.layers[0].normalScale = 1;
+            if (!checks.expect(terrain->setMaterialSettings(settings), "normal transform fixture"))
+                return false;
+            object->getTransform()->setRotation(Quaternion::CreateFromYawPitchRoll(DirectX::XM_PIDIV2, 0, 0));
+            if (!captureView(DeferredDebugView::Normal, capture)
+                || !expectLayerPixel(checks, capture, 128, 128, Vector3(0.49805f, 0.90072f, 0.20093f),
+                    "normal layer follows object rotation without changing local blend rules"))
+                return false;
+            object->getTransform()->setRotation(Quaternion::Identity);
+            settings.layerCount = 2;
+            settings.layers[0] = TerrainLayer{};
+            settings.layers[0].color = Vector4(0.4f, 0, 0, 1);
+            settings.layers[0].metallic = 0.2f;
+            settings.layers[0].roughness = 0.8f;
+            settings.layers[1] = textured;
+            settings.layers[1].strength = 0.5f;
+            settings.layers[1].metallic = 0.6f;
+            settings.layers[1].roughness = 0.4f;
+            if (!checks.expect(terrain->setMaterialSettings(settings), "two-layer texture and PBR blend fixture")
+                || !captureView(DeferredDebugView::Albedo, capture)
+                || !expectLayerPixel(checks, capture, 104, 128, Vector3(0.30793f, 0.10793f, 0.10793f), "blend textures and tint in linear space")
+                || !captureView(DeferredDebugView::Metallic, capture)
+                || !expectLayerPixel(checks, capture, 104, 128, Vector3(0.34f), "metallic blends with normalized layer weights")
+                || !captureView(DeferredDebugView::Roughness, capture)
+                || !expectLayerPixel(checks, capture, 104, 128, Vector3(0.50039f), "roughness blends with normalized layer weights"))
+                return false;
+            Vector3 baseNormal(1.0f / 255, 1.0f / 255, 1);
+            Vector3 overlayNormal(0.6f, 1.0f / 255, 205.0f / 255);
+            baseNormal.Normalize();
+            overlayNormal.Normalize();
+            Vector3 mixedNormal = baseNormal + overlayNormal;
+            mixedNormal.Normalize();
+            if (!captureView(DeferredDebugView::Normal, capture)
+                || !expectLayerPixel(checks, capture, 104, 128,
+                    Vector3(mixedNormal.x, mixedNormal.z, -mixedNormal.y) * 0.5f + Vector3(0.5f),
+                    "normal vectors blend and renormalize in a common tangent frame"))
+                return false;
+            settings.enabled = false;
+            if (!checks.expect(terrain->setMaterialSettings(settings), "disable layer GPU fixture")
+                || !captureView(DeferredDebugView::Albedo, capture)
+                || !expectLayerPixel(checks, capture, 128, 128, Vector3::One, "disabled layered terrain retains default material appearance"))
+                return false;
+
+            settings = {};
+            settings.enabled = true;
+            settings.layerCount = 1;
+            settings.layers[0].color = Vector4(0.6f, 0.03f, 0.01f, 1);
+            renderer.setDeferredDebugView(DeferredDebugView::FinalLighting);
+            for (const bool deferred : { true, false })
+            {
+                renderer.setDeferredRenderingEnabled(deferred);
+                renderer.setOcclusionCullingEnabled(!deferred);
+                if (!checks.expect(terrain->setMaterialSettings(settings), "layered Forward/Deferred fixture"))
+                    return false;
+                for (int frame = 0; frame < 4; ++frame)
+                    if (!checks.expect(renderFrame(renderer, &scene), "Forward/Deferred layered surface with occlusion"))
+                        return false;
+                if (!checks.expect(renderer.captureFrame(capture) && renderer.validateDebugMessages(), "Forward/Deferred layered capture"))
+                    return false;
+                const auto* image = capture.display.GetImage(0, 0, 0);
+                const auto* pixel = image ? image->pixels + 128 * image->rowPitch + 128 * 4 : nullptr;
+                if (!checks.expect(pixel && pixel[0] > pixel[1] + 15 && pixel[0] > pixel[2] + 15,
+                    "Forward/Deferred final lighting uses terrain layer color"))
+                    return false;
+            }
+            renderer.setDeferredRenderingEnabled(true);
+            renderer.setOcclusionCullingEnabled(false);
+            renderer.setDeferredDebugView(DeferredDebugView::Albedo);
+            settings.layers[0].color = Vector4(0.1f, 0.3f, 0.7f, 1);
+            if (!checks.expect(terrain->setMaterialSettings(settings), "shared-handle material snapshots fixture"))
+                return false;
+            scene.submitRenderData();
+            std::vector<ModelRenderSubmission> submissions;
+            ModelRenderSubmissionQueue::instance().consume(submissions);
+            if (!checks.expect(submissions.size() == 1, "capture procedural submission for snapshot isolation test"))
+                return false;
+            auto old = submissions[0];
+            old.worldMatrix = Matrix::CreateScale(0.4f) * Matrix::CreateTranslation(-1, 0, 0);
+            old.modelSnapshot->boundingBox.Transform(old.worldBounds, old.worldMatrix);
+            old.objectID = allocateModelRenderObjectID();
+            auto updated = old;
+            auto edited = *old.materialSnapshot;
+            edited.terrain->layers[0].color = Vector4(0.7f, 0.1f, 0.2f, 1);
+            if (!checks.expect(MaterialManager::instance().update(terrain->getMaterial(), std::move(edited)), "update live material after taking immutable snapshot"))
+                return false;
+            updated.materialSnapshot = MaterialManager::instance().get(terrain->getMaterial());
+            updated.worldMatrix = Matrix::CreateScale(0.4f) * Matrix::CreateTranslation(1, 0, 0);
+            updated.modelSnapshot->boundingBox.Transform(updated.worldBounds, updated.worldMatrix);
+            updated.objectID = allocateModelRenderObjectID();
+            for (int frame = 0; frame < 4; ++frame)
+            {
+                ModelRenderSubmissionQueue::instance().submit(old);
+                ModelRenderSubmissionQueue::instance().submit(updated);
+                if (!checks.expect(renderFrame(renderer, nullptr) && renderer.captureFrame(capture) && renderer.validateDebugMessages(),
+                    "multiple snapshots of one handle remain fenced and cannot instance together")
+                    || !expectLayerPixel(checks, capture, 96, 128, Vector3(0.1f, 0.3f, 0.7f), "old queued snapshot is not replaced by current manager state")
+                    || !expectLayerPixel(checks, capture, 160, 128, Vector3(0.7f, 0.1f, 0.2f), "new queued snapshot keeps independent GPU constants"))
+                    return false;
+            }
+            settings.layers[0].color = Vector4(0.1f, 0.3f, 0.7f, 1);
+            if (!checks.expect(terrain->setMaterialSettings(settings), "new unuploaded terrain material"))
+                return false;
+            scene.submitRenderData();
+            const auto retiredMaterial = terrain->getMaterial();
+            const auto retiredModel = terrain->getModel();
+            settings.layers[0].color = Vector4(1, 0, 0, 1);
+            if (!checks.expect(terrain->setMaterialSettings(settings), "replace material after queue submission"))
+                return false;
+            scene.clear();
+            if (!checks.expect(MaterialManager::instance().get(retiredMaterial) == nullptr
+                && ModelManager::instance().get(retiredModel) == nullptr
+                && renderFrame(renderer, nullptr) && renderer.captureFrame(capture) && renderer.validateDebugMessages(),
+                "queued unuploaded geometry and material survive rebuild and component destruction")
+                || !expectLayerPixel(checks, capture, 128, 128, Vector3(0.1f, 0.3f, 0.7f), "queued immutable material draws original surface"))
+                return false;
+            renderer.setDeferredDebugView(DeferredDebugView::FinalLighting);
+            for (int frame = 0; frame < 6; ++frame)
+                if (!checks.expect(renderFrame(renderer, nullptr), "retire layered GPU resources after fences"))
+                    return false;
+            return checks.expect(renderer.validateDebugMessages(), "layered GPU cleanup without diagnostics");
+        }
+
         bool validateOptions(Checks& checks)
         {
             StartupOptions options;
@@ -918,16 +1507,21 @@ namespace Engine
             }
             Checks checks;
             Heightmap imported;
+            TerrainLayer textured;
             if (!validateOptions(checks) || !validateHeightmap(checks, directory, imported) || !validateNoise(checks) || !validateMesh(checks)
                 || !validateComponent(checks, directory, imported) || !validateNoisePersistence(checks, directory)
                 || !validateInspector(checks)
-                || !validateRendering(checks, renderer, directory))
+                || !validateLayerWeights(checks) || !writeLayerTextures(checks, directory, textured)
+                || !validateLayerPersistence(checks, directory, textured)
+                || !validateRendering(checks, renderer, directory)
+                || !validateLayerRendering(checks, renderer, directory, textured))
                 return false;
             std::ofstream report(directory / L"terrain-results.txt");
             report << "PASS: " << checks.count << " terrain checks\n"
                 << "8/16-bit image precision, mesh geometry, scene/prefab/clone, Inspector, lifecycle,\n"
                 << "Perlin/FBM reproducibility, parameter bounds, Deferred/Forward noise terrain rendering,\n"
-                << "queued geometry lifetime and D3D12 diagnostics.\n";
+                << "four-layer height/slope blends, texture/PBR channels, UV repeat, normal transforms,\n"
+                << "layer Scene/Prefab/Play/MATL/model roundtrips, queued resource lifetime and D3D12 diagnostics.\n";
             report.close();
             if (!report)
             {

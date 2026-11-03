@@ -13,6 +13,8 @@
   <ItemGroup>
     <ClInclude Include="Source\Terrain\Heightmap.h" />
     <ClInclude Include="Source\Terrain\TerrainNoise.h" />
+    <ClInclude Include="Source\Terrain\TerrainMaterial.h" />
+    <ClInclude Include="Source\Terrain\TerrainMaterialSerialization.h" />
     <ClInclude Include="Source\Terrain\TerrainMeshBuilder.h" />
     <ClInclude Include="Source\Terrain\TerrainValidation.h" />
     <ClInclude Include="Source\Core\GameObject\Component\TerrainComponent.h" />
@@ -215,6 +217,8 @@
     <ClCompile Include="Source\Core\System\GameSession.cpp" />
     <ClCompile Include="Source\Terrain\Heightmap.cpp" />
     <ClCompile Include="Source\Terrain\TerrainNoise.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainMaterial.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainMaterialSerialization.cpp" />
     <ClCompile Include="Source\Terrain\TerrainMeshBuilder.cpp" />
     <ClCompile Include="Source\Terrain\TerrainValidation.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\TerrainComponent.cpp" />
@@ -385,6 +389,7 @@
     <None Include="Schemas\FlatBuffers\PostProcessEffectAsset.fbs" />
     <None Include="Schemas\FlatBuffers\LightComponent.fbs" />
     <None Include="Schemas\FlatBuffers\TerrainComponent.fbs" />
+    <None Include="Schemas\FlatBuffers\TerrainMaterial.fbs" />
     <None Include="Schemas\FlatBuffers\RuntimeUI.fbs" />
     <None Include="Schemas\FlatBuffers\AudioComponent.fbs" />
     <None Include="Schemas\FlatBuffers\Material.fbs" />

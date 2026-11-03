@@ -105,6 +105,12 @@ namespace Engine
 
     MaterialHandle MaterialManager::create(MaterialAsset material, const std::filesystem::path& cacheKey)
     {
+        if (material.terrain && (!resolveTerrainMaterialTextures(*material.terrain)
+            || material.renderState.surfaceType != MaterialSurfaceType::Opaque))
+        {
+            LOG_ERROR("[MaterialManager] Terrain materials must have valid layers and be opaque.");
+            return MaterialHandle::Invalid();
+        }
         if (!Serialization::resolveTextureReferences(material.textures, {}))
             return MaterialHandle::Invalid();
         const std::filesystem::path normalizedKey = cacheKey.empty() ? std::filesystem::path{} : normalizePath(cacheKey);
@@ -125,6 +131,12 @@ namespace Engine
 
     bool MaterialManager::update(const MaterialHandle handle, MaterialAsset material)
     {
+        if (material.terrain && (!resolveTerrainMaterialTextures(*material.terrain)
+            || material.renderState.surfaceType != MaterialSurfaceType::Opaque))
+        {
+            LOG_ERROR("[MaterialManager] Terrain materials must have valid layers and be opaque.");
+            return false;
+        }
         if (!Serialization::resolveTextureReferences(material.textures, {}))
             return false;
         AssetGUID guid;

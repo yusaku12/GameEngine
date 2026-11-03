@@ -64,28 +64,35 @@ namespace Engine
         return true;
     }
 
-    MaterialGpuResource* MaterialGpuCache::getOrCreate(const MaterialHandle handle)
+    MaterialGpuResource* MaterialGpuCache::getOrCreate(const MaterialHandle handle,
+        std::shared_ptr<const MaterialAsset> snapshot)
     {
         if (m_device == nullptr || m_fence == nullptr)
             return nullptr;
         const std::uint64_t key = makeKey(handle);
         if (const auto found = m_resources.find(key); found != m_resources.end())
         {
-            const std::shared_ptr<const MaterialAsset> current = MaterialManager::instance().get(handle);
+            found->second->pendingSubmission = true;
             const MaterialGpuResource& cached = *found->second;
+            std::shared_ptr<const MaterialAsset> current = snapshot ? snapshot : MaterialManager::instance().get(handle);
+            if (current == nullptr)
+                current = cached.source;
             TextureManager& textures = TextureManager::instance();
             const bool cachedTexturesAvailable =
                 textures.get(cached.baseColorTexture) != nullptr
                 && textures.get(cached.normalTexture) != nullptr
                 && textures.get(cached.metallicRoughnessTexture) != nullptr
                 && textures.get(cached.ambientOcclusionTexture) != nullptr
-                && textures.get(cached.emissiveTexture) != nullptr;
-            if (current == nullptr || (cached.source == current && cachedTexturesAvailable))
+                && textures.get(cached.emissiveTexture) != nullptr
+                && std::ranges::all_of(cached.terrainTextures, [&textures](const TextureHandle texture)
+                    { return textures.get(texture) != nullptr; });
+            if (cached.source == current && cachedTexturesAvailable)
                 return found->second.get();
 
-            std::unique_ptr<MaterialGpuResource> replacement = createResource(handle);
+            std::unique_ptr<MaterialGpuResource> replacement = createResource(handle, current);
             if (replacement == nullptr)
                 return found->second.get();
+            replacement->pendingSubmission = true;
             try
             {
                 m_retiredResources.reserve(m_retiredResources.size() + 1);
@@ -105,7 +112,7 @@ namespace Engine
             return found->second.get();
         }
 
-        std::unique_ptr<MaterialGpuResource> resource = createResource(handle);
+        std::unique_ptr<MaterialGpuResource> resource = createResource(handle, std::move(snapshot));
         if (resource == nullptr)
         {
             const MaterialHandle errorMaterial = MaterialManager::instance().getErrorMaterial();
@@ -114,6 +121,7 @@ namespace Engine
             return nullptr;
         }
         MaterialGpuResource* const result = resource.get();
+        result->pendingSubmission = true;
         try
         {
             const auto [entry, inserted] = m_resources.emplace(key, std::move(resource));
@@ -140,7 +148,19 @@ namespace Engine
         if (found == m_resources.end())
             return false;
         found->second->lastUsedFenceValue = fenceValue;
-        return found->second->constantBuffer.markUsed(fenceValue);
+        found->second->pendingSubmission = false;
+        bool succeeded = found->second->constantBuffer.markUsed(fenceValue);
+        // Different queued snapshots of one handle may have been prepared in this submission.
+        for (auto& retired : m_retiredResources)
+        {
+            if (retired->handle == handle && retired->pendingSubmission)
+            {
+                retired->lastUsedFenceValue = fenceValue;
+                retired->pendingSubmission = false;
+                succeeded = retired->constantBuffer.markUsed(fenceValue) && succeeded;
+            }
+        }
+        return succeeded;
     }
 
     bool MaterialGpuCache::rebuildAll()
@@ -152,7 +172,9 @@ namespace Engine
         replacements.reserve(m_resources.size());
         for (const auto& [key, current] : m_resources)
         {
-            std::unique_ptr<MaterialGpuResource> replacement = createResource(current->handle);
+            auto source = MaterialManager::instance().get(current->handle);
+            std::unique_ptr<MaterialGpuResource> replacement = createResource(current->handle,
+                source ? std::move(source) : current->source);
             if (replacement == nullptr)
             {
                 for (auto& [replacementKey, resource] : replacements)
@@ -225,9 +247,11 @@ namespace Engine
         return (static_cast<std::uint64_t>(handle.generation) << 32) | handle.index;
     }
 
-    std::unique_ptr<MaterialGpuResource> MaterialGpuCache::createResource(const MaterialHandle handle)
+    std::unique_ptr<MaterialGpuResource> MaterialGpuCache::createResource(const MaterialHandle handle,
+        std::shared_ptr<const MaterialAsset> source)
     {
-        std::shared_ptr<const MaterialAsset> source = MaterialManager::instance().get(handle);
+        if (source == nullptr)
+            source = MaterialManager::instance().get(handle);
         if (source == nullptr)
             return nullptr;
 
@@ -246,7 +270,8 @@ namespace Engine
                 resource->source->name, keywords);
         }
         resource->shaderVariantID = variant.value_or(0);
-        const MaterialParameterValues constants{
+        MaterialConstantData constants;
+        constants.standard = MaterialParameterValues{
             .baseColor = resource->source->baseColor,
             .metallic = resource->source->metallic,
             .roughness = resource->source->roughness,
@@ -256,6 +281,17 @@ namespace Engine
             .occlusionStrength = resource->source->occlusionStrength,
             .alphaCutoff = resource->source->alphaCutoff,
         };
+        if (resource->source->terrain && resource->source->terrain->enabled)
+        {
+            const auto& terrain = *resource->source->terrain;
+            constants.terrainOptions.x = static_cast<float>(terrain.layerCount);
+            for (std::size_t index = 0; index < TERRAIN_LAYER_COUNT; ++index)
+            {
+                const auto& layer = terrain.layers[index];
+                constants.terrainLayers[index] = {
+                    layer.color, Vector4(layer.metallic, layer.roughness, layer.normalScale, layer.uvRepeat) };
+            }
+        }
         if (!resource->constantBuffer.initialize(*m_device->get(), *m_fence, CONSTANT_BUFFER_ALIGNMENT)
             || !resource->constantBuffer.write(std::as_bytes(std::span{ &constants, 1 })))
         {
@@ -274,6 +310,18 @@ namespace Engine
             { .colorSpace = TextureColorSpace::Linear }, textures.getWhiteTexture(), *resource->source, "AmbientOcclusion");
         resource->emissiveTexture = resolveTexture(textures, resource->source->textures.emissive,
             { .colorSpace = TextureColorSpace::SRGB }, textures.getBlackTexture(), *resource->source, "Emissive");
+        for (std::size_t index = 0; index < TERRAIN_LAYER_COUNT; ++index)
+        {
+            const TerrainLayer* layer = resource->source->terrain && resource->source->terrain->enabled
+                && index < resource->source->terrain->layerCount ? &resource->source->terrain->layers[index] : nullptr;
+            resource->terrainTextures[index * 3] = resolveTexture(textures, layer ? layer->baseColorTexture : AssetGUID{},
+                { .colorSpace = TextureColorSpace::SRGB }, textures.getWhiteTexture(), *resource->source, "Terrain BaseColor");
+            resource->terrainTextures[index * 3 + 1] = resolveTexture(textures, layer ? layer->normalTexture : AssetGUID{},
+                { .colorSpace = TextureColorSpace::Linear }, textures.getNormalTexture(), *resource->source, "Terrain Normal");
+            resource->terrainTextures[index * 3 + 2] = resolveTexture(textures, layer ? layer->metallicRoughnessTexture : AssetGUID{},
+                { .colorSpace = TextureColorSpace::Linear }, textures.getWhiteTexture(),
+                *resource->source, "Terrain MetallicRoughness");
+        }
         return resource;
     }
 } // namespace Engine

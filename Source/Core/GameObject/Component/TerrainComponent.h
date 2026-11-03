@@ -6,12 +6,13 @@
 #include "Terrain\Heightmap.h"
 #include "Terrain\TerrainMeshBuilder.h"
 #include "Terrain\TerrainNoise.h"
+#include "Terrain\TerrainMaterial.h"
 
 namespace Engine
 {
     /**
      * @brief Owns height samples and generated terrain geometry, independent of source images.
-     * @details Uses the standard model rendering path and default material; no collider is created.
+     * @details Uses the model rendering path with optional layered PBR; no collider is created.
      * @thread_safety Not thread-safe. Use on the game/editor thread without concurrent rendering updates.
      */
     class TerrainComponent final : public Component
@@ -41,6 +42,17 @@ namespace Engine
         /** @brief Gets the last applied noise recipe, or defaults if none was applied. */
         const TerrainNoiseSettings& getNoiseSettings() const noexcept { return m_noiseSettings; }
 
+        /**
+         * @brief Applies four-layer material data and rebuilds automatic vertex weights transactionally.
+         * @param settings Validated layers. Disabled settings restore the standard default material.
+         * @return True on success. Failure preserves geometry and applied material settings.
+         */
+        bool setMaterialSettings(const TerrainMaterialSettings& settings);
+        /** @brief Gets applied surface settings, independent of unapplied Inspector edits. */
+        const TerrainMaterialSettings& getMaterialSettings() const noexcept { return m_materialSettings; }
+        /** @brief Gets the generated terrain material handle; invalid when layers are disabled. Do not unload externally. */
+        MaterialHandle getMaterial() const noexcept { return m_material; }
+
         /** @brief Gets immutable height data, including all samples saved with the scene. */
         const Heightmap& getHeightmap() const noexcept { return m_heightmap; }
         /** @brief Gets the applied mesh settings. */
@@ -53,7 +65,7 @@ namespace Engine
         bool getCastShadows() const noexcept { return m_castShadows; }
 
         /** @brief Gets the version of the embedded terrain payload. */
-        std::uint32_t getPayloadVersion() const noexcept override { return 2; }
+        std::uint32_t getPayloadVersion() const noexcept override { return 3; }
         /** @brief Saves samples and settings; no external image/model reference is required. */
         bool serializePayload(std::vector<std::uint8_t>& payload) const override;
         /** @brief Restores and validates samples and settings before replacing the terrain. */
@@ -69,13 +81,19 @@ namespace Engine
         friend class GameObjectManager;
         void submitRenderData();
         void requestHeightmapImport();
+        bool rebuild(const Heightmap& heights, const TerrainMeshSettings& mesh, const TerrainMaterialSettings& surface);
+        void drawMaterialInspector();
+        void requestLayerTexture(std::size_t layer, std::size_t texture);
 
         Heightmap m_heightmap;
         TerrainMeshSettings m_settings;
         TerrainMeshSettings m_editSettings;
         TerrainNoiseSettings m_noiseSettings;
         TerrainNoiseSettings m_editNoiseSettings;
+        TerrainMaterialSettings m_materialSettings;
+        TerrainMaterialSettings m_editMaterialSettings;
         ModelHandle m_model;
+        MaterialHandle m_material;
         std::uint32_t m_objectID = 0;
         bool m_castShadows = true;
         bool m_generationFailed = false;

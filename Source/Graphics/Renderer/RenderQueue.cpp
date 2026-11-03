@@ -94,6 +94,7 @@ namespace Engine
             const RenderItem& candidate = m_items[end];
             if (candidate.pass != item.pass || candidate.pipelineID != item.pipelineID
                 || candidate.shaderVariantID != item.shaderVariantID || candidate.material != item.material
+                || candidate.materialSnapshot != item.materialSnapshot
                 || candidate.surfaceType != item.surfaceType || candidate.textureID != item.textureID
                 || candidate.vertexBuffer != item.vertexBuffer || candidate.indexBuffer != item.indexBuffer
                 || candidate.indexStart != item.indexStart || candidate.indexCount != item.indexCount
