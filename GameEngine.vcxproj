@@ -11,6 +11,11 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\Terrain\Heightmap.h" />
+    <ClInclude Include="Source\Terrain\TerrainMeshBuilder.h" />
+    <ClInclude Include="Source\Terrain\TerrainValidation.h" />
+    <ClInclude Include="Source\Core\GameObject\Component\TerrainComponent.h" />
+    <ClInclude Include="Generated\FlatBuffers\TerrainComponent_generated.h" />
     <ClInclude Include="Source\Core\System\ExecutionMode.h" />
     <ClInclude Include="Source\Core\GameObject\Component\LightComponent.h" />
     <ClInclude Include="Source\Graphics\Lighting\LightingFrame.h" />
@@ -207,6 +212,10 @@
   <ItemGroup>
     <ClCompile Include="Source\Animation\Runtime\AnimatorInstance.cpp" />
     <ClCompile Include="Source\Core\System\GameSession.cpp" />
+    <ClCompile Include="Source\Terrain\Heightmap.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainMeshBuilder.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainValidation.cpp" />
+    <ClCompile Include="Source\Core\GameObject\Component\TerrainComponent.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\LightComponent.cpp" />
     <ClCompile Include="Source\Graphics\Lighting\LightingFrame.cpp" />
     <ClCompile Include="Source\Audio\AudioSystem.cpp" />
@@ -373,6 +382,7 @@
     <None Include="Schemas\FlatBuffers\PostProcessProfile.fbs" />
     <None Include="Schemas\FlatBuffers\PostProcessEffectAsset.fbs" />
     <None Include="Schemas\FlatBuffers\LightComponent.fbs" />
+    <None Include="Schemas\FlatBuffers\TerrainComponent.fbs" />
     <None Include="Schemas\FlatBuffers\RuntimeUI.fbs" />
     <None Include="Schemas\FlatBuffers\AudioComponent.fbs" />
     <None Include="Schemas\FlatBuffers\Material.fbs" />

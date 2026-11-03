@@ -779,3 +779,73 @@ invalid palette counts or float-overflow risk are logged and disable animation
 bounds culling. `RenderItem::animationBoundsValid` defaults to false, so callers
 that only provide bind-pose bounds retain the previous safe animation bypass.
 Near-plane intersections also retain Hi-Z's visibility bypass.
+
+# Terrain Phase 1: Heightmap and mesh generation
+
+In the Hierarchy context menu choose **Create Terrain**, or add the **Terrain**
+component to an existing GameObject. A new component contains a flat 65x65 grid.
+It renders in both the editor and Play/Runtime through the existing model
+pipeline, using the default material. It does not need a Model Renderer.
+
+The Terrain Inspector provides:
+
+- **Size X / Size Z**: local-space width and depth, centered around the origin.
+- **Height Scale / Height Offset**: `localY = offset + sample * scale`.
+- **UV Repeat X / Z** and **Cast Shadows**.
+- **Apply / Rebuild**: apply the edited dimensions without changing samples.
+- **Import Heightmap...**: read PNG, TIFF or BMP height data and rebuild using
+  the edited dimensions. 8/16-bit grayscale PNG precision is preserved.
+- **Create Flat**: replace heights with a constant normalized value and the
+  specified X/Z sample counts. This replaces any imported height data.
+
+Height samples are linear numeric data in `[0, 1]`, not sRGB colors. Import
+ignores gamma metadata, takes the red channel (ignoring alpha), and maps the
+image's first row to local `-Z`, increasing towards `+Z`. Each pixel becomes
+one vertex; images are not silently resized. Non-square grids are supported.
+Dimensions must be 2..1025 samples on each axis. Physical sizes are
+0.01..100000, height scale is 0..100000, height offset is -100000..100000,
+and UV repeats are 0.001..10000. Invalid input is logged and preserves the
+previous terrain; Inspector operations also display a status message.
+
+Scene/Prefab payloads embed the normalized samples, dimensions, UV repeats and
+shadow flag. Save normally; there is no separate model asset to save and the
+source image is not needed after import. Reload, duplication and Play clones
+create independent generated geometry. Unapplied Inspector fields are not saved.
+Transforms, parent transforms, layers, component enable/disable, frustum culling
+and existing render-path occlusion behavior use the standard engine mechanisms.
+
+The CPU API is in `Source\Terrain\Heightmap.h` and
+`Source\Terrain\TerrainMeshBuilder.h`; apply data with
+`TerrainComponent::setTerrain`. Generation emits 32-bit indices, +Y-facing
+triangles, area-weighted smooth normals, orthonormal tangent frames, UVs and
+mesh/model bounds. Rebuilds retire the previous model handle; queued immutable
+CPU snapshots and GPU fences keep already submitted geometry safe.
+
+This phase intentionally does **not** implement noise/FBM, terrain material
+layers, world-space height queries, collision, chunks, terrain LOD, asynchronous
+generation, erosion, compute generation or vegetation. Generation/import is
+synchronous and should be triggered by an authoring action, not every frame.
+
+## Terrain validation
+
+Build **Debug x64**, then run from the project root:
+
+```powershell
+.\x64\Debug\GameEngine.exe --validate-terrain ".\Build\TerrainValidation"
+```
+
+The output directory must be new or empty. This command uses a hidden UI-free
+Runtime window and requires the D3D12 Debug Layer. It returns zero only after
+all checks and output writes succeed. It does not load the editor scene or
+write editor preferences. It cannot be combined with `--runtime`, `--scene`
+or `--validate-rendering`.
+
+The suite covers 8/16-bit image precision, row ordering, red-channel/gamma
+semantics, corrupt/oversized inputs, flat/ramp/extreme meshes, 32-bit indices,
+invalid settings and payload rollback, Scene/Prefab/Play-clone persistence,
+Inspector rebuild interaction, component lifecycle and transforms, Deferred
+and Forward GPU rendering, existing GPU occlusion, and queued geometry surviving
+component destruction before its first GPU upload. It writes generated fixtures,
+`terrain.scene`, `terrain.prefab`, HDR/display captures and `terrain-results.txt`.
+Expected invalid-input tests emit error logs; the process exit code and final
+PASS report determine success.

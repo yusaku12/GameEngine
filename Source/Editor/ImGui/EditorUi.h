@@ -45,7 +45,8 @@ namespace Engine
         {
             Empty,
             Model,
-            Camera
+            Camera,
+            Terrain
         };
 
         /**

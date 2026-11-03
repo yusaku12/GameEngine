@@ -1,8 +1,15 @@
 ﻿#include "Pch.h"
 #include "Graphics\Renderer\ModelRenderSubmission.h"
+#include <atomic>
 
 namespace Engine
 {
+    std::uint32_t allocateModelRenderObjectID() noexcept
+    {
+        static std::atomic_uint32_t nextID = 1;
+        return nextID.fetch_add(1, std::memory_order_relaxed);
+    }
+
     ModelRenderSubmissionQueue& ModelRenderSubmissionQueue::instance() noexcept
     {
         static ModelRenderSubmissionQueue queue;

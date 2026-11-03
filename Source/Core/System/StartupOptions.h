@@ -14,6 +14,7 @@ namespace Engine
         ExecutionMode mode = ExecutionMode::Editor;
         std::filesystem::path scenePath;
         std::filesystem::path renderingValidationDirectory;
+        std::filesystem::path terrainValidationDirectory;
         bool showHelp = false;
 
         /**

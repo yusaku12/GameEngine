@@ -29,16 +29,19 @@ namespace Engine
                 }
                 scenePath = arguments[index];
             }
-            else if (argument == L"--validate-rendering" && !validationSeen)
+            else if ((argument == L"--validate-rendering" || argument == L"--validate-terrain") && !validationSeen)
             {
                 validationSeen = true;
                 if (++index == arguments.size() || arguments[index].empty()
                     || arguments[index].starts_with(L"--"))
                 {
-                    error = "--validate-rendering requires an output directory.";
+                    error = "Validation requires an output directory.";
                     return false;
                 }
-                renderingValidationDirectory = arguments[index];
+                if (argument == L"--validate-terrain")
+                    terrainValidationDirectory = arguments[index];
+                else
+                    renderingValidationDirectory = arguments[index];
             }
             else if ((argument == L"--help" || argument == L"-h") && arguments.size() == 1)
                 showHelp = true;
@@ -52,7 +55,7 @@ namespace Engine
         {
             if (runtimeSeen || sceneSeen)
             {
-                error = "--validate-rendering cannot be combined with --runtime or --scene.";
+                error = "Validation cannot be combined with --runtime or --scene.";
                 return false;
             }
             mode = ExecutionMode::Runtime;

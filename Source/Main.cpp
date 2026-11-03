@@ -10,6 +10,7 @@
 #include "Core\System\GameSession.h"
 #include "Core\System\StartupOptions.h"
 #include "Graphics\Validation\RenderingValidation.h"
+#include "Terrain\TerrainValidation.h"
 #include <shellapi.h>
 #include "Audio\AudioSystem.h"
 #include "UI\RuntimeUI.h"
@@ -134,7 +135,7 @@ namespace Engine
         if (!validArguments)
         {
             LOG_ERROR("[Startup] {} Usage: GameEngine.exe [--runtime --scene <scene file>] "
-                "[--validate-rendering <output directory>] [--help]",
+                "[--validate-rendering <output directory> | --validate-terrain <output directory>] [--help]",
                 arguments == nullptr ? "Could not decode command line." : argumentError);
             finalizeCore();
             return -1;
@@ -142,7 +143,7 @@ namespace Engine
         if (options.showHelp)
         {
             LOG_INFO("Usage: GameEngine.exe [--runtime --scene <scene file>] "
-                "[--validate-rendering <output directory>] [--help]");
+                "[--validate-rendering <output directory> | --validate-terrain <output directory>] [--help]");
             finalizeCore();
             return 0;
         }
@@ -154,7 +155,8 @@ namespace Engine
             return -1;
         }
 
-        const bool renderingValidation = !options.renderingValidationDirectory.empty();
+        const bool renderingValidation = !options.renderingValidationDirectory.empty()
+            || !options.terrainValidationDirectory.empty();
         if (options.mode == ExecutionMode::Runtime && !renderingValidation)
         {
             Scene* scene = SceneManager::instance().createScene("RuntimeScene");
@@ -242,7 +244,10 @@ namespace Engine
 
             if (renderingValidation)
             {
-                result = runRenderingValidation(renderer, options.renderingValidationDirectory) ? 0 : -1;
+                const bool valid = !options.terrainValidationDirectory.empty()
+                    ? runTerrainValidation(renderer, options.terrainValidationDirectory)
+                    : runRenderingValidation(renderer, options.renderingValidationDirectory);
+                result = valid ? 0 : -1;
                 setCurrentThreadRole(ThreadRole::Main);
                 GameSession::instance().shutdown();
             }

@@ -1,0 +1,17 @@
+namespace Engine.Serialization;
+
+table TerrainComponentPayload {
+    width:uint = 2;
+    height:uint = 2;
+    samples:[float] (required);
+    size_x:float = 100;
+    size_z:float = 100;
+    height_scale:float = 20;
+    height_offset:float = 0;
+    uv_repeat_x:float = 1;
+    uv_repeat_z:float = 1;
+    cast_shadows:bool = true;
+}
+
+root_type TerrainComponentPayload;
+file_identifier "TRRN";

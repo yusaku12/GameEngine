@@ -49,7 +49,7 @@ namespace Engine
         return true;
     }
 
-    ModelGpuResource* ModelGpuCache::getOrCreate(const ModelHandle handle)
+    ModelGpuResource* ModelGpuCache::getOrCreate(const ModelHandle handle, std::shared_ptr<const ModelResource> snapshot)
     {
         if (m_device == nullptr || m_fence == nullptr || !handle.isValid())
             return nullptr;
@@ -59,7 +59,9 @@ namespace Engine
 
         try
         {
-            std::unique_ptr<ModelGpuResource> resource = createResource(handle);
+            if (snapshot == nullptr)
+                snapshot = ModelManager::instance().get(handle);
+            std::unique_ptr<ModelGpuResource> resource = createResource(handle, std::move(snapshot));
             if (resource == nullptr)
                 return nullptr;
 
@@ -146,9 +148,9 @@ namespace Engine
         return (static_cast<std::uint64_t>(handle.generation) << 32) | handle.index;
     }
 
-    std::unique_ptr<ModelGpuResource> ModelGpuCache::createResource(const ModelHandle handle)
+    std::unique_ptr<ModelGpuResource> ModelGpuCache::createResource(const ModelHandle handle,
+        std::shared_ptr<const ModelResource> source)
     {
-        std::shared_ptr<const ModelResource> source = ModelManager::instance().get(handle);
         if (source == nullptr)
             return nullptr;
 

@@ -1644,7 +1644,7 @@ namespace Engine
                 continue;
             }
 
-            ModelGpuResource* const gpuModel = m_modelGpuCache.getOrCreate(submission.model);
+            ModelGpuResource* const gpuModel = m_modelGpuCache.getOrCreate(submission.model, submission.modelSnapshot);
             if (gpuModel == nullptr || gpuModel->source == nullptr)
                 continue;
 

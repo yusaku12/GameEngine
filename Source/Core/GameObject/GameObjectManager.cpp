@@ -4,6 +4,7 @@
 #include "Core\GameObject\Component\AnimatorComponent.h"
 #include "Core\GameObject\Component\CameraComponent.h"
 #include "Core\GameObject\Component\ModelRendererComponent.h"
+#include "Core\GameObject\Component\TerrainComponent.h"
 #include "Core\Threading\JobSystem.h"
 #include "Graphics\Camera\CameraManager.h"
 
@@ -492,6 +493,8 @@ namespace Engine
                 renderer->onLateUpdate(0.0f);
                 renderer->submitPendingRender();
             }
+            if (auto* terrain = object->getComponent<TerrainComponent>(); terrain != nullptr && terrain->isEnabled())
+                terrain->submitRenderData();
         }
     }
 

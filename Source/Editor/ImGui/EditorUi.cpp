@@ -3,6 +3,7 @@
 #include "Assets\Model\ModelManager.h"
 #include "Core\GameObject\Component\CameraComponent.h"
 #include "Core\GameObject\Component\ModelRendererComponent.h"
+#include "Core\GameObject\Component\TerrainComponent.h"
 #include "Core\Prefab\Prefab.h"
 #include "Core\Prefab\PrefabSerializer.h"
 #include "Core\Profiling\FrameProfiler.h"
@@ -625,6 +626,9 @@ namespace Engine
         case GameObjectCreateType::Camera:
             name = "Main Camera";
             break;
+        case GameObjectCreateType::Terrain:
+            name = "Terrain";
+            break;
         default:
             break;
         }
@@ -642,6 +646,9 @@ namespace Engine
         {
         case GameObjectCreateType::Model:
             object->addComponent<ModelRendererComponent>();
+            break;
+        case GameObjectCreateType::Terrain:
+            object->addComponent<TerrainComponent>();
             break;
         case GameObjectCreateType::Camera:
             object->getTransform()->setPosition(Vector3(-0.087f, 1.768f, 4.772f));
@@ -669,6 +676,8 @@ namespace Engine
     {
         if (ImGui::MenuItem("Create Empty"))
             requestGameObjectCreation(GameObjectCreateType::Empty, parent);
+        if (ImGui::MenuItem("Create Terrain"))
+            requestGameObjectCreation(GameObjectCreateType::Terrain, parent);
     }
 
     void EditorUi::drawHierarchy()

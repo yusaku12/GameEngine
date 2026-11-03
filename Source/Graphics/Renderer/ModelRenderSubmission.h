@@ -10,12 +10,18 @@
 
 namespace Engine
 {
+    struct ModelResource;
+
+    /** @brief Allocates a nonzero object ID shared by all model-rendering component types. */
+    std::uint32_t allocateModelRenderObjectID() noexcept;
+
     /**
      * @brief Game updateからRender threadへ渡すモデル描画Snapshot。
      */
     struct ModelRenderSubmission
     {
         ModelHandle model;                                              //!< 描画するモデルのHandle
+        std::shared_ptr<const ModelResource> modelSnapshot;              //!< Keeps regenerated procedural geometry alive until consumed.
         std::vector<MaterialHandle> materials;                          //!< 優先順位を解決済みのSlot IndexごとのMaterial
         MaterialPropertyBlock materialProperties;                       //!< Renderer単位の数値Parameter Override
         std::shared_ptr<const SkinningPaletteSnapshot> skinningPalette; //!< Animation済みPalette Snapshot

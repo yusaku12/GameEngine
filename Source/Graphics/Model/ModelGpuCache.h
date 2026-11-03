@@ -62,8 +62,9 @@ namespace Engine
         /**
          * @brief Handleに対応するGPU Resourceを取得し、未作成ならUploadする。
          * @param handle ModelHandle
+         * @param snapshot Optional immutable procedural geometry, retained even after the handle is unloaded.
          */
-        ModelGpuResource* getOrCreate(ModelHandle handle);
+        ModelGpuResource* getOrCreate(ModelHandle handle, std::shared_ptr<const ModelResource> snapshot = {});
 
         /**
          * @brief 指定モデルのBufferへ最終使用Fence値を記録する。
@@ -92,7 +93,7 @@ namespace Engine
          * @param handle ModelHandle
          * @return 作成したGPU Resourceへのunique_ptr
          */
-        std::unique_ptr<ModelGpuResource> createResource(ModelHandle handle);
+        std::unique_ptr<ModelGpuResource> createResource(ModelHandle handle, std::shared_ptr<const ModelResource> source);
 
         DX12Device* m_device = nullptr;                                                   //!< DX12Deviceへの非所有参照
         DX12Fence* m_fence = nullptr;                                                     //!< DX12Fenceへの非所有参照

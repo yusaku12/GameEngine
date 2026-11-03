@@ -19,7 +19,6 @@ namespace Engine
 {
     namespace
     {
-        std::atomic_uint32_t nextModelRendererObjectID = 1;
         const ComponentTypeID modelRendererType = ComponentRegistry::instance().registerType<ModelRendererComponent>(
             "Model Renderer", false, false, true);
 
@@ -262,7 +261,7 @@ namespace Engine
     }
 
     ModelRendererComponent::ModelRendererComponent() noexcept
-        : m_objectID(nextModelRendererObjectID.fetch_add(1, std::memory_order_relaxed))
+        : m_objectID(allocateModelRenderObjectID())
     {
         GE_UNUSED(modelRendererType);
     }
