@@ -833,8 +833,10 @@ The Terrain Inspector provides:
   specified X/Z sample counts. This replaces any imported height data.
 - **Generate Noise**: replace heights with seeded Perlin noise or FBM and apply
   the edited mesh dimensions. See the procedural generation controls below.
+- **Generate Noise (GPU)**: explicitly use Compute Shader Perlin/FBM, then
+  asynchronously read back authoritative heights. CPU remains the default.
 - **Background** stage/timings and **Cancel Terrain Generation**: generation
-  and all Apply buttons now queue CPU work; the current terrain stays active
+  and all Apply buttons queue work; the current terrain stays active
   until the completed result is applied at a safe frame boundary.
 
 Height samples are linear numeric data in `[0, 1]`, not sRGB colors. Import
@@ -860,8 +862,8 @@ triangles, area-weighted smooth normals, orthonormal tangent frames, UVs and
 mesh/model bounds. Rebuilds retire the previous model handle; queued immutable
 CPU snapshots and GPU fences keep already submitted geometry safe.
 
-These phases intentionally do **not** implement streaming, compute generation
-or vegetation. Phase 8 adds explicit CPU hydraulic erosion below.
+These phases intentionally do **not** implement streaming or vegetation.
+Phase 8 adds explicit CPU hydraulic erosion; Phase 9 adds GPU noise below.
 Phase 7 makes Inspector generation/import/Apply work
 asynchronous. Existing synchronous C++ APIs and Scene/Prefab loading remain
 synchronous for compatibility; neither API style should regenerate every frame.
@@ -1215,7 +1217,8 @@ thread; texture decoding/upload still uses the existing renderer texture path.
 
 The worker pipeline is:
 
-1. Copy captured heights, generate Perlin/FBM, create flat samples, or decode WIC.
+1. Copy captured heights, generate CPU Perlin/FBM (or explicit GPU noise +
+   readback in Phase 9), create flat samples, or decode WIC.
 2. Apply hydraulic erosion only when explicitly requested (Phase 8), then
    generate whole-grid vertices, smooth normals, tangents and UVs.
 3. Calculate whole-grid material layer weights, then partition chunks.
@@ -1223,16 +1226,18 @@ The worker pipeline is:
 5. Append LOD indices and publish the prepared CPU result.
 
 Requests own value snapshots. Workers do **not** access components, scenes,
-resource registries, D3D12 resources, PhysX scenes, actors or shapes. Cooking
+resource registries, renderer-owned resources, PhysX scenes, actors or shapes.
+Phase 9 GPU noise uses only its independent queue/buffers/fence. Cooking
 uses local parameters/output buffers and produces immutable bytes only.
 One lazy-started background thread is shared by all terrains. It is separate
 from the cooperative frame JobSystem, so a frame/job waiter cannot accidentally
 execute a multi-second terrain build. Work is serial within this queue; it
 does not create one thread per terrain/chunk/request.
 
-The **Background** label shows Queued, Height samples, Hydraulic erosion, Mesh, Material weights,
+The **Background** label shows Queued, Height samples, GPU noise, GPU readback,
+Hydraulic erosion, Mesh, Material weights,
 Chunks, PhysX cooking, LOD, Ready to apply, Applied, Cancelled or Failed.
-These are stages, not equal-duration progress percentages. CPU build and final
+These are stages, not equal-duration progress percentages. Whole-build and final
 apply timings appear after completion. **Ready to apply** does not mean that
 the new terrain is live. While work is pending, rendering, collision, surface
 queries, model handles, applied settings and saved samples continue using the
@@ -1253,7 +1258,9 @@ with the current configuration. There is no surprise main-thread recooking.
 older work without waiting; cancelled queued inputs are pruned and an active
 build drops its result. Erosion checks every droplet/step, noise checks each sample row, cooking
 checks each chunk, and the remaining work checks between CPU stages. WIC decode
-and an individual CPU stage/cooked chunk are not forcibly interrupted.
+and an individual CPU stage/cooked chunk are not forcibly interrupted. Submitted
+GPU dispatches retire on the worker's compute fence before buffers can be reused;
+cancellation discards their output rather than forcibly interrupting GPU work.
 **Cancel Terrain Generation** also discards already-Ready output. Invalid
 requests do not supersede valid work. A successful synchronous edit/load/clone
 into the same component invalidates its pending asynchronous result.
@@ -1381,7 +1388,86 @@ are cumulative. Requests submitted while another is pending all capture current
 applied samples; they replace, rather than chain onto, pending results.
 Pending requests and newer Inspector draft edits are not saved.
 There is no erosion undo/history, rainfall mask, cross-terrain flow, live water
-rendering or GPU erosion in this phase; GPU processing remains Phase 9.
+rendering or GPU erosion in this phase; Phase 9 accelerates noise generation only.
+
+## GPU terrain noise (Phase 9)
+
+Click **Generate Noise (GPU)** beside **Generate Noise** in the Terrain Inspector.
+Both capture the same Perlin/FBM recipe and mesh-dimension draft. The ordinary
+button and `generateNoise` / `requestNoise` remain CPU-based; GPU execution is
+an explicit action, not a persistent backend setting or an automatic fallback.
+
+```cpp
+if (terrain->requestGpuNoise(recipe, meshSettings))
+{
+    // Request accepted; keep using the old terrain until status.stage == Applied.
+}
+```
+
+`TerrainNoise.hlsl` runs 8x8 Compute groups, rejects out-of-grid threads, and
+writes one normalized float per sample to a structured UAV. The entire existing
+noise parameter range is supported: rectangular 2..1025 grids, Perlin/FBM,
+uint32 seeds, negative offsets, 12 octaves and extreme frequency/lacunarity.
+Only separable axis-coordinate decomposition is done on the CPU, in double
+precision (`O((width + height) * octaves)`). Signed 64-bit lattice cells and
+fractional offsets are uploaded independently, avoiding float coordinate
+collapse at large offsets/high octaves. Hashing, gradients, quintic interpolation,
+octave accumulation and normalization run in the shader. Hash arithmetic uses
+32-bit pairs and exact low-64-bit multiplication; optional GPU double/Int64
+features are not required.
+
+GPU interpolation/accumulation uses floats rather than the CPU's doubles.
+The same GPU recipe reproduces exact samples in the same shader/device/build;
+cross-device/build bit identity is not promised. Validation requires every tested
+sample to be within **2e-6 normalized height units** of CPU noise, including
+extreme and maximum-grid recipes. This is a tested tolerance, not a promise of
+CPU/GPU bit identity. World height differences scale with Height Scale.
+Use saved samples, rather than regenerating recipes on another backend, when
+exact surface preservation matters.
+
+The renderer initializes one `TerrainGpuNoise` backend on its own D3D12 device.
+It owns an independent **COMPUTE queue**, command allocator/list, immutable PSO,
+upload/UAV/readback buffers and fence, separate from rendering queues/resources.
+The dedicated terrain worker dispatches, waits for that fence, and reads back
+heights. Owner-thread request acceptance and `applyCompleted` never wait for the
+compute fence. No renderer frames are needed to finish a request. Concurrent
+standalone backend calls serialize internally; the direct `generate` method is
+CPU-blocking and is not intended for frame callbacks.
+
+After readback, the existing worker pipeline builds mesh normals/tangents,
+material weights, chunks, full-resolution PhysX cooking and LODs from **the same
+height samples**. The frame-boundary transaction then replaces the terrain.
+Saved data, height queries, collision and rendering cannot independently
+regenerate or diverge. Payload remains **6**: authoritative samples plus existing
+noise/erosion authoring recipes; no queue, GPU handles or execution choice is
+serialized. Scene/Prefab/Play/rebuild does not rerun GPU generation.
+
+Latest-accepted-request, invalid-input preservation, cancellation, progress,
+newer Inspector drafts, and applied-only saving retain Phase 7 semantics.
+GPU failure is logged and preserves the previous terrain; there is **no silent
+CPU fallback**. **GPU noise** and **GPU readback** are stages, not percentages.
+The displayed build time includes CPU coordinate preparation, GPU submission/
+wait/readback and subsequent CPU terrain work, not GPU timestamp-only time.
+Submitted GPU work is not forcibly cancelled: buffers remain owned until the
+compute fence completes, even when the owner has been destroyed. Queue shutdown
+joins the worker before renderer/device shutdown, then drains/releases the
+backend. `DX12Renderer::finalize` enforces that ordering. Custom/headless callers
+must do the same, and must not concurrently invoke backend initialize/shutdown.
+
+The normal shader build compiles `TerrainNoise_csMain_cs.cso` with pinned DXC
+and Shader Model 6.0; deployment must include it. Like required rendering
+shaders, a missing/invalid CSO fails initialization explicitly. The terrain PSO
+is immutable during work; this phase does not hot-reload it. Rebuild shaders
+and restart to apply shader edits.
+
+**Limits:** only Perlin/FBM height generation is GPU-accelerated here.
+Image decoding, mesh/layer/chunk/LOD construction, PhysX cooking and the Phase 8
+order-dependent water-droplet erosion remain CPU work. This is not a GPU-resident
+terrain mesh, GPU erosion, distance streaming or a fully GPU-driven terrain
+pipeline. GPU work competes with rendering on the same hardware; a separate
+queue does not guarantee simultaneous execution, speedup or a particular frame
+budget. Readback and old/replacement terrain increase memory use. Final PhysX
+shape attachment and initial renderer uploads can still cause application spikes.
 
 ## Terrain validation
 
@@ -1496,3 +1582,22 @@ byte-identical sync/async erosion results while pending work leaves old pixels
 unchanged. Outputs include `erosion.scene`, `erosion.prefab`, measured
 `erosion-budget.txt`, and `terrain-erosion-before` / `terrain-erosion-after`
 HDR/display captures.
+
+Phase 9 dispatches real GPU Perlin/FBM and compares **every sample** against CPU
+double references within 2e-6, including negative/large coordinates, high octaves,
+minimum/maximum frequency, persistence/lacunarity edges, tiny/non-multiple-of-8/
+rectangular grids and the full 1025x1025 grid. It checks exact GPU repeats,
+Perlin/single-octave/zero-persistence equivalence, seed variation, invalid input,
+pre-submit and actual in-flight cancellation, and safe allocator/buffer reuse.
+Authoring tests cover GPU Inspector activation, applied-only saving/clone,
+Scene/Prefab/Play/rebuild without replay, worker shutdown/restart, component
+destruction, independent components, CPU supersession and busy-physics rollback.
+Every mesh attribute, LOD index and cooked collision byte is compared to the
+authoritative readback oracle; PhysX ray heights/normals must match surface
+queries. Actual maximum-grid rendering keeps old pixels/physics live while
+the worker builds, preserves old queued snapshots, and compares Deferred and
+Forward+Hi-Z output byte-for-byte against CPU meshes from the same heights.
+Outputs include `gpu-noise.scene`, `gpu-noise.prefab`, `terrain-gpu-noise`
+HDR/display captures, numerical/readback `gpu-noise-timing.txt`, and end-to-end
+`gpu-noise-frame-timing.txt`. Timings are local measurements, not universal
+performance guarantees.

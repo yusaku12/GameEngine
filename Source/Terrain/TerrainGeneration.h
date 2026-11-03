@@ -54,7 +54,8 @@ namespace Engine
     /**
      * @brief One dedicated terrain worker shared across components; never executes on a frame/job waiter.
      * @thread_safety submit/applyCompleted/shutdown must run serially at an owner-thread frame barrier.
-     * Workers never access live components, resource managers, GPU objects or PhysX actors.
+     * Workers never access live components, resource managers, render resources or PhysX actors.
+     * Explicit GPU noise uses only TerrainGpuNoise's independent queue/resources; join before renderer shutdown.
      */
     class TerrainGenerationQueue final
     {

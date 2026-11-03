@@ -8,6 +8,8 @@
     <ClCompile Include="Source\Terrain\TerrainChunks.cpp" />
     <ClCompile Include="Source\Terrain\TerrainLod.cpp" />
     <ClCompile Include="Source\Terrain\TerrainBuild.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainGpuNoise.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainGpuValidation.cpp" />
     <ClCompile Include="Source\Terrain\TerrainErosion.cpp" />
     <ClCompile Include="Source\Terrain\TerrainErosionValidation.cpp" />
     <ClCompile Include="Source\Terrain\TerrainGeneration.cpp" />
@@ -146,6 +148,8 @@
     <ClInclude Include="Source\Terrain\TerrainChunks.h" />
     <ClInclude Include="Source\Terrain\TerrainLod.h" />
     <ClInclude Include="Source\Terrain\TerrainBuild.h" />
+    <ClInclude Include="Source\Terrain\TerrainGpuNoise.h" />
+    <ClInclude Include="Source\Terrain\TerrainGpuValidation.h" />
     <ClInclude Include="Source\Terrain\TerrainErosion.h" />
     <ClInclude Include="Source\Terrain\TerrainErosionValidation.h" />
     <ClInclude Include="Source\Terrain\TerrainGeneration.h" />
@@ -367,6 +371,7 @@
     <None Include="Assets\Shaders\PostProcessValidation.hlsl" />
     <None Include="Assets\Shaders\Occlusion.hlsl" />
     <None Include="Assets\Shaders\HiZ.hlsl" />
+    <None Include="Assets\Shaders\TerrainNoise.hlsl" />
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
     <None Include="Schemas\FlatBuffers\AnimationClip.fbs" />
     <None Include="Schemas\FlatBuffers\AnimatorController.fbs" />

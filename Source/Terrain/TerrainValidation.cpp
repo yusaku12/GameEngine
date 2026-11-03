@@ -4,6 +4,8 @@
 #include "Terrain\TerrainLodValidation.h"
 #include "Terrain\TerrainBackgroundValidation.h"
 #include "Terrain\TerrainErosionValidation.h"
+#include "Terrain\TerrainGpuValidation.h"
+#include "Terrain\TerrainGpuNoise.h"
 #include "Terrain\TerrainMeshBuilder.h"
 #include "Terrain\TerrainMaterialSerialization.h"
 #include "Assets\Material\MaterialManager.h"
@@ -902,7 +904,7 @@ namespace Engine
             TerrainComponent noiseTerrain;
             TerrainComponent* selected = &terrain;
             ImGuiID rebuildButton = 0, applyChunks = 0, enableLod = 0, applyLod = 0;
-            ImGuiID noiseButton = 0, cancelButton = 0;
+            ImGuiID noiseButton = 0, gpuNoiseButton = 0, cancelButton = 0;
             ImGuiID erosionHeader = 0, erosionButton = 0, resetErosion = 0;
             ImGuiID materialHeader = 0, enableLayers = 0, applyLayers = 0, resetLayers = 0;
             const auto frame = [&]
@@ -920,6 +922,7 @@ namespace Engine
                 applyLayers = ImGui::GetID("Apply Terrain Material");
                 resetLayers = ImGui::GetID("Reset Layer Draft");
                 noiseButton = ImGui::GetID("Generate Noise");
+                gpuNoiseButton = ImGui::GetID("Generate Noise (GPU)");
                 cancelButton = ImGui::GetID("Cancel Terrain Generation");
                 erosionHeader = ImGui::GetID("Hydraulic Erosion");
                 ImGui::PushOverrideID(erosionHeader);
@@ -980,6 +983,12 @@ namespace Engine
             Heightmap expected;
             if (!checks.expect(generateTerrainNoise({}, expected) && noiseTerrain.getModel().isValid()
                 && sameHeights(noiseTerrain.getHeightmap(), expected), "Inspector Generate Noise applies default FBM recipe"))
+                return false;
+            ImGui::ActivateItemByID(gpuNoiseButton); frame();
+            if (!checks.expect(noiseTerrain.getGenerationStatus().pending(), "Inspector GPU noise queues explicitly") || !complete())
+                return false;
+            if (!checks.expect(TerrainGpuNoise::instance().generate({}, expected) && sameHeights(noiseTerrain.getHeightmap(), expected),
+                "Inspector GPU noise applies actual Compute readback samples"))
                 return false;
             ImGui::ActivateItemByID(materialHeader); frame();
             ImGui::ActivateItemByID(enableLayers); frame();
@@ -1875,6 +1884,7 @@ namespace Engine
             std::size_t lodChecks = 0;
             std::size_t backgroundChecks = 0;
             std::size_t erosionChecks = 0;
+            std::size_t gpuChecks = 0;
             if (!validateOptions(checks) || !validateHeightmap(checks, directory, imported) || !validateNoise(checks) || !validateMesh(checks)
                 || !validateComponent(checks, directory, imported) || !validateNoisePersistence(checks, directory)
                 || !validateInspector(checks)
@@ -1887,12 +1897,15 @@ namespace Engine
                 || !validateChunkRendering(checks, renderer, directory, textured)
                 || !validateTerrainLod(renderer, directory, lodChecks)
                 || !validateTerrainBackground(renderer, directory, backgroundChecks)
-                || !validateTerrainErosion(directory, erosionChecks))
+                || !validateTerrainErosion(directory, erosionChecks)
+                || !validateTerrainGpu(directory, gpuChecks)
+                || !checks.expect(renderer.validateDebugMessages(), "all terrain Compute/render work finishes without D3D12 diagnostics"))
                 return false;
             checks.count += collisionChecks;
             checks.count += lodChecks;
             checks.count += backgroundChecks;
             checks.count += erosionChecks;
+            checks.count += gpuChecks;
             std::ofstream report(directory / L"terrain-results.txt");
             report << "PASS: " << checks.count << " terrain checks\n"
                 << "8/16-bit image precision, mesh geometry, scene/prefab/clone, Inspector, lifecycle,\n"
@@ -1910,6 +1923,8 @@ namespace Engine
                 << "independent CPU thread/owner-thread commit, maximum-grid concurrent frames and atomic GPU snapshots.\n";
             report << "Hydraulic droplet erosion: deterministic paths, sediment conservation/export, normalized bounds,\n"
                 << "v6 recipe migration, applied-only persistence, async parity/cancellation, rebuilt PhysX and CCT grounding.\n";
+            report << "GPU Compute Perlin/FBM: actual dispatch/readback, 2e-6 CPU error bound at all tested samples,\n"
+                << "extreme coordinates, deterministic repeats, applied persistence, cancellation/lifetime and exact PhysX parity.\n";
             report.close();
             if (!report)
             {

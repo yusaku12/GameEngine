@@ -1,5 +1,6 @@
 #include "Pch.h"
 #include "Terrain\TerrainBackgroundValidation.h"
+#include "Terrain\TerrainGpuNoise.h"
 #include "Core\GameObject\Component\TerrainComponent.h"
 #include "Core\Scene\Scene.h"
 #include "Core\Scene\SceneClone.h"
@@ -505,6 +506,131 @@ namespace Engine
             return checks.expect(renderer.validateDebugMessages(), "eroded GPU resources produce no D3D12 diagnostics");
         }
 
+        bool gpuFrames(Checks& checks, DX12Renderer& renderer, const std::filesystem::path& directory)
+        {
+            Scene scene(ObjectGUID::generate(), "GPU noise frames"), empty(ObjectGUID::generate(), "No lights");
+            Scene reference(ObjectGUID::generate(), "Readback oracle");
+            LightingFrame::instance().capture(nullptr, empty);
+            auto* object = scene.createGameObject("GPU terrain");
+            auto* terrain = object->addComponent<TerrainComponent>();
+            auto* collider = object->addComponent<TerrainColliderComponent>();
+            auto* oracle = reference.createGameObject("CPU mesh from readback")->addComponent<TerrainComponent>();
+            TerrainMaterialSettings material;
+            material.enabled = true;
+            Heightmap flat;
+            if (!checks.expect(flat.createFlat(65, 65, 0.3f) && terrain->setTerrain(flat, { 4, 4, 2, 0, 3, 5 })
+                && terrain->setMaterialSettings(material) && terrain->setLodSettings({ true, 4, 1 }), "GPU live-frame fixture"))
+                return false;
+            scene.update(0);
+            renderer.setDeferredRenderingEnabled(true);
+            renderer.setOcclusionCullingEnabled(false);
+            for (int frame = 0; frame < 3; ++frame)
+                if (!checks.expect(draw(renderer, &scene), "warm terrain before GPU noise"))
+                    return false;
+            DX12FrameCapture previous, pending, result, expected;
+            if (!checks.expect(renderer.captureFrame(previous), "capture old terrain before GPU request"))
+                return false;
+            const auto equalPixels = [](const DX12FrameCapture& a, const DX12FrameCapture& b)
+            {
+                const auto* x = a.display.GetImage(0, 0, 0), *y = b.display.GetImage(0, 0, 0);
+                return x && y && x->slicePitch == y->slicePitch && std::memcmp(x->pixels, y->pixels, x->slicePitch) == 0;
+            };
+            const auto oldModel = terrain->getModel();
+            const auto oldPhysics = collider->getPhysicsAsset();
+            TerrainNoiseSettings recipe;
+            recipe.width = recipe.height = 1025;
+            recipe.octaves = 12;
+            recipe.seed = 723;
+            recipe.offsetX = -2.37f;
+            const auto started = std::chrono::steady_clock::now();
+            if (!checks.expect(terrain->requestGpuNoise(recipe, terrain->getSettings()), "queue maximum Compute noise and full terrain build"))
+                return false;
+            const double requestMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+            double maximumFrameMs = 0;
+            std::size_t concurrentFrames = 0;
+            auto* world = PhysicsSystem::instance().getWorld();
+            for (int frame = 0; frame < 8; ++frame)
+            {
+                if (terrain->getGenerationStatus().stage != TerrainGenerationStage::Ready)
+                    ++concurrentFrames;
+                const auto start = std::chrono::steady_clock::now();
+                if (!checks.expect(draw(renderer, &scene) && terrain->getModel() == oldModel
+                    && collider->getPhysicsAsset() == oldPhysics, "real frames keep original terrain during GPU generation/readback/preparation"))
+                    return false;
+                maximumFrameMs = std::max(maximumFrameMs, std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - start).count());
+                world->simulate(1.0f / 60);
+                world->fetchResults();
+                const auto hit = world->raycast(Vector3(0, 10, 0), -Vector3::UnitY, 20);
+                if (!checks.expect(hit && std::abs(hit->point.y - 0.6f) < 0.001f, "PhysX simulation/query continues during independent Compute queue work"))
+                    return false;
+            }
+            if (!checks.expect(requestMs < 100 && maximumFrameMs < 150 && concurrentFrames >= 3,
+                "GPU noise request stays below 100ms with concurrent observed frames below 150ms")
+                || !checks.expect(renderer.captureFrame(pending) && equalPixels(previous, pending), "no partial GPU terrain pixels"))
+                return false;
+            scene.submitRenderData();
+            std::vector<ModelRenderSubmission> submissions;
+            ModelRenderSubmissionQueue::instance().consume(submissions);
+            if (!awaitApplied(checks, *terrain)
+                || !checks.expect(terrain->getHeightmap().width() == 1025 && terrain->getChunks().size() == 256
+                    && collider->getChunkAssets().size() == 256 && terrain->copyConfigurationTo(*oracle),
+                    "maximum GPU readback commits all chunks/PhysX and produces CPU mesh oracle")
+                || !equivalent(checks, *terrain, *oracle))
+                return false;
+            if (!checks.expect(submissions.size() == 1 && submissions[0].modelSnapshot->meshes.size() == 1,
+                "old queued snapshot survives GPU result replacement"))
+                return false;
+            ModelRenderSubmissionQueue::instance().submit(submissions[0]);
+            if (!checks.expect(draw(renderer, nullptr) && renderer.captureFrame(pending) && equalPixels(previous, pending),
+                "old queued geometry/material/LOD pixels remain exact after GPU replacement"))
+                return false;
+            for (int frame = 0; frame < 3; ++frame)
+                if (!checks.expect(draw(renderer, &scene), "Deferred renders maximum GPU-generated terrain"))
+                    return false;
+            if (!checks.expect(renderer.captureFrame(result) && result.save(directory, L"terrain-gpu-noise")
+                && !equalPixels(previous, result) && renderer.getStatistics().terrainVisibleChunks == 256,
+                "actual GPU noise changes visible geometry and preserves chunk integration"))
+                return false;
+            for (int frame = 0; frame < 3; ++frame)
+                if (!checks.expect(draw(renderer, &reference), "Deferred renders CPU mesh readback oracle"))
+                    return false;
+            if (!checks.expect(renderer.captureFrame(expected) && equalPixels(result, expected),
+                "Deferred GPU-generated terrain pixels exactly match authoritative CPU mesh"))
+                return false;
+            renderer.setDeferredRenderingEnabled(false);
+            renderer.setOcclusionCullingEnabled(true);
+            for (int frame = 0; frame < 4; ++frame)
+                if (!checks.expect(draw(renderer, &scene), "Forward/Hi-Z renders GPU-generated chunks"))
+                    return false;
+            if (!checks.expect(renderer.captureFrame(result), "capture Forward GPU noise"))
+                return false;
+            for (int frame = 0; frame < 4; ++frame)
+                if (!checks.expect(draw(renderer, &reference), "Forward/Hi-Z CPU mesh readback oracle"))
+                    return false;
+            if (!checks.expect(renderer.captureFrame(expected) && equalPixels(result, expected),
+                "Forward GPU-generated terrain pixels exactly match authoritative CPU mesh"))
+                return false;
+            std::ofstream metrics(directory / L"gpu-noise-frame-timing.txt");
+            const auto status = terrain->getGenerationStatus();
+            metrics << "1025x1025 12-octave GPU noise + CPU mesh/layers/256 PhysX/LOD chunks\n"
+                << "request_ms=" << requestMs << "\nconcurrent_frames=" << concurrentFrames
+                << "\nmax_concurrent_frame_ms=" << maximumFrameMs << "\nbuild_ms=" << status.buildMilliseconds
+                << "\napply_ms=" << status.applyMilliseconds << '\n';
+            metrics.close();
+            if (!checks.expect(static_cast<bool>(metrics), "write actual GPU request/frame measurements"))
+                return false;
+            renderer.setDeferredRenderingEnabled(true);
+            renderer.setOcclusionCullingEnabled(false);
+            scene.clear();
+            reference.clear();
+            submissions.clear();
+            for (int frame = 0; frame < 6; ++frame)
+                if (!checks.expect(draw(renderer, nullptr), "retire maximum GPU-generated terrain snapshots"))
+                    return false;
+            return checks.expect(renderer.validateDebugMessages(), "GPU noise compute/readback/render teardown has no D3D12 diagnostics");
+        }
+
         bool frames(Checks& checks, DX12Renderer& renderer, const std::filesystem::path& directory)
         {
             Scene scene(ObjectGUID::generate(), "Live background terrain");
@@ -651,7 +777,8 @@ namespace Engine
         passed = 0;
         Checks checks;
         if (!parity(checks, directory) || !lifecycle(checks, directory) || !physicsRollback(checks)
-            || !erosionFrames(checks, renderer, directory) || !frames(checks, renderer, directory))
+            || !erosionFrames(checks, renderer, directory) || !gpuFrames(checks, renderer, directory)
+            || !frames(checks, renderer, directory))
             return false;
         TerrainGenerationQueue::instance().shutdown();
         passed = checks.count;

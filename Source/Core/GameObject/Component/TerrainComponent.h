@@ -71,6 +71,16 @@ namespace Engine
         bool requestTerrain(const Heightmap& heightmap, const TerrainMeshSettings& mesh);
         /** @brief Queues noise generation and terrain preparation; last applied noise recipe changes only on success. */
         bool requestNoise(const TerrainNoiseSettings& noise, const TerrainMeshSettings& mesh);
+        /**
+         * @brief Queues explicit Compute Shader Perlin/FBM generation, readback and existing CPU terrain preparation.
+         * @param noise Complete recipe; GPU float interpolation may differ slightly from CPU generation.
+         * @param mesh Dimensions/UVs captured at acceptance.
+         * @return True if accepted. Unavailable GPU/invalid input logs failure and preserves pending work.
+         * @details Readback samples are authoritative for rendering, saved data, queries and PhysX.
+         * CPU generation remains the default; this execution choice is not saved or replayed on load.
+         * @thread_safety Owner thread only. Renderer/GPU backend must remain initialized until worker shutdown.
+         */
+        bool requestGpuNoise(const TerrainNoiseSettings& noise, const TerrainMeshSettings& mesh);
         /** @brief Queues flat sample generation and terrain preparation; invalid input preserves existing work. */
         bool requestFlat(std::uint32_t width, std::uint32_t height, float value, const TerrainMeshSettings& mesh);
         /** @brief Queues image decode and terrain preparation; image I/O happens on the background worker. */

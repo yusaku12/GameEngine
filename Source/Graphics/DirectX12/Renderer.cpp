@@ -1,4 +1,6 @@
 ﻿#include "Pch.h"
+#include "Terrain\TerrainGpuNoise.h"
+#include "Terrain\TerrainGeneration.h"
 #include "Terrain\TerrainLod.h"
 #include "UI\RuntimeUI.h"
 #include "Graphics\DirectX12\Renderer.h"
@@ -326,6 +328,11 @@ namespace Engine
             rollbackInitialization();
             return false;
         }
+        if (!TerrainGpuNoise::instance().initialize(*m_device.get()))
+        {
+            rollbackInitialization();
+            return false;
+        }
 
         m_frameFenceValues.fill(0);
         m_lastSubmittedFenceValue = 0;
@@ -338,6 +345,9 @@ namespace Engine
 
     bool DX12Renderer::finalize()
     {
+        TerrainGenerationQueue::instance().shutdown();
+        if (!TerrainGpuNoise::instance().shutdown())
+            return false;
         if (m_lastSubmittedFenceValue != 0 && !m_directFence.waitOnCpu(m_lastSubmittedFenceValue))
             return false;
         if (!m_postProcess.finalize())

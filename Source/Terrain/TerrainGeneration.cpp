@@ -6,7 +6,8 @@ namespace Engine
 {
     const char* terrainGenerationStageName(const TerrainGenerationStage stage) noexcept
     {
-        static constexpr std::array names{ "Idle", "Queued", "Height samples", "Hydraulic erosion", "Mesh", "Material weights",
+        static constexpr std::array names{ "Idle", "Queued", "Height samples", "GPU noise", "GPU readback",
+            "Hydraulic erosion", "Mesh", "Material weights",
             "Chunks", "PhysX cooking", "LOD", "Ready to apply", "Applied", "Cancelled", "Failed" };
         const auto index = static_cast<std::size_t>(stage);
         return index < names.size() ? names[index] : "Invalid stage";
@@ -119,11 +120,11 @@ namespace Engine
             }
             catch (const std::exception& exception)
             {
-                LOG_ERROR("[TerrainGeneration] CPU build failed: {}.", exception.what());
+                LOG_ERROR("[TerrainGeneration] Terrain build failed: {}.", exception.what());
             }
             catch (...)
             {
-                LOG_ERROR("[TerrainGeneration] CPU build failed with an unknown exception.");
+                LOG_ERROR("[TerrainGeneration] Terrain build failed with an unknown exception.");
             }
             task->m_buildMilliseconds = std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - start).count();

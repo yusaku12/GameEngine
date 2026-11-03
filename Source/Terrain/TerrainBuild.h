@@ -20,15 +20,16 @@ namespace Engine
     /** @brief Stage of a background build. Cancellation is checked between CPU stages and cooked chunks. */
     enum class TerrainGenerationStage
     {
-        Idle, Queued, Source, Erosion, Mesh, Layers, Chunks, Collision, Lod, Ready, Applied, Cancelled, Failed
+        Idle, Queued, Source, GpuNoise, GpuReadback, Erosion, Mesh, Layers, Chunks, Collision, Lod, Ready, Applied, Cancelled, Failed
     };
 
-    /** @brief Value-only CPU input. No components, managers, GPU resources or PhysX actors are accessed by builders. */
+    /** @brief Value-only input. Builders never access components, managers, render resources or PhysX actors. */
     struct TerrainBuildRequest
     {
         TerrainBuildSource source = TerrainBuildSource::Heightmap;
         Heightmap heightmap;
         TerrainNoiseSettings noise;
+        bool gpuNoise = false;
         TerrainErosionSettings erosion;
         bool applyErosion = false;
         TerrainMeshSettings mesh;
@@ -64,13 +65,14 @@ namespace Engine
     bool cookTerrainChunks(const ModelResource& model, std::vector<std::shared_ptr<const PhysicsMeshAsset>>& assets,
         const std::atomic<bool>* cancelled = nullptr);
     /**
-     * @brief Builds CPU terrain and cooked collision, without touching live engine objects.
+     * @brief Prepares terrain and cooked collision, without touching live scene objects or render resources.
      * @param request Independent input snapshot, including resolved material references.
      * @param result Receives prepared output on success.
      * @param cancelled Optional cancellation flag, checked between stages.
      * @param stage Optional atomic progress stage.
      * @return False on logged failure or explicit cancellation; no live terrain is modified.
      * @thread_safety Independent requests/results may be built concurrently while PhysX is initialized.
+     * GPU noise additionally requires an initialized TerrainGpuNoise backend; only the caller waits for its compute fence.
      */
     bool buildTerrain(TerrainBuildRequest request, TerrainBuildResult& result,
         const std::atomic<bool>* cancelled = nullptr, std::atomic<TerrainGenerationStage>* stage = nullptr);

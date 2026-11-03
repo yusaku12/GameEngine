@@ -130,6 +130,16 @@ namespace Engine
         return queueBuild(std::move(request));
     }
 
+    bool TerrainComponent::requestGpuNoise(const TerrainNoiseSettings& noise, const TerrainMeshSettings& mesh)
+    {
+        auto request = makeBuildRequest();
+        request.source = TerrainBuildSource::Noise;
+        request.noise = noise;
+        request.mesh = mesh;
+        request.gpuNoise = true;
+        return queueBuild(std::move(request));
+    }
+
     bool TerrainComponent::requestHeightmap(const std::filesystem::path& path, const TerrainMeshSettings& mesh)
     {
         auto request = makeBuildRequest();
@@ -723,6 +733,12 @@ namespace Engine
         if (ImGui::Button("Generate Noise"))
             m_status = requestNoise(m_editNoiseSettings, m_editSettings)
                 ? "Noise generation queued." : "Noise request failed; previous terrain preserved. See log.";
+        ImGui::SameLine();
+        if (ImGui::Button("Generate Noise (GPU)"))
+            m_status = requestGpuNoise(m_editNoiseSettings, m_editSettings)
+                ? "GPU noise generation queued." : "GPU request failed; previous terrain preserved. See log.";
+        ImGui::TextWrapped("GPU uses an independent Compute Queue and readback on the terrain worker. "
+            "Float interpolation can differ slightly from CPU noise. Saved samples and PhysX use the same GPU result.");
         ImGui::Separator();
         if (ImGui::TreeNode("Hydraulic Erosion"))
         {
@@ -762,7 +778,7 @@ namespace Engine
             }
         }
         if (generation.buildMilliseconds > 0)
-            ImGui::Text("CPU build: %.2f ms  Apply: %.2f ms", generation.buildMilliseconds, generation.applyMilliseconds);
+            ImGui::Text("Build: %.2f ms  Apply: %.2f ms", generation.buildMilliseconds, generation.applyMilliseconds);
         if (generation.stage == TerrainGenerationStage::Failed)
             ImGui::TextWrapped("Background generation/apply failed. Previous terrain preserved; see log and retry.");
         else if (!m_status.empty())

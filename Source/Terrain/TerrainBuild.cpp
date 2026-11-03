@@ -1,6 +1,7 @@
 #include "Pch.h"
 #include "Terrain\TerrainBuild.h"
 #include "Physics\PhysicsMeshAsset.h"
+#include "Terrain\TerrainGpuNoise.h"
 
 namespace Engine
 {
@@ -44,6 +45,11 @@ namespace Engine
             || !validateTerrainChunkSettings(request.chunks) || !validateTerrainLodSettings(request.lod)
             || !validateTerrainNoiseSettings(request.noise) || !validateTerrainErosionSettings(request.erosion))
             return false;
+        if (request.gpuNoise && (request.source != TerrainBuildSource::Noise || !TerrainGpuNoise::instance().isAvailable()))
+        {
+            LOG_ERROR("[TerrainBuild] GPU noise requires a Noise request and an initialized available GPU backend.");
+            return false;
+        }
         switch (request.source)
         {
         case TerrainBuildSource::Heightmap:
@@ -85,7 +91,10 @@ namespace Engine
         switch (request.source)
         {
         case TerrainBuildSource::Noise:
-            if (!generateTerrainNoise(request.noise, request.heightmap, cancelled))
+            if (request.gpuNoise
+                ? (!enter(TerrainGenerationStage::GpuNoise)
+                    || !TerrainGpuNoise::instance().generate(request.noise, request.heightmap, cancelled, stage))
+                : !generateTerrainNoise(request.noise, request.heightmap, cancelled))
                 return false;
             break;
         case TerrainBuildSource::Flat:
