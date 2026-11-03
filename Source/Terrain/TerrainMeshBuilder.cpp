@@ -96,8 +96,11 @@ namespace Engine
             }
         }
         mesh.subMeshes.push_back({ .indexCount = static_cast<std::uint32_t>(mesh.indices.size()) });
-        mesh.boundingBox = makeAABB(Vector3(-settings.sizeX * 0.5f, minimumY, -settings.sizeZ * 0.5f),
-            Vector3(settings.sizeX * 0.5f, maximumY, settings.sizeZ * 0.5f));
+        const Vector3 minimum(-settings.sizeX * 0.5f, minimumY, -settings.sizeZ * 0.5f);
+        const Vector3 maximum(settings.sizeX * 0.5f, maximumY, settings.sizeZ * 0.5f);
+        mesh.boundingBox = makeAABB(minimum, maximum);
+        mesh.boundingBox.Extents = Vector3::Max(maximum - Vector3(mesh.boundingBox.Center),
+            Vector3(mesh.boundingBox.Center) - minimum);
         mesh.boundingSphere = BoundingSphere(mesh.boundingBox.Center, Vector3(mesh.boundingBox.Extents).Length());
         model.boundingBox = mesh.boundingBox;
         model.boundingSphere = mesh.boundingSphere;

@@ -51,17 +51,24 @@ namespace Engine
 
     bool TerrainComponent::setTerrain(const Heightmap& heightmap, const TerrainMeshSettings& settings)
     {
-        return rebuild(heightmap, settings, m_materialSettings);
+        return rebuild(heightmap, settings, m_materialSettings, m_chunkSettings);
     }
 
     bool TerrainComponent::setMaterialSettings(const TerrainMaterialSettings& settings)
     {
-        return rebuild(m_heightmap, m_settings, settings);
+        return rebuild(m_heightmap, m_settings, settings, m_chunkSettings);
+    }
+
+    bool TerrainComponent::setChunkSettings(const TerrainChunkSettings& settings)
+    {
+        return rebuild(m_heightmap, m_settings, m_materialSettings, settings);
     }
 
     bool TerrainComponent::rebuild(const Heightmap& heightmap, const TerrainMeshSettings& settings,
-        const TerrainMaterialSettings& surface)
+        const TerrainMaterialSettings& surface, const TerrainChunkSettings& chunkSettings)
     {
+        if (!validateTerrainChunkSettings(chunkSettings))
+            return false;
         Heightmap replacement = heightmap;
         TerrainMaterialSettings materialSettings = surface;
         if (!resolveTerrainMaterialTextures(materialSettings))
@@ -71,6 +78,9 @@ namespace Engine
         if (!buildTerrainModel(replacement, settings, model)
             || !applyTerrainLayerWeights(replacement, materialSettings, model))
             return false;
+        std::vector<TerrainChunk> chunks;
+        if (!partitionTerrainModel(model, replacement.width(), replacement.height(), chunkSettings, chunks))
+            return false;
         MaterialAsset material;
         if (materialSettings.enabled)
         {
@@ -79,11 +89,10 @@ namespace Engine
         }
         PendingTerrainResources pending;
         auto* collider = getGameObject() ? getGameObject()->getComponent<TerrainColliderComponent>() : nullptr;
-        std::shared_ptr<const PhysicsMeshAsset> collision;
+        std::vector<std::shared_ptr<const PhysicsMeshAsset>> collision;
         if (collider)
         {
-            collision = PhysicsMeshAsset::cookTriangle(model.meshes[0]);
-            if (!collision)
+            if (!TerrainColliderComponent::cookChunks(model, collision))
                 return false;
         }
         pending.model = ModelManager::instance().create(std::move(model));
@@ -103,11 +112,14 @@ namespace Engine
         }
         const ModelHandle previous = m_model;
         const MaterialHandle previousMaterial = m_material;
-        if (collider && !collider->replaceAsset(std::move(collision), pending.model))
+        if (collider && !collider->replaceAssets(std::move(collision), pending.model))
             return false;
         m_heightmap = std::move(replacement);
         m_settings = settings;
         m_editSettings = settings;
+        m_chunkSettings = chunkSettings;
+        m_editChunkSettings = chunkSettings;
+        m_chunks = std::move(chunks);
         m_model = std::exchange(pending.model, ModelHandle{});
         m_material = std::exchange(pending.material, MaterialHandle{});
         m_materialSettings = std::move(materialSettings);
@@ -153,7 +165,7 @@ namespace Engine
         const auto root = Serialization::CreateTerrainComponentPayload(builder,
             m_heightmap.width(), m_heightmap.height(), builder.CreateVector(samples.data(), samples.size()),
             m_settings.sizeX, m_settings.sizeZ, m_settings.heightScale, m_settings.heightOffset,
-            m_settings.uvRepeatX, m_settings.uvRepeatZ, m_castShadows, noise, surface);
+            m_settings.uvRepeatX, m_settings.uvRepeatZ, m_castShadows, noise, surface, m_chunkSettings.cellsPerChunk);
         Serialization::FinishTerrainComponentPayloadBuffer(builder, root);
         payload.assign(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
         return true;
@@ -163,7 +175,7 @@ namespace Engine
         const std::span<const std::uint8_t> payload)
     {
         flatbuffers::Verifier verifier(payload.data(), payload.size());
-        if ((version < 1 || version > 3) || payload.size() < 8
+        if ((version < 1 || version > 4) || payload.size() < 8
             || !Serialization::VerifyTerrainComponentPayloadBuffer(verifier))
         {
             LOG_ERROR("[Terrain] Invalid terrain payload or version.");
@@ -199,7 +211,8 @@ namespace Engine
         Heightmap heightmap;
         if (!heightmap.assign(source->width(), source->height(), { samples->data(), samples->size() })
             || !rebuild(heightmap, { source->size_x(), source->size_z(), source->height_scale(),
-                source->height_offset(), source->uv_repeat_x(), source->uv_repeat_z() }, surface))
+                source->height_offset(), source->uv_repeat_x(), source->uv_repeat_z() }, surface,
+                { version >= 4 ? source->chunk_cells() : 1024u }))
             return false;
         m_castShadows = source->cast_shadows();
         m_noiseSettings = noise;
@@ -227,7 +240,7 @@ namespace Engine
             LOG_ERROR("[Terrain] Clone type mismatch.");
             return false;
         }
-        if (!target->rebuild(m_heightmap, m_settings, m_materialSettings))
+        if (!target->rebuild(m_heightmap, m_settings, m_materialSettings, m_chunkSettings))
             return false;
         target->m_castShadows = m_castShadows;
         target->m_noiseSettings = m_noiseSettings;
@@ -450,6 +463,13 @@ namespace Engine
         ImGui::DragFloat("UV Repeat X", &m_editSettings.uvRepeatX, 0.1f, 0.001f, 10000.0f);
         ImGui::DragFloat("UV Repeat Z", &m_editSettings.uvRepeatZ, 0.1f, 0.001f, 10000.0f);
         ImGui::Checkbox("Cast Shadows", &m_castShadows);
+        ImGui::InputScalar("Chunk Cells (16..1024)", ImGuiDataType_U32, &m_editChunkSettings.cellsPerChunk);
+        ImGui::Text("Applied Chunks: %zu", m_chunks.size());
+        ImGui::TextWrapped("Chunk edges share height, normal, UV and layer data. "
+            "All chunks remain resident; LOD and streaming are not enabled.");
+        if (ImGui::Button("Apply Chunk Settings"))
+            m_status = setChunkSettings(m_editChunkSettings)
+                ? "Terrain chunks rebuilt." : "Chunk rebuild failed; previous terrain preserved. See log.";
         if (ImGui::Button("Apply / Rebuild"))
             m_status = setTerrain(m_heightmap, m_editSettings)
                 ? "Terrain rebuilt." : "Rebuild failed; previous terrain preserved. See log.";

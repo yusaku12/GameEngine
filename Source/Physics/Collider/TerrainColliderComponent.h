@@ -6,6 +6,7 @@
 namespace Engine
 {
     class TerrainComponent;
+    struct ModelResource;
 
     /**
      * @brief Optional static PhysX triangle collider generated from a Terrain on the same GameObject.
@@ -16,8 +17,14 @@ namespace Engine
     class TerrainColliderComponent final : public ColliderComponent
     {
     public:
-        /** @brief Gets immutable cooked geometry, or null before activation/generation. */
-        const std::shared_ptr<const PhysicsMeshAsset>& getPhysicsAsset() const noexcept { return m_asset; }
+        /** @brief Gets the first chunk's immutable geometry, or null before generation; use getChunkAssets for all chunks. */
+        const std::shared_ptr<const PhysicsMeshAsset>& getPhysicsAsset() const noexcept
+        {
+            static const std::shared_ptr<const PhysicsMeshAsset> empty;
+            return m_assets.empty() ? empty : m_assets.front();
+        }
+        /** @brief Gets row-major cooked chunk assets; no ownership of PhysX backend objects is exposed. */
+        std::span<const std::shared_ptr<const PhysicsMeshAsset>> getChunkAssets() const noexcept { return m_assets; }
 
     protected:
         PhysicsShapeGeometry getGeometry(const Vector3& scale) const noexcept override;
@@ -31,10 +38,11 @@ namespace Engine
 
     private:
         friend class TerrainComponent;
-        bool replaceAsset(std::shared_ptr<const PhysicsMeshAsset> asset, ModelHandle source) noexcept;
+        static bool cookChunks(const ModelResource& model, std::vector<std::shared_ptr<const PhysicsMeshAsset>>& assets);
+        bool replaceAssets(std::vector<std::shared_ptr<const PhysicsMeshAsset>> assets, ModelHandle source) noexcept;
         bool generateAsset();
         void detachTerrain() noexcept;
-        std::shared_ptr<const PhysicsMeshAsset> m_asset;
+        std::vector<std::shared_ptr<const PhysicsMeshAsset>> m_assets;
         ModelHandle m_sourceModel;
         bool m_active = false;
     };

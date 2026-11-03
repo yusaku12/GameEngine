@@ -809,7 +809,7 @@ bounds culling. `RenderItem::animationBoundsValid` defaults to false, so callers
 that only provide bind-pose bounds retain the previous safe animation bypass.
 Near-plane intersections also retain Hi-Z's visibility bypass.
 
-# Terrain Phase 1/2/3/4: Generation, layered materials and PhysX collision
+# Terrain Phase 1/2/3/4/5: Generation, materials, PhysX and chunk management
 
 In the Hierarchy context menu choose **Create Terrain**, or add the **Terrain**
 component to an existing GameObject. A new component contains a flat 65x65 grid.
@@ -822,6 +822,8 @@ The Terrain Inspector provides:
 - **Size X / Size Z**: local-space width and depth, centered around the origin.
 - **Height Scale / Height Offset**: `localY = offset + sample * scale`.
 - **UV Repeat X / Z** and **Cast Shadows**.
+- **Chunk Cells (16..1024)** and **Apply Chunk Settings**: repartition the
+  applied surface without changing height data or mesh dimensions.
 - **Apply / Rebuild**: apply the edited dimensions without changing samples.
 - **Import Heightmap...**: read PNG, TIFF or BMP height data and rebuild using
   the edited dimensions. 8/16-bit grayscale PNG precision is preserved.
@@ -853,7 +855,7 @@ triangles, area-weighted smooth normals, orthonormal tangent frames, UVs and
 mesh/model bounds. Rebuilds retire the previous model handle; queued immutable
 CPU snapshots and GPU fences keep already submitted geometry safe.
 
-These phases intentionally do **not** implement chunks, terrain LOD, asynchronous
+These phases intentionally do **not** implement streaming, terrain LOD, asynchronous
 generation, erosion, compute generation or vegetation. Generation/import/cooking is
 synchronous and should be triggered by an authoring action, not every frame.
 
@@ -917,7 +919,7 @@ Importing an image, creating a flat grid or rebuilding dimensions keeps the last
 noise recipe available for future generation, even though the current heights
 may no longer match it. Unapplied Inspector recipe edits are not saved.
 Version 1 terrain payloads still load their original samples unchanged and get
-the default recipe; their next save writes version 3. Invalid/missing version 2+
+the default recipe; their next save writes version 4. Invalid/missing version 2+
 recipes are rejected without replacing the existing terrain.
 
 ## Terrain material layers (Phase 3)
@@ -986,7 +988,9 @@ Terrain payload version 3 adds complete layer settings. Versions 1 and 2
 without layer data load with layers disabled, preserving their previous look.
 Invalid version 3 material data preserves the existing terrain on failure.
 Material/model asset version 3 also supports the optional terrain extension;
-versions 1 and 2 remain readable. The standard material property layout and
+versions 1 and 2 remain readable. Terrain component saves now use version 4
+as described below; the material/model asset version is unchanged.
+The standard material property layout and
 override block remain unchanged.
 
 ## Surface queries and PhysX collision (Phase 4)
@@ -1045,6 +1049,80 @@ outside the projected terrain. At a shared edge either adjacent face normal
 can apply. Invalid/nonfinite query inputs are logged. Queries use applied
 terrain data, independent of collider Center, enabled state and filters.
 
+## Resident chunk management (Phase 5)
+
+A Terrain remains **one GameObject, one authoritative heightmap and one
+generated model handle**, but the model now contains one mesh per chunk.
+TerrainCollider creates one corresponding static PhysX triangle shape per
+chunk on the same actor. Queries and collision events still identify the
+original TerrainCollider/GameObject, not hidden child objects.
+
+Set **Chunk Cells (16..1024)** and click **Apply Chunk Settings**. The default
+for newly created terrains is **64 cells per edge** (up to 65x65 vertices per
+chunk). A 257x257 heightmap therefore creates 4x4 chunks. Cell count is not
+sample count or world size. Arbitrary integer cell counts in the supported
+range are accepted; powers of two are not required. Partial chunks at +X/+Z
+retain all remaining cells. A chunk edge larger than the grid creates one
+mesh. At the maximum supported 1025x1025 heightmap, 16-cell chunks create at
+most 4096 meshes/shapes. The image import limit is unchanged.
+
+Chunk size edits are drafts until **Apply Chunk Settings**. That button uses
+the applied terrain dimensions, not unapplied Size/Height/UV edits.
+**Apply / Rebuild**, import, flat creation, noise generation and material
+changes retain the applied chunk settings. All chunks rebuild synchronously
+and remain resident: this phase adds neither distance loading/unloading nor
+per-chunk LOD, terrain-specific culling, asynchronous generation or partial
+height edits. The existing renderer consumes each mesh's bounds through its
+normal render paths; terrain-wide bounds are retained as well.
+
+Normals, tangent frames and automatic layer weights are calculated from the
+**whole** grid before partitioning. Border vertices copy identical position,
+normal, tangent, bitangent, UV and color data. UVs remain whole-terrain UVs;
+textures do not restart at each chunk. Each cell belongs to exactly one chunk;
+shared edges duplicate vertices but not triangles. There are no skirts or
+changed diagonals. Height queries continue to use authoritative whole-terrain
+samples, so results are independent of partition size.
+
+Whole-grid normal/material calculation still uses a temporary complete mesh;
+partitioning does not lift the heightmap limit or provide out-of-core storage.
+Repartitioning stages the complete model, cooked chunk assets and backend
+shapes before replacing live resources. Allocation/cooking/backend failure
+preserves the applied terrain and collision. Queued model/material snapshots
+retain all old chunks until submission fences retire. Geometry changes
+invalidate Character Controller caches. Contact/trigger accounting tracks
+individual shape pairs while dispatching one GameObject-level event stream,
+including when a body touches several adjacent chunks. Collider settings and
+enabled state apply to all its shapes; debug collider/AABB drawing and physics
+shape statistics include every chunk.
+
+Public APIs:
+
+```cpp
+if (terrain->setChunkSettings({ 32 }))
+{
+    for (const auto& chunk : terrain->getChunks())
+    {
+        // Row-major column/row, sampleX/sampleZ, cellsX/cellsZ, meshIndex, bounds.
+        // Positions and bounds are in whole-terrain local space.
+    }
+}
+```
+
+`getChunkSettings()` returns applied settings. `getChunks()` is empty before
+first generation; its span/references expire on successful regeneration.
+`getModel()` still returns the complete generated model, with row-major chunk
+meshes. `TerrainCollider::getChunkAssets()` exposes immutable cooked assets in
+the same order; legacy `getPhysicsAsset()` returns the **first chunk only**.
+Never unload generated model handles externally.
+
+Terrain payload **version 4** saves chunk cell count alongside embedded heights,
+dimensions, noise recipe and material settings. Scene/Prefab/Play restore the
+same partition with independent geometry and regenerate cooked collision;
+no separate chunk files or external physics files are required. Versions 1..3
+load as one chunk (`1024` cells per edge), preserving their previous partition
+and appearance. Their next save writes version 4. Invalid version 4 chunk
+settings are rejected without replacing the existing terrain.
+
 ## Terrain validation
 
 Build **Debug x64**, then run from the project root:
@@ -1095,3 +1173,17 @@ Rigidbody resting/contact events, Character Controller grounding/ramp walking,
 cached geometry refresh, bilateral filters, Scene/Prefab/Play persistence,
 source replacement before/after activation, invalid scales and shape cleanup.
 Persistence fixtures are `collision.scene` and `collision.prefab`.
+
+Phase 5 checks row-major ranges, non-power-of-two and partial edge chunks,
+exact whole-grid vertex attributes, winding, per-cell coverage, conservative
+bounds, the maximum 4096-chunk CPU/PhysX/GPU grid, invalid-setting rollback, Inspector apply,
+version 4 persistence and legacy migration. Multi-chunk PhysX tests verify
+split/merge/rebuild transactions, filters, source lifecycle, one stable contact
+and trigger stream at a four-chunk junction and Character Controller walking across a seam.
+GPU readbacks compare every display channel against an unpartitioned reference
+within two 8-bit UNORM steps for Deferred albedo/normal/final lighting and
+Forward with existing occlusion enabled. Unuploaded queued chunks must also
+render after component destruction. Fixtures include `chunks.scene`,
+`chunks.prefab`, and `terrain-chunks` HDR/display captures.
+The maximum-grid GPU case also compares all 4096 resident meshes against an
+equivalent two-triangle flat reference in both render paths and verifies teardown.

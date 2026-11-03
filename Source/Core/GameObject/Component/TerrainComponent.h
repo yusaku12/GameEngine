@@ -8,6 +8,7 @@
 #include "Terrain\TerrainNoise.h"
 #include "Terrain\TerrainMaterial.h"
 #include "Terrain\TerrainSurface.h"
+#include "Terrain\TerrainChunks.h"
 
 namespace Engine
 {
@@ -67,6 +68,16 @@ namespace Engine
         const Heightmap& getHeightmap() const noexcept { return m_heightmap; }
         /** @brief Gets the applied mesh settings. */
         const TerrainMeshSettings& getSettings() const noexcept { return m_settings; }
+        /**
+         * @brief Repartitions the applied terrain transactionally, including active PhysX shapes.
+         * @param settings Chunk edge in cells (16..1024). Generation remains synchronous.
+         * @return True on success; failure logs an error and preserves applied terrain/collision.
+         */
+        bool setChunkSettings(const TerrainChunkSettings& settings);
+        /** @brief Gets applied chunk dimensions, independent of Inspector drafts. */
+        const TerrainChunkSettings& getChunkSettings() const noexcept { return m_chunkSettings; }
+        /** @brief Gets row-major chunks; references expire after successful regeneration. Empty before generation. */
+        std::span<const TerrainChunk> getChunks() const noexcept { return m_chunks; }
         /** @brief Gets the generated model handle, invalid before first generation. Do not unload it externally. */
         ModelHandle getModel() const noexcept { return m_model; }
         /** @brief Sets shadow participation. */
@@ -75,7 +86,7 @@ namespace Engine
         bool getCastShadows() const noexcept { return m_castShadows; }
 
         /** @brief Gets the version of the embedded terrain payload. */
-        std::uint32_t getPayloadVersion() const noexcept override { return 3; }
+        std::uint32_t getPayloadVersion() const noexcept override { return 4; }
         /** @brief Saves samples and settings; no external image/model reference is required. */
         bool serializePayload(std::vector<std::uint8_t>& payload) const override;
         /** @brief Restores and validates samples and settings before replacing the terrain. */
@@ -92,13 +103,17 @@ namespace Engine
         friend class GameObjectManager;
         void submitRenderData();
         void requestHeightmapImport();
-        bool rebuild(const Heightmap& heights, const TerrainMeshSettings& mesh, const TerrainMaterialSettings& surface);
+        bool rebuild(const Heightmap& heights, const TerrainMeshSettings& mesh, const TerrainMaterialSettings& surface,
+            const TerrainChunkSettings& chunks);
         void drawMaterialInspector();
         void requestLayerTexture(std::size_t layer, std::size_t texture);
 
         Heightmap m_heightmap;
         TerrainMeshSettings m_settings;
         TerrainMeshSettings m_editSettings;
+        TerrainChunkSettings m_chunkSettings;
+        TerrainChunkSettings m_editChunkSettings;
+        std::vector<TerrainChunk> m_chunks;
         TerrainNoiseSettings m_noiseSettings;
         TerrainNoiseSettings m_editNoiseSettings;
         TerrainMaterialSettings m_materialSettings;

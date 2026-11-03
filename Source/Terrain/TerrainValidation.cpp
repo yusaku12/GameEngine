@@ -484,7 +484,7 @@ namespace Engine
                 if (!checks.expect(!terrain->deserializePayload(1, std::span(payload).first(size))
                     && terrain->getModel() == original, "truncated payload preserves terrain"))
                     return false;
-            if (!checks.expect(!terrain->deserializePayload(4, payload), "reject unknown payload version"))
+            if (!checks.expect(!terrain->deserializePayload(5, payload), "reject unknown payload version"))
                 return false;
             flatbuffers::FlatBufferBuilder builder;
             const std::array<float, 4> invalidSamples = { 0, 0, 0, std::numeric_limits<float>::quiet_NaN() };
@@ -623,7 +623,7 @@ namespace Engine
                 return false;
             std::vector<std::uint8_t> payload;
             TerrainComponent restored;
-            if (!checks.expect(terrain->serializePayload(payload) && terrain->getPayloadVersion() == 3
+            if (!checks.expect(terrain->serializePayload(payload) && terrain->getPayloadVersion() == 4
                 && restored.deserializePayload(2, payload) && restored.getNoiseSettings() == settings
                 && sameHeights(restored.getHeightmap(), generated), "version 2 noise recipe and samples roundtrip"))
                 return false;
@@ -632,7 +632,7 @@ namespace Engine
                 return false;
 
             const auto previous = restored.getModel();
-            for (const std::uint32_t version : { 0u, 4u })
+            for (const std::uint32_t version : { 0u, 5u })
                 if (!checks.expect(!restored.deserializePayload(version, payload) && restored.getModel() == previous,
                     "reject unsupported terrain payload versions"))
                     return false;
@@ -667,7 +667,7 @@ namespace Engine
             TerrainComponent migrated;
             if (!checks.expect(restored.serializePayload(upgraded) && migrated.deserializePayload(3, upgraded)
                 && sameHeights(migrated.getHeightmap(), restored.getHeightmap())
-                && migrated.getNoiseSettings() == TerrainNoiseSettings{}, "legacy payload upgrades to version 3"))
+                && migrated.getNoiseSettings() == TerrainNoiseSettings{}, "legacy payload upgrades to current version"))
                 return false;
 
             if (!checks.expect(Serialization::SceneSerializer{}.save(directory / L"noise.scene", scene), "save noise terrain scene"))
@@ -711,6 +711,171 @@ namespace Engine
                 "saved samples remain authoritative even when they differ from last noise recipe");
         }
 
+        bool validateChunks(Checks& checks, const std::filesystem::path& directory)
+        {
+            Scene scene(ObjectGUID::generate(), "Chunked terrain");
+            auto* object = scene.createGameObject("Chunks");
+            auto* terrain = object->addComponent<TerrainComponent>();
+            TerrainNoiseSettings noise;
+            noise.width = 41;
+            noise.height = 36;
+            noise.seed = 198;
+            const TerrainMeshSettings meshSettings{ 7.3f, 4.7f, 3, -1, 3, 5 };
+            TerrainMaterialSettings material;
+            material.enabled = true;
+            if (!checks.expect(terrain->generateNoise(noise, meshSettings)
+                && terrain->setMaterialSettings(material), "chunked material/noise fixture"))
+                return false;
+            ModelResource reference;
+            if (!checks.expect(buildTerrainModel(terrain->getHeightmap(), meshSettings, reference)
+                && applyTerrainLayerWeights(terrain->getHeightmap(), material, reference), "whole-grid chunk oracle"))
+                return false;
+            for (const std::uint32_t edge : { 16u, 17u, 32u, 64u, 1024u })
+            {
+                if (!checks.expect(terrain->setChunkSettings({ edge }), "apply valid cell edge including non-power-of-two"))
+                    return false;
+                const auto model = ModelManager::instance().get(terrain->getModel());
+                const auto chunks = terrain->getChunks();
+                const auto columns = (noise.width - 2) / edge + 1;
+                const auto rows = (noise.height - 2) / edge + 1;
+                if (!checks.expect(model && chunks.size() == columns * rows && model->meshes.size() == chunks.size()
+                    && model->nodes.size() == 1 && model->nodes[0].meshIndices.size() == chunks.size(),
+                    "chunk metadata, model meshes and node references agree"))
+                    return false;
+                std::vector<std::uint32_t> coverage(static_cast<std::size_t>(noise.width - 1) * (noise.height - 1));
+                for (std::size_t index = 0; index < chunks.size(); ++index)
+                {
+                    const auto& chunk = chunks[index];
+                    const auto& mesh = model->meshes[index];
+                    if (!checks.expect(chunk.meshIndex == index && chunk.column == index % columns && chunk.row == index / columns
+                        && chunk.sampleX == chunk.column * edge && chunk.sampleZ == chunk.row * edge
+                        && chunk.cellsX == std::min(edge, noise.width - 1 - chunk.sampleX)
+                        && chunk.cellsZ == std::min(edge, noise.height - 1 - chunk.sampleZ)
+                        && mesh.vertices.size() == static_cast<std::size_t>(chunk.cellsX + 1) * (chunk.cellsZ + 1)
+                        && mesh.indices.size() == static_cast<std::size_t>(chunk.cellsX) * chunk.cellsZ * 6
+                        && mesh.subMeshes.size() == 1 && mesh.subMeshes[0].indexCount == mesh.indices.size(),
+                        "row-major chunk range and partial-edge counts"))
+                        return false;
+                    for (std::uint32_t z = 0; z <= chunk.cellsZ; ++z)
+                        for (std::uint32_t x = 0; x <= chunk.cellsX; ++x)
+                        {
+                            const auto& actual = mesh.vertices[static_cast<std::size_t>(z) * (chunk.cellsX + 1) + x];
+                            const auto& expected = reference.meshes[0].vertices[
+                                static_cast<std::size_t>(z + chunk.sampleZ) * noise.width + x + chunk.sampleX];
+                            if (!checks.expect(actual.position == expected.position && actual.normal == expected.normal
+                                && actual.tangent == expected.tangent && actual.bitangent == expected.bitangent
+                                && actual.texCoord == expected.texCoord && actual.color == expected.color,
+                                "every chunk vertex exactly preserves whole-grid geometry, smooth frame, UV and layers")
+                                || !checks.expect(mesh.boundingBox.Contains(actual.position) != DirectX::DISJOINT
+                                    && chunk.bounds.Contains(actual.position) != DirectX::DISJOINT,
+                                    "chunk-local bounds contain every vertex"))
+                                return false;
+                        }
+                    for (std::uint32_t z = 0; z < chunk.cellsZ; ++z)
+                        for (std::uint32_t x = 0; x < chunk.cellsX; ++x)
+                        {
+                            ++coverage[static_cast<std::size_t>(z + chunk.sampleZ) * (noise.width - 1) + x + chunk.sampleX];
+                            const auto a = z * (chunk.cellsX + 1) + x;
+                            const std::array expected{ a, a + chunk.cellsX + 1, a + 1, a + 1,
+                                a + chunk.cellsX + 1, a + chunk.cellsX + 2 };
+                            const auto start = (static_cast<std::size_t>(z) * chunk.cellsX + x) * 6;
+                            if (!checks.expect(std::equal(expected.begin(), expected.end(), mesh.indices.begin() + start),
+                                "chunk triangles preserve source winding and diagonal"))
+                                return false;
+                        }
+                }
+                if (!checks.expect(std::ranges::all_of(coverage, [](auto count) { return count == 1; }),
+                    "every source cell belongs to exactly one chunk without holes or duplicate triangles"))
+                    return false;
+            }
+            if (!checks.expect(terrain->setChunkSettings({ 16 }), "restore multiple partial chunks for persistence"))
+                return false;
+            const auto previous = terrain->getModel();
+            for (const std::uint32_t invalid : { 0u, 15u, 1025u, UINT32_MAX })
+                if (!checks.expect(!terrain->setChunkSettings({ invalid }) && terrain->getModel() == previous
+                    && terrain->getChunks().size() == 9 && terrain->getChunkSettings().cellsPerChunk == 16,
+                    "invalid partition settings preserve applied resources and chunks"))
+                    return false;
+            std::vector<std::uint8_t> payload;
+            TerrainComponent restored;
+            if (!checks.expect(terrain->serializePayload(payload) && restored.deserializePayload(4, payload)
+                && restored.getChunkSettings() == terrain->getChunkSettings() && restored.getChunks().size() == 9
+                && restored.getNoiseSettings() == noise && restored.getMaterialSettings().enabled,
+                "version 4 embeds chunk settings with heights, recipe and material"))
+                return false;
+            for (const auto version : { 1u, 2u, 3u })
+                if (!checks.expect(restored.deserializePayload(version, payload)
+                    && restored.getChunkSettings().cellsPerChunk == 1024 && restored.getChunks().size() == 1,
+                    "legacy versions retain monolithic partition and unchanged surface"))
+                    return false;
+            for (const std::uint32_t invalid : { 0u, 15u, 1025u, UINT32_MAX })
+            {
+                flatbuffers::FlatBufferBuilder malformed;
+                flatbuffers::Offset<Serialization::TerrainMaterialData> surface;
+                if (!Serialization::writeTerrainMaterial(malformed, material, surface))
+                    return false;
+                const auto recipe = Serialization::CreateTerrainNoiseSettings(malformed);
+                const auto samples = terrain->getHeightmap().samples();
+                const auto root = Serialization::CreateTerrainComponentPayload(malformed, noise.width, noise.height,
+                    malformed.CreateVector(samples.data(), samples.size()), 7.3f, 4.7f, 3, -1, 3, 5, true, recipe, surface, invalid);
+                Serialization::FinishTerrainComponentPayloadBuffer(malformed, root);
+                if (!checks.expect(!terrain->deserializePayload(4, { malformed.GetBufferPointer(), malformed.GetSize() })
+                    && terrain->getModel() == previous && terrain->getChunks().size() == 9,
+                    "malformed v4 chunk settings reject transactionally"))
+                    return false;
+            }
+            Scene loaded(ObjectGUID::generate(), "Chunk scene loaded");
+            if (!checks.expect(Serialization::SceneSerializer{}.save(directory / L"chunks.scene", scene)
+                && Serialization::SceneSerializer{}.load(directory / L"chunks.scene", loaded), "chunk scene roundtrip"))
+                return false;
+            const auto* loadedTerrain = loaded.find(object->getGUID())->getComponent<TerrainComponent>();
+            if (!checks.expect(loadedTerrain && loadedTerrain->getChunks().size() == 9
+                && loadedTerrain->getChunkSettings().cellsPerChunk == 16 && loadedTerrain->getModel() != previous,
+                "loaded chunks own independent geometry"))
+                return false;
+            Prefab prefab, loadedPrefab;
+            Scene instances(ObjectGUID::generate(), "Chunk prefab instance");
+            if (!checks.expect(prefab.capture(*object)
+                && Serialization::PrefabSerializer{}.save(directory / L"chunks.prefab", prefab)
+                && Serialization::PrefabSerializer{}.load(directory / L"chunks.prefab", loadedPrefab), "chunk prefab roundtrip"))
+                return false;
+            const auto* instance = loadedPrefab.instantiate(instances);
+            if (!checks.expect(instance && instance->getComponent<TerrainComponent>()->getChunks().size() == 9,
+                "prefab rebuilds complete chunk grid"))
+                return false;
+            Scene clone(ObjectGUID::generate(), "Chunk clone");
+            const SceneClonePair pair{ scene, clone };
+            if (!checks.expect(cloneScenes(std::span(&pair, 1))
+                && clone.find(object->getGUID())->getComponent<TerrainComponent>()->getChunks().size() == 9,
+                "Play clone preserves chunk layout"))
+                return false;
+            auto& queue = ModelRenderSubmissionQueue::instance();
+            queue.clear();
+            scene.submitRenderData();
+            std::vector<ModelRenderSubmission> submissions;
+            queue.consume(submissions);
+            if (!checks.expect(submissions.size() == 1 && submissions[0].modelSnapshot->meshes.size() == 9
+                && terrain->setChunkSettings({ 32 }) && terrain->getChunks().size() == 4,
+                "one immutable submission retains every chunk across repartition"))
+                return false;
+            scene.clear();
+            if (!checks.expect(submissions[0].modelSnapshot->meshes.size() == 9
+                && ModelManager::instance().get(previous) == nullptr, "queued chunk geometry survives owner destruction"))
+                return false;
+            Heightmap maximum;
+            ModelResource large;
+            std::vector<TerrainChunk> chunks;
+            if (!checks.expect(maximum.createFlat(1025, 1025) && buildTerrainModel(maximum, {}, large)
+                && partitionTerrainModel(large, 1025, 1025, { 16 }, chunks) && chunks.size() == 4096,
+                "maximum grid has bounded 4096 resident chunks"))
+                return false;
+            std::size_t indices = 0;
+            for (const auto& mesh : large.meshes)
+                indices += mesh.indices.size();
+            return checks.expect(indices == 6291456 && large.meshes.back().vertices.size() == 289,
+                "maximum partition preserves every triangle with bounded chunk vertex count");
+        }
+
         bool validateInspector(Checks& checks)
         {
             struct Context
@@ -733,7 +898,7 @@ namespace Engine
             TerrainComponent terrain;
             TerrainComponent noiseTerrain;
             TerrainComponent* selected = &terrain;
-            ImVec2 rebuildButton;
+            ImGuiID rebuildButton = 0, applyChunks = 0;
             ImVec2 noiseButton;
             ImGuiID materialHeader = 0, enableLayers = 0, applyLayers = 0, resetLayers = 0;
             bool locateNoiseButton = false;
@@ -743,7 +908,8 @@ namespace Engine
                 ImGui::SetNextWindowPos({ 10, 10 }, ImGuiCond_Always);
                 ImGui::SetNextWindowSize({ 1500, 1900 }, ImGuiCond_Always);
                 ImGui::Begin("Terrain Inspector Validation", nullptr, ImGuiWindowFlags_NoSavedSettings);
-                const auto origin = ImGui::GetCursorScreenPos();
+                rebuildButton = ImGui::GetID("Apply / Rebuild");
+                applyChunks = ImGui::GetID("Apply Chunk Settings");
                 materialHeader = ImGui::GetID("Terrain Material Layers");
                 enableLayers = ImGui::GetID("Enable Layered Material");
                 applyLayers = ImGui::GetID("Apply Terrain Material");
@@ -755,17 +921,18 @@ namespace Engine
                     const auto maximum = ImGui::GetItemRectMax();
                     noiseButton = { (minimum.x + maximum.x) * 0.5f, (minimum.y + maximum.y) * 0.5f };
                 }
-                rebuildButton = { origin.x + 30, origin.y + 3 * ImGui::GetTextLineHeightWithSpacing()
-                    + 7 * ImGui::GetFrameHeightWithSpacing() + ImGui::GetFrameHeight() * 0.5f };
                 ImGui::End();
                 ImGui::Render();
             };
             frame();
-            io.AddMousePosEvent(rebuildButton.x, rebuildButton.y); frame();
-            io.AddMouseButtonEvent(0, true); frame();
-            io.AddMouseButtonEvent(0, false); frame();
+            ImGui::ActivateItemByID(rebuildButton); frame();
             if (!checks.expect(terrain.getModel().isValid() && terrain.getHeightmap().width() == 65,
                 "Inspector Apply/Rebuild button generates terrain"))
+                return false;
+            const auto beforeChunks = terrain.getModel();
+            ImGui::ActivateItemByID(applyChunks); frame();
+            if (!checks.expect(terrain.getModel() != beforeChunks && terrain.getChunks().size() == 1
+                && terrain.getChunkSettings().cellsPerChunk == 64, "Inspector applies chunk settings and publishes metadata"))
                 return false;
             selected = &noiseTerrain;
             locateNoiseButton = true;
@@ -1467,6 +1634,120 @@ namespace Engine
             return checks.expect(renderer.validateDebugMessages(), "layered GPU cleanup without diagnostics");
         }
 
+        bool validateChunkRendering(Checks& checks, DX12Renderer& renderer, const std::filesystem::path& directory,
+            const TerrainLayer& textured)
+        {
+            Scene scene(ObjectGUID::generate(), "Chunk GPU validation");
+            auto* object = scene.createGameObject("Chunked surface");
+            auto* terrain = object->addComponent<TerrainComponent>();
+            TerrainNoiseSettings noise;
+            noise.width = 41;
+            noise.height = 36;
+            noise.seed = 413;
+            TerrainMaterialSettings material;
+            material.enabled = true;
+            material.layers[0] = textured;
+            if (!checks.expect(terrain->generateNoise(noise, { 4, 4, 1, 0, 3, 5 })
+                && terrain->setMaterialSettings(material), "textured nonflat partial-chunk GPU fixture"))
+                return false;
+            const auto captureScene = [&](DX12FrameCapture& capture)
+            {
+                for (int frame = 0; frame < 3; ++frame)
+                    if (!checks.expect(renderFrame(renderer, &scene), "render resident chunk grid"))
+                        return false;
+                return checks.expect(renderer.captureFrame(capture) && renderer.validateDebugMessages(),
+                    "capture all chunk meshes without D3D12 diagnostics");
+            };
+            const auto compare = [&](const DX12FrameCapture& reference, const DX12FrameCapture& actual)
+            {
+                const auto* a = reference.display.GetImage(0, 0, 0);
+                const auto* b = actual.display.GetImage(0, 0, 0);
+                if (!checks.expect(a && b && a->format == DXGI_FORMAT_R8G8B8A8_UNORM && b->format == a->format
+                    && a->width == b->width && a->height == b->height, "chunk capture shape"))
+                    return false;
+                int maximumDifference = 0;
+                std::size_t changed = 0;
+                for (std::size_t row = 0; row < a->height; ++row)
+                    for (std::size_t column = 0; column < a->width * 4; ++column)
+                    {
+                        const int delta = std::abs(static_cast<int>(a->pixels[row * a->rowPitch + column])
+                            - static_cast<int>(b->pixels[row * b->rowPitch + column]));
+                        maximumDifference = std::max(maximumDifference, delta);
+                        if (delta > 2)
+                            ++changed;
+                    }
+                if (changed)
+                    LOG_ERROR("[TerrainChunks] GPU partition changed {} channels; maximum difference={}.", changed, maximumDifference);
+                return checks.expect(changed == 0, "chunked and whole surfaces agree at every pixel within two UNORM steps");
+            };
+            DX12FrameCapture reference, capture;
+            for (const bool deferred : { true, false })
+            {
+                renderer.setDeferredRenderingEnabled(deferred);
+                renderer.setOcclusionCullingEnabled(!deferred);
+                const auto views = deferred
+                    ? std::vector{ DeferredDebugView::Albedo, DeferredDebugView::Normal, DeferredDebugView::FinalLighting }
+                    : std::vector{ DeferredDebugView::FinalLighting };
+                for (const auto view : views)
+                {
+                    if (!renderer.setDeferredDebugView(view)
+                        || !checks.expect(terrain->setChunkSettings({ 1024 }), "whole terrain GPU reference")
+                        || !captureScene(reference))
+                        return false;
+                    for (const std::uint32_t edge : { 16u, 17u, 32u })
+                        if (!checks.expect(terrain->setChunkSettings({ edge }), "GPU repartition keeps applied surface")
+                            || !captureScene(capture) || !compare(reference, capture))
+                            return false;
+                    if (deferred && view == DeferredDebugView::FinalLighting
+                        && !checks.expect(capture.save(directory, L"terrain-chunks"), "save chunked terrain GPU captures"))
+                        return false;
+                }
+            }
+            if (!checks.expect(terrain->setChunkSettings({ 17 }), "unuploaded chunk lifetime fixture"))
+                return false;
+            scene.submitRenderData();
+            const auto retired = terrain->getModel();
+            scene.clear();
+            if (!checks.expect(ModelManager::instance().get(retired) == nullptr
+                && renderFrame(renderer, nullptr) && renderer.captureFrame(capture) && renderer.validateDebugMessages(),
+                "queued unuploaded chunk model survives destruction")
+                || !compare(reference, capture))
+                return false;
+            for (int frame = 0; frame < 6; ++frame)
+                if (!checks.expect(renderFrame(renderer, nullptr), "retire all chunk mesh buffers behind GPU fences"))
+                    return false;
+            Scene smallScene(ObjectGUID::generate(), "Maximum chunk GPU reference");
+            auto* referenceTerrain = smallScene.createGameObject("Reference")->addComponent<TerrainComponent>();
+            auto* maximum = scene.createGameObject("4096 chunks")->addComponent<TerrainComponent>();
+            Heightmap flat, large;
+            const TerrainMeshSettings flatSettings{ 4, 4, 0, 0, 3, 5 };
+            if (!checks.expect(flat.createFlat(2, 2, 0.5f) && large.createFlat(1025, 1025, 0.5f)
+                && referenceTerrain->setTerrain(flat, flatSettings) && referenceTerrain->setMaterialSettings(material)
+                && maximum->setChunkSettings({ 16 }) && maximum->setMaterialSettings(material)
+                && maximum->setTerrain(large, flatSettings) && maximum->getChunks().size() == 4096,
+                "maximum 4096-mesh GPU fixture with equivalent two-triangle reference"))
+                return false;
+            for (const bool deferred : { true, false })
+            {
+                renderer.setDeferredRenderingEnabled(deferred);
+                renderer.setOcclusionCullingEnabled(!deferred);
+                for (int frame = 0; frame < 3; ++frame)
+                    if (!checks.expect(renderFrame(renderer, &smallScene), "render maximum-grid reference"))
+                        return false;
+                if (!checks.expect(renderer.captureFrame(reference), "capture maximum-grid reference")
+                    || !captureScene(capture) || !compare(reference, capture))
+                    return false;
+            }
+            scene.clear();
+            smallScene.clear();
+            for (int frame = 0; frame < 6; ++frame)
+                if (!checks.expect(renderFrame(renderer, nullptr), "retire maximum-grid GPU resources"))
+                    return false;
+            if (!checks.expect(renderer.validateDebugMessages(), "maximum-grid GPU teardown has no diagnostics"))
+                return false;
+            return true;
+        }
+
         bool validateOptions(Checks& checks)
         {
             StartupOptions options;
@@ -1515,9 +1796,11 @@ namespace Engine
                 || !validateInspector(checks)
                 || !validateLayerWeights(checks) || !writeLayerTextures(checks, directory, textured)
                 || !validateLayerPersistence(checks, directory, textured)
+                || !validateChunks(checks, directory)
                 || !validateTerrainCollision(directory, collisionChecks)
                 || !validateRendering(checks, renderer, directory)
-                || !validateLayerRendering(checks, renderer, directory, textured))
+                || !validateLayerRendering(checks, renderer, directory, textured)
+                || !validateChunkRendering(checks, renderer, directory, textured))
                 return false;
             checks.count += collisionChecks;
             std::ofstream report(directory / L"terrain-results.txt");
@@ -1528,6 +1811,8 @@ namespace Engine
                 << "layer Scene/Prefab/Play/MATL/model roundtrips, queued resource lifetime and D3D12 diagnostics.\n";
             report << "Triangle-exact local/world surfaces, PhysX queries, terrain collision regeneration,\n"
                 << "Rigidbody contacts/events, Character Controller grounding/walking, filters and persistence.\n";
+            report << "Chunk coverage, exact shared vertex attributes, partial edges, 4096-chunk maximum,\n"
+                << "payload v4 migration, compound contacts, cross-seam walking and pixel-equivalent GPU partitions.\n";
             report.close();
             if (!report)
             {

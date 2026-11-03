@@ -258,6 +258,8 @@ namespace Engine
         {
             const ColliderComponent* first = nullptr;
             const ColliderComponent* second = nullptr;
+            const PxShape* firstShape = nullptr;
+            const PxShape* secondShape = nullptr;
 
             friend bool operator==(const ColliderPairKey&, const ColliderPairKey&) = default;
         };
@@ -266,8 +268,8 @@ namespace Engine
         {
             std::size_t operator()(const ColliderPairKey& pair) const noexcept
             {
-                const std::size_t firstHash = std::hash<const ColliderComponent*>{}(pair.first);
-                const std::size_t secondHash = std::hash<const ColliderComponent*>{}(pair.second);
+                const std::size_t firstHash = std::hash<const PxShape*>{}(pair.firstShape);
+                const std::size_t secondHash = std::hash<const PxShape*>{}(pair.secondShape);
                 return firstHash ^ (secondHash + 0x9e3779b9u
                     + (firstHash << 6) + (firstHash >> 2));
             }
@@ -282,11 +284,13 @@ namespace Engine
 
         ColliderPairKey makeColliderPairKey(
             const ColliderComponent* const first,
-            const ColliderComponent* const second) noexcept
+            const ColliderComponent* const second,
+            const PxShape* const firstShape,
+            const PxShape* const secondShape) noexcept
         {
-            return std::less<const ColliderComponent*>{}(first, second)
-                ? ColliderPairKey{ first, second }
-                : ColliderPairKey{ second, first };
+            return std::less<const PxShape*>{}(firstShape, secondShape)
+                ? ColliderPairKey{ first, second, firstShape, secondShape }
+                : ColliderPairKey{ second, first, secondShape, firstShape };
         }
 
         class PhysicsQueryFilterCallback final : public PxQueryFilterCallback
@@ -494,6 +498,12 @@ namespace Engine
             PxTransform initialPose = PxTransform(PxIdentity);
         };
 
+        struct ShapeRelease
+        {
+            void operator()(PxShape* shape) const noexcept { if (shape) shape->release(); }
+        };
+        using ShapeOwner = std::unique_ptr<PxShape, ShapeRelease>;
+
         struct ColliderRecord
         {
             ColliderComponent* component = nullptr;
@@ -503,6 +513,8 @@ namespace Engine
             float dynamicFriction = 0.0f;
             float restitution = 0.0f;
             Vector3 lastWorldScale = Vector3::One;
+            // Nonempty for terrain; shape aliases the first owned chunk shape.
+            std::vector<ShapeOwner> chunkShapes;
         };
 
         struct ControllerRecord
@@ -624,6 +636,8 @@ namespace Engine
         void addContactPair(
             ColliderComponent& firstCollider,
             ColliderComponent& secondCollider,
+            const PxShape* firstShape,
+            const PxShape* secondShape,
             const Vector3& point,
             const Vector3& normal,
             const float impulse) noexcept
@@ -633,7 +647,7 @@ namespace Engine
             if (firstObject == nullptr || secondObject == nullptr || firstObject == secondObject)
                 return;
 
-            const ColliderPairKey shapePair = makeColliderPairKey(&firstCollider, &secondCollider);
+            const ColliderPairKey shapePair = makeColliderPairKey(&firstCollider, &secondCollider, firstShape, secondShape);
             if (activeContactShapePairs.contains(shapePair))
                 return;
 
@@ -711,14 +725,15 @@ namespace Engine
                 LOG_ERROR("[PhysicsWorld] Collision shape-pair count overflowed.");
         }
 
-        void addTriggerPair(ColliderComponent& triggerCollider, ColliderComponent& otherCollider) noexcept
+        void addTriggerPair(ColliderComponent& triggerCollider, ColliderComponent& otherCollider,
+            const PxShape* triggerShape, const PxShape* otherShape) noexcept
         {
             GameObject* const triggerObject = triggerCollider.getGameObject();
             GameObject* const otherObject = otherCollider.getGameObject();
             if (triggerObject == nullptr || otherObject == nullptr || triggerObject == otherObject)
                 return;
 
-            const ColliderPairKey shapePair = makeColliderPairKey(&triggerCollider, &otherCollider);
+            const ColliderPairKey shapePair = makeColliderPairKey(&triggerCollider, &otherCollider, triggerShape, otherShape);
             if (activeTriggerShapePairs.contains(shapePair))
                 return;
 
@@ -857,19 +872,21 @@ namespace Engine
             }
         }
 
-        void removeTriggerPair(ColliderComponent& triggerCollider, ColliderComponent& otherCollider) noexcept
+        void removeTriggerPair(ColliderComponent& triggerCollider, ColliderComponent& otherCollider,
+            const PxShape* triggerShape, const PxShape* otherShape) noexcept
         {
             removeShapePair(
-                makeColliderPairKey(&triggerCollider, &otherCollider),
+                makeColliderPairKey(&triggerCollider, &otherCollider, triggerShape, otherShape),
                 activeTriggerShapePairs,
                 activeTriggerPairs,
                 PhysicsEventType::TriggerExit);
         }
 
-        void removeContactPair(ColliderComponent& firstCollider, ColliderComponent& secondCollider) noexcept
+        void removeContactPair(ColliderComponent& firstCollider, ColliderComponent& secondCollider,
+            const PxShape* firstShape, const PxShape* secondShape) noexcept
         {
             removeShapePair(
-                makeColliderPairKey(&firstCollider, &secondCollider),
+                makeColliderPairKey(&firstCollider, &secondCollider, firstShape, secondShape),
                 activeContactShapePairs,
                 activeContactPairs,
                 PhysicsEventType::CollisionExit);
@@ -991,7 +1008,7 @@ namespace Engine
                             debugContacts.push_back({ point, normal });
                     }
                     addContactPair(
-                        *firstCollider, *secondCollider, point, normal, impulse);
+                        *firstCollider, *secondCollider, pair.shapes[0], pair.shapes[1], point, normal, impulse);
                 }
                 else if (pair.events.isSet(PxPairFlag::eNOTIFY_TOUCH_PERSISTS))
                 {
@@ -1018,7 +1035,7 @@ namespace Engine
                 }
                 else if (pair.events.isSet(PxPairFlag::eNOTIFY_TOUCH_LOST))
                 {
-                    removeContactPair(*firstCollider, *secondCollider);
+                    removeContactPair(*firstCollider, *secondCollider, pair.shapes[0], pair.shapes[1]);
                 }
             }
         }
@@ -1054,9 +1071,9 @@ namespace Engine
                     continue;
 
                 if (pair.status == PxPairFlag::eNOTIFY_TOUCH_FOUND)
-                    addTriggerPair(*triggerCollider, *otherCollider);
+                    addTriggerPair(*triggerCollider, *otherCollider, pair.triggerShape, pair.otherShape);
                 else if (pair.status == PxPairFlag::eNOTIFY_TOUCH_LOST)
-                    removeTriggerPair(*triggerCollider, *otherCollider);
+                    removeTriggerPair(*triggerCollider, *otherCollider, pair.triggerShape, pair.otherShape);
             }
         }
 
@@ -1105,10 +1122,116 @@ namespace Engine
             return actor;
         }
 
+        bool setTerrainShapes(ColliderRecord& record, const TerrainColliderComponent& terrain) noexcept
+        {
+            auto* object = record.component->getGameObject();
+            if (!object || !record.actor || terrain.isTrigger() || rigidbodies.contains(object))
+            {
+                LOG_ERROR("[PhysicsWorld] Terrain chunks require a non-trigger static actor.");
+                return false;
+            }
+            const auto scale = object->getWorldScale();
+            const auto geometry = terrain.geometryForPhysics(scale);
+            if (!isValidGeometry(geometry) || terrain.getChunkAssets().empty())
+            {
+                LOG_ERROR("[PhysicsWorld] Cannot replace terrain chunks with invalid geometry or scale.");
+                return false;
+            }
+            const auto& material = terrain.getMaterial();
+            PxMaterial* pxMaterial = physics->createMaterial(material.getStaticFriction(),
+                material.getDynamicFriction(), material.getRestitution());
+            if (!pxMaterial)
+            {
+                LOG_ERROR("[PhysicsWorld] Failed to create terrain chunk material.");
+                return false;
+            }
+            struct MaterialRelease
+            {
+                void operator()(PxMaterial* value) const noexcept { value->release(); }
+            };
+            const std::unique_ptr<PxMaterial, MaterialRelease> materialOwner(pxMaterial);
+            std::vector<ShapeOwner> replacement;
+            try
+            {
+                replacement.reserve(terrain.getChunkAssets().size());
+                for (const auto& asset : terrain.getChunkAssets())
+                {
+                    PxTriangleMesh* triangle = nullptr;
+                    PxConvexMesh* convex = nullptr;
+                    const auto pxGeometry = toPxGeometry({ PhysicsShapeType::TriangleMesh, scale, asset },
+                        *physics, triangle, convex);
+                    if (!triangle)
+                    {
+                        LOG_ERROR("[PhysicsWorld] Failed to load a cooked terrain chunk.");
+                        return false;
+                    }
+                    ShapeOwner shape(physics->createShape(pxGeometry.any(), *pxMaterial, true));
+                    triangle->release();
+                    if (!shape)
+                    {
+                        LOG_ERROR("[PhysicsWorld] Failed to create a terrain chunk shape.");
+                        return false;
+                    }
+                    shape->userData = record.component;
+                    PxFilterData filter;
+                    filter.word0 = static_cast<PxU32>(terrain.getLayer());
+                    filter.word1 = terrain.getCollisionMask();
+                    shape->setSimulationFilterData(filter);
+                    shape->setQueryFilterData(filter);
+                    shape->setLocalPose(toShapePose(terrain, scale, PhysicsShapeType::TriangleMesh));
+                    replacement.push_back(std::move(shape));
+                }
+            }
+            catch (const std::bad_alloc&)
+            {
+                LOG_ERROR("[PhysicsWorld] Failed to allocate terrain chunk shapes.");
+                return false;
+            }
+            catch (const std::length_error&)
+            {
+                LOG_ERROR("[PhysicsWorld] Terrain chunk shape count exceeds collection capacity.");
+                return false;
+            }
+            std::size_t attached = 0;
+            for (; attached < replacement.size(); ++attached)
+                if (!record.actor->attachShape(*replacement[attached]))
+                {
+                    for (std::size_t index = 0; index < attached; ++index)
+                        record.actor->detachShape(*replacement[index]);
+                    LOG_ERROR("[PhysicsWorld] Failed to attach terrain chunks; previous shapes preserved.");
+                    return false;
+                }
+            removeActivePairsForCollider(*record.component);
+            if (record.chunkShapes.empty())
+            {
+                record.actor->detachShape(*record.shape);
+                record.shape->release();
+            }
+            else
+                for (const auto& shape : record.chunkShapes)
+                    record.actor->detachShape(*shape);
+            record.chunkShapes = std::move(replacement);
+            record.shape = record.chunkShapes.front().get();
+            record.lastWorldScale = scale;
+            record.staticFriction = material.getStaticFriction();
+            record.dynamicFriction = material.getDynamicFriction();
+            record.restitution = material.getRestitution();
+            scene->resetFiltering(*record.actor);
+            for (auto& [component, controller] : controllers)
+            {
+                GE_UNUSED(component);
+                if (controller.controller)
+                    controller.controller->invalidateCache();
+            }
+            return true;
+        }
+
         bool setShapeGeometry(ColliderRecord& record) noexcept
         {
             if (record.component == nullptr || record.shape == nullptr)
                 return false;
+            if (const auto* terrain = dynamic_cast<const TerrainColliderComponent*>(record.component))
+                return setTerrainShapes(record, *terrain);
 
             GameObject* const gameObject = record.component->getGameObject();
             if (gameObject == nullptr)
@@ -1394,7 +1517,7 @@ namespace Engine
         for (auto& [component, record] : impl.colliders)
         {
             GE_UNUSED(component);
-            if (record.shape != nullptr)
+            if (record.shape != nullptr && record.chunkShapes.empty())
                 record.shape->release();
         }
         impl.colliders.clear();
@@ -1647,114 +1770,119 @@ namespace Engine
             GE_UNUSED(component);
             if (record.shape == nullptr || record.actor == nullptr)
                 continue;
-
-            const PxTransform pose = PxShapeExt::getGlobalPose(*record.shape, *record.actor);
-            const Matrix world = Matrix::CreateFromQuaternion(PhysicsConversions::fromPx(pose.q))
-                * Matrix::CreateTranslation(PhysicsConversions::fromPx(pose.p));
-            const PxGeometry& geometry = record.shape->getGeometry();
-            if (settings.drawColliders)
+            const auto count = record.chunkShapes.empty() ? std::size_t{ 1 } : record.chunkShapes.size();
+            for (std::size_t shapeIndex = 0; shapeIndex < count; ++shapeIndex)
             {
-                switch (geometry.getType())
+                const PxShape* shape = record.chunkShapes.empty() ? record.shape : record.chunkShapes[shapeIndex].get();
+
+                const PxTransform pose = PxShapeExt::getGlobalPose(*shape, *record.actor);
+                const Matrix world = Matrix::CreateFromQuaternion(PhysicsConversions::fromPx(pose.q))
+                    * Matrix::CreateTranslation(PhysicsConversions::fromPx(pose.p));
+                const PxGeometry& geometry = shape->getGeometry();
+                if (settings.drawColliders)
                 {
-                case PxGeometryType::eBOX:
-                {
-                    const auto& box = static_cast<const PxBoxGeometry&>(geometry);
-                    debug.drawBox(world, PhysicsConversions::fromPx(box.halfExtents), colliderColor);
-                    break;
-                }
-                case PxGeometryType::eSPHERE:
-                {
-                    const auto& sphere = static_cast<const PxSphereGeometry&>(geometry);
-                    debug.drawSphere(world, sphere.radius, colliderColor);
-                    break;
-                }
-                case PxGeometryType::eCAPSULE:
-                {
-                    const auto& capsule = static_cast<const PxCapsuleGeometry&>(geometry);
-                    const PxTransform actorPose = record.actor->getGlobalPose();
-                    const Matrix capsuleWorld = Matrix::CreateFromQuaternion(
-                        PhysicsConversions::fromPx(actorPose.q))
-                        * Matrix::CreateTranslation(PhysicsConversions::fromPx(pose.p));
-                    debug.drawCapsule(capsuleWorld, capsule.radius, capsule.halfHeight, colliderColor);
-                    break;
-                }
-                case PxGeometryType::eTRIANGLEMESH:
-                {
-                    const auto& meshGeometry = static_cast<const PxTriangleMeshGeometry&>(geometry);
-                    const PxTriangleMesh* const mesh = meshGeometry.triangleMesh;
-                    if (mesh == nullptr)
-                        break;
-                    const PxU32 triangleCount = std::min<PxU32>(mesh->getNbTriangles(), 256);
-                    const auto* const bytes = static_cast<const PxU8*>(mesh->getTriangles());
-                    const bool use16BitIndices =
-                        mesh->getTriangleMeshFlags().isSet(PxTriangleMeshFlag::e16_BIT_INDICES);
-                    const PxU32 stride = use16BitIndices ? sizeof(PxU16) : sizeof(PxU32);
-                    for (PxU32 triangleIndex = 0; triangleIndex < triangleCount; ++triangleIndex)
+                    switch (geometry.getType())
                     {
-                        PxU32 indices[3]{};
-                        for (PxU32 corner = 0; corner < 3; ++corner)
+                    case PxGeometryType::eBOX:
+                    {
+                        const auto& box = static_cast<const PxBoxGeometry&>(geometry);
+                        debug.drawBox(world, PhysicsConversions::fromPx(box.halfExtents), colliderColor);
+                        break;
+                    }
+                    case PxGeometryType::eSPHERE:
+                    {
+                        const auto& sphere = static_cast<const PxSphereGeometry&>(geometry);
+                        debug.drawSphere(world, sphere.radius, colliderColor);
+                        break;
+                    }
+                    case PxGeometryType::eCAPSULE:
+                    {
+                        const auto& capsule = static_cast<const PxCapsuleGeometry&>(geometry);
+                        const PxTransform actorPose = record.actor->getGlobalPose();
+                        const Matrix capsuleWorld = Matrix::CreateFromQuaternion(
+                            PhysicsConversions::fromPx(actorPose.q))
+                            * Matrix::CreateTranslation(PhysicsConversions::fromPx(pose.p));
+                        debug.drawCapsule(capsuleWorld, capsule.radius, capsule.halfHeight, colliderColor);
+                        break;
+                    }
+                    case PxGeometryType::eTRIANGLEMESH:
+                    {
+                        const auto& meshGeometry = static_cast<const PxTriangleMeshGeometry&>(geometry);
+                        const PxTriangleMesh* const mesh = meshGeometry.triangleMesh;
+                        if (mesh == nullptr)
+                            break;
+                        const PxU32 triangleCount = std::min<PxU32>(mesh->getNbTriangles(), 256);
+                        const auto* const bytes = static_cast<const PxU8*>(mesh->getTriangles());
+                        const bool use16BitIndices =
+                            mesh->getTriangleMeshFlags().isSet(PxTriangleMeshFlag::e16_BIT_INDICES);
+                        const PxU32 stride = use16BitIndices ? sizeof(PxU16) : sizeof(PxU32);
+                        for (PxU32 triangleIndex = 0; triangleIndex < triangleCount; ++triangleIndex)
                         {
-                            const std::size_t offset =
-                                (static_cast<std::size_t>(triangleIndex) * 3 + corner) * stride;
-                            if (use16BitIndices)
+                            PxU32 indices[3]{};
+                            for (PxU32 corner = 0; corner < 3; ++corner)
                             {
-                                PxU16 index = 0;
-                                std::memcpy(&index, bytes + offset, sizeof(index));
-                                indices[corner] = index;
+                                const std::size_t offset =
+                                    (static_cast<std::size_t>(triangleIndex) * 3 + corner) * stride;
+                                if (use16BitIndices)
+                                {
+                                    PxU16 index = 0;
+                                    std::memcpy(&index, bytes + offset, sizeof(index));
+                                    indices[corner] = index;
+                                }
+                                else
+                                    std::memcpy(&indices[corner], bytes + offset, sizeof(PxU32));
                             }
-                            else
-                                std::memcpy(&indices[corner], bytes + offset, sizeof(PxU32));
+                            const auto getVertex = [&meshGeometry, &pose, mesh](const PxU32 index)
+                            {
+                                return PhysicsConversions::fromPx(
+                                    pose.transform(meshGeometry.scale.transform(mesh->getVertices()[index])));
+                            };
+                            const Vector3 first = getVertex(indices[0]);
+                            const Vector3 second = getVertex(indices[1]);
+                            const Vector3 third = getVertex(indices[2]);
+                            debug.drawLine(first, second, colliderColor);
+                            debug.drawLine(second, third, colliderColor);
+                            debug.drawLine(third, first, colliderColor);
                         }
-                        const auto getVertex = [&meshGeometry, &pose, mesh](const PxU32 index)
-                        {
-                            return PhysicsConversions::fromPx(
-                                pose.transform(meshGeometry.scale.transform(mesh->getVertices()[index])));
-                        };
-                        const Vector3 first = getVertex(indices[0]);
-                        const Vector3 second = getVertex(indices[1]);
-                        const Vector3 third = getVertex(indices[2]);
-                        debug.drawLine(first, second, colliderColor);
-                        debug.drawLine(second, third, colliderColor);
-                        debug.drawLine(third, first, colliderColor);
-                    }
-                    break;
-                }
-                case PxGeometryType::eCONVEXMESH:
-                {
-                    const auto& meshGeometry = static_cast<const PxConvexMeshGeometry&>(geometry);
-                    const PxConvexMesh* const mesh = meshGeometry.convexMesh;
-                    if (mesh == nullptr)
                         break;
-                    const PxU32 polygonCount = std::min<PxU32>(mesh->getNbPolygons(), 128);
-                    const PxU8* const indices = mesh->getIndexBuffer();
-                    for (PxU32 polygonIndex = 0; polygonIndex < polygonCount; ++polygonIndex)
-                    {
-                        PxHullPolygon polygon;
-                        if (!mesh->getPolygonData(polygonIndex, polygon) || polygon.mNbVerts < 3)
-                            continue;
-                        for (PxU32 vertexIndex = 0; vertexIndex < polygon.mNbVerts; ++vertexIndex)
-                        {
-                            const PxU32 nextIndex = (vertexIndex + 1) % polygon.mNbVerts;
-                            const PxVec3 firstLocal = meshGeometry.scale.transform(
-                                mesh->getVertices()[indices[polygon.mIndexBase + vertexIndex]]);
-                            const PxVec3 secondLocal = meshGeometry.scale.transform(
-                                mesh->getVertices()[indices[polygon.mIndexBase + nextIndex]]);
-                            debug.drawLine(
-                                PhysicsConversions::fromPx(pose.transform(firstLocal)),
-                                PhysicsConversions::fromPx(pose.transform(secondLocal)),
-                                colliderColor);
-                        }
                     }
-                    break;
+                    case PxGeometryType::eCONVEXMESH:
+                    {
+                        const auto& meshGeometry = static_cast<const PxConvexMeshGeometry&>(geometry);
+                        const PxConvexMesh* const mesh = meshGeometry.convexMesh;
+                        if (mesh == nullptr)
+                            break;
+                        const PxU32 polygonCount = std::min<PxU32>(mesh->getNbPolygons(), 128);
+                        const PxU8* const indices = mesh->getIndexBuffer();
+                        for (PxU32 polygonIndex = 0; polygonIndex < polygonCount; ++polygonIndex)
+                        {
+                            PxHullPolygon polygon;
+                            if (!mesh->getPolygonData(polygonIndex, polygon) || polygon.mNbVerts < 3)
+                                continue;
+                            for (PxU32 vertexIndex = 0; vertexIndex < polygon.mNbVerts; ++vertexIndex)
+                            {
+                                const PxU32 nextIndex = (vertexIndex + 1) % polygon.mNbVerts;
+                                const PxVec3 firstLocal = meshGeometry.scale.transform(
+                                    mesh->getVertices()[indices[polygon.mIndexBase + vertexIndex]]);
+                                const PxVec3 secondLocal = meshGeometry.scale.transform(
+                                    mesh->getVertices()[indices[polygon.mIndexBase + nextIndex]]);
+                                debug.drawLine(
+                                    PhysicsConversions::fromPx(pose.transform(firstLocal)),
+                                    PhysicsConversions::fromPx(pose.transform(secondLocal)),
+                                    colliderColor);
+                            }
+                        }
+                        break;
+                    }
+                    default:
+                        break;
+                    }
                 }
-                default:
-                    break;
-                }
+
+                if (settings.drawAabbs)
+                    appendAabb(PxShapeExt::getWorldBounds(*shape, *record.actor, 1.0f), aabbColor);
+
             }
-
-            if (settings.drawAabbs)
-                appendAabb(PxShapeExt::getWorldBounds(*record.shape, *record.actor, 1.0f), aabbColor);
-
             if (settings.drawVelocities)
             {
                 if (const auto* const dynamicActor = record.actor->is<PxRigidDynamic>())
@@ -1853,8 +1981,13 @@ namespace Engine
         if (m_impl == nullptr)
             return statistics;
 
-        statistics.activeShapes = static_cast<std::uint32_t>(
-            m_impl->colliders.size() + m_impl->controllers.size());
+        statistics.activeShapes = static_cast<std::uint32_t>(m_impl->controllers.size());
+        for (const auto& [component, record] : m_impl->colliders)
+        {
+            GE_UNUSED(component);
+            statistics.activeShapes += static_cast<std::uint32_t>(
+                record.chunkShapes.empty() ? 1 : record.chunkShapes.size());
+        }
         statistics.activeJoints = static_cast<std::uint32_t>(m_impl->joints.size());
         statistics.activeActors = static_cast<std::uint32_t>(
             m_impl->rigidbodies.size() + m_impl->staticActors.size() + m_impl->controllers.size());
@@ -2592,7 +2725,7 @@ namespace Engine
                 material.getStaticFriction(),
                 material.getDynamicFriction(),
                 material.getRestitution(),
-                scale });
+                scale, {} });
         }
         catch (const std::bad_alloc&)
         {
@@ -2608,6 +2741,12 @@ namespace Engine
             shape->release();
             m_impl->removeEmptyStaticActor(gameObject);
             LOG_ERROR("[PhysicsWorld] Collider collection reached its maximum capacity.");
+            return false;
+        }
+        if (const auto* terrain = dynamic_cast<const TerrainColliderComponent*>(&component);
+            terrain && !m_impl->setTerrainShapes(m_impl->colliders.at(&component), *terrain))
+        {
+            destroyCollider(component);
             return false;
         }
         if (const auto body = m_impl->rigidbodies.find(gameObject);
@@ -2627,10 +2766,16 @@ namespace Engine
 
         GameObject* const gameObject = component.getGameObject();
         m_impl->removeActivePairsForCollider(component);
-        if (found->second.actor != nullptr && found->second.shape != nullptr)
-            found->second.actor->detachShape(*found->second.shape);
-        if (found->second.shape != nullptr)
-            found->second.shape->release();
+        if (found->second.chunkShapes.empty())
+        {
+            if (found->second.actor != nullptr && found->second.shape != nullptr)
+                found->second.actor->detachShape(*found->second.shape);
+            if (found->second.shape != nullptr)
+                found->second.shape->release();
+        }
+        else if (found->second.actor)
+            for (const auto& shape : found->second.chunkShapes)
+                found->second.actor->detachShape(*shape);
         m_impl->colliders.erase(found);
         if (gameObject != nullptr)
         {

@@ -175,9 +175,11 @@ namespace Engine
             collider->setCenter(Vector3(0.25f, 0.1f, -0.5f));
             collider->setEnabled(false);
             TerrainNoiseSettings recipe;
-            recipe.width = recipe.height = 9;
-            if (!checks.expect(terrain->generateNoise(recipe, { 8, 8, 3, 1, 1, 1 })
-                && collider->getPhysicsAsset() && collider->getPhysicsAsset()->getPath().empty(),
+            recipe.width = 41;
+            recipe.height = 36;
+            if (!checks.expect(terrain->setChunkSettings({ 16 }) && terrain->generateNoise(recipe, { 8, 8, 3, 1, 1, 1 })
+                && collider->getPhysicsAsset() && collider->getPhysicsAsset()->getPath().empty()
+                && collider->getChunkAssets().size() == 9,
                 "terrain cooks in-memory collision without requiring external physics file"))
                 return false;
             Scene loaded(ObjectGUID::generate(), "Terrain collision loaded");
@@ -211,14 +213,15 @@ namespace Engine
             collider->setEnabled(true);
             source.update(0);
             step(source, world);
-            if (!checks.expect(world.getStatistics().activeShapes == baseline + 1, "source collider activation"))
+            if (!checks.expect(world.getStatistics().activeShapes == baseline + 9, "source chunk collider activation"))
                 return false;
             source.deactivateLifecycle();
             restoredCollider->setEnabled(true);
             loaded.update(0);
             step(loaded, world);
             const auto hit = world.raycast(Vector3(0, 20, 0), -Vector3::UnitY, 40);
-            if (!checks.expect(hit && hit->collider == restoredCollider, "loaded collider regenerates PhysX from embedded heights"))
+            if (!checks.expect(hit && hit->collider == restoredCollider && restoredCollider->getChunkAssets().size() == 9
+                && world.getStatistics().activeShapes == baseline + 9, "loaded collider regenerates all chunk shapes from embedded heights"))
                 return false;
             std::vector<std::uint8_t> payload;
             if (!checks.expect(restoredCollider->serializePayload(payload), "serialize terrain collider common settings"))
@@ -237,14 +240,40 @@ namespace Engine
                 && !restoredCollider->isTrigger(), "terrain collider rejects serialized trigger"))
                 return false;
             loaded.clear();
-            return checks.expect(world.getStatistics().activeShapes == baseline, "loaded collider destruction removes all shapes");
+            if (!checks.expect(world.getStatistics().activeShapes == baseline, "loaded collider destruction removes all shapes"))
+                return false;
+            auto* clonedCollider = clone.find(object->getGUID())->getComponent<TerrainColliderComponent>();
+            clonedCollider->setEnabled(true);
+            clone.update(0);
+            step(clone, world);
+            if (!checks.expect(clonedCollider->getChunkAssets().size() == 9
+                && world.getStatistics().activeShapes == baseline + 9
+                && clonedCollider->getPhysicsAsset() != collider->getPhysicsAsset(),
+                "Play activation creates independently cooked chunk shapes"))
+                return false;
+            clone.deactivateLifecycle();
+            auto* instanceCollider = instance->getComponent<TerrainColliderComponent>();
+            instanceCollider->setEnabled(true);
+            instances.update(0);
+            step(instances, world);
+            if (!checks.expect(instanceCollider->getChunkAssets().size() == 9
+                && world.getStatistics().activeShapes == baseline + 9, "prefab activation restores every chunk shape"))
+                return false;
+            instances.clear();
+            return checks.expect(world.getStatistics().activeShapes == baseline, "clone and prefab chunk cleanup restores baseline");
         }
 
         class CollisionProbe final : public Component, public PhysicsEventListener
         {
         public:
             std::size_t enters = 0;
+            std::size_t exits = 0;
+            std::size_t triggerEnters = 0;
+            std::size_t triggerExits = 0;
             void onCollisionEnter(const CollisionInfo&) override { ++enters; }
+            void onCollisionExit(const CollisionInfo&) override { ++exits; }
+            void onTriggerEnter(GameObject&) override { ++triggerEnters; }
+            void onTriggerExit(GameObject&) override { ++triggerExits; }
         };
 
         bool restrictions(Checks& checks, PhysicsWorld& world)
@@ -297,7 +326,29 @@ namespace Engine
             if (!checks.expect(world.getStatistics().activeShapes == baseline + 1, "valid scale restores terrain collision"))
                 return false;
             scene.clear();
-            return checks.expect(world.getStatistics().activeShapes == baseline, "restriction fixtures clean up shapes");
+            if (!checks.expect(world.getStatistics().activeShapes == baseline, "restriction fixtures clean up shapes"))
+                return false;
+            object = scene.createGameObject("Maximum chunk collision");
+            terrain = object->addComponent<TerrainComponent>();
+            Heightmap maximum;
+            if (!checks.expect(terrain->setChunkSettings({ 16 }) && maximum.createFlat(1025, 1025, 0.25f)
+                && terrain->setTerrain(maximum, { 1024, 1024, 4, 0, 1, 1 }), "maximum chunk collider fixture"))
+                return false;
+            collider = object->addComponent<TerrainColliderComponent>();
+            scene.update(0);
+            if (!checks.expect(collider->getChunkAssets().size() == 4096
+                && world.getStatistics().activeShapes == baseline + 4096, "maximum 4096 PhysX chunk shapes activate"))
+                return false;
+            for (const Vector3 position : { Vector3(-511, 10, -511), Vector3(511, 10, 511),
+                Vector3(0, 10, 0), Vector3(16, 10, 16) })
+            {
+                const auto ray = world.raycast(position, -Vector3::UnitY, 20);
+                if (!checks.expect(ray && ray->collider == collider, "maximum chunk grid corners and seams remain queryable")
+                    || !checks.close(ray->point.y, 1, "maximum chunk grid exact collision height"))
+                    return false;
+            }
+            scene.clear();
+            return checks.expect(world.getStatistics().activeShapes == baseline, "all 4096 chunk shapes clean up");
         }
 
         bool physics(Checks& checks, PhysicsWorld& world)
@@ -327,10 +378,20 @@ namespace Engine
             auto* probe = object->addComponent<CollisionProbe>();
             Heightmap heights;
             const TerrainMeshSettings settings{ 20, 20, 4, 0, 1, 1 };
-            if (!checks.expect(heights.createFlat(17, 17, 0.25f) && terrain->setTerrain(heights, settings), "flat collider fixture"))
+            if (!checks.expect(terrain->setChunkSettings({ 16 }) && heights.createFlat(33, 33, 0.25f)
+                && terrain->setTerrain(heights, settings), "flat chunked collider fixture"))
                 return false;
             scene.update(0);
             step(scene, world);
+            if (!checks.expect(terrain->getChunks().size() == 4 && collider->getChunkAssets().size() == 4
+                && world.getStatistics().activeShapes == baseline + 4, "one active PhysX shape per terrain chunk"))
+                return false;
+            const auto chunkedModel = terrain->getModel();
+            if (!checks.expect(terrain->setChunkSettings({ 1024 }) && world.getStatistics().activeShapes == baseline + 1,
+                "repartition merges active PhysX shapes transactionally")
+                || !checks.expect(terrain->setChunkSettings({ 16 }) && terrain->getModel() != chunkedModel
+                    && world.getStatistics().activeShapes == baseline + 4, "repartition splits active PhysX shapes without stale shapes"))
+                return false;
             auto hit = world.raycast(Vector3(0, 10, 0), -Vector3::UnitY, 20);
             if (!checks.expect(hit && hit->gameObject == object->getGUID() && hit->collider == collider, "PhysX ray identifies terrain GameObject and Collider")
                 || !checks.close(hit->point.y, 1, "PhysX triangles match height query")
@@ -372,9 +433,10 @@ namespace Engine
             const auto oldModel = terrain->getModel();
             const auto oldAsset = collider->getPhysicsAsset();
             world.simulate(1.0f / 60);
-            const bool rejected = !terrain->setTerrain(heights, settings);
+            const bool rejected = !terrain->setTerrain(heights, settings) && !terrain->setChunkSettings({ 32 });
             world.fetchResults();
-            if (!checks.expect(rejected && terrain->getModel() == oldModel && collider->getPhysicsAsset() == oldAsset,
+            if (!checks.expect(rejected && terrain->getModel() == oldModel && collider->getPhysicsAsset() == oldAsset
+                && terrain->getChunkSettings().cellsPerChunk == 16 && world.getStatistics().activeShapes == baseline + 4,
                 "regeneration during pending PhysX step preserves render and collision resources"))
                 return false;
             if (!checks.expect(terrain->setTerrain(heights, settings), "restore terrain after pending simulation")
@@ -395,7 +457,7 @@ namespace Engine
             object->getTransform()->setPosition(Vector3::Zero);
             step(scene, world);
             auto* sphere = scene.createGameObject("Falling sphere");
-            sphere->getTransform()->setPosition(Vector3(-3, 5, 0));
+            sphere->getTransform()->setPosition(Vector3(0, 5, 0));
             auto* sphereShape = sphere->addComponent<SphereColliderComponent>();
             sphereShape->setRadius(0.5f);
             sphere->addComponent<RigidbodyComponent>();
@@ -403,10 +465,29 @@ namespace Engine
             for (int frame = 0; frame < 180; ++frame)
                 step(scene, world);
             if (!checks.close(sphere->getWorldPosition().y, 1.5f, "dynamic Rigidbody rests on terrain", 0.025f)
-                || !checks.expect(probe->enters > 0, "terrain participates in existing collision event dispatch"))
+                || !checks.expect(probe->enters == 1 && probe->exits == 0,
+                    "four chunk shapes produce one stable GameObject contact at the shared corner"))
+                return false;
+            sphere->setActive(false);
+            world.dispatchEvents();
+            if (!checks.expect(probe->exits == 1, "removing corner contact produces exactly one object-level exit"))
+                return false;
+            sphereShape->setIsTrigger(true);
+            sphere->getComponent<RigidbodyComponent>()->setGravityEnabled(false);
+            sphere->getTransform()->setPosition(Vector3(0, 1.25f, 0));
+            sphere->setActive(true);
+            scene.update(0);
+            for (int frame = 0; frame < 3; ++frame)
+                step(scene, world);
+            if (!checks.expect(probe->triggerEnters == 1 && probe->triggerExits == 0,
+                "trigger overlapping four chunk shapes dispatches one object-level enter"))
+                return false;
+            sphere->setActive(false);
+            world.dispatchEvents();
+            if (!checks.expect(probe->triggerExits == 1, "compound terrain trigger cleanup dispatches one exit"))
                 return false;
             auto* player = scene.createGameObject("Character");
-            player->getTransform()->setPosition(Vector3(0, 4, 0));
+            player->getTransform()->setPosition(Vector3(-3, 4, 3));
             auto* character = player->addComponent<CharacterControllerComponent>();
             character->setLayer(PhysicsLayer::Player);
             scene.update(0);
@@ -418,7 +499,7 @@ namespace Engine
             if (!checks.expect(character->isGrounded(), "Character Controller grounds on terrain")
                 || !checks.close(character->getPosition().y, 1, "Character foot agrees with terrain height", 0.025f))
                 return false;
-            if (!checks.expect(heights.createFlat(17, 17, 0) && terrain->setTerrain(heights, settings), "lower terrain beneath cached Character Controller"))
+            if (!checks.expect(heights.createFlat(33, 33, 0) && terrain->setTerrain(heights, settings), "lower terrain beneath cached Character Controller"))
                 return false;
             for (int frame = 0; frame < 30; ++frame)
             {
@@ -428,12 +509,12 @@ namespace Engine
             if (!checks.expect(character->isGrounded(), "controller grounds on regenerated triangles")
                 || !checks.close(character->getPosition().y, 0, "controller cached triangles invalidated on regeneration", 0.025f))
                 return false;
-            std::vector<float> ramp(17 * 17);
+            std::vector<float> ramp(33 * 33);
             for (std::size_t index = 0; index < ramp.size(); ++index)
-                ramp[index] = static_cast<float>(index % 17) / 16;
+                ramp[index] = static_cast<float>(index % 33) / 32;
             auto slopeSettings = settings;
             slopeSettings.heightOffset = -2;
-            if (!checks.expect(heights.assign(17, 17, ramp) && terrain->setTerrain(heights, slopeSettings), "gentle walkable ramp fixture"))
+            if (!checks.expect(heights.assign(33, 33, ramp) && terrain->setTerrain(heights, slopeSettings), "gentle walkable ramp fixture"))
                 return false;
             PhysicsQueryFilter groundFilter;
             groundFilter.includeDynamic = false;
@@ -448,14 +529,14 @@ namespace Engine
                         || !checks.expect(ray->normal.Dot(surface->normal) > 0.999f, "sloped triangle normal agrees with PhysX"))
                         return false;
                 }
-            for (int frame = 0; frame < 100; ++frame)
+            for (int frame = 0; frame < 220; ++frame)
             {
                 character->move(Vector3(0.03f, -0.1f, 0), 1.0f / 60);
                 step(scene, world);
             }
             const auto ground = terrain->sampleWorldSurface(character->getPosition());
             if (!checks.expect(ground && character->isGrounded() && character->getPosition().x > 2.5f,
-                "Character Controller walks up terrain without manual height snapping")
+                "Character Controller walks across a chunk seam up terrain without height snapping")
                 || !checks.close(character->getPosition().y, ground->position.y, "walking foot tracks triangle ramp", 0.06f))
                 return false;
             collider->setCollisionMask(0);

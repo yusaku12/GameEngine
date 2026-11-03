@@ -28,6 +28,7 @@ table TerrainComponentPayload {
     cast_shadows:bool = true;
     noise_settings:TerrainNoiseSettings;
     material_settings:TerrainMaterialData;
+    chunk_cells:uint = 64;
 }
 
 root_type TerrainComponentPayload;
