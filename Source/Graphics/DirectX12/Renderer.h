@@ -55,6 +55,13 @@ namespace Engine
         GpuOcclusionStatistics completedOcclusion;  //!< 再利用したFrame slotのGPU完了済み色描画統計
         std::uint32_t modelCommandListCount = 0;     //!< Model描画を記録した独立Command List数
         std::uint32_t modelRecordingThreadCount = 0; //!< 実際にModelコマンド記録を実行したThread数
+        std::uint32_t terrainVisibleChunks = 0;     //!< Current view's frustum-visible terrain chunks before GPU occlusion.
+        std::uint32_t terrainCulledChunks = 0;      //!< Current view's layer/frustum-culled terrain chunks.
+        std::uint32_t terrainShadowChunks = 0;      //!< Terrain chunks submitted inside the independent shadow frustum.
+        std::uint64_t terrainTriangles = 0;         //!< Current view's selected color triangles before GPU occlusion.
+        std::uint64_t terrainFullTriangles = 0;     //!< Full-resolution baseline for those visible chunks.
+        std::uint64_t terrainShadowTriangles = 0;   //!< Full-resolution triangles submitted for independent shadows.
+        std::array<std::uint32_t, 5> terrainLodChunks{}; //!< Visible chunk counts by selected level.
     };
 
     /**

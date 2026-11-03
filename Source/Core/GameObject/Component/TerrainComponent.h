@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include "Assets\Model\ModelTypes.h"
 #include "Core\CoreDefines.h"
 #include "Core\GameObject\Component.h"
@@ -9,6 +10,7 @@
 #include "Terrain\TerrainMaterial.h"
 #include "Terrain\TerrainSurface.h"
 #include "Terrain\TerrainChunks.h"
+#include "Terrain\TerrainLod.h"
 
 namespace Engine
 {
@@ -78,6 +80,16 @@ namespace Engine
         const TerrainChunkSettings& getChunkSettings() const noexcept { return m_chunkSettings; }
         /** @brief Gets row-major chunks; references expire after successful regeneration. Empty before generation. */
         std::span<const TerrainChunk> getChunks() const noexcept { return m_chunks; }
+        /**
+         * @brief Applies opt-in distance LOD transactionally; physics and height queries keep full resolution.
+         * @param settings First transition distance and maximum simplification level.
+         * @return True on success; invalid settings are logged and preserve previous resources.
+         */
+        bool setLodSettings(const TerrainLodSettings& settings);
+        /** @brief Gets applied LOD settings, independent of Inspector drafts. */
+        const TerrainLodSettings& getLodSettings() const noexcept { return m_lodSettings; }
+        /** @brief Gets immutable index ranges matching getModel(), or null before generation. */
+        const std::shared_ptr<const TerrainLodSnapshot>& getLodSnapshot() const noexcept { return m_lodSnapshot; }
         /** @brief Gets the generated model handle, invalid before first generation. Do not unload it externally. */
         ModelHandle getModel() const noexcept { return m_model; }
         /** @brief Sets shadow participation. */
@@ -86,7 +98,7 @@ namespace Engine
         bool getCastShadows() const noexcept { return m_castShadows; }
 
         /** @brief Gets the version of the embedded terrain payload. */
-        std::uint32_t getPayloadVersion() const noexcept override { return 4; }
+        std::uint32_t getPayloadVersion() const noexcept override { return 5; }
         /** @brief Saves samples and settings; no external image/model reference is required. */
         bool serializePayload(std::vector<std::uint8_t>& payload) const override;
         /** @brief Restores and validates samples and settings before replacing the terrain. */
@@ -104,7 +116,7 @@ namespace Engine
         void submitRenderData();
         void requestHeightmapImport();
         bool rebuild(const Heightmap& heights, const TerrainMeshSettings& mesh, const TerrainMaterialSettings& surface,
-            const TerrainChunkSettings& chunks);
+            const TerrainChunkSettings& chunks, const TerrainLodSettings& lod);
         void drawMaterialInspector();
         void requestLayerTexture(std::size_t layer, std::size_t texture);
 
@@ -114,6 +126,9 @@ namespace Engine
         TerrainChunkSettings m_chunkSettings;
         TerrainChunkSettings m_editChunkSettings;
         std::vector<TerrainChunk> m_chunks;
+        TerrainLodSettings m_lodSettings;
+        TerrainLodSettings m_editLodSettings;
+        std::shared_ptr<const TerrainLodSnapshot> m_lodSnapshot;
         TerrainNoiseSettings m_noiseSettings;
         TerrainNoiseSettings m_editNoiseSettings;
         TerrainMaterialSettings m_materialSettings;

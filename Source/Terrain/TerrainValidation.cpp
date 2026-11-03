@@ -1,6 +1,7 @@
 #include "Pch.h"
 #include "Terrain\TerrainValidation.h"
 #include "Terrain\TerrainCollisionValidation.h"
+#include "Terrain\TerrainLodValidation.h"
 #include "Terrain\TerrainMeshBuilder.h"
 #include "Terrain\TerrainMaterialSerialization.h"
 #include "Assets\Material\MaterialManager.h"
@@ -484,7 +485,7 @@ namespace Engine
                 if (!checks.expect(!terrain->deserializePayload(1, std::span(payload).first(size))
                     && terrain->getModel() == original, "truncated payload preserves terrain"))
                     return false;
-            if (!checks.expect(!terrain->deserializePayload(5, payload), "reject unknown payload version"))
+            if (!checks.expect(!terrain->deserializePayload(6, payload), "reject unknown payload version"))
                 return false;
             flatbuffers::FlatBufferBuilder builder;
             const std::array<float, 4> invalidSamples = { 0, 0, 0, std::numeric_limits<float>::quiet_NaN() };
@@ -623,7 +624,7 @@ namespace Engine
                 return false;
             std::vector<std::uint8_t> payload;
             TerrainComponent restored;
-            if (!checks.expect(terrain->serializePayload(payload) && terrain->getPayloadVersion() == 4
+            if (!checks.expect(terrain->serializePayload(payload) && terrain->getPayloadVersion() == 5
                 && restored.deserializePayload(2, payload) && restored.getNoiseSettings() == settings
                 && sameHeights(restored.getHeightmap(), generated), "version 2 noise recipe and samples roundtrip"))
                 return false;
@@ -632,7 +633,7 @@ namespace Engine
                 return false;
 
             const auto previous = restored.getModel();
-            for (const std::uint32_t version : { 0u, 5u })
+            for (const std::uint32_t version : { 0u, 6u })
                 if (!checks.expect(!restored.deserializePayload(version, payload) && restored.getModel() == previous,
                     "reject unsupported terrain payload versions"))
                     return false;
@@ -898,7 +899,7 @@ namespace Engine
             TerrainComponent terrain;
             TerrainComponent noiseTerrain;
             TerrainComponent* selected = &terrain;
-            ImGuiID rebuildButton = 0, applyChunks = 0;
+            ImGuiID rebuildButton = 0, applyChunks = 0, enableLod = 0, applyLod = 0;
             ImVec2 noiseButton;
             ImGuiID materialHeader = 0, enableLayers = 0, applyLayers = 0, resetLayers = 0;
             bool locateNoiseButton = false;
@@ -910,6 +911,8 @@ namespace Engine
                 ImGui::Begin("Terrain Inspector Validation", nullptr, ImGuiWindowFlags_NoSavedSettings);
                 rebuildButton = ImGui::GetID("Apply / Rebuild");
                 applyChunks = ImGui::GetID("Apply Chunk Settings");
+                enableLod = ImGui::GetID("Enable Terrain LOD");
+                applyLod = ImGui::GetID("Apply LOD Settings");
                 materialHeader = ImGui::GetID("Terrain Material Layers");
                 enableLayers = ImGui::GetID("Enable Layered Material");
                 applyLayers = ImGui::GetID("Apply Terrain Material");
@@ -933,6 +936,18 @@ namespace Engine
             ImGui::ActivateItemByID(applyChunks); frame();
             if (!checks.expect(terrain.getModel() != beforeChunks && terrain.getChunks().size() == 1
                 && terrain.getChunkSettings().cellsPerChunk == 64, "Inspector applies chunk settings and publishes metadata"))
+                return false;
+            ImGui::ActivateItemByID(enableLod); frame();
+            if (!checks.expect(!terrain.getLodSettings().enabled, "Inspector LOD edits remain drafts until Apply"))
+                return false;
+            ImGui::ActivateItemByID(applyLod); frame();
+            if (!checks.expect(terrain.getLodSettings().enabled && terrain.getLodSnapshot()->chunks[0].levelCount > 1,
+                "Inspector Apply LOD Settings publishes enabled immutable levels"))
+                return false;
+            ImGui::ActivateItemByID(enableLod); frame();
+            ImGui::ActivateItemByID(applyLod); frame();
+            if (!checks.expect(!terrain.getLodSettings().enabled && terrain.getLodSnapshot()->chunks[0].levelCount == 1,
+                "Inspector can disable LOD and restore full-resolution-only indices"))
                 return false;
             selected = &noiseTerrain;
             locateNoiseButton = true;
@@ -1738,6 +1753,15 @@ namespace Engine
                     || !captureScene(capture) || !compare(reference, capture))
                     return false;
             }
+            if (!checks.expect(maximum->setLodSettings({ true, 4, 1 }), "enable LOD at maximum 4096 chunks")
+                || !captureScene(capture) || !compare(reference, capture))
+                return false;
+            const auto stats = renderer.getStatistics();
+            if (!checks.expect(stats.terrainVisibleChunks == 4096 && stats.terrainTriangles * 2 < stats.terrainFullTriangles,
+                "maximum chunk GPU fixture actually selects reduced triangle ranges"))
+                return false;
+            LOG_INFO("[TerrainLodValidation] Maximum grid: {} visible chunks, {} / {} color triangles.",
+                stats.terrainVisibleChunks, stats.terrainTriangles, stats.terrainFullTriangles);
             scene.clear();
             smallScene.clear();
             for (int frame = 0; frame < 6; ++frame)
@@ -1791,6 +1815,7 @@ namespace Engine
             Heightmap imported;
             TerrainLayer textured;
             std::size_t collisionChecks = 0;
+            std::size_t lodChecks = 0;
             if (!validateOptions(checks) || !validateHeightmap(checks, directory, imported) || !validateNoise(checks) || !validateMesh(checks)
                 || !validateComponent(checks, directory, imported) || !validateNoisePersistence(checks, directory)
                 || !validateInspector(checks)
@@ -1800,9 +1825,11 @@ namespace Engine
                 || !validateTerrainCollision(directory, collisionChecks)
                 || !validateRendering(checks, renderer, directory)
                 || !validateLayerRendering(checks, renderer, directory, textured)
-                || !validateChunkRendering(checks, renderer, directory, textured))
+                || !validateChunkRendering(checks, renderer, directory, textured)
+                || !validateTerrainLod(renderer, directory, lodChecks))
                 return false;
             checks.count += collisionChecks;
+            checks.count += lodChecks;
             std::ofstream report(directory / L"terrain-results.txt");
             report << "PASS: " << checks.count << " terrain checks\n"
                 << "8/16-bit image precision, mesh geometry, scene/prefab/clone, Inspector, lifecycle,\n"
@@ -1813,6 +1840,9 @@ namespace Engine
                 << "Rigidbody contacts/events, Character Controller grounding/walking, filters and persistence.\n";
             report << "Chunk coverage, exact shared vertex attributes, partial edges, 4096-chunk maximum,\n"
                 << "payload v4 migration, compound contacts, cross-seam walking and pixel-equivalent GPU partitions.\n";
+            report << "Opt-in distance LOD, exact full-resolution boundary edges at all levels, manifold/area checks,\n"
+                << "payload v5/legacy migration, immutable queued LOD snapshots, unchanged cooked physics,\n"
+                << "mixed-LOD pixel comparisons, per-camera chunk culling/LOD and independent full-resolution shadows.\n";
             report.close();
             if (!report)
             {

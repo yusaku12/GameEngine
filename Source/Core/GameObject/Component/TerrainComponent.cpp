@@ -51,23 +51,28 @@ namespace Engine
 
     bool TerrainComponent::setTerrain(const Heightmap& heightmap, const TerrainMeshSettings& settings)
     {
-        return rebuild(heightmap, settings, m_materialSettings, m_chunkSettings);
+        return rebuild(heightmap, settings, m_materialSettings, m_chunkSettings, m_lodSettings);
     }
 
     bool TerrainComponent::setMaterialSettings(const TerrainMaterialSettings& settings)
     {
-        return rebuild(m_heightmap, m_settings, settings, m_chunkSettings);
+        return rebuild(m_heightmap, m_settings, settings, m_chunkSettings, m_lodSettings);
     }
 
     bool TerrainComponent::setChunkSettings(const TerrainChunkSettings& settings)
     {
-        return rebuild(m_heightmap, m_settings, m_materialSettings, settings);
+        return rebuild(m_heightmap, m_settings, m_materialSettings, settings, m_lodSettings);
+    }
+
+    bool TerrainComponent::setLodSettings(const TerrainLodSettings& settings)
+    {
+        return rebuild(m_heightmap, m_settings, m_materialSettings, m_chunkSettings, settings);
     }
 
     bool TerrainComponent::rebuild(const Heightmap& heightmap, const TerrainMeshSettings& settings,
-        const TerrainMaterialSettings& surface, const TerrainChunkSettings& chunkSettings)
+        const TerrainMaterialSettings& surface, const TerrainChunkSettings& chunkSettings, const TerrainLodSettings& lodSettings)
     {
-        if (!validateTerrainChunkSettings(chunkSettings))
+        if (!validateTerrainChunkSettings(chunkSettings) || !validateTerrainLodSettings(lodSettings))
             return false;
         Heightmap replacement = heightmap;
         TerrainMaterialSettings materialSettings = surface;
@@ -95,6 +100,9 @@ namespace Engine
             if (!TerrainColliderComponent::cookChunks(model, collision))
                 return false;
         }
+        auto lod = std::make_shared<TerrainLodSnapshot>();
+        if (!buildTerrainLods(model, chunks, lodSettings, *lod))
+            return false;
         pending.model = ModelManager::instance().create(std::move(model));
         if (!pending.model.isValid())
         {
@@ -120,6 +128,9 @@ namespace Engine
         m_chunkSettings = chunkSettings;
         m_editChunkSettings = chunkSettings;
         m_chunks = std::move(chunks);
+        m_lodSettings = lodSettings;
+        m_editLodSettings = lodSettings;
+        m_lodSnapshot = std::move(lod);
         m_model = std::exchange(pending.model, ModelHandle{});
         m_material = std::exchange(pending.material, MaterialHandle{});
         m_materialSettings = std::move(materialSettings);
@@ -162,10 +173,12 @@ namespace Engine
         flatbuffers::Offset<Serialization::TerrainMaterialData> surface;
         if (!Serialization::writeTerrainMaterial(builder, m_materialSettings, surface))
             return false;
+        const auto lod = Serialization::CreateTerrainLodSettings(builder,
+            m_lodSettings.enabled, m_lodSettings.maxLevel, m_lodSettings.distance);
         const auto root = Serialization::CreateTerrainComponentPayload(builder,
             m_heightmap.width(), m_heightmap.height(), builder.CreateVector(samples.data(), samples.size()),
             m_settings.sizeX, m_settings.sizeZ, m_settings.heightScale, m_settings.heightOffset,
-            m_settings.uvRepeatX, m_settings.uvRepeatZ, m_castShadows, noise, surface, m_chunkSettings.cellsPerChunk);
+            m_settings.uvRepeatX, m_settings.uvRepeatZ, m_castShadows, noise, surface, m_chunkSettings.cellsPerChunk, lod);
         Serialization::FinishTerrainComponentPayloadBuffer(builder, root);
         payload.assign(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
         return true;
@@ -175,7 +188,7 @@ namespace Engine
         const std::span<const std::uint8_t> payload)
     {
         flatbuffers::Verifier verifier(payload.data(), payload.size());
-        if ((version < 1 || version > 4) || payload.size() < 8
+        if ((version < 1 || version > 5) || payload.size() < 8
             || !Serialization::VerifyTerrainComponentPayloadBuffer(verifier))
         {
             LOG_ERROR("[Terrain] Invalid terrain payload or version.");
@@ -208,11 +221,22 @@ namespace Engine
             LOG_ERROR("[Terrain] Version 3 payload is missing material settings.");
             return false;
         }
+        TerrainLodSettings lod;
+        if (version >= 5)
+        {
+            const auto* saved = source->lod_settings();
+            if (!saved)
+            {
+                LOG_ERROR("[Terrain] Version 5 payload is missing LOD settings.");
+                return false;
+            }
+            lod = { saved->enabled(), saved->max_level(), saved->distance() };
+        }
         Heightmap heightmap;
         if (!heightmap.assign(source->width(), source->height(), { samples->data(), samples->size() })
             || !rebuild(heightmap, { source->size_x(), source->size_z(), source->height_scale(),
                 source->height_offset(), source->uv_repeat_x(), source->uv_repeat_z() }, surface,
-                { version >= 4 ? source->chunk_cells() : 1024u }))
+                { version >= 4 ? source->chunk_cells() : 1024u }, lod))
             return false;
         m_castShadows = source->cast_shadows();
         m_noiseSettings = noise;
@@ -240,7 +264,7 @@ namespace Engine
             LOG_ERROR("[Terrain] Clone type mismatch.");
             return false;
         }
-        if (!target->rebuild(m_heightmap, m_settings, m_materialSettings, m_chunkSettings))
+        if (!target->rebuild(m_heightmap, m_settings, m_materialSettings, m_chunkSettings, m_lodSettings))
             return false;
         target->m_castShadows = m_castShadows;
         target->m_noiseSettings = m_noiseSettings;
@@ -277,6 +301,7 @@ namespace Engine
         ModelRenderSubmission submission;
         submission.model = m_model;
         submission.modelSnapshot = std::move(source);
+        submission.terrainLod = m_lodSnapshot;
         submission.materials.push_back(m_materialSettings.enabled
             ? m_material : MaterialManager::instance().getDefaultMaterial());
         if (m_materialSettings.enabled)
@@ -465,11 +490,18 @@ namespace Engine
         ImGui::Checkbox("Cast Shadows", &m_castShadows);
         ImGui::InputScalar("Chunk Cells (16..1024)", ImGuiDataType_U32, &m_editChunkSettings.cellsPerChunk);
         ImGui::Text("Applied Chunks: %zu", m_chunks.size());
-        ImGui::TextWrapped("Chunk edges share height, normal, UV and layer data. "
-            "All chunks remain resident; LOD and streaming are not enabled.");
+        ImGui::TextWrapped("Chunk edges share height, normal, UV and layer data. All chunks remain resident.");
         if (ImGui::Button("Apply Chunk Settings"))
             m_status = setChunkSettings(m_editChunkSettings)
                 ? "Terrain chunks rebuilt." : "Chunk rebuild failed; previous terrain preserved. See log.";
+        ImGui::Checkbox("Enable Terrain LOD", &m_editLodSettings.enabled);
+        ImGui::InputScalar("Maximum LOD (1..4)", ImGuiDataType_U32, &m_editLodSettings.maxLevel);
+        ImGui::DragFloat("LOD Distance", &m_editLodSettings.distance, 1, 0.1f, 1000000);
+        ImGui::TextWrapped("Distance to chunk bounds; thresholds double each level. "
+            "Borders stay full resolution. Physics is unchanged. Chunk frustum culling is per view.");
+        if (ImGui::Button("Apply LOD Settings"))
+            m_status = setLodSettings(m_editLodSettings)
+                ? "Terrain LOD applied." : "LOD apply failed; previous terrain preserved. See log.";
         if (ImGui::Button("Apply / Rebuild"))
             m_status = setTerrain(m_heightmap, m_editSettings)
                 ? "Terrain rebuilt." : "Rebuild failed; previous terrain preserved. See log.";

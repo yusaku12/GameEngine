@@ -24,7 +24,18 @@ namespace Engine
         replacement.reserve(model.meshes.size());
         for (const auto& mesh : model.meshes)
         {
-            auto asset = PhysicsMeshAsset::cookTriangle(mesh);
+            std::vector<Vector3> vertices;
+            vertices.reserve(mesh.vertices.size());
+            for (const auto& vertex : mesh.vertices)
+                vertices.push_back(vertex.position);
+            if (mesh.subMeshes.size() != 1 || mesh.subMeshes[0].indexStart != 0
+                || mesh.subMeshes[0].indexCount > mesh.indices.size())
+            {
+                LOG_ERROR("[TerrainCollider] Expected the full-resolution chunk in submesh zero.");
+                return false;
+            }
+            auto asset = PhysicsMeshAsset::cookTriangle(vertices,
+                std::span(mesh.indices).first(mesh.subMeshes[0].indexCount));
             if (!asset)
                 return false;
             replacement.push_back(std::move(asset));

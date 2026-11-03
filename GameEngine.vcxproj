@@ -16,6 +16,8 @@
     <ClInclude Include="Source\Terrain\TerrainMaterial.h" />
     <ClInclude Include="Source\Terrain\TerrainSurface.h" />
     <ClInclude Include="Source\Terrain\TerrainChunks.h" />
+    <ClInclude Include="Source\Terrain\TerrainLod.h" />
+    <ClInclude Include="Source\Terrain\TerrainLodValidation.h" />
     <ClInclude Include="Source\Terrain\TerrainCollisionValidation.h" />
     <ClInclude Include="Source\Terrain\TerrainMaterialSerialization.h" />
     <ClInclude Include="Source\Terrain\TerrainMeshBuilder.h" />
@@ -224,6 +226,8 @@
     <ClCompile Include="Source\Terrain\TerrainMaterial.cpp" />
     <ClCompile Include="Source\Terrain\TerrainSurface.cpp" />
     <ClCompile Include="Source\Terrain\TerrainChunks.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainLod.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainLodValidation.cpp" />
     <ClCompile Include="Source\Terrain\TerrainCollisionValidation.cpp" />
     <ClCompile Include="Source\Terrain\TerrainMaterialSerialization.cpp" />
     <ClCompile Include="Source\Terrain\TerrainMeshBuilder.cpp" />

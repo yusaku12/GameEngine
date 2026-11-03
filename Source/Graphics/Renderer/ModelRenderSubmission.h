@@ -12,6 +12,7 @@ namespace Engine
 {
     struct ModelResource;
     struct MaterialAsset;
+    struct TerrainLodSnapshot;
 
     /** @brief Allocates a nonzero object ID shared by all model-rendering component types. */
     std::uint32_t allocateModelRenderObjectID() noexcept;
@@ -24,6 +25,7 @@ namespace Engine
         ModelHandle model;                                              //!< 描画するモデルのHandle
         std::shared_ptr<const ModelResource> modelSnapshot;              //!< Keeps regenerated procedural geometry alive until consumed.
         std::shared_ptr<const MaterialAsset> materialSnapshot;            //!< Optional immutable slot-zero procedural material.
+        std::shared_ptr<const TerrainLodSnapshot> terrainLod;             //!< Optional procedural chunk LOD ranges matching modelSnapshot.
         std::vector<MaterialHandle> materials;                          //!< 優先順位を解決済みのSlot IndexごとのMaterial
         MaterialPropertyBlock materialProperties;                       //!< Renderer単位の数値Parameter Override
         std::shared_ptr<const SkinningPaletteSnapshot> skinningPalette; //!< Animation済みPalette Snapshot

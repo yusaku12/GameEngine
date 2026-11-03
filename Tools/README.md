@@ -809,7 +809,7 @@ bounds culling. `RenderItem::animationBoundsValid` defaults to false, so callers
 that only provide bind-pose bounds retain the previous safe animation bypass.
 Near-plane intersections also retain Hi-Z's visibility bypass.
 
-# Terrain Phase 1/2/3/4/5: Generation, materials, PhysX and chunk management
+# Terrain Phase 1/2/3/4/5/6: Generation, materials, PhysX, chunks and LOD
 
 In the Hierarchy context menu choose **Create Terrain**, or add the **Terrain**
 component to an existing GameObject. A new component contains a flat 65x65 grid.
@@ -824,6 +824,8 @@ The Terrain Inspector provides:
 - **UV Repeat X / Z** and **Cast Shadows**.
 - **Chunk Cells (16..1024)** and **Apply Chunk Settings**: repartition the
   applied surface without changing height data or mesh dimensions.
+- **Enable Terrain LOD**, **Maximum LOD (1..4)**, **LOD Distance** and
+  **Apply LOD Settings**: explicitly enable distance-based chunk simplification.
 - **Apply / Rebuild**: apply the edited dimensions without changing samples.
 - **Import Heightmap...**: read PNG, TIFF or BMP height data and rebuild using
   the edited dimensions. 8/16-bit grayscale PNG precision is preserved.
@@ -855,7 +857,7 @@ triangles, area-weighted smooth normals, orthonormal tangent frames, UVs and
 mesh/model bounds. Rebuilds retire the previous model handle; queued immutable
 CPU snapshots and GPU fences keep already submitted geometry safe.
 
-These phases intentionally do **not** implement streaming, terrain LOD, asynchronous
+These phases intentionally do **not** implement streaming, asynchronous
 generation, erosion, compute generation or vegetation. Generation/import/cooking is
 synchronous and should be triggered by an authoring action, not every frame.
 
@@ -1070,17 +1072,16 @@ Chunk size edits are drafts until **Apply Chunk Settings**. That button uses
 the applied terrain dimensions, not unapplied Size/Height/UV edits.
 **Apply / Rebuild**, import, flat creation, noise generation and material
 changes retain the applied chunk settings. All chunks rebuild synchronously
-and remain resident: this phase adds neither distance loading/unloading nor
-per-chunk LOD, terrain-specific culling, asynchronous generation or partial
-height edits. The existing renderer consumes each mesh's bounds through its
-normal render paths; terrain-wide bounds are retained as well.
+and remain resident: partitioning adds neither distance loading/unloading,
+asynchronous generation nor partial height edits. Phase 6 adds opt-in LOD
+and early chunk culling as described below; terrain-wide bounds are retained.
 
 Normals, tangent frames and automatic layer weights are calculated from the
 **whole** grid before partitioning. Border vertices copy identical position,
 normal, tangent, bitangent, UV and color data. UVs remain whole-terrain UVs;
 textures do not restart at each chunk. Each cell belongs to exactly one chunk;
-shared edges duplicate vertices but not triangles. There are no skirts or
-changed diagonals. Height queries continue to use authoritative whole-terrain
+shared edges duplicate vertices but not triangles. LOD zero and collision keep
+the original diagonals. Height queries continue to use authoritative whole-terrain
 samples, so results are independent of partition size.
 
 Whole-grid normal/material calculation still uses a temporary complete mesh;
@@ -1120,8 +1121,80 @@ dimensions, noise recipe and material settings. Scene/Prefab/Play restore the
 same partition with independent geometry and regenerate cooked collision;
 no separate chunk files or external physics files are required. Versions 1..3
 load as one chunk (`1024` cells per edge), preserving their previous partition
-and appearance. Their next save writes version 4. Invalid version 4 chunk
+and appearance. Their next save writes the current version 5. Invalid version 4 chunk
 settings are rejected without replacing the existing terrain.
+
+## Distance LOD and chunk culling (Phase 6)
+
+LOD is **off by default**, including when loading terrain payloads version 1..4.
+Check **Enable Terrain LOD**, edit the following draft controls, then click
+**Apply LOD Settings**. Applying uses the existing applied heightmap, dimensions,
+material and chunk layout; it does not apply unrelated Inspector drafts.
+All rebuild/import/noise/material/chunk operations retain applied LOD settings.
+
+| Control | Meaning |
+| --- | --- |
+| Maximum LOD | 1..4; level 0 is full resolution, level N has interior stride `2^N` |
+| LOD Distance | First transition in world units, finite 0.1..1000000; default 50 |
+
+Each active render view selects from its own camera position to the **closest
+point of the transformed chunk AABB**, not its center. Parent transforms,
+rotation and nonuniform scale are included. Distances below `D` use level 0,
+then `[D,2D)` uses level 1, `[2D,4D)` uses level 2, etc., clamped to available
+levels and Maximum LOD. Exact thresholds select the coarser level.
+Thin/partial chunks may have fewer useful levels; a candidate is retained only
+when it strictly reduces triangle count. Chunks at most two cells wide/deep
+keep level 0.
+
+All levels reuse the same full-resolution vertex buffer and attributes.
+The interior is sampled more sparsely and joined to a full-resolution outer
+border with triangulated transition strips. **Every original unit border edge
+survives**, so independently selected neighboring levels meet exactly without
+skirts, neighbor-dependent stitching or per-frame mesh rebuilding. Height,
+normal, tangent, UV and layer weights at the shared boundary are unchanged.
+Simplification changes the interior surface; abrupt distance transitions can
+pop. This phase does not add geomorphing, hysteresis or screen-error selection.
+
+Chunk bounds are tested against the camera frustum **before** material/draw
+preparation, even when LOD is disabled. Outside chunks submit no camera color
+or depth items. Selected color, depth-prepass and existing Hi-Z draws use
+identical index ranges. Shadows use a **separate light frustum and level 0**:
+an off-camera chunk can still cast a visible shadow, and changing camera LOD
+does not simplify its shadow geometry. Cast Shadows and camera layers retain
+their normal engine behavior. Invalid frusta conservatively bypass culling.
+
+Authoritative height queries and PhysX always use the full-resolution triangles.
+Adding/re-enabling a TerrainCollider after generating LOD cannot cook the
+appended alternative indices as overlapping collision geometry.
+LOD ranges/settings are immutable snapshots paired with queued model snapshots;
+regeneration, camera changes and owner destruction cannot retarget queued draws.
+
+The renderer's Model statistics show visible/culled/shadow chunk counts and
+selected versus full-resolution camera triangle counts. These are CPU
+submissions **before GPU occlusion**, not GPU-visible triangle counts.
+`RendererStatistics::terrainLodChunks` exposes the selected-level distribution.
+LOD reduces triangles, not vertex-buffer residency or chunk draw count.
+Alternative index ranges add memory; early culling reduces draw submissions,
+while full-resolution shadows intentionally retain their geometry cost.
+
+```cpp
+if (!terrain->setLodSettings({ true, 4, 50.0f }))
+{
+    // Error is logged; the previously applied terrain and collision remain valid.
+}
+```
+
+`getLodSettings()` returns applied settings. `getLodSnapshot()` is null before
+generation and otherwise exposes immutable chunk index ranges matching
+`getModel()`. Applying settings is a synchronous authoring rebuild, including
+full-resolution cooking if a TerrainCollider is attached; it is not intended
+as a per-frame camera update. Distance selection and culling do not recook,
+allocate meshes, or modify component state each frame.
+
+Payload **version 5** saves applied LOD settings with embedded samples, chunk
+dimensions and materials. Scene/Prefab/Play restore independent generated
+resources; missing/invalid version 5 LOD settings are rejected transactionally.
+Versions 1..4 load with LOD disabled and retain their existing chunk migration.
 
 ## Terrain validation
 
@@ -1187,3 +1260,19 @@ render after component destruction. Fixtures include `chunks.scene`,
 `chunks.prefab`, and `terrain-chunks` HDR/display captures.
 The maximum-grid GPU case also compares all 4096 resident meshes against an
 equivalent two-triangle flat reference in both render paths and verifies teardown.
+
+Phase 6 verifies every level's index bounds, strictly reduced triangle counts,
+positive area, exact projected coverage, manifold edge incidence and retention
+of every unit border edge on regular, non-power-of-two, partial and narrow grids.
+It checks exact distance thresholds, legacy/v5 migration and invalid-payload
+rollback, Scene/Prefab/Play and Inspector draft/apply/disable behavior.
+Cooked collision bytes are compared with an independent full-resolution-only
+oracle and PhysX ray heights with authoritative CPU surface heights.
+GPU checks compare all display pixels for mixed LODs against level 0 in
+Deferred and Forward+Hi-Z, including an oblique boundary view, verify nonflat
+four-layer rendering, world-space parent transforms, successive cameras,
+layer/frustum culling, independent full-resolution off-camera shadows and
+queued snapshot lifetime. The maximum 4096-chunk grid also renders with LOD
+enabled: the test requires more than 50% fewer camera triangles and unchanged
+flat reference pixels. Outputs include `lod.scene`, `lod.prefab`,
+`terrain-lod` and `terrain-lod-layers` HDR/display captures.

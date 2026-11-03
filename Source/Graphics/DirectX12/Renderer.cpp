@@ -1,4 +1,5 @@
 ﻿#include "Pch.h"
+#include "Terrain\TerrainLod.h"
 #include "UI\RuntimeUI.h"
 #include "Graphics\DirectX12\Renderer.h"
 #include "Assets\Material\MaterialManager.h"
@@ -652,6 +653,11 @@ namespace Engine
                         ImGui::TextUnformatted("Forward rendering is active.");
                     }
                     ImGui::Text("Frustum-culled Objects: %u", m_statistics.culledObjects);
+                    ImGui::Text("Terrain chunks: %u visible, %u culled, %u shadow",
+                        m_statistics.terrainVisibleChunks, m_statistics.terrainCulledChunks, m_statistics.terrainShadowChunks);
+                    ImGui::Text("Terrain triangles: %llu / %llu full",
+                        static_cast<unsigned long long>(m_statistics.terrainTriangles),
+                        static_cast<unsigned long long>(m_statistics.terrainFullTriangles));
                     ImGui::Text("Render Items: %u", m_statistics.renderItemCount);
                     ImGui::Text("Submitted Direct Draw Calls: %u", m_statistics.drawCallCount);
                     ImGui::Text("Submitted ExecuteIndirect Calls: %u", m_statistics.indirectCallCount);
@@ -1727,6 +1733,8 @@ namespace Engine
         m_modelRenderQueue.reserve(m_modelSubmissions.size());
         usedModels.reserve(m_modelSubmissions.size());
         usedMaterials.reserve(m_modelSubmissions.size());
+        const auto shadowFrustum = m_shadowViewProjection
+            ? std::optional(CameraUtils::buildWorldFrustum(*m_shadowViewProjection, Matrix::Identity)) : std::nullopt;
 
         for (const ModelRenderSubmission& submission : m_modelSubmissions)
         {
@@ -1734,6 +1742,8 @@ namespace Engine
                 || (m_cameraCullingMask & (1u << submission.layer)) == 0)
             {
                 ++m_frameStatistics.culledObjects;
+                if (submission.terrainLod)
+                    m_frameStatistics.terrainCulledChunks += static_cast<std::uint32_t>(submission.terrainLod->chunks.size());
                 continue;
             }
 
@@ -1744,12 +1754,20 @@ namespace Engine
                 ++m_frameStatistics.culledObjects;
             if (outsideCamera && !submitsShadow)
             {
+                if (submission.terrainLod)
+                    m_frameStatistics.terrainCulledChunks += static_cast<std::uint32_t>(submission.terrainLod->chunks.size());
                 continue;
             }
 
             ModelGpuResource* const gpuModel = m_modelGpuCache.getOrCreate(submission.model, submission.modelSnapshot);
             if (gpuModel == nullptr || gpuModel->source == nullptr)
                 continue;
+            if (submission.terrainLod && (submission.terrainLod->chunks.size() != gpuModel->meshes.size()
+                || !validateTerrainLodSettings(submission.terrainLod->settings)))
+            {
+                LOG_ERROR("[TerrainLod] Queued LOD metadata does not match the model snapshot.");
+                continue;
+            }
 
             if (submission.skinningPalette != nullptr)
             {
@@ -1798,6 +1816,32 @@ namespace Engine
                     || m_animatedMeshBounds[meshIndex].valid;
                 if (submission.skinningPalette != nullptr && boundsCullable)
                     meshWorldBounds = m_animatedMeshBounds[meshIndex].worldBounds;
+                const TerrainChunkLod* terrain = submission.terrainLod ? &submission.terrainLod->chunks[meshIndex] : nullptr;
+                const bool terrainInCamera = !terrain || !m_frustum || isVisible(*m_frustum, meshWorldBounds);
+                const bool terrainInShadow = !terrain || !shadowFrustum || isVisible(*shadowFrustum, meshWorldBounds);
+                std::uint32_t terrainLevel = 0;
+                if (terrain)
+                {
+                    if (terrain->levelCount == 0 || terrain->levelCount > terrain->levels.size()
+                        || mesh.subMeshes.size() != 1 || terrain->levels[0].start != mesh.subMeshes[0].indexStart
+                        || terrain->levels[0].count != mesh.subMeshes[0].indexCount
+                        || !std::ranges::all_of(std::span(terrain->levels).first(terrain->levelCount),
+                            [&mesh](const auto range)
+                            {
+                                return range.count > 0 && range.count % 3 == 0 && range.start % 3 == 0
+                                    && range.start <= mesh.indices.size() && range.count <= mesh.indices.size() - range.start;
+                            }))
+                    {
+                        LOG_ERROR("[TerrainLod] Queued index ranges do not match full-resolution chunk geometry.");
+                        continue;
+                    }
+                    if (!terrainInCamera)
+                        ++m_frameStatistics.terrainCulledChunks;
+                    if (!terrainInCamera && (!submitsShadow || !terrainInShadow))
+                        continue;
+                    terrainLevel = selectTerrainLod(submission.terrainLod->settings, meshWorldBounds,
+                        m_cameraPosition, terrain->levelCount);
+                }
 
                 const auto submitSubMesh = [&](const std::uint32_t indexStart, const std::uint32_t indexCount,
                     const std::uint32_t materialIndex)
@@ -1844,7 +1888,14 @@ namespace Engine
                             .animationBoundsValid = submission.skinningPalette != nullptr && boundsCullable,
                         };
                         const CameraFrustum* const cullingFrustum = m_frustum ? &*m_frustum : nullptr;
-                        const bool submitted = m_modelRenderQueue.submit(colorItem, cullingFrustum);
+                        const bool submitted = terrainInCamera && m_modelRenderQueue.submit(colorItem, cullingFrustum);
+                        if (submitted && terrain)
+                        {
+                            ++m_frameStatistics.terrainVisibleChunks;
+                            ++m_frameStatistics.terrainLodChunks[terrainLevel];
+                            m_frameStatistics.terrainTriangles += indexCount / 3;
+                            m_frameStatistics.terrainFullTriangles += terrain->levels[0].count / 3;
+                        }
                         bool materialUsed = submitted;
                         if (submitted && pass != RenderPassType::Transparent)
                         {
@@ -1853,12 +1904,24 @@ namespace Engine
                             depthItem.pass = RenderPassType::DepthOnly;
                             m_modelRenderQueue.submit(depthItem);
                         }
-                        if (submitsShadow && pass != RenderPassType::Transparent)
+                        if (submitsShadow && terrainInShadow && pass != RenderPassType::Transparent)
                         {
                             RenderItem shadowItem = colorItem;
                             shadowItem.pipelineID = colorItem.surfaceType == MaterialSurfaceType::AlphaTest ? 1u : 0u;
                             shadowItem.pass = RenderPassType::Shadow;
-                            materialUsed = m_modelRenderQueue.submit(shadowItem) || materialUsed;
+                            if (terrain)
+                            {
+                                // Shadows retain full resolution, independent of camera LOD or visibility.
+                                shadowItem.indexStart = terrain->levels[0].start;
+                                shadowItem.indexCount = terrain->levels[0].count;
+                            }
+                            const bool shadowSubmitted = m_modelRenderQueue.submit(shadowItem);
+                            if (shadowSubmitted && terrain)
+                            {
+                                ++m_frameStatistics.terrainShadowChunks;
+                                m_frameStatistics.terrainShadowTriangles += shadowItem.indexCount / 3;
+                            }
+                            materialUsed = shadowSubmitted || materialUsed;
                         }
                         objectVisible = submitted || objectVisible;
                         modelResourceUsed = materialUsed || modelResourceUsed;
@@ -1866,7 +1929,12 @@ namespace Engine
                             usedMaterials.push_back(materialHandle);
                     };
 
-                if (mesh.subMeshes.empty())
+                if (terrain)
+                {
+                    const auto range = terrain->levels[terrainLevel];
+                    submitSubMesh(range.start, range.count, 0);
+                }
+                else if (mesh.subMeshes.empty())
                     submitSubMesh(0, static_cast<std::uint32_t>(mesh.indices.size()), 0);
                 else
                 {
