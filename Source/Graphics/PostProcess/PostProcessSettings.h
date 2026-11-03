@@ -43,34 +43,11 @@ namespace Engine
     {
         PostProcessParameter<bool> bloomEnabled; //!< Bloom switch.
         PostProcessParameter<float> bloomIntensity{ 0.0f }; //!< Additive intensity, 0-100.
-        PostProcessParameter<float> bloomThreshold{ 1.0f }; //!< Linear HDR threshold, 0-64.
+        PostProcessParameter<float> bloomThreshold{ -1.0f }; //!< Scene-linear threshold; -1 includes all pixels.
         PostProcessParameter<float> bloomScatter{ 0.7f }; //!< Pyramid scatter, 0-1.
+        PostProcessParameter<float> bloomSizeScale{ 1.0f }; //!< Standard Bloom blur radius multiplier, 0.1-10.
         PostProcessParameter<bool> exposureEnabled; //!< Fixed exposure switch.
         PostProcessParameter<float> exposureEV{ 0.0f }; //!< Stops relative to renderer exposure, -16 to 16.
-        PostProcessParameter<bool> colorAdjustmentsEnabled; //!< Color adjustment switch.
-        PostProcessParameter<float> contrast{ 0.0f }; //!< Percent, -100 to 100.
-        PostProcessParameter<float> saturation{ 0.0f }; //!< Percent, -100 to 100.
-        PostProcessParameter<Vector3> colorFilter{ Vector3::One }; //!< Linear multiplier, each channel 0-16.
-        PostProcessParameter<bool> vignetteEnabled; //!< Vignette switch.
-        PostProcessParameter<float> vignetteIntensity{ 0.0f }; //!< Strength, 0-1.
-        PostProcessParameter<float> vignetteSmoothness{ 0.5f }; //!< Falloff, 0.01-1.
-        PostProcessParameter<float> vignetteRoundness{ 1.0f }; //!< Shape, 0-1.
-        PostProcessParameter<Vector3> vignetteColor{ Vector3::Zero }; //!< Linear color, each channel 0-1.
-        PostProcessParameter<bool> fxaaEnabled; //!< FXAA switch.
-        PostProcessParameter<float> fxaaSubpixel{ 0.75f }; //!< Subpixel blending, 0-1.
-        PostProcessParameter<float> fxaaEdgeThreshold{ 0.166f }; //!< Relative edge threshold, 0.03125-0.5.
-        PostProcessParameter<float> fxaaEdgeThresholdMin{ 0.0833f }; //!< Absolute edge threshold, 0-0.5.
-        PostProcessParameter<bool> depthOfFieldEnabled; //!< Depth of Field switch.
-        PostProcessParameter<float> depthOfFieldFocusDistance{ 10.0f }; //!< Focus distance in view-space units.
-        PostProcessParameter<float> depthOfFieldFocusRange{ 5.0f }; //!< In-focus distance range.
-        PostProcessParameter<float> depthOfFieldMaxBlur{ 8.0f }; //!< Maximum blur radius in pixels.
-        PostProcessParameter<bool> fogEnabled; //!< Depth fog switch.
-        PostProcessParameter<float> fogDensity{ 0.02f }; //!< Exponential fog density.
-        PostProcessParameter<float> fogStartDistance{ 0.0f }; //!< Fog starts after this view-space distance.
-        PostProcessParameter<Vector3> fogColor{ Vector3(0.5f, 0.5f, 0.5f) }; //!< Linear HDR fog color.
-        PostProcessParameter<bool> colorGradingLutEnabled; //!< Color grading LUT switch.
-        PostProcessParameter<float> colorGradingLutIntensity{ 1.0f }; //!< LUT blend, 0-1.
-        PostProcessParameter<ObjectGUID> colorGradingLutAsset; //!< GUID for a linear 2D-strip 3D LUT.
         PostProcessParameter<bool> autoExposureEnabled; //!< Temporally adapted automatic exposure switch.
         PostProcessParameter<float> autoExposureKey{ 0.18f }; //!< Target log-average luminance.
         PostProcessParameter<float> autoExposureMinEV{ -8.0f }; //!< Minimum automatic exposure in stops.
@@ -78,6 +55,56 @@ namespace Engine
         PostProcessParameter<float> autoExposureCompensation{ 0.0f }; //!< Exposure compensation in stops.
         PostProcessParameter<float> autoExposureSpeedUp{ 3.0f }; //!< Exposure increase adaptation rate in inverse seconds.
         PostProcessParameter<float> autoExposureSpeedDown{ 1.0f }; //!< Exposure decrease adaptation rate in inverse seconds.
+        PostProcessParameter<bool> colorAdjustmentsEnabled; //!< Color adjustment switch.
+        PostProcessParameter<float> contrast{ 0.0f }; //!< Percent, -100 to 100.
+        PostProcessParameter<float> saturation{ 0.0f }; //!< Percent, -100 to 100.
+        PostProcessParameter<Vector3> colorFilter{ Vector3::One }; //!< Linear multiplier, each channel 0-16.
+        PostProcessParameter<float> colorTemperature{ 6500.0f }; //!< White balance temperature in Kelvin.
+        PostProcessParameter<float> colorTint{ 0.0f }; //!< Green/magenta white-balance adjustment, -1 to 1.
+        PostProcessParameter<float> colorGamma{ 1.0f }; //!< Global linear gamma, 0.1-4.
+        PostProcessParameter<float> shadowSaturation{ 1.0f }; //!< Shadow saturation multiplier, 0-2.
+        PostProcessParameter<float> shadowContrast{ 1.0f }; //!< Shadow contrast multiplier, 0-2.
+        PostProcessParameter<float> shadowGamma{ 1.0f }; //!< Shadow gamma, 0.1-4.
+        PostProcessParameter<float> shadowGain{ 1.0f }; //!< Shadow gain, 0-4.
+        PostProcessParameter<float> midtoneSaturation{ 1.0f }; //!< Midtone saturation multiplier, 0-2.
+        PostProcessParameter<float> midtoneContrast{ 1.0f }; //!< Midtone contrast multiplier, 0-2.
+        PostProcessParameter<float> midtoneGamma{ 1.0f }; //!< Midtone gamma, 0.1-4.
+        PostProcessParameter<float> midtoneGain{ 1.0f }; //!< Midtone gain, 0-4.
+        PostProcessParameter<float> highlightSaturation{ 1.0f }; //!< Highlight saturation multiplier, 0-2.
+        PostProcessParameter<float> highlightContrast{ 1.0f }; //!< Highlight contrast multiplier, 0-2.
+        PostProcessParameter<float> highlightGamma{ 1.0f }; //!< Highlight gamma, 0.1-4.
+        PostProcessParameter<float> highlightGain{ 1.0f }; //!< Highlight gain, 0-4.
+        PostProcessParameter<Vector3> colorOffset{ Vector3::Zero }; //!< Global linear RGB offset, -1 to 1.
+        PostProcessParameter<Vector3> shadowColor{ Vector3::Zero }; //!< Shadow color-wheel offset, -1 to 1.
+        PostProcessParameter<Vector3> midtoneColor{ Vector3::Zero }; //!< Midtone color-wheel offset, -1 to 1.
+        PostProcessParameter<Vector3> highlightColor{ Vector3::Zero }; //!< Highlight color-wheel offset, -1 to 1.
+        PostProcessParameter<bool> vignetteEnabled; //!< Vignette switch.
+        PostProcessParameter<float> vignetteIntensity{ 0.0f }; //!< Strength, 0-1.
+        PostProcessParameter<float> vignetteSmoothness{ 0.5f }; //!< Falloff, 0.01-1.
+        PostProcessParameter<float> vignetteRoundness{ 1.0f }; //!< Shape, 0-1.
+        PostProcessParameter<Vector3> vignetteColor{ Vector3::Zero }; //!< Linear color, each channel 0-1.
+        PostProcessParameter<bool> chromaticAberrationEnabled; //!< Chromatic aberration switch.
+        PostProcessParameter<float> chromaticAberrationIntensity{ 0.0f }; //!< Radial RGB separation, 0-5.
+        PostProcessParameter<float> chromaticAberrationStartOffset{ 0.5f }; //!< Radial onset, 0-1.
+        PostProcessParameter<bool> filmGrainEnabled; //!< Temporally varying film grain switch.
+        PostProcessParameter<float> filmGrainIntensity{ 0.0f }; //!< Linear display grain strength, 0-1.
+        PostProcessParameter<float> filmGrainResponse{ 0.8f }; //!< Shadow-weighted grain response, 0-1.
+        PostProcessParameter<bool> fxaaEnabled; //!< FXAA switch.
+        PostProcessParameter<float> fxaaSubpixel{ 0.75f }; //!< Subpixel blending, 0-1.
+        PostProcessParameter<float> fxaaEdgeThreshold{ 0.166f }; //!< Relative edge threshold, 0.03125-0.5.
+        PostProcessParameter<float> fxaaEdgeThresholdMin{ 0.0833f }; //!< Absolute edge threshold, 0-0.5.
+        PostProcessParameter<bool> temporalAAEnabled; //!< Jittered temporal reconstruction switch.
+        PostProcessParameter<float> temporalAAFeedback{ 0.9f }; //!< History contribution, 0-0.99.
+        PostProcessParameter<bool> motionBlurEnabled; //!< Velocity-buffer motion blur switch.
+        PostProcessParameter<float> motionBlurAmount{ 0.5f }; //!< Shutter contribution, 0-1.
+        PostProcessParameter<float> motionBlurMaxVelocity{ 32.0f }; //!< Maximum blur radius in pixels, 0-64.
+        PostProcessParameter<bool> depthOfFieldEnabled; //!< Depth of Field switch.
+        PostProcessParameter<float> depthOfFieldFocusDistance{ 10.0f }; //!< Focus distance in view-space units.
+        PostProcessParameter<float> depthOfFieldFocusRange{ 5.0f }; //!< In-focus distance range.
+        PostProcessParameter<float> depthOfFieldMaxBlur{ 8.0f }; //!< Maximum blur radius in pixels.
+        PostProcessParameter<bool> colorGradingLutEnabled; //!< Color grading LUT switch.
+        PostProcessParameter<float> colorGradingLutIntensity{ 1.0f }; //!< LUT blend, 0-1.
+        PostProcessParameter<ObjectGUID> colorGradingLutAsset; //!< GUID for a linear 2D-strip 3D LUT.
         bool operator==(const PostProcessSettings&) const = default;
     };
 
@@ -92,29 +119,50 @@ namespace Engine
 
     inline constexpr std::array POST_PROCESS_FLOATS{
         PostProcessFloatDescriptor{ "Bloom Intensity", &PostProcessSettings::bloomIntensity, 0, 100 },
-        PostProcessFloatDescriptor{ "Bloom Threshold", &PostProcessSettings::bloomThreshold, 0, 64 },
+        PostProcessFloatDescriptor{ "Bloom Threshold", &PostProcessSettings::bloomThreshold, -1, 64 },
         PostProcessFloatDescriptor{ "Bloom Scatter", &PostProcessSettings::bloomScatter, 0, 1 },
+        PostProcessFloatDescriptor{ "Bloom Size Scale", &PostProcessSettings::bloomSizeScale, 0.1f, 10 },
         PostProcessFloatDescriptor{ "Exposure EV", &PostProcessSettings::exposureEV, -16, 16 },
-        PostProcessFloatDescriptor{ "Contrast", &PostProcessSettings::contrast, -100, 100 },
-        PostProcessFloatDescriptor{ "Saturation", &PostProcessSettings::saturation, -100, 100 },
-        PostProcessFloatDescriptor{ "Vignette Intensity", &PostProcessSettings::vignetteIntensity, 0, 1 },
-        PostProcessFloatDescriptor{ "Vignette Smoothness", &PostProcessSettings::vignetteSmoothness, 0.01f, 1 },
-        PostProcessFloatDescriptor{ "Vignette Roundness", &PostProcessSettings::vignetteRoundness, 0, 1 },
-        PostProcessFloatDescriptor{ "FXAA Subpixel", &PostProcessSettings::fxaaSubpixel, 0, 1 },
-        PostProcessFloatDescriptor{ "FXAA Edge Threshold", &PostProcessSettings::fxaaEdgeThreshold, 0.03125f, 0.5f },
-        PostProcessFloatDescriptor{ "FXAA Minimum Threshold", &PostProcessSettings::fxaaEdgeThresholdMin, 0, 0.5f },
-        PostProcessFloatDescriptor{ "Focus Distance", &PostProcessSettings::depthOfFieldFocusDistance, 0.1f, 10000 },
-        PostProcessFloatDescriptor{ "Focus Range", &PostProcessSettings::depthOfFieldFocusRange, 0.01f, 1000 },
-        PostProcessFloatDescriptor{ "Maximum Blur", &PostProcessSettings::depthOfFieldMaxBlur, 0, 16 },
-        PostProcessFloatDescriptor{ "Fog Density", &PostProcessSettings::fogDensity, 0, 10 },
-        PostProcessFloatDescriptor{ "Fog Start Distance", &PostProcessSettings::fogStartDistance, 0, 10000 },
-        PostProcessFloatDescriptor{ "LUT Intensity", &PostProcessSettings::colorGradingLutIntensity, 0, 1 },
         PostProcessFloatDescriptor{ "Auto Exposure Key", &PostProcessSettings::autoExposureKey, 0.01f, 1 },
         PostProcessFloatDescriptor{ "Auto Exposure Minimum EV", &PostProcessSettings::autoExposureMinEV, -16, 16 },
         PostProcessFloatDescriptor{ "Auto Exposure Maximum EV", &PostProcessSettings::autoExposureMaxEV, -16, 16 },
         PostProcessFloatDescriptor{ "Auto Exposure Compensation", &PostProcessSettings::autoExposureCompensation, -16, 16 },
         PostProcessFloatDescriptor{ "Auto Exposure Speed Up", &PostProcessSettings::autoExposureSpeedUp, 0, 20 },
         PostProcessFloatDescriptor{ "Auto Exposure Speed Down", &PostProcessSettings::autoExposureSpeedDown, 0, 20 },
+        PostProcessFloatDescriptor{ "Contrast", &PostProcessSettings::contrast, -100, 100 },
+        PostProcessFloatDescriptor{ "Saturation", &PostProcessSettings::saturation, -100, 100 },
+        PostProcessFloatDescriptor{ "White Balance Temperature", &PostProcessSettings::colorTemperature, 1500, 15000 },
+        PostProcessFloatDescriptor{ "White Balance Tint", &PostProcessSettings::colorTint, -1, 1 },
+        PostProcessFloatDescriptor{ "Global Gamma", &PostProcessSettings::colorGamma, 0.1f, 4 },
+        PostProcessFloatDescriptor{ "Shadows Saturation", &PostProcessSettings::shadowSaturation, 0, 2 },
+        PostProcessFloatDescriptor{ "Shadows Contrast", &PostProcessSettings::shadowContrast, 0, 2 },
+        PostProcessFloatDescriptor{ "Shadows Gamma", &PostProcessSettings::shadowGamma, 0.1f, 4 },
+        PostProcessFloatDescriptor{ "Shadows Gain", &PostProcessSettings::shadowGain, 0, 4 },
+        PostProcessFloatDescriptor{ "Midtones Saturation", &PostProcessSettings::midtoneSaturation, 0, 2 },
+        PostProcessFloatDescriptor{ "Midtones Contrast", &PostProcessSettings::midtoneContrast, 0, 2 },
+        PostProcessFloatDescriptor{ "Midtones Gamma", &PostProcessSettings::midtoneGamma, 0.1f, 4 },
+        PostProcessFloatDescriptor{ "Midtones Gain", &PostProcessSettings::midtoneGain, 0, 4 },
+        PostProcessFloatDescriptor{ "Highlights Saturation", &PostProcessSettings::highlightSaturation, 0, 2 },
+        PostProcessFloatDescriptor{ "Highlights Contrast", &PostProcessSettings::highlightContrast, 0, 2 },
+        PostProcessFloatDescriptor{ "Highlights Gamma", &PostProcessSettings::highlightGamma, 0.1f, 4 },
+        PostProcessFloatDescriptor{ "Highlights Gain", &PostProcessSettings::highlightGain, 0, 4 },
+        PostProcessFloatDescriptor{ "Vignette Intensity", &PostProcessSettings::vignetteIntensity, 0, 1 },
+        PostProcessFloatDescriptor{ "Vignette Smoothness", &PostProcessSettings::vignetteSmoothness, 0.01f, 1 },
+        PostProcessFloatDescriptor{ "Vignette Roundness", &PostProcessSettings::vignetteRoundness, 0, 1 },
+        PostProcessFloatDescriptor{ "Chromatic Aberration Intensity", &PostProcessSettings::chromaticAberrationIntensity, 0, 5 },
+        PostProcessFloatDescriptor{ "Chromatic Aberration Start Offset", &PostProcessSettings::chromaticAberrationStartOffset, 0, 1 },
+        PostProcessFloatDescriptor{ "Film Grain Intensity", &PostProcessSettings::filmGrainIntensity, 0, 1 },
+        PostProcessFloatDescriptor{ "Film Grain Response", &PostProcessSettings::filmGrainResponse, 0, 1 },
+        PostProcessFloatDescriptor{ "FXAA Subpixel", &PostProcessSettings::fxaaSubpixel, 0, 1 },
+        PostProcessFloatDescriptor{ "FXAA Edge Threshold", &PostProcessSettings::fxaaEdgeThreshold, 0.03125f, 0.5f },
+        PostProcessFloatDescriptor{ "FXAA Minimum Threshold", &PostProcessSettings::fxaaEdgeThresholdMin, 0, 0.5f },
+        PostProcessFloatDescriptor{ "Focus Distance", &PostProcessSettings::depthOfFieldFocusDistance, 0.1f, 10000 },
+        PostProcessFloatDescriptor{ "Focus Range", &PostProcessSettings::depthOfFieldFocusRange, 0.01f, 1000 },
+        PostProcessFloatDescriptor{ "Maximum Blur", &PostProcessSettings::depthOfFieldMaxBlur, 0, 16 },
+        PostProcessFloatDescriptor{ "LUT Intensity", &PostProcessSettings::colorGradingLutIntensity, 0, 1 },
+        PostProcessFloatDescriptor{ "TAA History Feedback", &PostProcessSettings::temporalAAFeedback, 0, 0.99f },
+        PostProcessFloatDescriptor{ "Motion Blur Amount", &PostProcessSettings::motionBlurAmount, 0, 1 },
+        PostProcessFloatDescriptor{ "Motion Blur Maximum Velocity", &PostProcessSettings::motionBlurMaxVelocity, 0, 64 },
     };
 
     /** @brief Shared metadata for effect switches. */
@@ -126,11 +174,14 @@ namespace Engine
     inline constexpr std::array POST_PROCESS_SWITCHES{
         PostProcessBoolDescriptor{ "Bloom Enabled", &PostProcessSettings::bloomEnabled },
         PostProcessBoolDescriptor{ "Exposure Enabled", &PostProcessSettings::exposureEnabled },
-        PostProcessBoolDescriptor{ "Color Adjustments Enabled", &PostProcessSettings::colorAdjustmentsEnabled },
+        PostProcessBoolDescriptor{ "Color Grading Enabled", &PostProcessSettings::colorAdjustmentsEnabled },
         PostProcessBoolDescriptor{ "Vignette Enabled", &PostProcessSettings::vignetteEnabled },
+        PostProcessBoolDescriptor{ "Chromatic Aberration Enabled", &PostProcessSettings::chromaticAberrationEnabled },
+        PostProcessBoolDescriptor{ "Film Grain Enabled", &PostProcessSettings::filmGrainEnabled },
         PostProcessBoolDescriptor{ "FXAA Enabled", &PostProcessSettings::fxaaEnabled },
+        PostProcessBoolDescriptor{ "Temporal Anti-Aliasing Enabled", &PostProcessSettings::temporalAAEnabled },
+        PostProcessBoolDescriptor{ "Motion Blur Enabled", &PostProcessSettings::motionBlurEnabled },
         PostProcessBoolDescriptor{ "Depth of Field Enabled", &PostProcessSettings::depthOfFieldEnabled },
-        PostProcessBoolDescriptor{ "Fog Enabled", &PostProcessSettings::fogEnabled },
         PostProcessBoolDescriptor{ "Color Grading LUT Enabled", &PostProcessSettings::colorGradingLutEnabled },
         PostProcessBoolDescriptor{ "Auto Exposure Enabled", &PostProcessSettings::autoExposureEnabled },
     };
@@ -142,18 +193,22 @@ namespace Engine
         float colorAdjustments = 1;
         float vignette = 1;
         float fxaa = 1;
+        float chromaticAberration = 1;
+        float filmGrain = 1;
         float depthOfField = 1;
-        float fog = 1;
         float colorGradingLut = 1;
         float autoExposure = 1;
+        float temporalAA = 1;
+        float motionBlur = 1;
         bool operator==(const PostProcessEffectWeights&) const = default;
     };
     inline constexpr std::array POST_PROCESS_WEIGHT_MEMBERS{
         &PostProcessEffectWeights::bloom, &PostProcessEffectWeights::exposure,
         &PostProcessEffectWeights::colorAdjustments, &PostProcessEffectWeights::vignette,
-        &PostProcessEffectWeights::fxaa, &PostProcessEffectWeights::depthOfField,
-        &PostProcessEffectWeights::fog, &PostProcessEffectWeights::colorGradingLut,
-        &PostProcessEffectWeights::autoExposure,
+        &PostProcessEffectWeights::chromaticAberration, &PostProcessEffectWeights::filmGrain,
+        &PostProcessEffectWeights::fxaa, &PostProcessEffectWeights::temporalAA,
+        &PostProcessEffectWeights::motionBlur, &PostProcessEffectWeights::depthOfField,
+        &PostProcessEffectWeights::colorGradingLut, &PostProcessEffectWeights::autoExposure,
     };
 
     /** @brief Shared metadata for linear RGB settings. */
@@ -161,12 +216,16 @@ namespace Engine
     {
         const char* name; //!< Inspector label.
         PostProcessParameter<Vector3> PostProcessSettings::* member; //!< Authored color.
-        float maximum; //!< Inclusive channel maximum; minimum is zero.
+        float minimum; //!< Inclusive channel minimum.
+        float maximum; //!< Inclusive channel maximum.
     };
     inline constexpr std::array POST_PROCESS_COLORS{
-        PostProcessColorDescriptor{ "Color Filter (Linear)", &PostProcessSettings::colorFilter, 16 },
-        PostProcessColorDescriptor{ "Vignette Color (Linear)", &PostProcessSettings::vignetteColor, 1 },
-        PostProcessColorDescriptor{ "Fog Color (Linear)", &PostProcessSettings::fogColor, 65504 },
+        PostProcessColorDescriptor{ "Color Filter (Linear)", &PostProcessSettings::colorFilter, 0, 16 },
+        PostProcessColorDescriptor{ "Global Color Offset (Linear)", &PostProcessSettings::colorOffset, -1, 1 },
+        PostProcessColorDescriptor{ "Shadows Color Wheel (Linear)", &PostProcessSettings::shadowColor, -1, 1 },
+        PostProcessColorDescriptor{ "Midtones Color Wheel (Linear)", &PostProcessSettings::midtoneColor, -1, 1 },
+        PostProcessColorDescriptor{ "Highlights Color Wheel (Linear)", &PostProcessSettings::highlightColor, -1, 1 },
+        PostProcessColorDescriptor{ "Vignette Color (Linear)", &PostProcessSettings::vignetteColor, 0, 1 },
     };
 
     /** @brief Rejects nonfinite/out-of-range values, including inactive overrides, with a diagnostic. */
@@ -185,6 +244,7 @@ namespace Engine
         float nearClip = 0.1f; //!< Camera near plane for depth-aware effects.
         float farClip = 1000.0f; //!< Camera far plane for depth-aware effects.
         bool perspectiveProjection = true; //!< Selects perspective vs. orthographic depth linearization.
+        bool temporalHistoryReset = false; //!< Camera cut/projection reset invalidates temporal history.
         PostProcessSettings settings; //!< Resolved values with authored override flags removed.
         PostProcessEffectWeights effects; //!< Continuous switch contributions; default preserves pre-Volume snapshots.
         std::vector<PostProcessEffectPassSnapshot> customEffects; //!< Ordered immutable custom shader passes.

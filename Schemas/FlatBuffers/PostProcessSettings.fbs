@@ -35,6 +35,7 @@ table PostProcessSettingsData {
     depth_of_field_focus_distance:PostProcessFloat;
     depth_of_field_focus_range:PostProcessFloat;
     depth_of_field_max_blur:PostProcessFloat;
+    // Reserved for wire compatibility; Fog was removed from the runtime.
     fog_enabled:PostProcessBool;
     fog_density:PostProcessFloat;
     fog_start_distance:PostProcessFloat;
@@ -49,4 +50,35 @@ table PostProcessSettingsData {
     auto_exposure_compensation:PostProcessFloat;
     auto_exposure_speed_up:PostProcessFloat;
     auto_exposure_speed_down:PostProcessFloat;
+    bloom_size_scale:PostProcessFloat;
+    color_temperature:PostProcessFloat;
+    color_tint:PostProcessFloat;
+    color_gamma:PostProcessFloat;
+    shadow_saturation:PostProcessFloat;
+    shadow_contrast:PostProcessFloat;
+    shadow_gamma:PostProcessFloat;
+    shadow_gain:PostProcessFloat;
+    midtone_saturation:PostProcessFloat;
+    midtone_contrast:PostProcessFloat;
+    midtone_gamma:PostProcessFloat;
+    midtone_gain:PostProcessFloat;
+    highlight_saturation:PostProcessFloat;
+    highlight_contrast:PostProcessFloat;
+    highlight_gamma:PostProcessFloat;
+    highlight_gain:PostProcessFloat;
+    color_offset:PostProcessColor;
+    shadow_color:PostProcessColor;
+    midtone_color:PostProcessColor;
+    highlight_color:PostProcessColor;
+    chromatic_aberration_enabled:PostProcessBool;
+    chromatic_aberration_intensity:PostProcessFloat;
+    chromatic_aberration_start_offset:PostProcessFloat;
+    film_grain_enabled:PostProcessBool;
+    film_grain_intensity:PostProcessFloat;
+    film_grain_response:PostProcessFloat;
+    temporal_aa_enabled:PostProcessBool;
+    temporal_aa_feedback:PostProcessFloat;
+    motion_blur_enabled:PostProcessBool;
+    motion_blur_amount:PostProcessFloat;
+    motion_blur_max_velocity:PostProcessFloat;
 }

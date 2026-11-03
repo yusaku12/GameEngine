@@ -48,6 +48,39 @@ namespace Engine
             }
         };
 
+        bool hasNeutralExtendedGrading(const PostProcessSettings& settings)
+        {
+            const auto neutral = []<class T>(const PostProcessParameter<T>& parameter, const T& value)
+            {
+                return parameter.value == value && !parameter.overrideState;
+            };
+            return neutral(settings.colorTemperature, 6500.0f)
+                && neutral(settings.colorTint, 0.0f)
+                && neutral(settings.colorGamma, 1.0f)
+                && neutral(settings.shadowSaturation, 1.0f)
+                && neutral(settings.shadowContrast, 1.0f)
+                && neutral(settings.shadowGamma, 1.0f)
+                && neutral(settings.shadowGain, 1.0f)
+                && neutral(settings.midtoneSaturation, 1.0f)
+                && neutral(settings.midtoneContrast, 1.0f)
+                && neutral(settings.midtoneGamma, 1.0f)
+                && neutral(settings.midtoneGain, 1.0f)
+                && neutral(settings.highlightSaturation, 1.0f)
+                && neutral(settings.highlightContrast, 1.0f)
+                && neutral(settings.highlightGamma, 1.0f)
+                && neutral(settings.highlightGain, 1.0f)
+                && neutral(settings.colorOffset, Vector3::Zero)
+                && neutral(settings.shadowColor, Vector3::Zero)
+                && neutral(settings.midtoneColor, Vector3::Zero)
+                && neutral(settings.highlightColor, Vector3::Zero)
+                && neutral(settings.chromaticAberrationEnabled, false)
+                && neutral(settings.chromaticAberrationIntensity, 0.0f)
+                && neutral(settings.chromaticAberrationStartOffset, 0.5f)
+                && neutral(settings.filmGrainEnabled, false)
+                && neutral(settings.filmGrainIntensity, 0.0f)
+                && neutral(settings.filmGrainResponse, 0.8f);
+        }
+
         std::vector<std::uint8_t> cameraPayload(const float weight, const PostProcessSettings* settings,
             const ObjectGUID guid = {}, const std::string& path = {})
         {
@@ -204,8 +237,10 @@ namespace Engine
                 {
                     ImGui::GetStateStorage()->SetInt(ImGui::GetID(layer), 1);
                     ImGui::PushID(layer);
-                    for (const char* effect : { "Bloom", "Exposure", "Color Adjustments", "Vignette", "FXAA",
-                        "Depth of Field", "Fog", "Color Grading LUT", "Automatic Exposure" })
+                    for (const char* effect : { "Bloom", "Exposure", "Color Grading", "Vignette",
+                        "Chromatic Aberration", "Film Grain", "FXAA", "Temporal Anti-Aliasing",
+                        "Motion Blur", "Depth of Field",
+                        "Color Grading LUT", "Automatic Exposure", "Shadows", "Midtones", "Highlights" })
                         ImGui::GetStateStorage()->SetInt(ImGui::GetID(effect), 1);
                     ImGui::PopID();
                 }
@@ -296,15 +331,23 @@ namespace Engine
         if (!checks.expect(savePhase6ProfileWithoutTemporalSettings(phase6Path, phase6Profile)
             && serializer.load(phase6Path, phase6Decoded)
             && phase6Decoded.settings.autoExposureSpeedUp.value == 3.0f
-            && phase6Decoded.settings.autoExposureSpeedDown.value == 1.0f,
+            && phase6Decoded.settings.autoExposureSpeedDown.value == 1.0f
+            && phase6Decoded.settings.bloomSizeScale.value == 1.0f,
             "Phase 6 Profile defaults missing temporal adaptation settings"))
+            return false;
+        if (!checks.expect(hasNeutralExtendedGrading(phase6Decoded.settings),
+            "legacy Profile defaults missing White Balance, tonal grading, chromatic aberration and film grain"))
             return false;
         CameraComponent phase6Camera;
         const auto phase6CameraPayload = phase6CameraPayloadWithoutTemporalSettings(phase6Profile.settings);
         if (!checks.expect(phase6Camera.deserializePayload(4, phase6CameraPayload)
             && phase6Camera.getPostProcessOverrides().autoExposureSpeedUp.value == 3.0f
-            && phase6Camera.getPostProcessOverrides().autoExposureSpeedDown.value == 1.0f,
+            && phase6Camera.getPostProcessOverrides().autoExposureSpeedDown.value == 1.0f
+            && phase6Camera.getPostProcessOverrides().bloomSizeScale.value == 1.0f,
             "Camera v4 defaults missing temporal adaptation settings"))
+            return false;
+        if (!checks.expect(hasNeutralExtendedGrading(phase6Camera.getPostProcessOverrides()),
+            "legacy Camera defaults missing White Balance, tonal grading, chromatic aberration and film grain"))
             return false;
 
         CameraComponent camera;

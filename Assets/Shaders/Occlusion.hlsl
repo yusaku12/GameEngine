@@ -30,6 +30,7 @@ ByteAddressBuffer instances : register(t2);
 StructuredBuffer<Batch> batches : register(t3);
 RWByteAddressBuffer visibleInstances : register(u0);
 RWByteAddressBuffer commands : register(u1);
+static const uint INSTANCE_STRIDE = 192;
 
 bool isVisible(Candidate candidate)
 {
@@ -110,9 +111,9 @@ void csMain(uint3 group : SV_GroupID, uint lane : SV_GroupIndex)
         if (visible)
         {
             const uint destination = visibleCount + prefix[lane] - 1;
-            const uint sourceAddress = sourceIndex * 128;
-            const uint destinationAddress = (batch.first + destination) * 128;
-            for (uint offset = 0; offset < 128; offset += 16)
+            const uint sourceAddress = sourceIndex * INSTANCE_STRIDE;
+            const uint destinationAddress = (batch.first + destination) * INSTANCE_STRIDE;
+            for (uint offset = 0; offset < INSTANCE_STRIDE; offset += 16)
                 visibleInstances.Store4(destinationAddress + offset, instances.Load4(sourceAddress + offset));
         }
         GroupMemoryBarrierWithGroupSync();

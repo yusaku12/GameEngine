@@ -3,6 +3,7 @@ struct ObjectConstants
 {
     row_major float4x4 worldViewProjection;
     row_major float4x4 worldMatrix;
+    row_major float4x4 previousWorldViewProjection;
 };
 
 StructuredBuffer<ObjectConstants> objectInstances : register(t5);
@@ -13,6 +14,7 @@ cbuffer SkinningConstants : register(b1)
 {
     row_major float4x4 boneMatrices[MAX_SKINNING_BONES];
     row_major float4x4 boneNormalMatrices[MAX_SKINNING_BONES];
+    row_major float4x4 previousBoneMatrices[MAX_SKINNING_BONES];
 };
 
 cbuffer MaterialConstants : register(b2)
@@ -97,6 +99,8 @@ struct PixelInput
     float3 tangent : TANGENT;
     float3 bitangent : BITANGENT;
     float3 worldPosition : TEXCOORD1;
+    noperspective float2 currentNdc : TEXCOORD2;
+    noperspective float2 previousNdc : TEXCOORD3;
 };
 
 row_major float3x3 getNormalMatrix(row_major float3x3 transform)
@@ -120,6 +124,7 @@ PixelInput vsMain(VertexInput input, uint instanceID : SV_InstanceID)
     const ObjectConstants object = objectInstances[instanceID];
     PixelInput output;
     float4 localPosition = float4(input.position, 1.0f);
+    float4 previousLocalPosition = localPosition;
     float3 localNormal = input.normal;
     float3 localTangent = input.tangent;
     float3 localBitangent = input.bitangent;
@@ -132,16 +137,24 @@ PixelInput vsMain(VertexInput input, uint instanceID : SV_InstanceID)
             + boneMatrices[boneIndices.y] * normalizedWeights.y
             + boneMatrices[boneIndices.z] * normalizedWeights.z
             + boneMatrices[boneIndices.w] * normalizedWeights.w;
+        const row_major float4x4 previousSkinMatrix = previousBoneMatrices[boneIndices.x] * normalizedWeights.x
+            + previousBoneMatrices[boneIndices.y] * normalizedWeights.y
+            + previousBoneMatrices[boneIndices.z] * normalizedWeights.z
+            + previousBoneMatrices[boneIndices.w] * normalizedWeights.w;
         const row_major float3x3 skinNormalMatrix = (float3x3)boneNormalMatrices[boneIndices.x] * normalizedWeights.x
             + (float3x3)boneNormalMatrices[boneIndices.y] * normalizedWeights.y
             + (float3x3)boneNormalMatrices[boneIndices.z] * normalizedWeights.z
             + (float3x3)boneNormalMatrices[boneIndices.w] * normalizedWeights.w;
         localPosition = mul(localPosition, skinMatrix);
+        previousLocalPosition = mul(previousLocalPosition, previousSkinMatrix);
         localNormal = normalize(mul(localNormal, skinNormalMatrix));
         localTangent = normalize(mul(localTangent, (float3x3)skinMatrix));
         localBitangent = normalize(mul(localBitangent, (float3x3)skinMatrix));
     }
     output.position = mul(localPosition, object.worldViewProjection);
+    output.currentNdc = output.position.xy / max(output.position.w, 0.00001f);
+    const float4 previousPosition = mul(previousLocalPosition, object.previousWorldViewProjection);
+    output.previousNdc = previousPosition.xy / max(previousPosition.w, 0.00001f);
     output.worldPosition = mul(localPosition, object.worldMatrix).xyz;
     const float4 resolvedBaseColor = (propertyOverrideMask & PROPERTY_BASE_COLOR) != 0
         ? propertyBaseColor : baseColor;
@@ -247,6 +260,7 @@ struct GBufferOutput
     float4 normal : SV_Target1;
     float4 material : SV_Target2;
     float4 emission : SV_Target3;
+    float4 velocity : SV_Target4;
 };
 
 GBufferOutput psGBuffer(PixelInput input)
@@ -280,6 +294,10 @@ GBufferOutput psGBuffer(PixelInput input)
     output.normal = float4(normal, 1.0f);
     output.material = float4(metallicValue, roughnessValue, occlusion, 1.0f);
     output.emission = float4(emission, 1.0f);
+    output.velocity = float4(
+        (input.previousNdc.x - input.currentNdc.x) * 0.5f,
+        (input.currentNdc.y - input.previousNdc.y) * 0.5f,
+        input.position.z, 1.0f);
     return output;
 }
 

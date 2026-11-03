@@ -61,7 +61,8 @@ namespace Engine
                 changed |= ImGui::Checkbox("##Override", &parameter.overrideState);
                 ImGui::SameLine();
                 ImGui::BeginDisabled(!parameter.overrideState);
-                changed |= ImGui::SliderFloat3(descriptor.name, &parameter.value.x, 0, descriptor.maximum,
+                changed |= ImGui::SliderFloat3(descriptor.name, &parameter.value.x,
+                    descriptor.minimum, descriptor.maximum,
                     "%.3f", ImGuiSliderFlags_AlwaysClamp);
                 ImGui::EndDisabled();
                 ImGui::PopID();
@@ -69,42 +70,74 @@ namespace Engine
             ImGui::TextDisabled("Left checkbox: override. RGB values are linear.");
             if (ImGui::TreeNode("Bloom"))
             {
-                drawSwitch(0); drawFloats(0, 3);
+                drawSwitch(0); drawFloats(0, 4);
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("Exposure"))
             {
-                drawSwitch(1); drawFloats(3, 4);
+                drawSwitch(1); drawFloats(4, 5);
                 ImGui::TreePop();
             }
-            if (ImGui::TreeNode("Color Adjustments"))
+            if (ImGui::TreeNode("Color Grading"))
             {
-                drawSwitch(2); drawFloats(4, 6); drawColor(0);
+                drawSwitch(2); drawFloats(11, 16); drawColor(0); drawColor(1);
+                if (ImGui::TreeNode("Shadows"))
+                {
+                    drawFloats(16, 20); drawColor(2);
+                    ImGui::TreePop();
+                }
+                if (ImGui::TreeNode("Midtones"))
+                {
+                    drawFloats(20, 24); drawColor(3);
+                    ImGui::TreePop();
+                }
+                if (ImGui::TreeNode("Highlights"))
+                {
+                    drawFloats(24, 28); drawColor(4);
+                    ImGui::TreePop();
+                }
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("Vignette"))
             {
-                drawSwitch(3); drawFloats(6, 9); drawColor(1);
+                drawSwitch(3); drawFloats(28, 31); drawColor(5);
+                ImGui::TreePop();
+            }
+            if (ImGui::TreeNode("Chromatic Aberration"))
+            {
+                drawSwitch(4); drawFloats(31, 33);
+                ImGui::TreePop();
+            }
+            if (ImGui::TreeNode("Film Grain"))
+            {
+                drawSwitch(5); drawFloats(33, 35);
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("FXAA"))
             {
-                drawSwitch(4); drawFloats(9, 12);
+                drawSwitch(6); drawFloats(35, 38);
+                ImGui::TreePop();
+            }
+            if (ImGui::TreeNode("Temporal Anti-Aliasing"))
+            {
+                drawSwitch(7); drawFloats(42, 43);
+                ImGui::TextDisabled("Jittered history reconstruction takes precedence over FXAA.");
+                ImGui::TreePop();
+            }
+            if (ImGui::TreeNode("Motion Blur"))
+            {
+                drawSwitch(8); drawFloats(43, 45);
+                ImGui::TextDisabled("Requires the deferred velocity buffer.");
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("Depth of Field"))
             {
-                drawSwitch(5); drawFloats(12, 15);
-                ImGui::TreePop();
-            }
-            if (ImGui::TreeNode("Fog"))
-            {
-                drawSwitch(6); drawFloats(15, 17); drawColor(2);
+                drawSwitch(9); drawFloats(38, 41);
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("Color Grading LUT"))
             {
-                drawSwitch(7); drawFloats(17, 18);
+                drawSwitch(10); drawFloats(41, 42);
                 auto& lut = settings.colorGradingLutAsset;
                 changed |= ImGui::Checkbox("Override LUT Asset", &lut.overrideState);
                 ImGui::BeginDisabled(!lut.overrideState);
@@ -140,7 +173,7 @@ namespace Engine
             }
             if (ImGui::TreeNode("Automatic Exposure"))
             {
-                drawSwitch(8); drawFloats(18, POST_PROCESS_FLOATS.size());
+                drawSwitch(11); drawFloats(5, 11);
                 ImGui::TextDisabled("Separate brighten/darken rates adapt per Camera over time.");
                 ImGui::TreePop();
             }

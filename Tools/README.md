@@ -130,7 +130,8 @@ the GPU readback bit-for-bit.
 
 Each case saves `*-hdr.dds` (linear RGBA16F, preserving values above 1) and
 `*-display.png` (sRGB-encoded final RGBA8). Every final pixel is compared against
-an independent CPU implementation of the current tone-map fit and sRGB encoding,
+an independent CPU implementation of the ACES fitted tone-mapping curve and
+sRGB encoding,
 with at most 2 byte levels of RGB error. HDR probes use a 0.003 absolute tolerance
 for half-float and G-Buffer quantization. Nonfinite/negative HDR, unexpected final
 alpha, D3D12 warnings/errors, and discarded debug messages fail validation.
@@ -171,10 +172,10 @@ The current Deferred color path is:
 ```text
 G-Buffer -> HDR lighting -> transparent geometry
          -> BeforeToneMapping color passes
-         -> Bloom -> color filter / contrast / saturation
-         -> exposure + tone mapping (linear HDR -> linear LDR)
+         -> Bloom -> White Balance / Global + tonal-range Color Grading
+         -> fixed/automatic exposure + ACES fitted Tone Mapping (linear HDR -> linear LDR)
          -> AfterToneMapping color passes
-         -> Vignette -> FXAA
+         -> Color Grading LUT -> Vignette -> Chromatic Aberration -> FXAA -> Film Grain
          -> sRGB encoding -> debug grid / Runtime UI / editor UI -> presentation
 ```
 
@@ -188,8 +189,8 @@ Returned textures may be reused later in the same command list, but cross-frame
 reuse and destruction wait for the associated scene-submission fence. Forward,
 `Nothing` camera clear mode, and G-Buffer debug views bypass the list.
 
-Without enabled LDR passes, Vignette or FXAA, tone mapping and sRGB encoding are fused into the
-final output pass. Therefore an empty or entirely disabled list adds no scratch
+Without enabled LDR passes or built-in LDR effects, tone mapping and sRGB encoding
+are fused into the final output pass. Therefore an empty or entirely disabled list adds no scratch
 texture and preserves the Phase 0 images bit-for-bit. Exposure is applied once.
 With LDR effects enabled, the tone-mapped intermediate is linear half-float, not
 sRGB. Display alpha is 1. `captureFrame` retains scene HDR **before** optional
@@ -202,7 +203,7 @@ and call `loadInputColor(input.position.xy)`. Root bindings are `t0` (input colo
 color input) and `b2` (its viewport); old single-input shader bindings are unchanged.
 Full-resolution identical viewports use
 integer texture loads to preserve exact copies. `ColorOutput.hlsli` shares the
-tone-map fit and sRGB implementation with Deferred debug display.
+ACES fitted tone-mapping curve and sRGB implementation with Deferred debug display.
 
 This is deliberately a small color-only graphics-pass foundation, not a full
 render graph. Depth/normal inputs, compute passes, history,
@@ -214,10 +215,10 @@ a diagnostic fixture, not a production effect.
 
 ## PostEffect Phase 2 Profiles and Camera authoring
 
-Select a **Camera** in the Inspector and expand **Post Effects**. This phase
-defines and persists Bloom, fixed exposure, color adjustments, Vignette, and FXAA
-settings. Phase 3 executes these resolved settings in Deferred rendering. Existing
-renderer exposure and the diagnostic/custom pass API remain available.
+Select a **Camera** in the Inspector and expand **Post Effects**. Post Effects
+settings are shared through Profiles and local Camera overrides, and execute in
+Deferred rendering. Existing renderer exposure and the diagnostic/custom pass
+API remain available.
 
 - **Enable Post Effects** opts this camera into Profile rendering (default off).
   **Weight** is a finite contribution in `[0,1]`; Phase 3 blends parameters from
@@ -247,7 +248,7 @@ Subsequent edits cannot change a queued render view. Fixed exposure is expressed
 in EV stops, contrast/saturation in percent, and colors in **linear RGB**;
 scalar/color ranges are shared between the Inspector and validation.
 
-Scene/Prefab Camera payload v3 stores enable, weight, local values/flags, Volume
+Scene/Prefab Camera payload v7 stores enable, weight, local values/flags, Volume
 layer mask, and
 Profile GUID plus a normalized absolute path encoded as UTF-8. Existing v1
 Cameras and legacy empty payloads remain compatible with neutral PostEffect
@@ -267,10 +268,11 @@ Inspector editing remains disabled during Play as in the existing editor.
 
 `--validate-rendering` now runs Profile and Camera authoring checks first, writes
 `authoring-results.json` plus isolated files under `authoring-fixtures`, and
-then runs the Phase 0/1 GPU regressions. It tests all setting values and override
+then runs the full rendering and post-effect GPU regressions. It tests all setting values and override
 flags, inclusive scalar bounds and invalid inputs, atomic saves/path conflicts,
-reload failures, Unicode references, Camera v0/v1/v2/v3/v4/v5 compatibility, Scene/Prefab
-round trips, actual Play scene cloning, Windows path case aliases, and queued
+reload failures, Unicode references, Camera v0/v1/v2/v4/v7 compatibility,
+legacy Profile defaults and current Profile round trips, Scene/Prefab round trips,
+actual Play scene cloning, Windows path case aliases, and queued
 snapshot independence. A headless ImGui context expands all authoring sections
 and exercises the camera enable checkbox and New Profile button without writing
 editor preferences or opening native dialogs.
@@ -279,7 +281,7 @@ only their rejection and preservation of previous state count as success.
 Finally, a nonneutral, zero-weight authoring snapshot is submitted to the GPU:
 it must be delivered intact while leaving both baseline images unchanged.
 D3D12 diagnostics must still contain zero warnings/errors. The combined
-`results.json` is version 7 and links to authoring, built-in effects, custom
+`results.json` is version 8 and links to authoring, built-in effects, custom
 effects, Volume, and Phase 6/7 reports.
 
 ## PostEffect Phase 3 built-in effects
@@ -292,25 +294,40 @@ Forward, `Nothing` clear mode and G-Buffer debug views bypass camera effects.
 UI and the editor grid remain after post-processing. Removing the active Camera
 clears its PostEffect snapshot.
 
-- **Bloom** uses a soft threshold, ceil-half downsampling and up to six levels
-  (stopping at 1x1), a normalized nine-tap tent reconstruction and an additive HDR
-  composite. Scatter blends local/low-frequency energy without multiplying a
-  constant field's brightness by pyramid depth. Threshold is **scene-referred**,
-  before renderer exposure or EV adjustment. Intensity is multiplied by Weight.
+- **Bloom** follows the Standard multi-scale pyramid (not convolution Bloom):
+  Karis-weighted first downsampling suppresses isolated HDR fireflies, followed by
+  up to five ceil-half levels from 1/2 through 1/32 and normalized nine-tap tent
+  reconstruction. A one-luminance-unit soft threshold is scene-referred and
+  evaluated before exposure; `-1` includes all pixels. Size Scale adjusts blur
+  radius, Scatter blends local and low-frequency energy, and Intensity scales the
+  additive HDR result. Constant fields remain normalized across pyramid depth.
 - **Fixed exposure** multiplies renderer exposure by `exp2(EV * Weight)` once.
   No automatic exposure/history is introduced. Tone-map inputs are clamped to
   RGBA16F's finite maximum to avoid overflow at extreme EV.
-- **Color adjustments** apply a linear RGB filter blended from white, contrast
-  blended from 1 around middle gray (0.18), then Rec.709 saturation blended from 1,
-  all in HDR before exposure/tone mapping. Negative colors are clamped to zero.
+- **ACES Tone Mapping** uses the fitted ACES filmic curve before the final
+  linear-to-sRGB encoding. Fixed exposure and temporally adapted automatic
+  exposure are applied once before this curve.
+- **Color Grading** applies Kelvin White Balance and Tint, a linear RGB filter,
+  global contrast around middle gray (0.18), Rec.709 saturation and Gamma, then
+  independently weighted Shadows/Midtones/Highlights saturation, contrast,
+  Gamma, Gain and linear color-wheel offsets. Negative colors are clamped to zero.
+  Camera/Volume weights blend from neutral values; color grading remains in HDR
+  before exposure and tone mapping.
 - **Vignette** blends its linear RGB color after tone mapping. Intensity blends
   from zero; smoothness controls radial falloff, and roundness blends between
   viewport-normalized and aspect-correct distance.
+- **Chromatic Aberration** separates red and blue channels radially from the
+  viewport center after Vignette. Start Offset controls the onset radius; sampling
+  is clamped to the active camera viewport.
 - **FXAA** detects directional edges using perceptual luminance and bounded
   endpoint searches, combines edge and subpixel reconstruction, and blends the
   filtered **linear LDR** result by Weight. Luminance comparisons use 12-bit
   fractional precision to stabilize nearly equal edges across floating-point
   contraction differences. sRGB encoding remains final-only.
+- **Film Grain** adds a frame-varying hash-noise grain in linear LDR after FXAA.
+  Intensity controls amplitude and Response weights the grain toward shadows.
+  The seed advances only on frames where the effect is active and is transported
+  exactly through the shader constants.
 
 All built-in shaders participate in ShaderManager dependency/hot-reload tracking.
 Rebuild constructs all candidate PSOs before replacing the previous pipelines.
@@ -320,8 +337,10 @@ fractional viewports never sample the undrawn bottom/right rows of temporary
 targets. This fixes the old reduced-resolution cropped-viewport display fixture;
 the remaining Phase 2 baseline images stay bit-for-bit unchanged.
 
-`effects-results.json` records independent CPU/GPU per-pixel comparisons, still
-limited to **2 RGB byte levels**, raw scene HDR preservation, alpha, draw counts,
+`effects-results.json` records independent CPU/GPU per-pixel comparisons for
+global and tonal-range grading, weighted White Balance, Chromatic Aberration,
+temporal Film Grain and the other built-ins, still limited to **2 RGB byte
+levels**, raw scene HDR preservation, alpha, draw counts,
 Bloom depth, bounded fence-aware target/descriptor reuse and zero D3D12 warnings
 or errors. Tests include EV limits, weighted colors and effects, threshold/scatter
 limits, constant-field Bloom normalization, rotated diagonal FXAA (at least 10%
@@ -477,15 +496,18 @@ an independent CPU display reference, exercises fractional Volume/Camera
 contributions, and checks Profile effect ordering through the real Camera
 snapshot path. Saved DDS/PNG round-trips and D3D12 diagnostics remain required.
 
-## PostEffect Phase 6 depth, color grading and automatic exposure
+## PostEffect Phase 6 depth, temporal effects, color grading and automatic exposure
 
-Phase 6 adds depth-of-field and exponential fog using the active Camera's
-linearized deferred depth buffer. Depth-of-field uses the configured focus
-distance/range and maximum blur radius; fog uses density, start distance and
-color. Both run before tone mapping and require a matching Camera depth target.
-The Camera near/far planes and projection type are captured with the immutable
-PostEffect snapshot, so queued views use the same depth interpretation they were
-authored with.
+Depth-of-field uses the active Camera's linearized deferred depth buffer, with
+depth-weighted disk sampling to reduce color bleeding across focus boundaries.
+Temporal anti-aliasing jitters the deferred projection, reprojects a per-Camera
+HDR history with G-Buffer motion vectors, rejects disocclusions by depth, and
+clamps history to the current 3x3 color neighborhood. Motion blur gathers along
+the same velocity buffer and rejects samples across depth discontinuities.
+Both temporal effects require deferred rendering. Camera cuts can invalidate
+history with `CameraComponent::resetTemporalHistory`; resizing, switching
+cameras, or disabling TAA also resets it. Camera near/far planes and projection
+type are captured in the immutable PostEffect snapshot.
 
 Color grading accepts a **linear 2D strip LUT** with dimensions `N*N` by `N`,
 where `N` is 16-64. Blue selects adjacent horizontal slices; red and green
@@ -502,11 +524,16 @@ adaptation using separate brighten/darken rates. The result is applied during
 tone mapping, after the HDR reduction and bloom stage.
 
 Phase 6 validation writes `phase6-results.json` and captures for neutral and
-active DOF, depth-based fog, a generated invert-red strip LUT, current-frame
-automatic exposure, and the combined stack. Checks compare raw HDR against the
-neutral baseline, verify the LUT and exposure against independent CPU
-references, assert effect/draw counts and output changes, round-trip saved
-captures, and require zero D3D12 diagnostics.
+active DOF, TAA history accumulation, camera-motion blur, a generated invert-red
+strip LUT, current-frame automatic exposure, and the combined stack. Checks
+compare raw HDR against the neutral baseline, verify the LUT and exposure
+against independent CPU references, assert effect/draw counts and output
+changes, round-trip saved captures, and require zero D3D12 diagnostics.
+
+Fog was removed from runtime settings and rendering. Its FlatBuffers fields are
+retained as reserved wire slots so older profiles remain readable without
+changing subsequent field IDs; saving a profile writes neutral values to those
+legacy slots.
 
 ## PostEffect Phase 7 temporal exposure history
 
@@ -523,7 +550,9 @@ leaking across Cameras.
 The two rates are authorable Profile/Volume/Camera settings and default to
 3.0 inverse seconds for increasing exposure and 1.0 inverse second for
 decreasing exposure. Older Camera v4 and Profile v3 payloads missing these
-Phase 7 fields load with those defaults. Delta time comes from the active Camera's
+Phase 7 fields load with those defaults. The Phase 7 Camera v5 and Profile v4
+payloads also load with the default Bloom Size Scale when that additive Phase 8
+setting is absent. Delta time comes from the active Camera's
 simulation update, so paused simulation holds the exposure history.
 
 Phase 7 validation writes `phase7-results.json` and checks immediate first

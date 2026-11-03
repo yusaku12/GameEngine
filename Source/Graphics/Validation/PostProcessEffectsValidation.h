@@ -12,7 +12,7 @@ namespace Engine
     class DX12Renderer;
     struct DX12FrameCapture;
     /** @brief Isolated fixture variants for effect, AA, constant-field and camera-removal regressions. */
-    enum class PostProcessValidationFixture { Panels, Diagonal, Uniform, NoCamera, Nothing };
+    enum class PostProcessValidationFixture { Panels, Diagonal, Uniform, NoCamera, Nothing, BloomHotspot };
     /** @brief Fixed procedural scene rendering callback. */
     using PostProcessValidationRender = std::function<bool(std::uint32_t, std::uint32_t,
         const CameraViewport&, const PostProcessCameraSnapshot&, PostProcessValidationFixture)>;

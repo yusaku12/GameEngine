@@ -10,13 +10,15 @@ namespace Engine
     /** @brief Built-in shader slots; shared by shader registration, PSO rebuilding and execution. */
     enum class PostProcessBuiltin : std::size_t
     {
-        BloomPrefilter, BloomDownsample, BloomUpsample, BloomComposite, CustomComposite, Vignette, Fxaa,
-        DepthOfField, Fog, ColorGradingLut, AutoExposureDownsample, AutoExposureAdapt, Count,
+        BloomPrefilter, BloomDownsample, BloomUpsample, BloomComposite, CustomComposite, Vignette,
+        ChromaticAberration, FilmGrain, Fxaa,
+        DepthOfField, ColorGradingLut, AutoExposureDownsample, AutoExposureAdapt, TemporalAA, MotionBlur, Count,
     };
     inline constexpr std::array POST_PROCESS_BUILTIN_ENTRIES{
         "psBloomPrefilter", "psBloomDownsample", "psBloomUpsample", "psBloomComposite",
-        "psCustomComposite", "psVignette", "psFxaa", "psDepthOfField", "psFog",
-        "psColorGradingLut", "psAutoExposureDownsample", "psAutoExposureAdapt",
+        "psCustomComposite", "psVignette", "psChromaticAberration", "psFilmGrain",
+        "psFxaa", "psDepthOfField", "psColorGradingLut", "psAutoExposureDownsample",
+        "psAutoExposureAdapt", "psTemporalAA", "psMotionBlur",
     };
     static_assert(POST_PROCESS_BUILTIN_ENTRIES.size() == static_cast<std::size_t>(PostProcessBuiltin::Count));
     using PostProcessBuiltinShaders = std::array<std::shared_ptr<const DX12Shader>, POST_PROCESS_BUILTIN_ENTRIES.size()>;
@@ -43,6 +45,7 @@ namespace Engine
         std::uint32_t drawCalls = 0; //!< Optional passes and required output conversion.
         std::size_t temporaryTargets = 0; //!< Pool textures, including GPU-pending entries.
         std::uint32_t bloomLevels = 0; //!< Recorded levels of the bounded Bloom pyramid.
+        std::uint32_t filmGrainFrameIndex = 0; //!< Temporal grain seed used for the last recording.
     };
 
     /**
@@ -75,7 +78,8 @@ namespace Engine
          */
         bool record(DX12CommandList& commandList, const PostProcessImage& input,
             const PostProcessImage& output, const D3D12_VIEWPORT& viewport, float exposure,
-            const PostProcessCameraSnapshot& camera = {}, const PostProcessImage* depth = nullptr);
+            const PostProcessCameraSnapshot& camera = {}, const PostProcessImage* depth = nullptr,
+            const PostProcessImage* motionVectors = nullptr);
         /** @brief 記録した全パスのPSO/一時画像へ提出Fenceを関連付ける。 */
         bool markSubmitted(std::uint64_t fenceValue);
         /** @brief Resize時に一時画像を解放する。パス定義とPSOは保持する。 */
@@ -104,21 +108,24 @@ namespace Engine
         bool draw(DX12CommandList& commandList, const DX12GraphicsPipeline& pipeline,
             const PostProcessImage& input, const PostProcessImage& output,
             const D3D12_VIEWPORT& sourceViewport, const D3D12_VIEWPORT& targetViewport,
-            float exposure, bool toneMapping, const std::array<float, 16>& parameters,
+            float exposure, bool toneMapping, std::span<const float> parameters,
             const PostProcessImage* secondary = nullptr, const D3D12_VIEWPORT* secondaryViewport = nullptr,
-            const DX12GpuDescriptorHandle* externalSecondary = nullptr);
+            const DX12GpuDescriptorHandle* externalSecondary = nullptr,
+            const PostProcessImage* tertiary = nullptr);
         PostProcessImage* recordAutoExposure(DX12CommandList& commandList,
             const PostProcessImage& input, const D3D12_VIEWPORT& sourceViewport,
             const D3D12_RESOURCE_DESC& fullSize);
         bool initializeExposureHistory();
         bool releaseExposureHistory();
+        bool initializeTemporalHistory(std::uint32_t width, std::uint32_t height);
+        bool releaseTemporalHistory();
         PostProcessImage* recordExposureAdaptation(DX12CommandList& commandList,
             const PostProcessImage& averageLogLuminance, const D3D12_VIEWPORT& viewport,
             const PostProcessSettings& settings, float deltaTimeSeconds);
         bool recordBloom(DX12CommandList& commandList, const PostProcessImage*& current,
             const PostProcessImage*& borrowed, D3D12_VIEWPORT& currentViewport,
             const PostProcessImage& output, const D3D12_VIEWPORT& viewport, float intensity,
-            float threshold, float scatter);
+            float threshold, float scatter, float sizeScale);
 
         ID3D12Device* m_device = nullptr;
         const DX12Fence* m_fence = nullptr;
@@ -132,6 +139,19 @@ namespace Engine
         ObjectGUID m_exposureHistoryCamera;
         std::size_t m_exposureHistoryReadIndex = 0;
         bool m_exposureHistoryValid = false;
+        std::array<DX12Resource, 2> m_temporalHistoryResources;
+        std::array<PostProcessImage, 2> m_temporalHistoryImages{};
+        std::array<std::optional<DX12DescriptorAllocation>, 2> m_temporalHistorySrvs;
+        DX12DescriptorHeap m_temporalHistoryRtvHeap;
+        std::array<DX12CpuDescriptorHandle, 2> m_temporalHistoryRtvs{};
+        ObjectGUID m_temporalHistoryCamera;
+        std::uint32_t m_temporalHistoryWidth = 0;
+        std::uint32_t m_temporalHistoryHeight = 0;
+        std::size_t m_temporalHistoryReadIndex = 0;
+        std::size_t m_temporalHistoryPendingReadIndex = 0;
+        bool m_temporalHistoryValid = false;
+        bool m_temporalHistoryRecorded = false;
+        std::uint32_t m_filmGrainFrameIndex = 0;
         std::shared_ptr<const DX12Shader> m_vertexShader;
         DX12GraphicsPipeline m_toneMapping;
         DX12GraphicsPipeline m_output;

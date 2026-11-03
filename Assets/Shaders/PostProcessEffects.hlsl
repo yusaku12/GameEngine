@@ -8,15 +8,33 @@ float3 boxFilter(float2 pixel)
         + sampleInputOffset(pixel, float2(0.5f, 0.5f)));
 }
 
+float3 karisDownsample(float2 pixel)
+{
+    const float3 samples[4] = {
+        max(sampleInputOffset(pixel, float2(-0.5f, -0.5f)), 0.0f),
+        max(sampleInputOffset(pixel, float2(0.5f, -0.5f)), 0.0f),
+        max(sampleInputOffset(pixel, float2(-0.5f, 0.5f)), 0.0f),
+        max(sampleInputOffset(pixel, float2(0.5f, 0.5f)), 0.0f)
+    };
+    float3 color = 0.0f;
+    float weightSum = 0.0f;
+    [unroll]
+    for (uint index = 0; index < 4; ++index)
+    {
+        const float brightness = max(samples[index].r, max(samples[index].g, samples[index].b));
+        const float weight = rcp(1.0f + brightness);
+        color += samples[index] * weight;
+        weightSum += weight;
+    }
+    return color / max(weightSum, 0.00001f);
+}
+
 float4 psBloomPrefilter(PostProcessVertex input) : SV_Target0
 {
-    const float3 color = max(boxFilter(input.position.xy), 0.0f);
+    const float3 color = karisDownsample(input.position.xy);
     const float brightness = max(color.r, max(color.g, color.b));
     const float threshold = parameters[0].x;
-    const float knee = threshold * 0.5f;
-    float soft = clamp(brightness - threshold + knee, 0.0f, 2.0f * knee);
-    soft = soft * soft / max(4.0f * knee, 0.00001f);
-    const float contribution = max(brightness - threshold, soft) / max(brightness, 0.00001f);
+    const float contribution = threshold < 0.0f ? 1.0f : saturate(brightness - threshold);
     return float4(min(color * contribution, 65504.0f), 1.0f);
 }
 
@@ -35,7 +53,8 @@ float4 psBloomUpsample(PostProcessVertex input) : SV_Target0
         for (int x = -1; x <= 1; ++x)
         {
             const float weight = (x == 0 ? 2.0f : 1.0f) * (y == 0 ? 2.0f : 1.0f);
-            low += weight * sampleViewport(secondaryColor, secondaryViewport, input.position.xy, float2(x, y)).rgb;
+            low += weight * sampleViewport(secondaryColor, secondaryViewport, input.position.xy,
+                float2(x, y) * parameters[0].y).rgb;
         }
     }
     return float4(lerp(loadInputColor(input.position.xy).rgb, low / 16.0f, parameters[0].x), 1.0f);
@@ -63,6 +82,38 @@ float4 psVignette(PostProcessVertex input) : SV_Target0
     const float falloff = smoothstep(1.0f - parameters[0].y, 1.0f, radius);
     const float strength = saturate(falloff * parameters[0].x);
     return float4(lerp(loadInputColor(input.position.xy).rgb, parameters[1].rgb, strength), 1.0f);
+}
+
+float4 psChromaticAberration(PostProcessVertex input) : SV_Target0
+{
+    const float2 uv = (input.position.xy - targetViewport.xy) / targetViewport.zw;
+    const float2 radial = (uv - 0.5f) * 2.0f;
+    const float distanceFromCenter = length(radial);
+    const float onset = parameters[0].y >= 1.0f
+        ? step(1.0f, distanceFromCenter) : smoothstep(parameters[0].y, 1.0f, distanceFromCenter);
+    const float2 offset = radial * (parameters[0].x * 0.75f * onset);
+    const float3 center = loadInputColor(input.position.xy).rgb;
+    const float red = sampleInputOffset(input.position.xy, offset).r;
+    const float blue = sampleInputOffset(input.position.xy, -offset).b;
+    return float4(red, center.g, blue, 1.0f);
+}
+
+float grainNoise(uint2 pixel, uint frame)
+{
+    uint value = pixel.x * 1973u + pixel.y * 9277u + frame * 26699u + 0x68bc21ebu;
+    value = (value << 13u) ^ value;
+    value = value * (value * value * 15731u + 789221u) + 1376312589u;
+    return float(value & 0x7fffffffu) / 1073741824.0f - 1.0f;
+}
+
+float4 psFilmGrain(PostProcessVertex input) : SV_Target0
+{
+    const float3 color = loadInputColor(input.position.xy).rgb;
+    const float luminance = dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+    const float response = lerp(1.0f, 1.0f - saturate(luminance), parameters[0].y);
+    const uint frame = uint(max(round(parameters[0].z), 0.0f));
+    const float noise = grainNoise(uint2(input.position.xy), frame);
+    return float4(max(color + noise * parameters[0].x * response * 0.08f, 0.0f), 1.0f);
 }
 
 float perceptualLuma(float3 color)
@@ -164,24 +215,90 @@ float4 psDepthOfField(PostProcessVertex input) : SV_Target0
     const float circleOfConfusion = saturate(abs(distance - parameters[0].x)
         / max(parameters[0].y, 0.0001f));
     const float radius = circleOfConfusion * parameters[0].z;
-    const float sampleRadius = max(radius, 0.5f);
-    const float3 blur = (center * 4.0f
-        + sampleInputOffset(pixel, float2(-0.75f, -0.25f) * sampleRadius)
-        + sampleInputOffset(pixel, float2(0.75f, -0.25f) * sampleRadius)
-        + sampleInputOffset(pixel, float2(-0.25f, 0.75f) * sampleRadius)
-        + sampleInputOffset(pixel, float2(0.25f, -0.75f) * sampleRadius)) / 8.0f;
+    static const float2 disk[12] = {
+        float2(0.1305f, 0.9914f), float2(-0.6088f, 0.7934f),
+        float2(-0.9851f, 0.1710f), float2(-0.7934f, -0.6088f),
+        float2(-0.1710f, -0.9851f), float2(0.6088f, -0.7934f),
+        float2(0.9239f, -0.3827f), float2(0.3827f, 0.9239f),
+        float2(-0.3827f, 0.3827f), float2(0.7071f, 0.7071f),
+        float2(-0.7071f, -0.7071f), float2(0.0f, 0.0f)
+    };
+    float3 accumulated = center;
+    float weightSum = 1.0f;
+    [unroll]
+    for (uint index = 0; index < 12; ++index)
+    {
+        const float2 offset = disk[index] * radius;
+        const float sampleDepth = linearViewDepth(
+            sampleViewport(secondaryColor, secondaryViewport, pixel, offset).r,
+            parameters[0].w, parameters[1].x, parameters[2].x > 0.5f);
+        const float depthDifference = abs(sampleDepth - distance);
+        const float depthWeight = exp2(-depthDifference / max(distance * 0.04f, 0.1f));
+        const float weight = lerp(1.0f, depthWeight, saturate(radius));
+        accumulated += sampleInputOffset(pixel, offset) * weight;
+        weightSum += weight;
+    }
+    const float3 blur = accumulated / max(weightSum, 0.0001f);
     return float4(lerp(center, blur, saturate(circleOfConfusion * parameters[1].y)), 1.0f);
 }
 
-float4 psFog(PostProcessVertex input) : SV_Target0
+float4 psMotionBlur(PostProcessVertex input) : SV_Target0
 {
     const float2 pixel = input.position.xy;
-    const float rawDepth = sampleViewport(secondaryColor, secondaryViewport, pixel, 0).r;
-    const float distance = linearViewDepth(rawDepth, parameters[0].z, parameters[0].w,
-        parameters[2].x > 0.5f);
-    const float fogAmount = saturate(1.0f - exp(-parameters[0].x * max(distance - parameters[0].y, 0.0f)));
-    const float3 color = loadInputColor(pixel).rgb;
-    return float4(lerp(color, parameters[1].rgb, fogAmount * parameters[1].w), 1.0f);
+    const float4 centerMotion = sampleViewport(secondaryColor, secondaryViewport, pixel, 0);
+    const float2 viewportSize = targetViewport.zw;
+    const float2 motionPixels = clamp(centerMotion.xy * viewportSize,
+        -parameters[0].y, parameters[0].y) * parameters[0].x;
+    float3 accumulated = loadInputColor(pixel).rgb;
+    float weightSum = 1.0f;
+    [unroll]
+    for (uint index = 0; index < 8; ++index)
+    {
+        const float amount = (index + 0.5f) / 8.0f;
+        const float2 offset = motionPixels * amount;
+        const float4 sampleMotion = sampleViewport(secondaryColor, secondaryViewport, pixel, offset);
+        const float depthTolerance = max(0.001f, centerMotion.z * 0.01f);
+        if (abs(sampleMotion.z - centerMotion.z) <= depthTolerance)
+        {
+            accumulated += sampleInputOffset(pixel, offset);
+            weightSum += 1.0f;
+        }
+    }
+    return float4(accumulated / weightSum, 1.0f);
+}
+
+float4 psTemporalAA(PostProcessVertex input) : SV_Target0
+{
+    const float2 pixel = input.position.xy;
+    const float3 current = loadInputColor(pixel).rgb;
+    const float4 motion = sampleViewport(secondaryColor, secondaryViewport, pixel, 0);
+    const float2 historyPixel = pixel + motion.xy * targetViewport.zw;
+    const float2 viewportMin = targetViewport.xy + 0.5f;
+    const float2 viewportMax = targetViewport.xy + targetViewport.zw - 0.5f;
+    const bool insideViewport = all(historyPixel >= viewportMin) && all(historyPixel <= viewportMax);
+    float3 neighborhoodMin = current;
+    float3 neighborhoodMax = current;
+    [unroll]
+    for (int y = -1; y <= 1; ++y)
+    {
+        [unroll]
+        for (int x = -1; x <= 1; ++x)
+        {
+            const float3 neighbor = sampleInputOffset(pixel, float2(x, y));
+            neighborhoodMin = min(neighborhoodMin, neighbor);
+            neighborhoodMax = max(neighborhoodMax, neighbor);
+        }
+    }
+    const float currentDepth = linearViewDepth(motion.z, parameters[0].z,
+        parameters[0].w, parameters[1].x > 0.5f);
+    if (parameters[0].y < 0.5f || !insideViewport)
+        return float4(current, currentDepth);
+    const float4 previous = sampleViewport(tertiaryColor, targetViewport, historyPixel, 0);
+    const float depthTolerance = max(0.02f, currentDepth * 0.02f);
+    const bool depthMatches = abs(previous.a - currentDepth) <= depthTolerance;
+    const float3 clampedHistory = clamp(previous.rgb, neighborhoodMin, neighborhoodMax);
+    const float feedback = depthMatches ? saturate(parameters[0].x) : 0.0f;
+    return float4(lerp(current, clampedHistory, feedback), currentDepth);
 }
 
 float3 sampleColorGradingLut(float3 color)

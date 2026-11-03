@@ -169,6 +169,7 @@ namespace Engine
         SkinningPaletteConstants bonePalette;
         bonePalette.boneMatrices.fill(Matrix::Identity);
         bonePalette.boneNormalMatrices.fill(Matrix::Identity);
+        bonePalette.previousBoneMatrices.fill(Matrix::Identity);
         if (!resource->bonePaletteBuffer.initialize(*m_device->get(), *m_fence, sizeof(bonePalette))
             || !resource->bonePaletteBuffer.write(std::as_bytes(std::span{ &bonePalette, 1 })))
         {

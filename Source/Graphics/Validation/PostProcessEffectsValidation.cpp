@@ -62,6 +62,35 @@ namespace Engine
             const float t = std::clamp(value, 0.0f, 1.0f);
             return t * t * (3 - 2 * t);
         }
+        float smoothstep(const float minimum, const float maximum, const float value)
+        {
+            return smooth((value - minimum) / (maximum - minimum));
+        }
+        void applyColorGradeRange(Rgb& color, const float saturation, const float contrast,
+            const float gamma, const float gain, const Vector3& offset,
+            const float settingsWeight, const float weight)
+        {
+            const float rangeSaturation = std::lerp(1.0f, std::lerp(1.0f, saturation, settingsWeight), weight);
+            const float rangeContrast = std::lerp(1.0f, std::lerp(1.0f, contrast, settingsWeight), weight);
+            const float rangeGamma = std::lerp(1.0f, std::lerp(1.0f, gamma, settingsWeight), weight);
+            const float rangeGain = std::lerp(1.0f, std::lerp(1.0f, gain, settingsWeight), weight);
+            const std::array offsets{ offset.x, offset.y, offset.z };
+            const float luminance = luma(color);
+            for (std::size_t channel = 0; channel < color.size(); ++channel)
+            {
+                color[channel] = std::max(std::lerp(luminance, color[channel], rangeSaturation), 0.0f);
+                color[channel] = std::max((color[channel] - 0.18f) * rangeContrast + 0.18f
+                    + offsets[channel] * settingsWeight * weight, 0.0f);
+                color[channel] = std::pow(color[channel], 1.0f / rangeGamma) * rangeGain;
+            }
+        }
+        float grainNoise(const std::uint32_t x, const std::uint32_t y, const std::uint32_t frame)
+        {
+            std::uint32_t value = x * 1973u + y * 9277u + frame * 26699u + 0x68bc21ebu;
+            value = (value << 13u) ^ value;
+            value = value * (value * value * 15731u + 789221u) + 1376312589u;
+            return static_cast<float>(value & 0x7fffffffu) / 1073741824.0f - 1.0f;
+        }
         Rgb sample(const CpuImage& image, const Bounds& bounds, float x, float y)
         {
             const float firstX = std::clamp(std::ceil(bounds.x - 0.5f), 0.0f, static_cast<float>(image.width - 1));
@@ -128,8 +157,8 @@ namespace Engine
 
         std::uint32_t bloom(CpuImage& image, const Bounds& full, const PostProcessSettings& settings, const float weight)
         {
-            std::array<CpuImage, 6> levels;
-            std::array<Bounds, 6> bounds{};
+            std::array<CpuImage, 5> levels;
+            std::array<Bounds, 5> bounds{};
             std::size_t count = 0;
             const CpuImage* source = &image;
             Bounds sourceBounds = full;
@@ -145,21 +174,26 @@ namespace Engine
                         if (!inside(bounds[count], x, y))
                             continue;
                         Rgb rgb{};
+                        float weightSum = 0;
                         for (const float dy : { -0.5f, 0.5f })
                             for (const float dx : { -0.5f, 0.5f })
                             {
                                 const auto value = resample(*source, sourceBounds, bounds[count], x, y, dx, dy);
+                                const float brightness = std::max({ value[0], value[1], value[2] });
+                                const float karisWeight = count == 0
+                                    ? 1.0f / (1.0f + std::max(brightness, 0.0f)) : 0.25f;
                                 for (std::size_t channel = 0; channel < 3; ++channel)
-                                    rgb[channel] += value[channel] * 0.25f;
+                                    rgb[channel] += value[channel] * karisWeight;
+                                weightSum += karisWeight;
                             }
+                        for (float& channel : rgb)
+                            channel /= weightSum;
                         if (count == 0)
                         {
                             const float brightness = std::max({ rgb[0], rgb[1], rgb[2] });
                             const float threshold = settings.bloomThreshold.value;
-                            const float knee = threshold * 0.5f;
-                            const float soft = std::clamp(brightness - threshold + knee, 0.0f, 2 * knee);
-                            const float contribution = std::max(brightness - threshold,
-                                soft * soft / std::max(4 * knee, 0.00001f)) / std::max(brightness, 0.00001f);
+                            const float contribution = threshold < 0
+                                ? 1.0f : std::clamp(brightness - threshold, 0.0f, 1.0f);
                             for (float& channel : rgb)
                                 channel *= contribution;
                         }
@@ -194,7 +228,8 @@ namespace Engine
                             {
                                 const float tapWeight = static_cast<float>((dx == 0 ? 2 : 1) * (dy == 0 ? 2 : 1)) / 16;
                                 const auto value = resample(low, lowBounds, highBounds, x, y,
-                                    static_cast<float>(dx), static_cast<float>(dy));
+                                    static_cast<float>(dx) * settings.bloomSizeScale.value,
+                                    static_cast<float>(dy) * settings.bloomSizeScale.value);
                                 for (std::size_t channel = 0; channel < 3; ++channel)
                                     filtered[channel] += value[channel] * tapWeight;
                             }
@@ -270,7 +305,8 @@ namespace Engine
             std::uint32_t draws = 1;
             std::uint32_t effects = 0;
         };
-        Reference reference(const DirectX::ScratchImage& hdr, const EffectCase& test)
+        Reference reference(const DirectX::ScratchImage& hdr, const EffectCase& test,
+            const std::uint32_t filmGrainFrameIndex)
         {
             Reference result{ readHdr(hdr), 0, 1 };
             auto& image = result.image;
@@ -284,6 +320,8 @@ namespace Engine
             const float exposureWeight = weight * test.camera.effects.exposure;
             const float colorWeight = weight * test.camera.effects.colorAdjustments;
             const float vignetteWeight = weight * test.camera.effects.vignette;
+            const float chromaticAberrationWeight = weight * test.camera.effects.chromaticAberration;
+            const float filmGrainWeight = weight * test.camera.effects.filmGrain;
             const float fxaaWeight = weight * test.camera.effects.fxaa;
             if (test.customScales)
             {
@@ -297,9 +335,27 @@ namespace Engine
                 result.draws += result.bloomLevels * 2;
             }
             const bool vignette = vignetteWeight > 0 && settings.vignetteEnabled.value && settings.vignetteIntensity.value > 0;
+            const bool chromaticAberration = chromaticAberrationWeight > 0
+                && settings.chromaticAberrationEnabled.value && settings.chromaticAberrationIntensity.value > 0;
+            const bool filmGrain = filmGrainWeight > 0
+                && settings.filmGrainEnabled.value && settings.filmGrainIntensity.value > 0;
             const bool aa = fxaaWeight > 0 && settings.fxaaEnabled.value;
             const float exposure = exposureWeight > 0 && settings.exposureEnabled.value ? std::exp2(settings.exposureEV.value * exposureWeight) : 1;
             const auto filter = Vector3::Lerp(Vector3::One, settings.colorFilter.value, colorWeight);
+            const float temperature = std::lerp(6500.0f, settings.colorTemperature.value, colorWeight);
+            const float tint = settings.colorTint.value * colorWeight;
+            const float temperatureOffset = (6500.0f - temperature) / 6500.0f;
+            const Rgb whiteBalance{
+                std::exp2(temperatureOffset * 0.65f + tint * 0.3f),
+                std::exp2(-std::abs(temperatureOffset) * 0.08f - tint * 0.35f),
+                std::exp2(-temperatureOffset * 0.65f + tint * 0.3f),
+            };
+            const std::array globalOffset{
+                settings.colorOffset.value.x, settings.colorOffset.value.y, settings.colorOffset.value.z,
+            };
+            const bool hasLdrPasses = vignette || chromaticAberration || filmGrain || aa || test.customScales;
+            if (hasLdrPasses)
+                ++result.draws;
             for (std::uint32_t y = 0; y < image.height; ++y)
                 for (std::uint32_t x = 0; x < image.width; ++x)
                 {
@@ -309,18 +365,39 @@ namespace Engine
                     {
                         const std::array factors{ filter.x, filter.y, filter.z };
                         for (std::size_t channel = 0; channel < 3; ++channel)
-                            rgb[channel] = std::max((rgb[channel] * factors[channel] - 0.18f)
-                                * (1 + settings.contrast.value * colorWeight * 0.01f) + 0.18f, 0.0f);
+                            rgb[channel] = std::max(rgb[channel] * factors[channel] * whiteBalance[channel]
+                                + globalOffset[channel] * colorWeight, 0.0f);
+                        const float contrast = std::lerp(1.0f, 1.0f + settings.contrast.value * 0.01f, colorWeight);
+                        for (float& channel : rgb)
+                            channel = std::max((channel - 0.18f) * contrast + 0.18f, 0.0f);
                         const float gray = luma(rgb);
                         for (float& channel : rgb)
                             channel = std::max(std::lerp(gray, channel, 1 + settings.saturation.value * colorWeight * 0.01f), 0.0f);
+                        const float gamma = std::lerp(1.0f, settings.colorGamma.value, colorWeight);
+                        for (float& channel : rgb)
+                            channel = std::pow(channel, 1.0f / gamma);
+                        const float rangeLuminance = luma(rgb);
+                        const float gradingLuminance = std::clamp(
+                            std::log2(1.0f + std::max(rangeLuminance, 0.0f)) / 6.0f, 0.0f, 1.0f);
+                        const float shadowWeight = 1.0f - smoothstep(0.0f, 0.5f, gradingLuminance);
+                        const float highlightWeight = smoothstep(0.5f, 1.0f, gradingLuminance);
+                        const float midtoneWeight = std::clamp(1.0f - shadowWeight - highlightWeight, 0.0f, 1.0f);
+                        applyColorGradeRange(rgb, settings.shadowSaturation.value, settings.shadowContrast.value,
+                            settings.shadowGamma.value, settings.shadowGain.value, settings.shadowColor.value,
+                            colorWeight, shadowWeight);
+                        applyColorGradeRange(rgb, settings.midtoneSaturation.value, settings.midtoneContrast.value,
+                            settings.midtoneGamma.value, settings.midtoneGain.value, settings.midtoneColor.value,
+                            colorWeight, midtoneWeight);
+                        applyColorGradeRange(rgb, settings.highlightSaturation.value, settings.highlightContrast.value,
+                            settings.highlightGamma.value, settings.highlightGain.value, settings.highlightColor.value,
+                            colorWeight, highlightWeight);
                     }
                     for (float& channel : rgb)
                     {
                         const double value = std::min(static_cast<double>(channel) * exposure, 65504.0);
                         channel = static_cast<float>(std::clamp(value * (2.51 * value + 0.03)
                             / (value * (2.43 * value + 0.59) + 0.14), 0.0, 1.0));
-                        if (vignette || aa || test.customScales) channel = half(channel);
+                        if (hasLdrPasses) channel = half(channel);
                         if (test.customScales) channel = half(channel * 0.75f);
                     }
                     if (vignette)
@@ -336,8 +413,33 @@ namespace Engine
                         for (float& channel : rgb) channel = half(channel);
                     }
                 }
-            if (vignette || aa || test.customScales) ++result.draws;
             if (vignette) ++result.draws;
+            if (chromaticAberration)
+            {
+                CpuImage source = image;
+                for (std::uint32_t y = 0; y < image.height; ++y)
+                    for (std::uint32_t x = 0; x < image.width; ++x)
+                    {
+                        if (!inside(bounds, x, y)) continue;
+                        const float u = (x + 0.5f - bounds.x) / bounds.width;
+                        const float v = (y + 0.5f - bounds.y) / bounds.height;
+                        const float radialX = (u - 0.5f) * 2.0f;
+                        const float radialY = (v - 0.5f) * 2.0f;
+                        const float radius = std::sqrt(radialX * radialX + radialY * radialY);
+                        const float onset = settings.chromaticAberrationStartOffset.value >= 1.0f
+                            ? (radius >= 1.0f ? 1.0f : 0.0f)
+                            : smoothstep(settings.chromaticAberrationStartOffset.value, 1.0f, radius);
+                        const float offsetX = radialX * (settings.chromaticAberrationIntensity.value
+                            * chromaticAberrationWeight * 0.75f * onset);
+                        const float offsetY = radialY * (settings.chromaticAberrationIntensity.value
+                            * chromaticAberrationWeight * 0.75f * onset);
+                        const auto red = sample(source, bounds, x + offsetX, y + offsetY)[0];
+                        const auto blue = sample(source, bounds, x - offsetX, y - offsetY)[2];
+                        auto& target = image.pixels[y * image.width + x];
+                        target = { half(red), half(source.at(x, y)[1]), half(blue) };
+                    }
+                ++result.draws;
+            }
             if (aa)
             {
                 CpuImage filtered = image;
@@ -352,7 +454,23 @@ namespace Engine
                 image = std::move(filtered);
                 ++result.draws;
             }
-            result.effects = result.draws - 1 - (vignette || aa || test.customScales ? 1 : 0);
+            if (filmGrain)
+            {
+                for (std::uint32_t y = 0; y < image.height; ++y)
+                    for (std::uint32_t x = 0; x < image.width; ++x)
+                    {
+                        if (!inside(bounds, x, y)) continue;
+                        auto& rgb = image.pixels[y * image.width + x];
+                        const float response = std::lerp(1.0f, 1.0f - std::clamp(luma(rgb), 0.0f, 1.0f),
+                            settings.filmGrainResponse.value);
+                        const float noise = grainNoise(x, y, filmGrainFrameIndex);
+                        for (float& channel : rgb)
+                            channel = half(std::max(channel + noise * settings.filmGrainIntensity.value
+                                * filmGrainWeight * response * 0.08f, 0.0f));
+                    }
+                ++result.draws;
+            }
+            result.effects = result.draws - 1 - (hasLdrPasses ? 1 : 0);
             return result;
         }
 
@@ -412,6 +530,49 @@ namespace Engine
         color.settings.contrast.value = -100; add("color-flat-contrast", color);
         color.settings.contrast.value = 100; color.settings.saturation.value = 100;
         color.settings.colorFilter.value = Vector3(16, 16, 16); add("color-maximum", color);
+        auto colorGrading = enabled;
+        colorGrading.settings.colorAdjustmentsEnabled.value = true;
+        colorGrading.settings.colorTemperature.value = 4300;
+        colorGrading.settings.colorTint.value = 0.3f;
+        colorGrading.settings.colorFilter.value = Vector3(1.1f, 0.9f, 1.2f);
+        colorGrading.settings.contrast.value = 18;
+        colorGrading.settings.saturation.value = -12;
+        colorGrading.settings.colorGamma.value = 1.2f;
+        colorGrading.settings.colorOffset.value = Vector3(0.03f, -0.02f, 0.01f);
+        colorGrading.settings.shadowSaturation.value = 0.7f;
+        colorGrading.settings.shadowContrast.value = 1.15f;
+        colorGrading.settings.shadowGamma.value = 1.25f;
+        colorGrading.settings.shadowGain.value = 0.8f;
+        colorGrading.settings.shadowColor.value = Vector3(0.04f, -0.02f, 0.01f);
+        colorGrading.settings.midtoneSaturation.value = 1.2f;
+        colorGrading.settings.midtoneContrast.value = 0.9f;
+        colorGrading.settings.midtoneGamma.value = 0.85f;
+        colorGrading.settings.midtoneGain.value = 1.1f;
+        colorGrading.settings.midtoneColor.value = Vector3(-0.02f, 0.03f, 0.01f);
+        colorGrading.settings.highlightSaturation.value = 0.8f;
+        colorGrading.settings.highlightContrast.value = 1.1f;
+        colorGrading.settings.highlightGamma.value = 1.3f;
+        colorGrading.settings.highlightGain.value = 0.9f;
+        colorGrading.settings.highlightColor.value = Vector3(0.02f, 0.0f, -0.03f);
+        add("color-grading-tonal-ranges", colorGrading);
+        colorGrading.weight = 0.45f;
+        add("color-grading-weighted", colorGrading);
+        auto chromaticAberration = enabled;
+        chromaticAberration.settings.chromaticAberrationEnabled.value = true;
+        chromaticAberration.settings.chromaticAberrationIntensity.value = 1.5f;
+        chromaticAberration.settings.chromaticAberrationStartOffset.value = 0.1f;
+        add("chromatic-aberration", chromaticAberration);
+        chromaticAberration.settings.chromaticAberrationStartOffset.value = 1.0f;
+        add("chromatic-aberration-maximum-start", chromaticAberration);
+        chromaticAberration.weight = 0.4f;
+        add("chromatic-aberration-weighted", chromaticAberration);
+        auto filmGrain = enabled;
+        filmGrain.settings.filmGrainEnabled.value = true;
+        filmGrain.settings.filmGrainIntensity.value = 0.7f;
+        filmGrain.settings.filmGrainResponse.value = 0.85f;
+        add("film-grain-temporal", filmGrain);
+        filmGrain.weight = 0.4f;
+        add("film-grain-weighted", filmGrain);
         auto vignette = enabled;
         vignette.settings.vignetteEnabled.value = true;
         vignette.settings.vignetteIntensity.value = 0.8f;
@@ -432,6 +593,18 @@ namespace Engine
         glow.settings.bloomThreshold.value = 64; add("bloom-rejected-highlight", glow, 320, 180, {}, false, true);
         glow.settings.bloomThreshold.value = 0; glow.settings.bloomScatter.value = 0; add("bloom-local", glow);
         glow.settings.bloomScatter.value = 1; glow.settings.bloomIntensity.value = 100; add("bloom-maximum", glow);
+        glow.settings.bloomIntensity.value = 0.8f;
+        glow.settings.bloomThreshold.value = -1;
+        add("bloom-unthresholded", glow);
+        glow.settings.bloomThreshold.value = 1;
+        glow.settings.bloomSizeScale.value = 0.1f;
+        add("bloom-minimum-size", glow);
+        glow.settings.bloomSizeScale.value = 10;
+        add("bloom-maximum-size", glow);
+        glow.settings.bloomThreshold.value = 0.5f;
+        glow.settings.bloomSizeScale.value = 2;
+        add("bloom-karis-hotspot", glow);
+        cases.back().fixture = PostProcessValidationFixture::BloomHotspot;
         auto aa = enabled;
         aa.settings.fxaaEnabled.value = true;
         add("fxaa-diagonal", aa, 320, 180, {}, true);
@@ -444,10 +617,17 @@ namespace Engine
         stack.settings = baseColor.settings;
         stack.settings.bloomEnabled.value = true;
         stack.settings.bloomIntensity.value = 0.6f;
+        stack.settings.bloomThreshold.value = 1.0f;
         stack.settings.exposureEnabled.value = true;
         stack.settings.exposureEV.value = 1;
         stack.settings.vignetteEnabled.value = true;
         stack.settings.vignetteIntensity.value = 0.5f;
+        stack.settings.chromaticAberrationEnabled.value = true;
+        stack.settings.chromaticAberrationIntensity.value = 0.75f;
+        stack.settings.chromaticAberrationStartOffset.value = 0.2f;
+        stack.settings.filmGrainEnabled.value = true;
+        stack.settings.filmGrainIntensity.value = 0.4f;
+        stack.settings.filmGrainResponse.value = 0.7f;
         stack.settings.fxaaEnabled.value = true;
         add("effects-stack", stack, 321, 181, {}, true);
         const CameraViewport cropped{ 0.153f, 0.137f, 0.711f, 0.697f };
@@ -467,9 +647,11 @@ namespace Engine
         cases.back().fixture = PostProcessValidationFixture::Uniform;
         add("bloom-uniform-single-pixel", uniform, 1, 1);
         cases.back().fixture = PostProcessValidationFixture::Uniform;
-        add("effects-custom-stages", stack, 321, 181, {}, true);
+        auto customStages = stack;
+        customStages.settings.fxaaEnabled.value = false;
+        add("effects-custom-stages-no-fxaa", customStages, 321, 181, {}, true);
         cases.back().customScales = true;
-        add("effects-custom-stages-cropped", stack, 321, 181, cropped, true);
+        add("effects-custom-stages-no-fxaa-cropped", customStages, 321, 181, cropped, true);
         cases.back().customScales = true;
         auto inactive = stack; inactive.weight = 0;
         add("effects-zero-weight", inactive, 320, 180, {}, false, true);
@@ -482,11 +664,13 @@ namespace Engine
         zeroIntensity.settings.exposureEnabled.value = true;
         add("effects-enabled-neutral-values", zeroIntensity, 320, 180, {}, false, true);
         auto contributions = stack;
-        contributions.effects = { 0.2f, 0.3f, 0.4f, 0.5f, 0.6f };
+        for (std::size_t index = 0; index < POST_PROCESS_WEIGHT_MEMBERS.size(); ++index)
+            contributions.effects.*POST_PROCESS_WEIGHT_MEMBERS[index] = 0.2f + static_cast<float>(index) * 0.04f;
         add("effects-continuous-switches", contributions, 321, 181, {}, true);
         contributions.weight = 0.5f;
         add("effects-continuous-switches-camera-weight", contributions, 321, 181, {}, true);
-        contributions.effects = { 0, 0, 0, 0, 0 };
+        for (const auto member : POST_PROCESS_WEIGHT_MEMBERS)
+            contributions.effects.*member = 0.0f;
         add("effects-zero-contributions", contributions, 320, 180, {}, false, true);
         add("effects-camera-removed", {}, 320, 180, {}, false, true);
         cases.back().fixture = PostProcessValidationFixture::NoCamera;
@@ -530,6 +714,7 @@ namespace Engine
             if (test.customScales && !renderer.setPostProcessPasses(customPasses))
                 return false;
             const unsigned int frames = test.customScales ? 30 : 4;
+            DX12FrameCapture firstGrainFrame;
             for (unsigned int frame = 0; frame < frames; ++frame)
             {
                 auto camera = test.camera;
@@ -538,6 +723,9 @@ namespace Engine
                 if (switching && frame == 1) camera.weight = 0;
                 if (switching && frame == 2) camera.weight = 0.5f;
                 if (!render(test.width, test.height, test.viewport, camera, test.fixture))
+                    return false;
+                if (std::string_view(test.name) == "film-grain-temporal" && frame == 0
+                    && !renderer.captureFrame(firstGrainFrame))
                     return false;
                 if (switching && frame < 2)
                 {
@@ -573,11 +761,17 @@ namespace Engine
                 LOG_ERROR("[EffectsValidation] '{}' should preserve the exact display image.", test.name);
                 return false;
             }
-            const auto expected = reference(captured.hdr, test);
+            const auto& statistics = renderer.getPostProcessStatistics();
+            if (std::string_view(test.name) == "film-grain-temporal"
+                && identical(firstGrainFrame.display, captured.display))
+            {
+                LOG_ERROR("[EffectsValidation] Film Grain did not vary between rendered frames.");
+                return false;
+            }
+            const auto expected = reference(captured.hdr, test, statistics.filmGrainFrameIndex);
             const std::wstring name(test.name, test.name + std::strlen(test.name));
             if (!captured.save(directory, name) || !verifySaved(captured, directory, name))
                 return false;
-            const auto& statistics = renderer.getPostProcessStatistics();
             if (test.fixture == PostProcessValidationFixture::NoCamera
                 && renderer.getCameraPostProcessSnapshot().enabled)
             {
@@ -630,14 +824,21 @@ namespace Engine
                         if (difference > maxError) maxError = difference;
                         if (difference > MAX_ERROR)
                         {
-                            LOG_ERROR("[EffectsValidation] '{}' pixel ({},{}) channel {}: expected {}, actual {}, error {}.",
-                                test.name, x, y, channel, displayByte(referenceValue), pixel[channel], difference);
+                            LOG_ERROR("[EffectsValidation] '{}' pixel ({},{}) channel {}: expected {} (linear {}), actual {}, error {}.",
+                                test.name, x, y, channel, displayByte(referenceValue), referenceValue, pixel[channel], difference);
                             return false;
                         }
                         if (test.fixture == PostProcessValidationFixture::Uniform)
                         {
-                            const auto source = sceneHdr.at(x, y)[channel];
-                            const double hdrValue = source * (1 + test.camera.settings.bloomIntensity.value);
+                            const auto& sourceColor = sceneHdr.at(x, y);
+                            const float brightness = std::max({ sourceColor[0], sourceColor[1], sourceColor[2] });
+                            const float threshold = test.camera.settings.bloomThreshold.value;
+                            const float bloomContribution = threshold < 0
+                                ? 1.0f : std::clamp(brightness - threshold, 0.0f, 1.0f);
+                            const double bloomWeight = test.camera.enabled ? test.camera.weight
+                                * test.camera.effects.bloom : 0.0f;
+                            const double hdrValue = sourceColor[channel] * (1 + bloomContribution
+                                * test.camera.settings.bloomIntensity.value * bloomWeight);
                             const float normalized = static_cast<float>(std::clamp(hdrValue * (2.51 * hdrValue + 0.03)
                                 / (hdrValue * (2.43 * hdrValue + 0.59) + 0.14), 0.0, 1.0));
                             if (std::abs(static_cast<int>(pixel[channel]) - static_cast<int>(displayByte(normalized))) > 2)
@@ -721,12 +922,16 @@ namespace Engine
         phase6Cases.push_back({ "dof-neutral", dof, PostProcessValidationFixture::Panels, 0, 1, false });
         dof.settings.depthOfFieldMaxBlur.value = 8.0f;
         phase6Cases.push_back({ "dof-depth-aware", dof, PostProcessValidationFixture::Panels, 1, 2, true });
-        auto fog = neutralPhase6;
-        fog.settings.fogEnabled.value = true;
-        fog.settings.fogDensity.value = 0.35f;
-        fog.settings.fogStartDistance.value = 0;
-        fog.settings.fogColor.value = Vector3(1.0f, 0.05f, 0.02f);
-        phase6Cases.push_back({ "fog-depth-aware", fog, PostProcessValidationFixture::Panels, 1, 2, true });
+        auto temporalAA = neutralPhase6;
+        temporalAA.cameraGuid = ObjectGUID::generate();
+        temporalAA.settings.temporalAAEnabled.value = true;
+        phase6Cases.push_back({ "temporal-aa-history", temporalAA, PostProcessValidationFixture::Panels, 1, 2, true });
+        auto motionBlur = neutralPhase6;
+        motionBlur.cameraGuid = ObjectGUID::generate();
+        motionBlur.settings.motionBlurEnabled.value = true;
+        motionBlur.settings.motionBlurAmount.value = 0.75f;
+        motionBlur.settings.motionBlurMaxVelocity.value = 12.0f;
+        phase6Cases.push_back({ "motion-blur-velocity", motionBlur, PostProcessValidationFixture::Panels, 1, 2, true });
         auto automatic = neutralPhase6;
         automatic.settings.autoExposureEnabled.value = true;
         phase6Cases.push_back({ "auto-exposure-current-frame", automatic, PostProcessValidationFixture::Uniform, 10, 11, true });
@@ -771,18 +976,25 @@ namespace Engine
         phase6Cases.push_back({ "color-grading-lut-strip", lut, PostProcessValidationFixture::Uniform, 1, 3, true });
 
         auto combined = dof;
-        combined.settings.fogEnabled.value = true;
-        combined.settings.fogDensity.value = 0.1f;
-        combined.settings.fogColor.value = Vector3(0.1f, 0.2f, 0.8f);
+        combined.cameraGuid = ObjectGUID::generate();
+        combined.settings.temporalAAEnabled.value = true;
+        combined.settings.motionBlurEnabled.value = true;
+        combined.settings.motionBlurAmount.value = 0.5f;
         combined.settings.autoExposureEnabled.value = true;
         combined.settings.colorGradingLutEnabled.value = true;
         combined.settings.colorGradingLutAsset = lut.settings.colorGradingLutAsset;
-        phase6Cases.push_back({ "phase6-combined-stack", combined, PostProcessValidationFixture::Panels, 13, 15, true });
+        phase6Cases.push_back({ "phase6-combined-stack", combined, PostProcessValidationFixture::Panels, 14, 16, true });
 
         for (auto& test : phase6Cases)
         {
             const auto& baseline = test.fixture == PostProcessValidationFixture::Uniform
                 ? uniformBaseline : panelsBaseline;
+            if (test.name == "temporal-aa-history"
+                && !render(320, 180, {}, test.camera, PostProcessValidationFixture::Panels))
+                return false;
+            if ((test.name == "motion-blur-velocity" || test.name == "phase6-combined-stack")
+                && !render(320, 180, {}, test.camera, PostProcessValidationFixture::Diagonal))
+                return false;
             if (!render(320, 180, {}, test.camera, test.fixture)
                 || !renderer.captureFrame(test.capture) || !renderer.validateDebugMessages()
                 || !identical(baseline.hdr, test.capture.hdr))
@@ -803,7 +1015,7 @@ namespace Engine
                 return false;
         }
 
-        const auto& autoCapture = phase6Cases[3].capture;
+        const auto& autoCapture = phase6Cases[4].capture;
         const CpuImage uniformHdr = readHdr(autoCapture.hdr);
         double averageLogLuminance = 0;
         for (const auto& pixel : uniformHdr.pixels)
@@ -832,7 +1044,7 @@ namespace Engine
                 }
             }
 
-        const auto& lutCapture = phase6Cases[4].capture;
+        const auto& lutCapture = phase6Cases[5].capture;
         const auto& lutBaselineImage = *uniformBaseline.display.GetImage(0, 0, 0);
         const auto& lutDisplayImage = *lutCapture.display.GetImage(0, 0, 0);
         unsigned int maximumLutError = 0;

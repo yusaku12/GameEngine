@@ -62,6 +62,7 @@ namespace Engine
             ModelHandle model;
             std::vector<MaterialHandle> materials;
             std::vector<ModelRenderSubmission> draws;
+            ModelRenderSubmission bloomHotspot;
 
             ~ValidationScene()
             {
@@ -157,7 +158,35 @@ namespace Engine
                     && add("Discarded", 0.72f, 2.0f, Vector3::Zero,
                         Vector3(8.0f, 0.0f, 0.0f), 0.25f, MaterialSurfaceType::AlphaTest)
                     && add("VisibleAlphaTest", 0.87f, 2.0f, Vector3::Zero,
-                        PROBES[5].expected, 0.75f, MaterialSurfaceType::AlphaTest);
+                        PROBES[5].expected, 0.75f, MaterialSurfaceType::AlphaTest)
+                    && initializeBloomHotspot(whiteGuid, whitePath);
+            }
+
+            bool initializeBloomHotspot(const AssetGUID whiteGuid, const std::filesystem::path& whitePath)
+            {
+                MaterialAsset asset;
+                asset.name = "BloomHotspot";
+                asset.emissiveColor = Vector3(64.0f, 48.0f, 32.0f);
+                asset.emissiveIntensity = 1.0f;
+                asset.textures.emissive = whiteGuid;
+                asset.textures.emissivePath = whitePath;
+                asset.renderState.cullMode = MaterialCullMode::None;
+                const MaterialHandle material = MaterialManager::instance().create(std::move(asset));
+                if (!material.isValid())
+                {
+                    LOG_ERROR("[Validation] Cannot create the Bloom hotspot material.");
+                    return false;
+                }
+                materials.push_back(material);
+                bloomHotspot.model = model;
+                bloomHotspot.materials.push_back(material);
+                bloomHotspot.worldMatrix = Matrix::CreateScale(0.025f, 0.025f, 1.0f)
+                    * Matrix::CreateTranslation(0.01f, 0.01f, 2.0f);
+                ModelManager::instance().get(model)->boundingBox.Transform(
+                    bloomHotspot.worldBounds, bloomHotspot.worldMatrix);
+                bloomHotspot.objectID = 100;
+                bloomHotspot.castShadows = false;
+                return true;
             }
 
             bool render(DX12Renderer& renderer, const std::uint32_t width, const std::uint32_t height,
@@ -182,7 +211,9 @@ namespace Engine
                 view.postProcess = postProcess;
                 if (fixture != PostProcessValidationFixture::NoCamera)
                     CameraRenderSubmissionQueue::instance().submit(view);
-                if (fixture == PostProcessValidationFixture::Panels || fixture == PostProcessValidationFixture::Diagonal
+                if (fixture == PostProcessValidationFixture::BloomHotspot)
+                    ModelRenderSubmissionQueue::instance().submit(bloomHotspot);
+                else if (fixture == PostProcessValidationFixture::Panels || fixture == PostProcessValidationFixture::Diagonal
                     || fixture == PostProcessValidationFixture::Nothing)
                     for (const ModelRenderSubmission& draw : draws)
                         ModelRenderSubmissionQueue::instance().submit(draw);

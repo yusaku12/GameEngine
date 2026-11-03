@@ -181,6 +181,7 @@ namespace Engine
             snapshot->jointCount = static_cast<std::uint32_t>(jointCount);
             snapshot->constants.boneMatrices.fill(Matrix::Identity);
             snapshot->constants.boneNormalMatrices.fill(Matrix::Identity);
+            snapshot->constants.previousBoneMatrices.fill(Matrix::Identity);
         }
         m_time = 0.0f;
         m_loopCount = 0;
@@ -338,6 +339,7 @@ namespace Engine
             snapshot->jointCount = static_cast<std::uint32_t>(jointCount);
             snapshot->constants.boneMatrices.fill(Matrix::Identity);
             snapshot->constants.boneNormalMatrices.fill(Matrix::Identity);
+            snapshot->constants.previousBoneMatrices.fill(Matrix::Identity);
         }
         m_nextSnapshot = 0;
         m_playing = true;

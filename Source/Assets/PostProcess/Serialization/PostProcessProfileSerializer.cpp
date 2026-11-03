@@ -132,6 +132,7 @@ namespace Engine::Serialization
         const auto bloomIntensity = toFlat(settings.bloomIntensity);
         const auto bloomThreshold = toFlat(settings.bloomThreshold);
         const auto bloomScatter = toFlat(settings.bloomScatter);
+        const auto bloomSizeScale = toFlat(settings.bloomSizeScale);
         const auto exposureEnabled = toFlat(settings.exposureEnabled);
         const auto exposureEV = toFlat(settings.exposureEV);
         const auto colorEnabled = toFlat(settings.colorAdjustmentsEnabled);
@@ -147,14 +148,19 @@ namespace Engine::Serialization
         const auto fxaaSubpixel = toFlat(settings.fxaaSubpixel);
         const auto fxaaThreshold = toFlat(settings.fxaaEdgeThreshold);
         const auto fxaaMinimum = toFlat(settings.fxaaEdgeThresholdMin);
+        const auto temporalAAEnabled = toFlat(settings.temporalAAEnabled);
+        const auto temporalAAFeedback = toFlat(settings.temporalAAFeedback);
+        const auto motionBlurEnabled = toFlat(settings.motionBlurEnabled);
+        const auto motionBlurAmount = toFlat(settings.motionBlurAmount);
+        const auto motionBlurMaxVelocity = toFlat(settings.motionBlurMaxVelocity);
         const auto depthOfFieldEnabled = toFlat(settings.depthOfFieldEnabled);
         const auto depthOfFieldFocusDistance = toFlat(settings.depthOfFieldFocusDistance);
         const auto depthOfFieldFocusRange = toFlat(settings.depthOfFieldFocusRange);
         const auto depthOfFieldMaxBlur = toFlat(settings.depthOfFieldMaxBlur);
-        const auto fogEnabled = toFlat(settings.fogEnabled);
-        const auto fogDensity = toFlat(settings.fogDensity);
-        const auto fogStartDistance = toFlat(settings.fogStartDistance);
-        const auto fogColor = toFlat(settings.fogColor);
+        const auto legacyFogEnabled = toFlat(PostProcessParameter<bool>{});
+        const auto legacyFogDensity = toFlat(PostProcessParameter<float>{});
+        const auto legacyFogStartDistance = toFlat(PostProcessParameter<float>{});
+        const auto legacyFogColor = toFlat(PostProcessParameter<Vector3>{});
         const auto lutEnabled = toFlat(settings.colorGradingLutEnabled);
         const auto lutIntensity = toFlat(settings.colorGradingLutIntensity);
         const auto autoExposureEnabled = toFlat(settings.autoExposureEnabled);
@@ -164,6 +170,31 @@ namespace Engine::Serialization
         const auto autoExposureCompensation = toFlat(settings.autoExposureCompensation);
         const auto autoExposureSpeedUp = toFlat(settings.autoExposureSpeedUp);
         const auto autoExposureSpeedDown = toFlat(settings.autoExposureSpeedDown);
+        const auto colorTemperature = toFlat(settings.colorTemperature);
+        const auto colorTint = toFlat(settings.colorTint);
+        const auto colorGamma = toFlat(settings.colorGamma);
+        const auto shadowSaturation = toFlat(settings.shadowSaturation);
+        const auto shadowContrast = toFlat(settings.shadowContrast);
+        const auto shadowGamma = toFlat(settings.shadowGamma);
+        const auto shadowGain = toFlat(settings.shadowGain);
+        const auto midtoneSaturation = toFlat(settings.midtoneSaturation);
+        const auto midtoneContrast = toFlat(settings.midtoneContrast);
+        const auto midtoneGamma = toFlat(settings.midtoneGamma);
+        const auto midtoneGain = toFlat(settings.midtoneGain);
+        const auto highlightSaturation = toFlat(settings.highlightSaturation);
+        const auto highlightContrast = toFlat(settings.highlightContrast);
+        const auto highlightGamma = toFlat(settings.highlightGamma);
+        const auto highlightGain = toFlat(settings.highlightGain);
+        const auto colorOffset = toFlat(settings.colorOffset);
+        const auto shadowColor = toFlat(settings.shadowColor);
+        const auto midtoneColor = toFlat(settings.midtoneColor);
+        const auto highlightColor = toFlat(settings.highlightColor);
+        const auto chromaticAberrationEnabled = toFlat(settings.chromaticAberrationEnabled);
+        const auto chromaticAberrationIntensity = toFlat(settings.chromaticAberrationIntensity);
+        const auto chromaticAberrationStartOffset = toFlat(settings.chromaticAberrationStartOffset);
+        const auto filmGrainEnabled = toFlat(settings.filmGrainEnabled);
+        const auto filmGrainIntensity = toFlat(settings.filmGrainIntensity);
+        const auto filmGrainResponse = toFlat(settings.filmGrainResponse);
         const auto lutGuidValue = settings.colorGradingLutAsset.value;
         std::string lutPath;
         if (lutGuidValue.isValid())
@@ -187,10 +218,17 @@ namespace Engine::Serialization
             &vignetteSmoothness, &vignetteRoundness, &vignetteColor, &fxaaEnabled,
             &fxaaSubpixel, &fxaaThreshold, &fxaaMinimum, &depthOfFieldEnabled,
             &depthOfFieldFocusDistance, &depthOfFieldFocusRange, &depthOfFieldMaxBlur,
-            &fogEnabled, &fogDensity, &fogStartDistance, &fogColor, &lutEnabled,
+            &legacyFogEnabled, &legacyFogDensity, &legacyFogStartDistance, &legacyFogColor, &lutEnabled,
             &lutIntensity, lutAsset, &autoExposureEnabled, &autoExposureKey,
             &autoExposureMinEV, &autoExposureMaxEV, &autoExposureCompensation,
-            &autoExposureSpeedUp, &autoExposureSpeedDown);
+            &autoExposureSpeedUp, &autoExposureSpeedDown, &bloomSizeScale,
+            &colorTemperature, &colorTint, &colorGamma, &shadowSaturation, &shadowContrast,
+            &shadowGamma, &shadowGain, &midtoneSaturation, &midtoneContrast, &midtoneGamma,
+            &midtoneGain, &highlightSaturation, &highlightContrast, &highlightGamma, &highlightGain,
+            &colorOffset, &shadowColor, &midtoneColor, &highlightColor,
+            &chromaticAberrationEnabled, &chromaticAberrationIntensity, &chromaticAberrationStartOffset,
+            &filmGrainEnabled, &filmGrainIntensity, &filmGrainResponse, &temporalAAEnabled,
+            &temporalAAFeedback, &motionBlurEnabled, &motionBlurAmount, &motionBlurMaxVelocity);
     }
 
     bool readPostProcessSettings(const PostProcessSettingsData* source, Engine::PostProcessSettings& settings)
@@ -228,10 +266,6 @@ namespace Engine::Serialization
             || !readOptional(source->depth_of_field_focus_distance(), loaded.depthOfFieldFocusDistance)
             || !readOptional(source->depth_of_field_focus_range(), loaded.depthOfFieldFocusRange)
             || !readOptional(source->depth_of_field_max_blur(), loaded.depthOfFieldMaxBlur)
-            || !readOptional(source->fog_enabled(), loaded.fogEnabled)
-            || !readOptional(source->fog_density(), loaded.fogDensity)
-            || !readOptional(source->fog_start_distance(), loaded.fogStartDistance)
-            || !readOptional(source->fog_color(), loaded.fogColor)
             || !readOptional(source->color_grading_lut_enabled(), loaded.colorGradingLutEnabled)
             || !readOptional(source->color_grading_lut_intensity(), loaded.colorGradingLutIntensity)
             || !readOptional(source->auto_exposure_enabled(), loaded.autoExposureEnabled)
@@ -240,7 +274,38 @@ namespace Engine::Serialization
             || !readOptional(source->auto_exposure_max_ev(), loaded.autoExposureMaxEV)
             || !readOptional(source->auto_exposure_compensation(), loaded.autoExposureCompensation)
             || !readOptional(source->auto_exposure_speed_up(), loaded.autoExposureSpeedUp)
-            || !readOptional(source->auto_exposure_speed_down(), loaded.autoExposureSpeedDown))
+            || !readOptional(source->auto_exposure_speed_down(), loaded.autoExposureSpeedDown)
+            || !readOptional(source->bloom_size_scale(), loaded.bloomSizeScale)
+            || !readOptional(source->color_temperature(), loaded.colorTemperature)
+            || !readOptional(source->color_tint(), loaded.colorTint)
+            || !readOptional(source->color_gamma(), loaded.colorGamma)
+            || !readOptional(source->shadow_saturation(), loaded.shadowSaturation)
+            || !readOptional(source->shadow_contrast(), loaded.shadowContrast)
+            || !readOptional(source->shadow_gamma(), loaded.shadowGamma)
+            || !readOptional(source->shadow_gain(), loaded.shadowGain)
+            || !readOptional(source->midtone_saturation(), loaded.midtoneSaturation)
+            || !readOptional(source->midtone_contrast(), loaded.midtoneContrast)
+            || !readOptional(source->midtone_gamma(), loaded.midtoneGamma)
+            || !readOptional(source->midtone_gain(), loaded.midtoneGain)
+            || !readOptional(source->highlight_saturation(), loaded.highlightSaturation)
+            || !readOptional(source->highlight_contrast(), loaded.highlightContrast)
+            || !readOptional(source->highlight_gamma(), loaded.highlightGamma)
+            || !readOptional(source->highlight_gain(), loaded.highlightGain)
+            || !readOptional(source->color_offset(), loaded.colorOffset)
+            || !readOptional(source->shadow_color(), loaded.shadowColor)
+            || !readOptional(source->midtone_color(), loaded.midtoneColor)
+            || !readOptional(source->highlight_color(), loaded.highlightColor)
+            || !readOptional(source->chromatic_aberration_enabled(), loaded.chromaticAberrationEnabled)
+            || !readOptional(source->chromatic_aberration_intensity(), loaded.chromaticAberrationIntensity)
+            || !readOptional(source->chromatic_aberration_start_offset(), loaded.chromaticAberrationStartOffset)
+            || !readOptional(source->film_grain_enabled(), loaded.filmGrainEnabled)
+            || !readOptional(source->film_grain_intensity(), loaded.filmGrainIntensity)
+            || !readOptional(source->film_grain_response(), loaded.filmGrainResponse)
+            || !readOptional(source->temporal_aa_enabled(), loaded.temporalAAEnabled)
+            || !readOptional(source->temporal_aa_feedback(), loaded.temporalAAFeedback)
+            || !readOptional(source->motion_blur_enabled(), loaded.motionBlurEnabled)
+            || !readOptional(source->motion_blur_amount(), loaded.motionBlurAmount)
+            || !readOptional(source->motion_blur_max_velocity(), loaded.motionBlurMaxVelocity))
         {
             LOG_ERROR("[PostProcess] Serialized Phase 6 settings are invalid.");
             return false;

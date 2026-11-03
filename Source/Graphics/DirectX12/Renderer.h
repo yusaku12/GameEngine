@@ -318,17 +318,19 @@ namespace Engine
          * @param snapshot 転送する Skinning Palette Snapshot
          * @return 転送に成功した場合は Upload Buffer への非所有参照。失敗時は nullptr。
          */
-        DX12UploadBuffer* uploadSkinningPalette(std::uint32_t frameIndex, const SkinningPaletteSnapshot& snapshot);
+        DX12UploadBuffer* uploadSkinningPalette(std::uint32_t frameIndex,
+            const SkinningPaletteSnapshot& snapshot, const SkinningPaletteSnapshot* previousSnapshot);
 
         /**
          * @brief Model 描画の Instance Buffer に転送するデータ構造
          */
         struct ModelInstanceConstants
         {
-            Matrix worldViewProjection; //!< World View Projection行列
-            Matrix worldMatrix;         //!< World行列
+            Matrix worldViewProjection; //!< Current World View Projection matrix.
+            Matrix worldMatrix; //!< Current World matrix.
+            Matrix previousWorldViewProjection; //!< Previous submitted World View Projection matrix.
         };
-        static_assert(sizeof(ModelInstanceConstants) == sizeof(float) * 32);
+        static_assert(sizeof(ModelInstanceConstants) == sizeof(float) * 48);
 
         struct DeferredPassConstants
         {
@@ -351,9 +353,9 @@ namespace Engine
         DX12DescriptorHeap m_gameRtvHeap;                                                                 //!< Game Texture用 RTV Heap
         DX12Resource m_gameRenderTarget;                                                                  //!< ImGui Game Viewへ表示するScene描画Texture
         DX12CpuDescriptorHandle m_gameRenderTargetView;                                                   //!< Game TextureのRTV
-        std::array<DX12Resource, 4> m_gbufferTargets;                                                     //!< Albedo、Normal、Material、Emission
-        std::array<DX12CpuDescriptorHandle, 4> m_gbufferRenderTargetViews{};                              //!< G-Buffer RTV
-        std::array<std::optional<DX12DescriptorAllocation>, 4> m_gbufferShaderViews{};                    //!< G-Buffer SRV
+        std::array<DX12Resource, 5> m_gbufferTargets;                                                     //!< Albedo、Normal、Material、Emission、Velocity
+        std::array<DX12CpuDescriptorHandle, 5> m_gbufferRenderTargetViews{};                              //!< G-Buffer RTV
+        std::array<std::optional<DX12DescriptorAllocation>, 5> m_gbufferShaderViews{};                    //!< G-Buffer SRV
         DX12Resource m_deferredLightingTarget;                                                           //!< HDR Lighting / Transparent target
         DX12CpuDescriptorHandle m_deferredLightingRenderTargetView{};                                   //!< HDR Lighting RTV
         std::optional<DX12DescriptorAllocation> m_deferredLightingShaderView;                            //!< HDR Lighting SRV
@@ -421,9 +423,22 @@ namespace Engine
         std::array<std::size_t, FRAME_COUNT> m_skinningPaletteBufferCursors{};                            //!< Frame間で容量を再利用するSkinning Palette Bufferのカーソル
         std::array<DX12UploadBuffer, FRAME_COUNT> m_modelInstanceBuffers;                                 //!< Fence完了後に再利用するInstance Buffer
         std::vector<ModelInstanceConstants> m_modelInstanceConstants;                                     //!< CPU側のInstance転送データ。容量を再利用する
+        std::unordered_map<std::uint64_t, Matrix> m_previousObjectWorldMatrices;
+        std::unordered_map<std::uint64_t, Matrix> m_currentObjectWorldMatrices;
+        std::unordered_map<std::uint32_t, std::shared_ptr<const SkinningPaletteSnapshot>> m_previousSkinningPalettes;
+        std::unordered_map<std::uint32_t, std::shared_ptr<const SkinningPaletteSnapshot>> m_currentSkinningPalettes;
         bool m_enableModelInstancing = true;                                                              //!< 非透明Modelの互換Drawをまとめる
         Matrix m_viewProjection = Matrix::Identity;                                                       //!< CameraのView Projection行列
         Matrix m_inverseViewProjection = Matrix::Identity;
+        Matrix m_previousViewProjection = Matrix::Identity;
+        Matrix m_lastSubmittedViewProjection = Matrix::Identity;
+        ObjectGUID m_previousRenderCamera;
+        ObjectGUID m_currentRenderCamera;
+        Vector2 m_currentRenderSize = Vector2::Zero;
+        Vector2 m_previousRenderSize = Vector2::Zero;
+        std::uint32_t m_temporalAAJitterIndex = 0;
+        bool m_hasPreviousRenderView = false;
+        bool m_temporalAAActive = false;
         float m_cameraNearClip = 0.1f;
         float m_cameraFarClip = 1000.0f;
         Vector3 m_cameraPosition = Vector3::Zero;                                                         //!< Transparent sort用Camera座標

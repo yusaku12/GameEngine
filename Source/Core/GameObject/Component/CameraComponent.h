@@ -205,6 +205,11 @@ namespace Engine
         Vector2 getProjectionJitter() const noexcept { return m_projectionJitter; }
 
         /**
+         * @brief カメラカットや不連続なTransform変更後にTemporal Effectの履歴を破棄する。
+         */
+        void resetTemporalHistory() noexcept { m_hasPreviousViewProjection = false; }
+
+        /**
          * @brief Culling Maskを設定する。
          * @param mask 描画対象LayerのBit Mask。
          */

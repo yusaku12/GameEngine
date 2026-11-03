@@ -116,7 +116,7 @@ namespace Engine
         static_assert(sizeof(Candidate) == 32);
         static_assert(sizeof(Batch) == 20);
         static_assert(sizeof(Command) == 24 && offsetof(Command, count) == 20);
-        static constexpr std::uint32_t INSTANCE_STRIDE = 128;
+        static constexpr std::uint32_t INSTANCE_STRIDE = sizeof(float) * 48;
 
         bool ensureCapacity(ID3D12Device& device, const DX12Fence& fence, std::uint32_t itemCount);
         bool ensureHierarchy(ID3D12Device& device, DX12Resource& depth);

@@ -27,6 +27,7 @@ namespace Engine
         Vector2 viewportSize = Vector2::One;              //!< CameraのViewportサイズ
         Vector2 inverseViewportSize = Vector2::One;       //!< CameraのViewportサイズの逆数
         Vector2 jitter = Vector2::Zero;                   //!< CameraのJitter値
+        bool temporalHistoryReset = false;                //!< Clear temporal camera history on this frame.
     };
 
     /**

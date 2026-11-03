@@ -15,6 +15,7 @@ namespace Engine
     {
         std::array<Matrix, MAX_SKINNING_BONES> boneMatrices;       //!< ボーン変換用の行列。スケーリングが入ると法線ベクトルの変換に必要になる。
         std::array<Matrix, MAX_SKINNING_BONES> boneNormalMatrices; //!< 法線変換用の行列。スケーリングが入ると法線ベクトルの変換に必要になる。
+        std::array<Matrix, MAX_SKINNING_BONES> previousBoneMatrices; //!< 前回提出した姿勢を使った速度ベクトル計算用。
     };
 
     /**

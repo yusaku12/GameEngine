@@ -62,10 +62,10 @@ namespace Engine
         {
             const auto& value = (settings.*descriptor.member).value;
             for (const float channel : { value.x, value.y, value.z })
-                if (!std::isfinite(channel) || channel < 0 || channel > descriptor.maximum)
+                if (!std::isfinite(channel) || channel < descriptor.minimum || channel > descriptor.maximum)
                 {
-                    LOG_ERROR("[PostProcess] '{}' channels must be finite and in [0, {}].",
-                        descriptor.name, descriptor.maximum);
+                    LOG_ERROR("[PostProcess] '{}' channels must be finite and in [{}, {}].",
+                        descriptor.name, descriptor.minimum, descriptor.maximum);
                     return false;
                 }
         }

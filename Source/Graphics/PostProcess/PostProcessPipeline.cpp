@@ -3,6 +3,7 @@
 #include "Graphics\DirectX12\Command.h"
 #include "Graphics\DirectX12\Fence.h"
 #include "Graphics\Texture\TextureManager.h"
+#include <bit>
 #include <cmath>
 
 namespace Engine
@@ -47,7 +48,7 @@ namespace Engine
     {
         if (m_lastFenceValue != 0 && !m_fence->waitOnCpu(m_lastFenceValue))
             return false;
-        if (!m_targets.finalize() || !releaseExposureHistory())
+        if (!m_targets.finalize() || !releaseExposureHistory() || !releaseTemporalHistory())
             return false;
         m_passes.clear();
         m_customPipelines.clear();
@@ -59,6 +60,7 @@ namespace Engine
         m_lastFenceValue = 0;
         m_recorded = false;
         m_statistics = {};
+        m_filmGrainFrameIndex = 0;
         m_device = nullptr;
         m_fence = nullptr;
         m_srvHeap = nullptr;
@@ -70,17 +72,20 @@ namespace Engine
     {
         const D3D12_DESCRIPTOR_RANGE range{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, 0 };
         const D3D12_DESCRIPTOR_RANGE secondaryRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, 0 };
-        std::array<D3D12_ROOT_PARAMETER, 5> parameters{};
+        const D3D12_DESCRIPTOR_RANGE tertiaryRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0, 0 };
+        std::array<D3D12_ROOT_PARAMETER, 6> parameters{};
         parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         parameters[0].DescriptorTable = { 1, &range };
         parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        parameters[1].Constants = { 0, 0, 10 };
+        parameters[1].Constants = { 0, 0, 9 };
         parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        parameters[2].Constants = { 1, 0, 16 };
+        parameters[2].Constants = { 1, 0, 48 };
         parameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         parameters[3].DescriptorTable = { 1, &secondaryRange };
         parameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         parameters[4].Constants = { 2, 0, 4 };
+        parameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[5].DescriptorTable = { 1, &tertiaryRange };
         for (auto& parameter : parameters)
             parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         const D3D12_STATIC_SAMPLER_DESC sampler{
@@ -235,17 +240,19 @@ namespace Engine
     bool PostProcessPipeline::draw(DX12CommandList& commandList, const DX12GraphicsPipeline& pipeline,
         const PostProcessImage& input, const PostProcessImage& output,
         const D3D12_VIEWPORT& sourceViewport, const D3D12_VIEWPORT& targetViewport,
-        const float exposure, const bool toneMapping, const std::array<float, 16>& parameters,
+        const float exposure, const bool toneMapping, const std::span<const float> parameters,
         const PostProcessImage* secondary, const D3D12_VIEWPORT* secondaryViewport,
-        const DX12GpuDescriptorHandle* externalSecondary)
+        const DX12GpuDescriptorHandle* externalSecondary, const PostProcessImage* tertiary)
     {
-        if (input.resource == output.resource || (secondary && secondary->resource == output.resource))
+        if (input.resource == output.resource || (secondary && secondary->resource == output.resource)
+            || (tertiary && tertiary->resource == output.resource) || parameters.size() > 48)
         {
             LOG_ERROR("[PostProcess] A texture cannot be read and rendered to in the same pass.");
             return false;
         }
         if (!input.resource->transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
             || (secondary && !secondary->resource->transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
+            || (tertiary && !tertiary->resource->transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
             || (externalSecondary && externalSecondary->native.ptr == 0)
             || !output.resource->transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET)
             || !pipeline.bind(commandList))
@@ -254,14 +261,16 @@ namespace Engine
         {
             Vector4 source;
             Vector4 target;
-            float exposure;
-            std::uint32_t toneMapping;
+            std::uint32_t exposureMode;
         };
-        static_assert(sizeof(Constants) == sizeof(float) * 10);
+        static_assert(sizeof(Constants) == sizeof(float) * 9);
+        std::uint32_t exposureMode = std::bit_cast<std::uint32_t>(exposure) & 0x7fffffffu;
+        if (toneMapping)
+            exposureMode |= 0x80000000u;
         const Constants constants{
             Vector4(sourceViewport.TopLeftX, sourceViewport.TopLeftY, sourceViewport.Width, sourceViewport.Height),
             Vector4(targetViewport.TopLeftX, targetViewport.TopLeftY, targetViewport.Width, targetViewport.Height),
-            exposure, toneMapping ? 1u : 0u,
+            exposureMode,
         };
         auto* const native = commandList.getForRecording();
         ID3D12DescriptorHeap* const heap = m_srvHeap->get();
@@ -277,14 +286,17 @@ namespace Engine
         };
         native->RSSetScissorRects(1, &scissor);
         native->SetGraphicsRootDescriptorTable(0, input.srv.native);
-        native->SetGraphicsRoot32BitConstants(1, 10, &constants, 0);
-        native->SetGraphicsRoot32BitConstants(2, 16, parameters.data(), 0);
+        native->SetGraphicsRoot32BitConstants(1, 9, &constants, 0);
+        std::array<float, 48> rootParameters{};
+        std::copy(parameters.begin(), parameters.end(), rootParameters.begin());
+        native->SetGraphicsRoot32BitConstants(2, static_cast<UINT>(rootParameters.size()), rootParameters.data(), 0);
         native->SetGraphicsRootDescriptorTable(3, secondary ? secondary->srv.native
             : externalSecondary ? externalSecondary->native : input.srv.native);
         const auto& auxiliaryViewport = secondaryViewport ? *secondaryViewport : sourceViewport;
         const Vector4 auxiliary(auxiliaryViewport.TopLeftX, auxiliaryViewport.TopLeftY,
             auxiliaryViewport.Width, auxiliaryViewport.Height);
         native->SetGraphicsRoot32BitConstants(4, 4, &auxiliary, 0);
+        native->SetGraphicsRootDescriptorTable(5, tertiary ? tertiary->srv.native : input.srv.native);
         native->DrawInstanced(3, 1, 0, 0);
         ++m_statistics.drawCalls;
         return true;
@@ -292,7 +304,8 @@ namespace Engine
 
     bool PostProcessPipeline::record(DX12CommandList& commandList, const PostProcessImage& input,
         const PostProcessImage& output, const D3D12_VIEWPORT& viewport, const float exposure,
-        const PostProcessCameraSnapshot& camera, const PostProcessImage* depth)
+        const PostProcessCameraSnapshot& camera, const PostProcessImage* depth,
+        const PostProcessImage* motionVectors)
     {
         m_statistics = {};
         if (m_device == nullptr || m_recorded || commandList.getForRecording() == nullptr
@@ -337,19 +350,39 @@ namespace Engine
         const float exposureWeight = weight * camera.effects.exposure;
         const float colorWeight = weight * camera.effects.colorAdjustments;
         const float vignetteWeight = weight * camera.effects.vignette;
+        const float chromaticAberrationWeight = weight * camera.effects.chromaticAberration;
+        const float filmGrainWeight = weight * camera.effects.filmGrain;
         const float fxaaWeight = weight * camera.effects.fxaa;
+        const float temporalAAWeight = weight * camera.effects.temporalAA;
+        const float motionBlurWeight = weight * camera.effects.motionBlur;
         const float depthOfFieldWeight = weight * camera.effects.depthOfField;
-        const float fogWeight = weight * camera.effects.fog;
         const float lutWeight = weight * camera.effects.colorGradingLut;
         const float autoExposureWeight = weight * camera.effects.autoExposure;
         const bool bloom = bloomWeight > 0 && settings.bloomEnabled.value && settings.bloomIntensity.value > 0;
         const bool vignette = vignetteWeight > 0 && settings.vignetteEnabled.value && settings.vignetteIntensity.value > 0;
-        const bool fxaa = fxaaWeight > 0 && settings.fxaaEnabled.value;
+        const bool chromaticAberration = chromaticAberrationWeight > 0
+            && settings.chromaticAberrationEnabled.value && settings.chromaticAberrationIntensity.value > 0;
+        const bool filmGrain = filmGrainWeight > 0
+            && settings.filmGrainEnabled.value && settings.filmGrainIntensity.value > 0;
+        const bool temporalAA = temporalAAWeight > 0 && settings.temporalAAEnabled.value;
+        const bool motionBlur = motionBlurWeight > 0 && settings.motionBlurEnabled.value
+            && settings.motionBlurAmount.value > 0 && settings.motionBlurMaxVelocity.value > 0;
+        const bool fxaa = !temporalAA && fxaaWeight > 0 && settings.fxaaEnabled.value;
         const bool colorAdjustments = colorWeight > 0 && settings.colorAdjustmentsEnabled.value
-            && (settings.contrast.value != 0 || settings.saturation.value != 0 || settings.colorFilter.value != Vector3::One);
+            && (settings.contrast.value != 0 || settings.saturation.value != 0
+                || settings.colorFilter.value != Vector3::One || settings.colorTemperature.value != 6500
+                || settings.colorTint.value != 0 || settings.colorGamma.value != 1
+                || settings.colorOffset.value != Vector3::Zero
+                || settings.shadowSaturation.value != 1 || settings.shadowContrast.value != 1
+                || settings.shadowGamma.value != 1 || settings.shadowGain.value != 1
+                || settings.midtoneSaturation.value != 1 || settings.midtoneContrast.value != 1
+                || settings.midtoneGamma.value != 1 || settings.midtoneGain.value != 1
+                || settings.highlightSaturation.value != 1 || settings.highlightContrast.value != 1
+                || settings.highlightGamma.value != 1 || settings.highlightGain.value != 1
+                || settings.shadowColor.value != Vector3::Zero || settings.midtoneColor.value != Vector3::Zero
+                || settings.highlightColor.value != Vector3::Zero);
         const bool depthOfField = depthOfFieldWeight > 0 && settings.depthOfFieldEnabled.value
             && settings.depthOfFieldMaxBlur.value > 0;
-        const bool fog = fogWeight > 0 && settings.fogEnabled.value && settings.fogDensity.value > 0;
         const bool colorGradingLut = lutWeight > 0 && settings.colorGradingLutEnabled.value
             && settings.colorGradingLutIntensity.value > 0;
         const bool autoExposure = autoExposureWeight > 0 && settings.autoExposureEnabled.value;
@@ -368,6 +401,31 @@ namespace Engine
             m_exposureHistoryReadIndex = 0;
             m_exposureHistoryValid = false;
         }
+        if (temporalAA)
+        {
+            if (!camera.cameraGuid.isValid())
+            {
+                LOG_ERROR("[PostProcess] Temporal anti-aliasing requires a stable Camera GUID.");
+                return false;
+            }
+            if (m_temporalHistoryCamera != camera.cameraGuid)
+            {
+                m_temporalHistoryCamera = camera.cameraGuid;
+                m_temporalHistoryReadIndex = 0;
+                m_temporalHistoryValid = false;
+            }
+            if (camera.temporalHistoryReset)
+            {
+                m_temporalHistoryReadIndex = 0;
+                m_temporalHistoryValid = false;
+            }
+        }
+        else
+        {
+            m_temporalHistoryCamera = {};
+            m_temporalHistoryValid = false;
+            m_temporalHistoryReadIndex = 0;
+        }
         const float effectiveExposure = exposure * (exposureWeight > 0 && settings.exposureEnabled.value
             ? std::exp2(settings.exposureEV.value * exposureWeight) : 1.0f);
         if (!std::isfinite(effectiveExposure))
@@ -375,20 +433,61 @@ namespace Engine
             LOG_ERROR("[PostProcess] Combined renderer/Camera exposure overflowed.");
             return false;
         }
-        std::array<float, 16> displayParameters{};
+        std::array<float, 48> displayParameters{};
         if (colorAdjustments)
         {
             displayParameters[0] = 1;
             displayParameters[1] = 1 + settings.contrast.value * colorWeight * 0.01f;
             displayParameters[2] = 1 + settings.saturation.value * colorWeight * 0.01f;
+            displayParameters[3] = std::lerp(1.0f, settings.colorGamma.value, colorWeight);
             const auto filter = Vector3::Lerp(Vector3::One, settings.colorFilter.value, colorWeight);
             displayParameters[4] = filter.x;
             displayParameters[5] = filter.y;
             displayParameters[6] = filter.z;
+            displayParameters[7] = std::lerp(6500.0f, settings.colorTemperature.value, colorWeight);
+            displayParameters[8] = std::lerp(0.0f, settings.colorTint.value, colorWeight);
+            const auto offset = Vector3::Lerp(Vector3::Zero, settings.colorOffset.value, colorWeight);
+            displayParameters[9] = offset.x;
+            displayParameters[10] = offset.y;
+            displayParameters[11] = offset.z;
+            const std::array controls{
+                Vector4(std::lerp(1.0f, settings.shadowSaturation.value, colorWeight),
+                    std::lerp(1.0f, settings.shadowContrast.value, colorWeight),
+                    std::lerp(1.0f, settings.shadowGamma.value, colorWeight),
+                    std::lerp(1.0f, settings.shadowGain.value, colorWeight)),
+                Vector4(std::lerp(1.0f, settings.midtoneSaturation.value, colorWeight),
+                    std::lerp(1.0f, settings.midtoneContrast.value, colorWeight),
+                    std::lerp(1.0f, settings.midtoneGamma.value, colorWeight),
+                    std::lerp(1.0f, settings.midtoneGain.value, colorWeight)),
+                Vector4(std::lerp(1.0f, settings.highlightSaturation.value, colorWeight),
+                    std::lerp(1.0f, settings.highlightContrast.value, colorWeight),
+                    std::lerp(1.0f, settings.highlightGamma.value, colorWeight),
+                    std::lerp(1.0f, settings.highlightGain.value, colorWeight)),
+            };
+            const std::array colors{ settings.shadowColor.value, settings.midtoneColor.value,
+                settings.highlightColor.value };
+            for (std::size_t index = 0; index < controls.size(); ++index)
+            {
+                const std::size_t parameterOffset = 16 + index * 8;
+                displayParameters[parameterOffset] = controls[index].x;
+                displayParameters[parameterOffset + 1] = controls[index].y;
+                displayParameters[parameterOffset + 2] = controls[index].z;
+                displayParameters[parameterOffset + 3] = controls[index].w;
+                const auto color = Vector3::Lerp(Vector3::Zero, colors[index], colorWeight);
+                displayParameters[parameterOffset + 4] = color.x;
+                displayParameters[parameterOffset + 5] = color.y;
+                displayParameters[parameterOffset + 6] = color.z;
+            }
         }
         if (autoExposure)
         {
             displayParameters[12] = autoExposureWeight;
+        }
+        if (filmGrain)
+        {
+            m_statistics.filmGrainFrameIndex = m_filmGrainFrameIndex;
+            // The shader receives this seed as float, so keep its integer representation exact.
+            m_filmGrainFrameIndex = (m_filmGrainFrameIndex + 1u) & 0x00ffffffu;
         }
         const auto& inputDesc = input.resource->getDescription();
         const auto& outputDesc = output.resource->getDescription();
@@ -405,7 +504,7 @@ namespace Engine
             LOG_ERROR("[PostProcess] Incompatible HDR/display textures or viewport.");
             return false;
         }
-        if (depthOfField || fog)
+        if (depthOfField)
         {
             if (depth == nullptr || depth->resource == nullptr || depth->resource->get() == nullptr
                 || depth->srv.native.ptr == 0
@@ -413,10 +512,29 @@ namespace Engine
                 || depth->resource->getDescription().Width != inputDesc.Width
                 || depth->resource->getDescription().Height != inputDesc.Height)
             {
-                LOG_ERROR("[PostProcess] Depth of Field and Fog require a matching Camera depth texture.");
+                LOG_ERROR("[PostProcess] Depth of Field requires a matching Camera depth texture.");
                 return false;
             }
         }
+        if (temporalAA || motionBlur)
+        {
+            if (motionVectors == nullptr || motionVectors->resource == nullptr
+                || motionVectors->resource->get() == nullptr || motionVectors->srv.native.ptr == 0
+                || motionVectors->resource->getDescription().Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D
+                || motionVectors->resource->getDescription().Format != DXGI_FORMAT_R16G16B16A16_FLOAT
+                || motionVectors->resource->getDescription().Width != inputDesc.Width
+                || motionVectors->resource->getDescription().Height != inputDesc.Height)
+            {
+                LOG_ERROR("[PostProcess] Temporal AA and Motion Blur require a matching deferred velocity texture.");
+                return false;
+            }
+        }
+        m_temporalHistoryRecorded = false;
+        if (temporalAA && !initializeTemporalHistory(
+            static_cast<std::uint32_t>(inputDesc.Width), inputDesc.Height))
+            return false;
+        if (temporalAA)
+            m_temporalHistoryCamera = camera.cameraGuid;
         DX12GpuDescriptorHandle lutSrv{};
         if (colorGradingLut)
         {
@@ -462,7 +580,7 @@ namespace Engine
         D3D12_VIEWPORT currentViewport = viewport;
         const std::array<float, 16> emptyParameters{};
         const auto runTemporary = [&](const DX12GraphicsPipeline& pipeline, const std::uint32_t divisor,
-            const bool toneMapping, const std::array<float, 16>& parameters,
+            const bool toneMapping, const std::span<const float> parameters,
             const PostProcessImage* secondary = nullptr, const D3D12_VIEWPORT* secondaryViewport = nullptr,
             const DX12GpuDescriptorHandle* externalSecondary = nullptr)
         {
@@ -485,7 +603,7 @@ namespace Engine
             return true;
         };
         bool depthWasUsed = false;
-        const auto runDepthEffect = [&](const PostProcessBuiltin slot, const std::array<float, 16>& parameters)
+        const auto runDepthEffect = [&](const PostProcessBuiltin slot, const std::span<const float> parameters)
         {
             const PostProcessTargetDescription description{
                 static_cast<std::uint32_t>(outputDesc.Width), static_cast<std::uint32_t>(outputDesc.Height),
@@ -555,20 +673,26 @@ namespace Engine
             if (!runDepthEffect(PostProcessBuiltin::DepthOfField, parameters))
                 return false;
         }
-        if (fog)
+        if (motionBlur)
         {
-            std::array<float, 16> parameters{};
-            parameters[0] = settings.fogDensity.value;
-            parameters[1] = settings.fogStartDistance.value;
-            parameters[2] = camera.nearClip;
-            parameters[3] = camera.farClip;
-            parameters[4] = settings.fogColor.value.x;
-            parameters[5] = settings.fogColor.value.y;
-            parameters[6] = settings.fogColor.value.z;
-            parameters[7] = fogWeight;
-            parameters[8] = camera.perspectiveProjection ? 1.0f : 0.0f;
-            if (!runDepthEffect(PostProcessBuiltin::Fog, parameters))
+            PostProcessImage* const next = m_targets.acquire({
+                static_cast<std::uint32_t>(outputDesc.Width), static_cast<std::uint32_t>(outputDesc.Height),
+            });
+            const std::array<float, 16> parameters{
+                settings.motionBlurAmount.value * motionBlurWeight,
+                settings.motionBlurMaxVelocity.value,
+            };
+            if (next == nullptr || !draw(commandList,
+                m_builtins[static_cast<std::size_t>(PostProcessBuiltin::MotionBlur)],
+                *current, *next, currentViewport, viewport, effectiveExposure, false, parameters,
+                motionVectors, &viewport))
                 return false;
+            if (borrowed && !m_targets.release(*borrowed))
+                return false;
+            borrowed = next;
+            current = next;
+            currentViewport = viewport;
+            ++m_statistics.effectPasses;
         }
         for (const auto& pass : m_passes)
         {
@@ -582,6 +706,32 @@ namespace Engine
         }
         if (!runCustomEffects(PostProcessStage::BeforeToneMapping))
             return false;
+        if (temporalAA)
+        {
+            const std::size_t writeIndex = 1 - m_temporalHistoryReadIndex;
+            const PostProcessImage& history = m_temporalHistoryImages[m_temporalHistoryReadIndex];
+            PostProcessImage& outputHistory = m_temporalHistoryImages[writeIndex];
+            const std::array<float, 16> parameters{
+                settings.temporalAAFeedback.value * temporalAAWeight,
+                m_temporalHistoryValid ? 1.0f : 0.0f,
+                camera.nearClip,
+                camera.farClip,
+                camera.perspectiveProjection ? 1.0f : 0.0f,
+            };
+            if (!draw(commandList, m_builtins[static_cast<std::size_t>(PostProcessBuiltin::TemporalAA)],
+                *current, outputHistory, currentViewport, viewport, effectiveExposure, false, parameters,
+                motionVectors, &viewport, nullptr, &history)
+                || !outputHistory.resource->transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
+                return false;
+            if (borrowed && !m_targets.release(*borrowed))
+                return false;
+            borrowed = nullptr;
+            current = &outputHistory;
+            currentViewport = viewport;
+            m_temporalHistoryPendingReadIndex = writeIndex;
+            m_temporalHistoryRecorded = true;
+            ++m_statistics.effectPasses;
+        }
         PostProcessImage* exposureTarget = nullptr;
         D3D12_VIEWPORT exposureViewport{};
         if (autoExposure)
@@ -596,9 +746,10 @@ namespace Engine
                 return false;
         }
         if (bloom && !recordBloom(commandList, current, borrowed, currentViewport, output, viewport,
-            settings.bloomIntensity.value * bloomWeight, settings.bloomThreshold.value, settings.bloomScatter.value))
+            settings.bloomIntensity.value * bloomWeight, settings.bloomThreshold.value,
+            settings.bloomScatter.value, settings.bloomSizeScale.value))
             return false;
-        const bool hasLdrPasses = colorGradingLut || vignette || fxaa
+        const bool hasLdrPasses = colorGradingLut || vignette || chromaticAberration || filmGrain || fxaa
             || std::any_of(m_passes.begin(), m_passes.end(), [](const auto& pass)
         {
             return pass->description.enabled && pass->description.stage == PostProcessStage::AfterToneMapping;
@@ -644,6 +795,17 @@ namespace Engine
                     return false;
                 ++m_statistics.effectPasses;
             }
+            if (chromaticAberration)
+            {
+                const std::array<float, 16> parameters{
+                    settings.chromaticAberrationIntensity.value * chromaticAberrationWeight,
+                    settings.chromaticAberrationStartOffset.value,
+                };
+                if (!runTemporary(m_builtins[static_cast<std::size_t>(PostProcessBuiltin::ChromaticAberration)],
+                    1, false, parameters))
+                    return false;
+                ++m_statistics.effectPasses;
+            }
             if (fxaa)
             {
                 const std::array<float, 16> parameters{
@@ -653,9 +815,23 @@ namespace Engine
                     return false;
                 ++m_statistics.effectPasses;
             }
+            if (filmGrain)
+            {
+                const std::array<float, 16> parameters{
+                    settings.filmGrainIntensity.value * filmGrainWeight,
+                    settings.filmGrainResponse.value,
+                    static_cast<float>(m_statistics.filmGrainFrameIndex),
+                };
+                if (!runTemporary(m_builtins[static_cast<std::size_t>(PostProcessBuiltin::FilmGrain)],
+                    1, false, parameters))
+                    return false;
+                ++m_statistics.effectPasses;
+            }
         }
+        const std::span<const float> outputParameters = hasLdrPasses
+            ? std::span<const float>(emptyParameters) : std::span<const float>(displayParameters);
         if (!draw(commandList, m_output, *current, output, currentViewport, viewport,
-            effectiveExposure, !hasLdrPasses, hasLdrPasses ? emptyParameters : displayParameters,
+            effectiveExposure, !hasLdrPasses, outputParameters,
             !hasLdrPasses ? exposureTarget : nullptr,
             !hasLdrPasses && exposureTarget ? &exposureViewport : nullptr))
             return false;
@@ -708,9 +884,10 @@ namespace Engine
 
     bool PostProcessPipeline::recordBloom(DX12CommandList& commandList, const PostProcessImage*& current,
         const PostProcessImage*& borrowed, D3D12_VIEWPORT& currentViewport, const PostProcessImage& output,
-        const D3D12_VIEWPORT& viewport, const float intensity, const float threshold, const float scatter)
+        const D3D12_VIEWPORT& viewport, const float intensity, const float threshold, const float scatter,
+        const float sizeScale)
     {
-        constexpr std::size_t MAX_LEVELS = 6;
+        constexpr std::size_t MAX_LEVELS = 5;
         std::array<PostProcessImage*, MAX_LEVELS> levels{};
         std::array<D3D12_VIEWPORT, MAX_LEVELS> viewports{};
         const auto& fullSize = output.resource->getDescription();
@@ -748,7 +925,7 @@ namespace Engine
             auto* const next = m_targets.acquire({ static_cast<std::uint32_t>(highDescription.Width), highDescription.Height });
             if (!next)
                 return false;
-            const std::array<float, 16> parameters{ scatter };
+            const std::array<float, 16> parameters{ scatter, sizeScale };
             if (!draw(commandList, m_builtins[static_cast<std::size_t>(PostProcessBuiltin::BloomUpsample)],
                 *levels[index - 1], *next, viewports[index - 1], viewports[index - 1], 1, false, parameters,
                 source, &sourceViewport) || !m_targets.release(*source) || !m_targets.release(*levels[index - 1]))
@@ -778,6 +955,12 @@ namespace Engine
             LOG_ERROR("[PostProcess] Cannot mark an unrecorded pipeline submitted.");
             return false;
         }
+        if (m_temporalHistoryRecorded)
+        {
+            m_temporalHistoryReadIndex = m_temporalHistoryPendingReadIndex;
+            m_temporalHistoryValid = true;
+            m_temporalHistoryRecorded = false;
+        }
         m_lastFenceValue = fenceValue;
         m_recorded = false;
         return true;
@@ -787,7 +970,7 @@ namespace Engine
     {
         if (m_lastFenceValue != 0 && !m_fence->waitOnCpu(m_lastFenceValue))
             return false;
-        if (!m_targets.clear() || !releaseExposureHistory())
+        if (!m_targets.clear() || !releaseExposureHistory() || !releaseTemporalHistory())
             return false;
         m_statistics.temporaryTargets = 0;
         return true;
@@ -873,6 +1056,101 @@ namespace Engine
         m_exposureHistoryCamera = {};
         m_exposureHistoryReadIndex = 0;
         m_exposureHistoryValid = false;
+        return true;
+    }
+
+    bool PostProcessPipeline::initializeTemporalHistory(const std::uint32_t width, const std::uint32_t height)
+    {
+        if (width == 0 || height == 0)
+        {
+            LOG_ERROR("[PostProcess] Cannot initialize temporal history with an empty viewport.");
+            return false;
+        }
+        if (m_temporalHistoryWidth == width && m_temporalHistoryHeight == height
+            && m_temporalHistoryRtvHeap.get() != nullptr)
+            return true;
+        if (!releaseTemporalHistory() || m_device == nullptr || m_srvHeap == nullptr
+            || !m_temporalHistoryRtvHeap.initialize(*m_device, {
+                .type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
+                .capacity = static_cast<std::uint32_t>(m_temporalHistoryResources.size()),
+            }))
+        {
+            LOG_ERROR("[PostProcess] Cannot initialize temporal anti-aliasing history.");
+            return false;
+        }
+
+        for (std::size_t index = 0; index < m_temporalHistoryResources.size(); ++index)
+        {
+            const auto renderTarget = m_temporalHistoryRtvHeap.allocate();
+            m_temporalHistorySrvs[index] = m_srvHeap->allocate();
+            if (!renderTarget || !m_temporalHistorySrvs[index] || !m_temporalHistorySrvs[index]->gpu)
+            {
+                LOG_ERROR("[PostProcess] Cannot allocate temporal history views.");
+                releaseTemporalHistory();
+                return false;
+            }
+            D3D12_RESOURCE_DESC description{};
+            description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+            description.Width = width;
+            description.Height = height;
+            description.DepthOrArraySize = 1;
+            description.MipLevels = 1;
+            description.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+            description.SampleDesc = { 1, 0 };
+            description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+            if (!m_temporalHistoryResources[index].initialize(*m_device, {
+                .description = description,
+                .initialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            }))
+            {
+                LOG_ERROR("[PostProcess] Cannot create temporal history texture.");
+                releaseTemporalHistory();
+                return false;
+            }
+            m_temporalHistoryRtvs[index] = renderTarget->cpu;
+            m_device->CreateRenderTargetView(
+                m_temporalHistoryResources[index].get(), nullptr, renderTarget->cpu.native);
+            D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+            srv.Format = description.Format;
+            srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srv.Texture2D.MipLevels = 1;
+            m_device->CreateShaderResourceView(
+                m_temporalHistoryResources[index].get(), &srv, m_temporalHistorySrvs[index]->cpu.native);
+            m_temporalHistoryImages[index] = {
+                &m_temporalHistoryResources[index], *m_temporalHistorySrvs[index]->gpu, renderTarget->cpu,
+            };
+        }
+        m_temporalHistoryWidth = width;
+        m_temporalHistoryHeight = height;
+        return true;
+    }
+
+    bool PostProcessPipeline::releaseTemporalHistory()
+    {
+        if (m_lastFenceValue != 0 && m_fence != nullptr && !m_fence->waitOnCpu(m_lastFenceValue))
+            return false;
+        for (auto& srv : m_temporalHistorySrvs)
+        {
+            if (srv && m_srvHeap != nullptr && !m_srvHeap->release(srv->cpu.index))
+            {
+                LOG_ERROR("[PostProcess] Cannot release a temporal history SRV.");
+                return false;
+            }
+            srv.reset();
+        }
+        for (auto& resource : m_temporalHistoryResources)
+            resource.finalize();
+        m_temporalHistoryRtvHeap.finalize();
+        m_temporalHistoryRtvs = {};
+        m_temporalHistoryImages = {};
+        m_temporalHistoryCamera = {};
+        m_temporalHistoryWidth = 0;
+        m_temporalHistoryHeight = 0;
+        m_temporalHistoryReadIndex = 0;
+        m_temporalHistoryPendingReadIndex = 0;
+        m_temporalHistoryValid = false;
+        m_temporalHistoryRecorded = false;
         return true;
     }
 

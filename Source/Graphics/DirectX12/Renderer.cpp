@@ -41,6 +41,20 @@ namespace Engine
             return left.x == right.x && left.y == right.y
                 && left.z == right.z && left.w == right.w;
         }
+
+        float halton(const std::uint32_t index, const std::uint32_t base) noexcept
+        {
+            float value = 0.0f;
+            float fraction = 1.0f;
+            std::uint32_t remaining = index;
+            while (remaining > 0)
+            {
+                fraction /= static_cast<float>(base);
+                value += fraction * static_cast<float>(remaining % base);
+                remaining /= base;
+            }
+            return value;
+        }
     }
 
     bool DX12Renderer::initialize(const HWND hwnd, const std::uint32_t width, const std::uint32_t height,
@@ -110,7 +124,7 @@ namespace Engine
 
         if (!m_gameRtvHeap.initialize(*m_device.get(), {
                 .type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
-                .capacity = 6,
+                .capacity = 7,
                 .shaderVisible = false,
             })
             || !m_dsvHeap.initialize(*m_device.get(), {
@@ -407,6 +421,10 @@ namespace Engine
             if (!buffer.finalize())
                 return false;
         m_modelInstanceConstants.clear();
+        m_previousObjectWorldMatrices.clear();
+        m_currentObjectWorldMatrices.clear();
+        m_previousSkinningPalettes.clear();
+        m_currentSkinningPalettes.clear();
         m_animatedMeshBounds.clear();
         for (DX12GpuOcclusionCulling& culling : m_occlusionCulling)
             if (!culling.finalize())
@@ -475,6 +493,15 @@ namespace Engine
         m_shadowViewProjection.reset();
         m_viewProjection = Matrix::Identity;
         m_inverseViewProjection = Matrix::Identity;
+        m_previousViewProjection = Matrix::Identity;
+        m_lastSubmittedViewProjection = Matrix::Identity;
+        m_previousRenderCamera = {};
+        m_currentRenderCamera = {};
+        m_currentRenderSize = Vector2::Zero;
+        m_previousRenderSize = Vector2::Zero;
+        m_temporalAAJitterIndex = 0;
+        m_hasPreviousRenderView = false;
+        m_temporalAAActive = false;
         m_cameraPosition = Vector3::Zero;
         m_cameraNearClip = 0.1f;
         m_cameraFarClip = 1000.0f;
@@ -533,6 +560,15 @@ namespace Engine
             m_cameraClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);
             m_cameraCullingMask = 0;
             m_cameraPostProcess = {};
+            m_currentRenderCamera = {};
+            m_currentRenderSize = Vector2::Zero;
+            m_previousViewProjection = Matrix::Identity;
+            m_hasPreviousRenderView = false;
+            m_temporalAAActive = false;
+            m_temporalAAJitterIndex = 0;
+            m_previousObjectWorldMatrices.clear();
+            m_previousSkinningPalettes.clear();
+            m_currentSkinningPalettes.clear();
         }
 
         m_deferredFrameActive = m_deferredRenderingEnabled
@@ -719,7 +755,7 @@ namespace Engine
             static_cast<LONG>(std::ceil(viewport.TopLeftX + viewport.Width)),
             static_cast<LONG>(std::ceil(viewport.TopLeftY + viewport.Height))
         };
-        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 4> gbufferViews{};
+        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 5> gbufferViews{};
         for (std::size_t index = 0; index < gbufferViews.size(); ++index)
             gbufferViews[index] = m_gbufferRenderTargetViews[index].native;
         if (m_deferredFrameActive)
@@ -736,8 +772,10 @@ namespace Engine
         if (m_deferredFrameActive)
         {
             constexpr float CLEAR_COLOR[4]{};
-            for (const DX12CpuDescriptorHandle& view : m_gbufferRenderTargetViews)
-                nativeCommandList->ClearRenderTargetView(view.native, CLEAR_COLOR, 0, nullptr);
+            constexpr float CLEAR_VELOCITY[4]{ 0.0f, 0.0f, 1.0f, 1.0f };
+            for (std::size_t index = 0; index < m_gbufferRenderTargetViews.size(); ++index)
+                nativeCommandList->ClearRenderTargetView(m_gbufferRenderTargetViews[index].native,
+                    index == 4 ? CLEAR_VELOCITY : CLEAR_COLOR, 0, nullptr);
         }
         else if (m_cameraClearMode == CameraClearMode::SolidColor || m_cameraClearMode == CameraClearMode::Skybox)
         {
@@ -766,8 +804,9 @@ namespace Engine
                     &m_deferredLightingTarget, *m_deferredLightingShaderView->gpu, m_deferredLightingRenderTargetView };
                 const PostProcessImage output{ &m_gameRenderTarget, {}, m_gameRenderTargetView };
                 const PostProcessImage depth{ &m_depthBuffer, *m_depthShaderView->gpu, {} };
+                const PostProcessImage velocity{ &m_gbufferTargets[4], *m_gbufferShaderViews[4]->gpu, {} };
                 if (!m_postProcess.record(finishList, input, output, viewport, m_exposure,
-                    m_cameraPostProcess, &depth))
+                    m_cameraPostProcess, &depth, &velocity))
                     return false;
                 m_postProcessRecorded = true;
             }
@@ -910,6 +949,18 @@ namespace Engine
         if (!m_occlusionCulling[frameIndex].markSubmitted(submittedFenceValue))
             return false;
 
+        m_lastSubmittedViewProjection = m_viewProjection;
+        m_previousRenderCamera = m_currentRenderCamera;
+        m_previousRenderSize = m_currentRenderSize;
+        m_hasPreviousRenderView = m_currentRenderCamera.isValid();
+        if (m_temporalAAActive)
+            ++m_temporalAAJitterIndex;
+        else
+            m_temporalAAJitterIndex = 0;
+        m_previousObjectWorldMatrices.swap(m_currentObjectWorldMatrices);
+        m_currentObjectWorldMatrices.clear();
+        m_previousSkinningPalettes.swap(m_currentSkinningPalettes);
+        m_currentSkinningPalettes.clear();
         return true;
     }
 
@@ -985,8 +1036,40 @@ namespace Engine
 
     void DX12Renderer::setRenderView(const RenderView& view) noexcept
     {
-        m_viewProjection = view.camera.viewProjection;
-        m_inverseViewProjection = view.camera.inverseViewProjection;
+        m_cameraPostProcess = view.postProcess;
+        m_cameraPostProcess.temporalHistoryReset = view.camera.temporalHistoryReset;
+        m_currentRenderCamera = view.postProcess.cameraGuid;
+        m_currentRenderSize = view.camera.viewportSize;
+        const bool sameCamera = m_hasPreviousRenderView && !view.camera.temporalHistoryReset
+            && m_previousRenderCamera == m_currentRenderCamera
+            && m_previousRenderSize.x == m_currentRenderSize.x
+            && m_previousRenderSize.y == m_currentRenderSize.y;
+        if (view.camera.temporalHistoryReset)
+        {
+            m_previousObjectWorldMatrices.clear();
+            m_previousSkinningPalettes.clear();
+            m_currentSkinningPalettes.clear();
+        }
+        const bool requestedTemporalAA = m_deferredRenderingEnabled
+            && view.clearMode != CameraClearMode::Nothing
+            && view.postProcess.enabled && view.postProcess.weight > 0
+            && view.postProcess.effects.temporalAA > 0
+            && view.postProcess.settings.temporalAAEnabled.value;
+        m_temporalAAActive = requestedTemporalAA;
+        Matrix projection = view.camera.projection;
+        if (requestedTemporalAA)
+        {
+            if (view.camera.temporalHistoryReset)
+                m_temporalAAJitterIndex = 0;
+            const std::uint32_t sampleIndex = m_temporalAAJitterIndex % 8 + 1;
+            const float width = std::max(view.camera.viewportSize.x, 1.0f);
+            const float height = std::max(view.camera.viewportSize.y, 1.0f);
+            projection._31 += (halton(sampleIndex, 2) - 0.5f) * 2.0f / width;
+            projection._32 += (0.5f - halton(sampleIndex, 3)) * 2.0f / height;
+        }
+        m_viewProjection = view.camera.view * projection;
+        m_inverseViewProjection = m_viewProjection.Invert();
+        m_previousViewProjection = sameCamera ? m_lastSubmittedViewProjection : m_viewProjection;
         m_cameraPosition = view.camera.position;
         m_cameraNearClip = view.camera.nearClip;
         m_cameraFarClip = view.camera.farClip;
@@ -996,7 +1079,6 @@ namespace Engine
         m_cameraClearMode = view.clearMode;
         m_cameraClearColor = view.backgroundColor;
         m_cameraCullingMask = view.cullingMask;
-        m_cameraPostProcess = view.postProcess;
     }
 
     bool DX12Renderer::createDepthBuffer(const std::uint32_t width, const std::uint32_t height)
@@ -1068,7 +1150,10 @@ namespace Engine
             DXGI_FORMAT_R16G16B16A16_FLOAT,
             DXGI_FORMAT_R8G8B8A8_UNORM,
             DXGI_FORMAT_R16G16B16A16_FLOAT,
+            DXGI_FORMAT_R16G16B16A16_FLOAT,
         };
+        constexpr std::array<float, 4> clearColor{};
+        constexpr std::array<float, 4> clearVelocity{ 0.0f, 0.0f, 1.0f, 1.0f };
         for (const DXGI_FORMAT format : formats)
         {
             D3D12_FEATURE_DATA_FORMAT_SUPPORT support{ .Format = format };
@@ -1085,7 +1170,8 @@ namespace Engine
         }
         const auto createTarget = [&](DX12Resource& resource, const DXGI_FORMAT format,
             const DX12CpuDescriptorHandle& renderTargetView,
-            const DX12DescriptorAllocation& shaderView) -> bool
+            const DX12DescriptorAllocation& shaderView,
+            const std::array<float, 4>& clearColor) -> bool
         {
             D3D12_RESOURCE_DESC description{};
             description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -1099,6 +1185,7 @@ namespace Engine
             description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
             D3D12_CLEAR_VALUE clearValue{};
             clearValue.Format = format;
+            std::copy(clearColor.begin(), clearColor.end(), clearValue.Color);
             const DX12ResourceConfig config{
                 .description = description,
                 .initialState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
@@ -1137,7 +1224,8 @@ namespace Engine
                 return false;
             }
             if (!createTarget(m_gbufferTargets[index], formats[index],
-                m_gbufferRenderTargetViews[index], *m_gbufferShaderViews[index]))
+                m_gbufferRenderTargetViews[index], *m_gbufferShaderViews[index],
+                index == 4 ? clearVelocity : clearColor))
             {
                 LOG_ERROR("[Renderer] Failed to create G-Buffer target {}.", index);
                 return false;
@@ -1162,7 +1250,7 @@ namespace Engine
             return false;
         }
         if (!createTarget(m_deferredLightingTarget, DXGI_FORMAT_R16G16B16A16_FLOAT,
-            m_deferredLightingRenderTargetView, *m_deferredLightingShaderView))
+            m_deferredLightingRenderTargetView, *m_deferredLightingShaderView, clearColor))
         {
             LOG_ERROR("[Renderer] Failed to create HDR lighting target.");
             return false;
@@ -1517,6 +1605,7 @@ namespace Engine
             DXGI_FORMAT_R16G16B16A16_FLOAT,
             DXGI_FORMAT_R8G8B8A8_UNORM,
             DXGI_FORMAT_R16G16B16A16_FLOAT,
+            DXGI_FORMAT_R16G16B16A16_FLOAT,
         };
         DX12GraphicsPipelineConfig gbufferModelConfig = opaqueModelConfig;
         gbufferModelConfig.pixelShader = gbufferPixelShader.get();
@@ -1814,7 +1903,8 @@ namespace Engine
             .colorTarget = m_gameRenderTargetView.native,
             .geometryTargets = {
                 m_gbufferRenderTargetViews[0].native, m_gbufferRenderTargetViews[1].native,
-                m_gbufferRenderTargetViews[2].native, m_gbufferRenderTargetViews[3].native },
+                m_gbufferRenderTargetViews[2].native, m_gbufferRenderTargetViews[3].native,
+                m_gbufferRenderTargetViews[4].native },
             .deferredTarget = m_deferredLightingRenderTargetView.native,
             .deferred = m_deferredFrameActive,
             .depthTarget = m_depthStencilView.native,
@@ -1914,6 +2004,15 @@ namespace Engine
     bool DX12Renderer::prepareModelDraws(const std::uint32_t frameIndex)
     {
         m_preparedModelDraws.clear();
+        m_currentObjectWorldMatrices.clear();
+        m_currentSkinningPalettes.clear();
+        const bool motionBlurHistory = m_deferredFrameActive && m_cameraPostProcess.enabled
+            && m_cameraPostProcess.weight > 0 && m_cameraPostProcess.effects.motionBlur > 0
+            && m_cameraPostProcess.settings.motionBlurEnabled.value
+            && m_cameraPostProcess.settings.motionBlurAmount.value > 0;
+        const bool trackSkinningHistory = m_temporalAAActive || motionBlurHistory;
+        if (!trackSkinningHistory)
+            m_previousSkinningPalettes.clear();
         const std::span<const RenderItem> items = m_modelRenderQueue.getItems();
         if (items.empty())
             return true;
@@ -1927,9 +2026,22 @@ namespace Engine
         for (std::size_t index = 0; index < items.size(); ++index)
         {
             const RenderItem& item = items[index];
-            const Matrix& viewProjection = item.pass == RenderPassType::Shadow && m_shadowViewProjection
-                ? *m_shadowViewProjection : m_viewProjection;
-            m_modelInstanceConstants[index] = { item.worldMatrix * viewProjection, item.worldMatrix };
+            const bool shadowPass = item.pass == RenderPassType::Shadow && m_shadowViewProjection.has_value();
+            const Matrix& viewProjection = shadowPass ? *m_shadowViewProjection : m_viewProjection;
+            const std::uint64_t objectMeshKey = (static_cast<std::uint64_t>(item.objectID) << 32)
+                | item.meshID;
+            const auto previousObject = item.objectID != 0
+                ? m_previousObjectWorldMatrices.find(objectMeshKey) : m_previousObjectWorldMatrices.end();
+            const Matrix& previousWorld = previousObject != m_previousObjectWorldMatrices.end()
+                ? previousObject->second : item.worldMatrix;
+            const Matrix& previousViewProjection = shadowPass ? viewProjection : m_previousViewProjection;
+            m_modelInstanceConstants[index] = {
+                item.worldMatrix * viewProjection,
+                item.worldMatrix,
+                previousWorld * previousViewProjection,
+            };
+            if (item.objectID != 0 && (item.pass == RenderPassType::Opaque || item.pass == RenderPassType::AlphaTest))
+                m_currentObjectWorldMatrices.insert_or_assign(objectMeshKey, item.worldMatrix);
         }
         DX12UploadBuffer& instanceBuffer = m_modelInstanceBuffers[frameIndex];
         const auto instanceBytes = std::as_bytes(std::span<const ModelInstanceConstants>(m_modelInstanceConstants));
@@ -1950,7 +2062,8 @@ namespace Engine
         }
 
         TextureManager& textureManager = TextureManager::instance();
-        std::unordered_map<const SkinningPaletteSnapshot*, DX12UploadBuffer*> uploadedPalettes;
+        std::unordered_map<const SkinningPaletteSnapshot*,
+            std::unordered_map<std::uint32_t, DX12UploadBuffer*>> uploadedPalettes;
         MaterialHandle currentMaterial;
         D3D12_GPU_VIRTUAL_ADDRESS materialAddress = 0;
         std::array<D3D12_GPU_DESCRIPTOR_HANDLE, 5> textures{};
@@ -2014,16 +2127,24 @@ namespace Engine
             if (item.skinningPalette != nullptr)
             {
                 const SkinningPaletteSnapshot* const snapshot = item.skinningPalette.get();
-                if (const auto found = uploadedPalettes.find(snapshot); found != uploadedPalettes.end())
+                auto& palettesByObject = uploadedPalettes[snapshot];
+                if (const auto found = palettesByObject.find(item.objectID); found != palettesByObject.end())
                 {
                     bonePalette = found->second;
                 }
                 else
                 {
-                    DX12UploadBuffer* const uploaded = uploadSkinningPalette(frameIndex, *snapshot);
+                    const auto previous = item.objectID != 0 && trackSkinningHistory
+                        ? m_previousSkinningPalettes.find(item.objectID) : m_previousSkinningPalettes.end();
+                    const SkinningPaletteSnapshot* const previousSnapshot =
+                        previous != m_previousSkinningPalettes.end() ? previous->second.get() : nullptr;
+                    if (item.objectID != 0 && trackSkinningHistory)
+                        m_currentSkinningPalettes.try_emplace(item.objectID, item.skinningPalette);
+                    DX12UploadBuffer* const uploaded = uploadSkinningPalette(
+                        frameIndex, *snapshot, previousSnapshot);
                     if (uploaded == nullptr)
                         return false;
-                    uploadedPalettes.emplace(snapshot, uploaded);
+                    palettesByObject.emplace(item.objectID, uploaded);
                     bonePalette = uploaded;
                 }
             }
@@ -2047,7 +2168,8 @@ namespace Engine
         return true;
     }
 
-    DX12UploadBuffer* DX12Renderer::uploadSkinningPalette(const std::uint32_t frameIndex, const SkinningPaletteSnapshot& snapshot)
+    DX12UploadBuffer* DX12Renderer::uploadSkinningPalette(const std::uint32_t frameIndex,
+        const SkinningPaletteSnapshot& snapshot, const SkinningPaletteSnapshot* previousSnapshot)
     {
         if (frameIndex >= FRAME_COUNT || snapshot.jointCount == 0
             || snapshot.jointCount > MAX_SKINNING_BONES)
@@ -2068,7 +2190,14 @@ namespace Engine
         }
 
         DX12UploadBuffer* const buffer = buffers[index].get();
-        if (!buffer->write(std::as_bytes(std::span{ &snapshot.constants, 1 })))
+        SkinningPaletteConstants constants = snapshot.constants;
+        if (previousSnapshot != nullptr && previousSnapshot->skeletonGuid == snapshot.skeletonGuid
+            && previousSnapshot->skeletonSignature == snapshot.skeletonSignature
+            && previousSnapshot->jointCount == snapshot.jointCount)
+            constants.previousBoneMatrices = previousSnapshot->constants.boneMatrices;
+        else
+            constants.previousBoneMatrices = snapshot.constants.boneMatrices;
+        if (!buffer->write(std::as_bytes(std::span{ &constants, 1 })))
             return nullptr;
         ++m_skinningPaletteBufferCursors[frameIndex];
         return buffer;

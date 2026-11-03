@@ -471,6 +471,7 @@ namespace Engine
         result.camera.viewportSize = viewportSize;
         result.camera.inverseViewportSize = Vector2(1.0f / viewportSize.x, 1.0f / viewportSize.y);
         result.camera.jitter = m_projectionJitter;
+        result.camera.temporalHistoryReset = !m_hasPreviousViewProjection;
         result.frustum = getFrustum();
         result.viewport = m_viewport;
         result.clearMode = m_clearMode;
@@ -784,6 +785,7 @@ namespace Engine
         m_projectionDirty = true;
         m_viewProjectionDirty = true;
         m_frustumDirty = true;
+        m_hasPreviousViewProjection = false;
     }
 
     void CameraComponent::synchronizeView() const noexcept
