@@ -43,7 +43,8 @@ namespace Engine
     {
         if (!validateTerrainMeshSettings(request.mesh) || !validateTerrainMaterial(request.material)
             || !validateTerrainChunkSettings(request.chunks) || !validateTerrainLodSettings(request.lod)
-            || !validateTerrainNoiseSettings(request.noise) || !validateTerrainErosionSettings(request.erosion))
+            || !validateTerrainNoiseSettings(request.noise) || !validateTerrainErosionSettings(request.erosion)
+            || !validateTerrainVegetation(request.vegetation, request.mesh))
             return false;
         if (request.gpuNoise && (request.source != TerrainBuildSource::Noise || !TerrainGpuNoise::instance().isAvailable()))
         {
@@ -124,6 +125,8 @@ namespace Engine
             return false;
         prepared.lod = std::make_shared<TerrainLodSnapshot>();
         if (!buildTerrainLods(prepared.model, prepared.chunks, request.lod, *prepared.lod)
+            || !enter(TerrainGenerationStage::Vegetation)
+            || !buildTerrainVegetation(request.heightmap, request.mesh, request.vegetation, prepared.vegetation, cancelled)
             || (cancelled && cancelled->load(std::memory_order_acquire)))
             return false;
         prepared.applied = std::move(request);

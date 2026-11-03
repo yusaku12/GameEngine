@@ -12,12 +12,14 @@
 #include "Terrain\TerrainChunks.h"
 #include "Terrain\TerrainLod.h"
 #include "Terrain\TerrainGeneration.h"
+#include "Graphics\Renderer\ModelRenderSubmission.h"
 
 namespace Engine
 {
     /**
      * @brief Owns height samples and generated terrain geometry, independent of source images.
      * @details Optional TerrainCollider provides PhysX collision. Surface queries do not require a collider.
+     * Optional vegetation owns immutable scatter snapshots and shares static model assets; plants have no colliders.
      * @thread_safety Not thread-safe. Use on the game/editor thread without concurrent rendering updates.
      */
     class TerrainComponent final : public Component
@@ -138,6 +140,14 @@ namespace Engine
         bool setLodSettings(const TerrainLodSettings& settings);
         /** @brief Gets applied LOD settings, independent of Inspector drafts. */
         const TerrainLodSettings& getLodSettings() const noexcept { return m_lodSettings; }
+        /** @brief Synchronously rebuilds applied terrain and scatter; failure preserves live data and pending work. */
+        bool setVegetationSettings(const TerrainVegetationSettings& settings);
+        /** @brief Queues applied-height rebuild and scatter, with latest-accepted-wins and applied-only persistence. */
+        bool requestVegetation(const TerrainVegetationSettings& settings);
+        /** @brief Gets applied recipes, excluding pending requests and Inspector edits. */
+        const TerrainVegetationSettings& getVegetationSettings() const noexcept { return m_vegetationSettings; }
+        /** @brief Gets immutable local instance transforms paired with the current terrain. */
+        const TerrainVegetationPlacement& getVegetationPlacement() const noexcept { return m_vegetationPlacement; }
         /** @brief Gets immutable index ranges matching getModel(), or null before generation. */
         const std::shared_ptr<const TerrainLodSnapshot>& getLodSnapshot() const noexcept { return m_lodSnapshot; }
         /** @brief Gets the generated model handle, invalid before first generation. Do not unload it externally. */
@@ -148,8 +158,8 @@ namespace Engine
         bool getCastShadows() const noexcept { return m_castShadows; }
 
         /** @brief Gets the version of the embedded terrain payload. */
-        std::uint32_t getPayloadVersion() const noexcept override { return 6; }
-        /** @brief Saves samples and settings; no external image/model reference is required. */
+        std::uint32_t getPayloadVersion() const noexcept override { return 7; }
+        /** @brief Saves samples/settings and vegetation model references; terrain source images are not required. */
         bool serializePayload(std::vector<std::uint8_t>& payload) const override;
         /** @brief Restores and validates samples and settings before replacing the terrain. */
         bool deserializePayload(std::uint32_t version, std::span<const std::uint8_t> payload) override;
@@ -172,16 +182,19 @@ namespace Engine
             TerrainLodSettings lod;
             TerrainNoiseSettings noise;
             TerrainErosionSettings erosion;
+            TerrainVegetationSettings vegetation;
         };
         void submitRenderData();
         void requestHeightmapImport();
         bool rebuild(const Heightmap& heights, const TerrainMeshSettings& mesh, const TerrainMaterialSettings& surface,
-            const TerrainChunkSettings& chunks, const TerrainLodSettings& lod);
+            const TerrainChunkSettings& chunks, const TerrainLodSettings& lod, const TerrainVegetationSettings& vegetation);
         TerrainBuildRequest makeBuildRequest() const;
         bool queueBuild(TerrainBuildRequest request);
         bool applyBuild(TerrainBuildResult&& result, const DraftSettings* submittedDrafts = nullptr);
         void drawMaterialInspector();
         void requestLayerTexture(std::size_t layer, std::size_t texture);
+        void drawVegetationInspector();
+        void requestVegetationModel(std::size_t layer);
 
         Heightmap m_heightmap;
         TerrainMeshSettings m_settings;
@@ -199,6 +212,10 @@ namespace Engine
         TerrainErosionSettings m_editErosionSettings;
         TerrainMaterialSettings m_materialSettings;
         TerrainMaterialSettings m_editMaterialSettings;
+        TerrainVegetationSettings m_vegetationSettings;
+        TerrainVegetationSettings m_editVegetationSettings;
+        TerrainVegetationPlacement m_vegetationPlacement;
+        std::array<ModelRenderSubmission, TERRAIN_VEGETATION_LAYERS> m_vegetationSubmissions;
         ModelHandle m_model;
         MaterialHandle m_material;
         std::uint32_t m_objectID = 0;

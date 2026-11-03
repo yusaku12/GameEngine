@@ -26,6 +26,8 @@ namespace Engine
         std::shared_ptr<const ModelResource> modelSnapshot;              //!< Keeps regenerated procedural geometry alive until consumed.
         std::shared_ptr<const MaterialAsset> materialSnapshot;            //!< Optional immutable slot-zero procedural material.
         std::shared_ptr<const TerrainLodSnapshot> terrainLod;             //!< Optional procedural chunk LOD ranges matching modelSnapshot.
+        std::shared_ptr<const std::vector<Matrix>> instanceTransforms;   //!< Optional immutable static local instances; composed with worldMatrix.
+        std::shared_ptr<const std::vector<std::shared_ptr<const MaterialAsset>>> materialSnapshots; //!< Optional immutable per-slot materials.
         std::vector<MaterialHandle> materials;                          //!< 優先順位を解決済みのSlot IndexごとのMaterial
         MaterialPropertyBlock materialProperties;                       //!< Renderer単位の数値Parameter Override
         std::shared_ptr<const SkinningPaletteSnapshot> skinningPalette; //!< Animation済みPalette Snapshot

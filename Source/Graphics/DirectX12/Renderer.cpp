@@ -1746,220 +1746,240 @@ namespace Engine
         const auto shadowFrustum = m_shadowViewProjection
             ? std::optional(CameraUtils::buildWorldFrustum(*m_shadowViewProjection, Matrix::Identity)) : std::nullopt;
 
-        for (const ModelRenderSubmission& submission : m_modelSubmissions)
+        for (const ModelRenderSubmission& batch : m_modelSubmissions)
         {
-            if (submission.layer >= 32
-                || (m_cameraCullingMask & (1u << submission.layer)) == 0)
+            ModelRenderSubmission instanceSubmission;
+            if (batch.instanceTransforms)
+                instanceSubmission = batch;
+            const ModelRenderSubmission& submission = batch.instanceTransforms ? instanceSubmission : batch;
+            const std::size_t instanceCount = batch.instanceTransforms ? batch.instanceTransforms->size() : 1;
+            if (batch.instanceTransforms && (!batch.modelSnapshot || batch.skinningPalette || batch.terrainLod))
             {
-                ++m_frameStatistics.culledObjects;
-                if (submission.terrainLod)
-                    m_frameStatistics.terrainCulledChunks += static_cast<std::uint32_t>(submission.terrainLod->chunks.size());
+                LOG_ERROR("[Renderer] Static instance batches require a model snapshot and no skinning or terrain LOD.");
                 continue;
             }
-
-            const bool submitsShadow = m_shadowViewProjection.has_value() && submission.castShadows;
-            bool outsideCamera = submission.skinningPalette == nullptr && m_frustum
-                && !isVisible(*m_frustum, submission.worldBounds);
-            if (outsideCamera)
-                ++m_frameStatistics.culledObjects;
-            if (outsideCamera && !submitsShadow)
+            for (std::size_t instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex)
             {
-                if (submission.terrainLod)
-                    m_frameStatistics.terrainCulledChunks += static_cast<std::uint32_t>(submission.terrainLod->chunks.size());
-                continue;
-            }
-
-            ModelGpuResource* const gpuModel = m_modelGpuCache.getOrCreate(submission.model, submission.modelSnapshot);
-            if (gpuModel == nullptr || gpuModel->source == nullptr)
-                continue;
-            if (submission.terrainLod && (submission.terrainLod->chunks.size() != gpuModel->meshes.size()
-                || !validateTerrainLodSettings(submission.terrainLod->settings)))
-            {
-                LOG_ERROR("[TerrainLod] Queued LOD metadata does not match the model snapshot.");
-                continue;
-            }
-
-            if (submission.skinningPalette != nullptr)
-            {
-                m_animatedMeshBounds.resize(gpuModel->meshes.size());
-                AABB objectBounds{};
-                bool hasBounds = false;
-                bool allBoundsValid = true;
-                for (std::size_t meshIndex = 0; meshIndex < gpuModel->meshes.size(); ++meshIndex)
+                if (batch.instanceTransforms)
                 {
-                    AnimatedMeshBounds& pose = m_animatedMeshBounds[meshIndex];
-                    pose = {};
-                    const auto& gpuMesh = gpuModel->meshes[meshIndex];
-                    if (gpuMesh == nullptr)
-                        continue;
-                    pose.valid = gpuMesh->skinningBounds.calculate(*submission.skinningPalette,
-                        gpuMesh->nodeTransform * submission.worldMatrix, pose.worldBounds);
-                    allBoundsValid = allBoundsValid && pose.valid;
-                    if (pose.valid)
-                    {
-                        if (hasBounds)
-                            AABB::CreateMerged(objectBounds, objectBounds, pose.worldBounds);
-                        else
-                            objectBounds = pose.worldBounds;
-                        hasBounds = true;
-                    }
+                    instanceSubmission.worldMatrix = (*batch.instanceTransforms)[instanceIndex] * batch.worldMatrix;
+                    batch.modelSnapshot->boundingBox.Transform(instanceSubmission.worldBounds, instanceSubmission.worldMatrix);
                 }
-                outsideCamera = allBoundsValid && hasBounds && m_frustum && !isVisible(*m_frustum, objectBounds);
+                if (submission.layer >= 32
+                    || (m_cameraCullingMask & (1u << submission.layer)) == 0)
+                {
+                    ++m_frameStatistics.culledObjects;
+                    if (submission.terrainLod)
+                        m_frameStatistics.terrainCulledChunks += static_cast<std::uint32_t>(submission.terrainLod->chunks.size());
+                    continue;
+                }
+
+                const bool submitsShadow = m_shadowViewProjection.has_value() && submission.castShadows;
+                bool outsideCamera = submission.skinningPalette == nullptr && m_frustum
+                    && !isVisible(*m_frustum, submission.worldBounds);
                 if (outsideCamera)
                     ++m_frameStatistics.culledObjects;
                 if (outsideCamera && !submitsShadow)
-                    continue;
-            }
-
-            bool objectVisible = false;
-            bool modelResourceUsed = false;
-            for (std::size_t meshIndex = 0; meshIndex < gpuModel->meshes.size(); ++meshIndex)
-            {
-                const std::unique_ptr<ModelGpuMesh>& gpuMesh = gpuModel->meshes[meshIndex];
-                if (gpuMesh == nullptr)
-                    continue;
-                const MeshResource& mesh = gpuModel->source->meshes[meshIndex];
-                const Matrix meshWorldMatrix = gpuMesh->nodeTransform * submission.worldMatrix;
-                AABB meshWorldBounds;
-                mesh.boundingBox.Transform(meshWorldBounds, meshWorldMatrix);
-                const bool boundsCullable = submission.skinningPalette == nullptr
-                    || m_animatedMeshBounds[meshIndex].valid;
-                if (submission.skinningPalette != nullptr && boundsCullable)
-                    meshWorldBounds = m_animatedMeshBounds[meshIndex].worldBounds;
-                const TerrainChunkLod* terrain = submission.terrainLod ? &submission.terrainLod->chunks[meshIndex] : nullptr;
-                const bool terrainInCamera = !terrain || !m_frustum || isVisible(*m_frustum, meshWorldBounds);
-                const bool terrainInShadow = !terrain || !shadowFrustum || isVisible(*shadowFrustum, meshWorldBounds);
-                std::uint32_t terrainLevel = 0;
-                if (terrain)
                 {
-                    if (terrain->levelCount == 0 || terrain->levelCount > terrain->levels.size()
-                        || mesh.subMeshes.size() != 1 || terrain->levels[0].start != mesh.subMeshes[0].indexStart
-                        || terrain->levels[0].count != mesh.subMeshes[0].indexCount
-                        || !std::ranges::all_of(std::span(terrain->levels).first(terrain->levelCount),
-                            [&mesh](const auto range)
-                            {
-                                return range.count > 0 && range.count % 3 == 0 && range.start % 3 == 0
-                                    && range.start <= mesh.indices.size() && range.count <= mesh.indices.size() - range.start;
-                            }))
+                    if (submission.terrainLod)
+                        m_frameStatistics.terrainCulledChunks += static_cast<std::uint32_t>(submission.terrainLod->chunks.size());
+                    continue;
+                }
+
+                ModelGpuResource* const gpuModel = m_modelGpuCache.getOrCreate(submission.model, submission.modelSnapshot);
+                if (gpuModel == nullptr || gpuModel->source == nullptr)
+                    continue;
+                if (submission.terrainLod && (submission.terrainLod->chunks.size() != gpuModel->meshes.size()
+                    || !validateTerrainLodSettings(submission.terrainLod->settings)))
+                {
+                    LOG_ERROR("[TerrainLod] Queued LOD metadata does not match the model snapshot.");
+                    continue;
+                }
+
+                if (submission.skinningPalette != nullptr)
+                {
+                    m_animatedMeshBounds.resize(gpuModel->meshes.size());
+                    AABB objectBounds{};
+                    bool hasBounds = false;
+                    bool allBoundsValid = true;
+                    for (std::size_t meshIndex = 0; meshIndex < gpuModel->meshes.size(); ++meshIndex)
                     {
-                        LOG_ERROR("[TerrainLod] Queued index ranges do not match full-resolution chunk geometry.");
-                        continue;
+                        AnimatedMeshBounds& pose = m_animatedMeshBounds[meshIndex];
+                        pose = {};
+                        const auto& gpuMesh = gpuModel->meshes[meshIndex];
+                        if (gpuMesh == nullptr)
+                            continue;
+                        pose.valid = gpuMesh->skinningBounds.calculate(*submission.skinningPalette,
+                            gpuMesh->nodeTransform * submission.worldMatrix, pose.worldBounds);
+                        allBoundsValid = allBoundsValid && pose.valid;
+                        if (pose.valid)
+                        {
+                            if (hasBounds)
+                                AABB::CreateMerged(objectBounds, objectBounds, pose.worldBounds);
+                            else
+                                objectBounds = pose.worldBounds;
+                            hasBounds = true;
+                        }
                     }
-                    if (!terrainInCamera)
-                        ++m_frameStatistics.terrainCulledChunks;
-                    if (!terrainInCamera && (!submitsShadow || !terrainInShadow))
+                    outsideCamera = allBoundsValid && hasBounds && m_frustum && !isVisible(*m_frustum, objectBounds);
+                    if (outsideCamera)
+                        ++m_frameStatistics.culledObjects;
+                    if (outsideCamera && !submitsShadow)
                         continue;
-                    terrainLevel = selectTerrainLod(submission.terrainLod->settings, meshWorldBounds,
-                        m_cameraPosition, terrain->levelCount);
                 }
 
-                const auto submitSubMesh = [&](const std::uint32_t indexStart, const std::uint32_t indexCount,
-                    const std::uint32_t materialIndex)
+                bool objectVisible = false;
+                bool modelResourceUsed = false;
+                for (std::size_t meshIndex = 0; meshIndex < gpuModel->meshes.size(); ++meshIndex)
+                {
+                    const std::unique_ptr<ModelGpuMesh>& gpuMesh = gpuModel->meshes[meshIndex];
+                    if (gpuMesh == nullptr)
+                        continue;
+                    const MeshResource& mesh = gpuModel->source->meshes[meshIndex];
+                    const Matrix meshWorldMatrix = gpuMesh->nodeTransform * submission.worldMatrix;
+                    AABB meshWorldBounds;
+                    mesh.boundingBox.Transform(meshWorldBounds, meshWorldMatrix);
+                    const bool boundsCullable = submission.skinningPalette == nullptr
+                        || m_animatedMeshBounds[meshIndex].valid;
+                    if (submission.skinningPalette != nullptr && boundsCullable)
+                        meshWorldBounds = m_animatedMeshBounds[meshIndex].worldBounds;
+                    const TerrainChunkLod* terrain = submission.terrainLod ? &submission.terrainLod->chunks[meshIndex] : nullptr;
+                    const bool terrainInCamera = !terrain || !m_frustum || isVisible(*m_frustum, meshWorldBounds);
+                    const bool terrainInShadow = (!terrain && !batch.instanceTransforms)
+                        || !shadowFrustum || isVisible(*shadowFrustum, meshWorldBounds);
+                    std::uint32_t terrainLevel = 0;
+                    if (terrain)
                     {
-                        if (indexCount == 0 || indexStart > mesh.indices.size()
-                            || indexCount > mesh.indices.size() - indexStart)
-                            return;
+                        if (terrain->levelCount == 0 || terrain->levelCount > terrain->levels.size()
+                            || mesh.subMeshes.size() != 1 || terrain->levels[0].start != mesh.subMeshes[0].indexStart
+                            || terrain->levels[0].count != mesh.subMeshes[0].indexCount
+                            || !std::ranges::all_of(std::span(terrain->levels).first(terrain->levelCount),
+                                [&mesh](const auto range)
+                                {
+                                    return range.count > 0 && range.count % 3 == 0 && range.start % 3 == 0
+                                        && range.start <= mesh.indices.size() && range.count <= mesh.indices.size() - range.start;
+                                }))
+                        {
+                            LOG_ERROR("[TerrainLod] Queued index ranges do not match full-resolution chunk geometry.");
+                            continue;
+                        }
+                        if (!terrainInCamera)
+                            ++m_frameStatistics.terrainCulledChunks;
+                        if (!terrainInCamera && (!submitsShadow || !terrainInShadow))
+                            continue;
+                        terrainLevel = selectTerrainLod(submission.terrainLod->settings, meshWorldBounds,
+                            m_cameraPosition, terrain->levelCount);
+                    }
 
-                        MaterialHandle materialHandle = materialIndex < submission.materials.size()
-                            ? submission.materials[materialIndex] : MaterialHandle::Invalid();
-                        MaterialGpuResource* const gpuMaterial = m_materialGpuCache.getOrCreate(materialHandle,
-                            materialIndex == 0 ? submission.materialSnapshot : nullptr);
-                        if (gpuMaterial == nullptr || gpuMaterial->source == nullptr)
-                            return;
-                        materialHandle = gpuMaterial->handle;
-                        RenderPassType pass = RenderPassType::Opaque;
-                        if (gpuMaterial->source->renderState.surfaceType == MaterialSurfaceType::AlphaTest)
-                            pass = RenderPassType::AlphaTest;
-                        else if (gpuMaterial->source->renderState.surfaceType == MaterialSurfaceType::Transparent)
-                            pass = RenderPassType::Transparent;
-                        const Vector3 cameraRelativePosition = Vector3(meshWorldBounds.Center) - m_cameraPosition;
-                        RenderItem colorItem{
-                            .vertexBuffer = &gpuMesh->vertexBufferView,
-                            .indexBuffer = &gpuMesh->indexBufferView,
-                            .worldMatrix = meshWorldMatrix,
-                            .worldBounds = meshWorldBounds,
-                            .indexStart = indexStart,
-                            .indexCount = indexCount,
-                            .objectID = submission.objectID,
-                            .pipelineID = static_cast<std::uint32_t>(pass),
-                            .shaderVariantID = gpuMaterial->shaderVariantID,
-                            .material = materialHandle,
-                            .materialSnapshot = materialIndex == 0 ? submission.materialSnapshot : nullptr,
-                            .surfaceType = gpuMaterial->source->renderState.surfaceType,
-                            .materialProperties = submission.materialProperties,
-                            .textureID = gpuMaterial->baseColorTexture.index,
-                            .skinningPalette = submission.skinningPalette,
-                            .bonePaletteBuffer = &gpuModel->bonePaletteBuffer,
-                            .meshID = static_cast<std::uint32_t>(meshIndex),
-                            .cameraDepth = cameraRelativePosition.x * m_cameraForward.x
-                                + cameraRelativePosition.y * m_cameraForward.y
-                                + cameraRelativePosition.z * m_cameraForward.z,
-                            .pass = pass,
-                            .animationBoundsValid = submission.skinningPalette != nullptr && boundsCullable,
+                    const auto submitSubMesh = [&](const std::uint32_t indexStart, const std::uint32_t indexCount,
+                        const std::uint32_t materialIndex)
+                        {
+                            if (indexCount == 0 || indexStart > mesh.indices.size()
+                                || indexCount > mesh.indices.size() - indexStart)
+                                return;
+
+                            MaterialHandle materialHandle = materialIndex < submission.materials.size()
+                                ? submission.materials[materialIndex] : MaterialHandle::Invalid();
+                            const auto materialSnapshot = submission.materialSnapshots && materialIndex < submission.materialSnapshots->size()
+                                ? (*submission.materialSnapshots)[materialIndex] : (materialIndex == 0 ? submission.materialSnapshot : nullptr);
+                            MaterialGpuResource* const gpuMaterial = m_materialGpuCache.getOrCreate(materialHandle, materialSnapshot);
+                            if (gpuMaterial == nullptr || gpuMaterial->source == nullptr)
+                                return;
+                            materialHandle = gpuMaterial->handle;
+                            RenderPassType pass = RenderPassType::Opaque;
+                            if (gpuMaterial->source->renderState.surfaceType == MaterialSurfaceType::AlphaTest)
+                                pass = RenderPassType::AlphaTest;
+                            else if (gpuMaterial->source->renderState.surfaceType == MaterialSurfaceType::Transparent)
+                                pass = RenderPassType::Transparent;
+                            const Vector3 cameraRelativePosition = Vector3(meshWorldBounds.Center) - m_cameraPosition;
+                            RenderItem colorItem{
+                                .vertexBuffer = &gpuMesh->vertexBufferView,
+                                .indexBuffer = &gpuMesh->indexBufferView,
+                                .worldMatrix = meshWorldMatrix,
+                                .worldBounds = meshWorldBounds,
+                                .indexStart = indexStart,
+                                .indexCount = indexCount,
+                                .objectID = submission.objectID,
+                                .pipelineID = static_cast<std::uint32_t>(pass),
+                                .shaderVariantID = gpuMaterial->shaderVariantID,
+                                .material = materialHandle,
+                                .materialSnapshot = materialSnapshot,
+                                .surfaceType = gpuMaterial->source->renderState.surfaceType,
+                                .materialProperties = submission.materialProperties,
+                                .textureID = gpuMaterial->baseColorTexture.index,
+                                .skinningPalette = submission.skinningPalette,
+                                .bonePaletteBuffer = &gpuModel->bonePaletteBuffer,
+                                .meshID = static_cast<std::uint32_t>(meshIndex),
+                                .cameraDepth = cameraRelativePosition.x * m_cameraForward.x
+                                    + cameraRelativePosition.y * m_cameraForward.y
+                                    + cameraRelativePosition.z * m_cameraForward.z,
+                                .pass = pass,
+                                .animationBoundsValid = submission.skinningPalette != nullptr && boundsCullable,
+                            };
+                            const CameraFrustum* const cullingFrustum = m_frustum ? &*m_frustum : nullptr;
+                            const bool submitted = terrainInCamera && m_modelRenderQueue.submit(colorItem, cullingFrustum);
+                            if (submitted && terrain)
+                            {
+                                ++m_frameStatistics.terrainVisibleChunks;
+                                ++m_frameStatistics.terrainLodChunks[terrainLevel];
+                                m_frameStatistics.terrainTriangles += indexCount / 3;
+                                m_frameStatistics.terrainFullTriangles += terrain->levels[0].count / 3;
+                            }
+                            bool materialUsed = submitted;
+                            if (submitted && pass != RenderPassType::Transparent)
+                            {
+                                RenderItem depthItem = colorItem;
+                                depthItem.pipelineID = depthItem.surfaceType == MaterialSurfaceType::AlphaTest ? 1u : 0u;
+                                depthItem.pass = RenderPassType::DepthOnly;
+                                m_modelRenderQueue.submit(depthItem);
+                            }
+                            if (submitsShadow && terrainInShadow && pass != RenderPassType::Transparent)
+                            {
+                                RenderItem shadowItem = colorItem;
+                                shadowItem.pipelineID = colorItem.surfaceType == MaterialSurfaceType::AlphaTest ? 1u : 0u;
+                                shadowItem.pass = RenderPassType::Shadow;
+                                if (terrain)
+                                {
+                                    // Shadows retain full resolution, independent of camera LOD or visibility.
+                                    shadowItem.indexStart = terrain->levels[0].start;
+                                    shadowItem.indexCount = terrain->levels[0].count;
+                                }
+                                const bool shadowSubmitted = m_modelRenderQueue.submit(shadowItem);
+                                if (shadowSubmitted && terrain)
+                                {
+                                    ++m_frameStatistics.terrainShadowChunks;
+                                    m_frameStatistics.terrainShadowTriangles += shadowItem.indexCount / 3;
+                                }
+                                materialUsed = shadowSubmitted || materialUsed;
+                            }
+                            objectVisible = submitted || objectVisible;
+                            modelResourceUsed = materialUsed || modelResourceUsed;
+                            if (materialUsed && std::find(usedMaterials.begin(), usedMaterials.end(), materialHandle) == usedMaterials.end())
+                                usedMaterials.push_back(materialHandle);
                         };
-                        const CameraFrustum* const cullingFrustum = m_frustum ? &*m_frustum : nullptr;
-                        const bool submitted = terrainInCamera && m_modelRenderQueue.submit(colorItem, cullingFrustum);
-                        if (submitted && terrain)
-                        {
-                            ++m_frameStatistics.terrainVisibleChunks;
-                            ++m_frameStatistics.terrainLodChunks[terrainLevel];
-                            m_frameStatistics.terrainTriangles += indexCount / 3;
-                            m_frameStatistics.terrainFullTriangles += terrain->levels[0].count / 3;
-                        }
-                        bool materialUsed = submitted;
-                        if (submitted && pass != RenderPassType::Transparent)
-                        {
-                            RenderItem depthItem = colorItem;
-                            depthItem.pipelineID = depthItem.surfaceType == MaterialSurfaceType::AlphaTest ? 1u : 0u;
-                            depthItem.pass = RenderPassType::DepthOnly;
-                            m_modelRenderQueue.submit(depthItem);
-                        }
-                        if (submitsShadow && terrainInShadow && pass != RenderPassType::Transparent)
-                        {
-                            RenderItem shadowItem = colorItem;
-                            shadowItem.pipelineID = colorItem.surfaceType == MaterialSurfaceType::AlphaTest ? 1u : 0u;
-                            shadowItem.pass = RenderPassType::Shadow;
-                            if (terrain)
-                            {
-                                // Shadows retain full resolution, independent of camera LOD or visibility.
-                                shadowItem.indexStart = terrain->levels[0].start;
-                                shadowItem.indexCount = terrain->levels[0].count;
-                            }
-                            const bool shadowSubmitted = m_modelRenderQueue.submit(shadowItem);
-                            if (shadowSubmitted && terrain)
-                            {
-                                ++m_frameStatistics.terrainShadowChunks;
-                                m_frameStatistics.terrainShadowTriangles += shadowItem.indexCount / 3;
-                            }
-                            materialUsed = shadowSubmitted || materialUsed;
-                        }
-                        objectVisible = submitted || objectVisible;
-                        modelResourceUsed = materialUsed || modelResourceUsed;
-                        if (materialUsed && std::find(usedMaterials.begin(), usedMaterials.end(), materialHandle) == usedMaterials.end())
-                            usedMaterials.push_back(materialHandle);
-                    };
 
-                if (terrain)
-                {
-                    const auto range = terrain->levels[terrainLevel];
-                    submitSubMesh(range.start, range.count, 0);
+                    if (terrain)
+                    {
+                        const auto range = terrain->levels[terrainLevel];
+                        submitSubMesh(range.start, range.count, 0);
+                    }
+                    else if (mesh.subMeshes.empty())
+                        submitSubMesh(0, static_cast<std::uint32_t>(mesh.indices.size()), 0);
+                    else
+                    {
+                        for (const SubMeshResource& subMesh : mesh.subMeshes)
+                            submitSubMesh(subMesh.indexStart, subMesh.indexCount, subMesh.materialIndex);
+                    }
                 }
-                else if (mesh.subMeshes.empty())
-                    submitSubMesh(0, static_cast<std::uint32_t>(mesh.indices.size()), 0);
-                else
-                {
-                    for (const SubMeshResource& subMesh : mesh.subMeshes)
-                        submitSubMesh(subMesh.indexStart, subMesh.indexCount, subMesh.materialIndex);
-                }
-            }
 
-            if (objectVisible)
-            {
-                ++m_frameStatistics.visibleObjects;
+                if (objectVisible)
+                {
+                    ++m_frameStatistics.visibleObjects;
+                }
+                if (modelResourceUsed
+                    && std::find(usedModels.begin(), usedModels.end(), submission.model) == usedModels.end())
+                    usedModels.push_back(submission.model);
             }
-            if (modelResourceUsed
-                && std::find(usedModels.begin(), usedModels.end(), submission.model) == usedModels.end())
-                usedModels.push_back(submission.model);
         }
 
         m_modelRenderQueue.sort();

@@ -37,6 +37,29 @@ table TerrainErosionSettings {
     initial_speed:float = 1;
 }
 
+table TerrainVegetationLayer {
+    enabled:bool = false;
+    model_path:string;
+    seed:uint = 0;
+    density:float = 0.01;
+    minimum_spacing:float = 1;
+    max_instances:uint = 5000;
+    minimum_height:float = 0;
+    maximum_height:float = 1;
+    minimum_slope:float = 0;
+    maximum_slope:float = 45;
+    minimum_scale:float = 0.8;
+    maximum_scale:float = 1.2;
+    height_offset:float = 0;
+    align_to_normal:bool = false;
+    cast_shadows:bool = true;
+}
+
+table TerrainVegetationSettings {
+    enabled:bool = false;
+    layers:[TerrainVegetationLayer] (required);
+}
+
 table TerrainComponentPayload {
     width:uint = 2;
     height:uint = 2;
@@ -53,6 +76,7 @@ table TerrainComponentPayload {
     chunk_cells:uint = 64;
     lod_settings:TerrainLodSettings;
     erosion_settings:TerrainErosionSettings;
+    vegetation_settings:TerrainVegetationSettings;
 }
 
 root_type TerrainComponentPayload;

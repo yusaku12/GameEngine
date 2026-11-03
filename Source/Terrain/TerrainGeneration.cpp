@@ -8,7 +8,7 @@ namespace Engine
     {
         static constexpr std::array names{ "Idle", "Queued", "Height samples", "GPU noise", "GPU readback",
             "Hydraulic erosion", "Mesh", "Material weights",
-            "Chunks", "PhysX cooking", "LOD", "Ready to apply", "Applied", "Cancelled", "Failed" };
+            "Chunks", "PhysX cooking", "LOD", "Vegetation", "Ready to apply", "Applied", "Cancelled", "Failed" };
         const auto index = static_cast<std::size_t>(stage);
         return index < names.size() ? names[index] : "Invalid stage";
     }
@@ -20,7 +20,7 @@ namespace Engine
         value.stage = m_cancelled.load(std::memory_order_acquire) ? TerrainGenerationStage::Cancelled
             : m_stage.load(std::memory_order_acquire);
         if (!ready && value.stage == TerrainGenerationStage::Ready)
-            value.stage = TerrainGenerationStage::Lod;
+            value.stage = TerrainGenerationStage::Vegetation;
         if (ready)
         {
             value.buildMilliseconds = m_buildMilliseconds;

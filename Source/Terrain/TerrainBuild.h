@@ -10,6 +10,7 @@
 #include "Terrain\TerrainMeshBuilder.h"
 #include "Terrain\TerrainNoise.h"
 #include "Terrain\TerrainErosion.h"
+#include "Terrain\TerrainVegetation.h"
 
 namespace Engine
 {
@@ -20,7 +21,7 @@ namespace Engine
     /** @brief Stage of a background build. Cancellation is checked between CPU stages and cooked chunks. */
     enum class TerrainGenerationStage
     {
-        Idle, Queued, Source, GpuNoise, GpuReadback, Erosion, Mesh, Layers, Chunks, Collision, Lod, Ready, Applied, Cancelled, Failed
+        Idle, Queued, Source, GpuNoise, GpuReadback, Erosion, Mesh, Layers, Chunks, Collision, Lod, Vegetation, Ready, Applied, Cancelled, Failed
     };
 
     /** @brief Value-only input. Builders never access components, managers, render resources or PhysX actors. */
@@ -36,6 +37,7 @@ namespace Engine
         TerrainMaterialSettings material;
         TerrainChunkSettings chunks;
         TerrainLodSettings lod;
+        TerrainVegetationSettings vegetation;
         std::filesystem::path image;
         std::uint32_t flatWidth = 65, flatHeight = 65;
         float flatHeightValue = 0;
@@ -50,6 +52,7 @@ namespace Engine
         std::vector<TerrainChunk> chunks;
         std::shared_ptr<TerrainLodSnapshot> lod;
         std::vector<std::shared_ptr<const PhysicsMeshAsset>> collision;
+        TerrainVegetationPlacement vegetation;
     };
 
     /** @brief Validates input settings without image I/O, generation or manager registration; logs failures. */

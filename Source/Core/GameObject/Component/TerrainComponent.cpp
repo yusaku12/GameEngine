@@ -52,26 +52,40 @@ namespace Engine
 
     bool TerrainComponent::setTerrain(const Heightmap& heightmap, const TerrainMeshSettings& settings)
     {
-        return rebuild(heightmap, settings, m_materialSettings, m_chunkSettings, m_lodSettings);
+        return rebuild(heightmap, settings, m_materialSettings, m_chunkSettings, m_lodSettings, m_vegetationSettings);
     }
 
     bool TerrainComponent::setMaterialSettings(const TerrainMaterialSettings& settings)
     {
-        return rebuild(m_heightmap, m_settings, settings, m_chunkSettings, m_lodSettings);
+        return rebuild(m_heightmap, m_settings, settings, m_chunkSettings, m_lodSettings, m_vegetationSettings);
     }
 
     bool TerrainComponent::setChunkSettings(const TerrainChunkSettings& settings)
     {
-        return rebuild(m_heightmap, m_settings, m_materialSettings, settings, m_lodSettings);
+        return rebuild(m_heightmap, m_settings, m_materialSettings, settings, m_lodSettings, m_vegetationSettings);
     }
 
     bool TerrainComponent::setLodSettings(const TerrainLodSettings& settings)
     {
-        return rebuild(m_heightmap, m_settings, m_materialSettings, m_chunkSettings, settings);
+        return rebuild(m_heightmap, m_settings, m_materialSettings, m_chunkSettings, settings, m_vegetationSettings);
+    }
+
+    bool TerrainComponent::setVegetationSettings(const TerrainVegetationSettings& settings)
+    {
+        return rebuild(m_heightmap, m_settings, m_materialSettings, m_chunkSettings, m_lodSettings, settings);
+    }
+
+    bool TerrainComponent::requestVegetation(const TerrainVegetationSettings& settings)
+    {
+        auto request = makeBuildRequest();
+        request.heightmap = m_heightmap;
+        request.vegetation = settings;
+        return queueBuild(std::move(request));
     }
 
     bool TerrainComponent::rebuild(const Heightmap& heightmap, const TerrainMeshSettings& settings,
-        const TerrainMaterialSettings& surface, const TerrainChunkSettings& chunkSettings, const TerrainLodSettings& lodSettings)
+        const TerrainMaterialSettings& surface, const TerrainChunkSettings& chunkSettings, const TerrainLodSettings& lodSettings,
+        const TerrainVegetationSettings& vegetation)
     {
         auto request = makeBuildRequest();
         request.heightmap = heightmap;
@@ -79,6 +93,7 @@ namespace Engine
         request.material = surface;
         request.chunks = chunkSettings;
         request.lod = lodSettings;
+        request.vegetation = vegetation;
         if (!resolveTerrainMaterialTextures(request.material))
             return false;
         TerrainBuildResult result;
@@ -97,6 +112,7 @@ namespace Engine
         request.lod = m_lodSettings;
         request.noise = m_noiseSettings;
         request.erosion = m_erosionSettings;
+        request.vegetation = m_vegetationSettings;
         request.collision = getGameObject() && getGameObject()->hasComponent<TerrainColliderComponent>();
         return request;
     }
@@ -166,7 +182,7 @@ namespace Engine
         if (!validateTerrainBuildRequest(request) || !resolveTerrainMaterialTextures(request.material))
             return false;
         const DraftSettings drafts{ m_editSettings, m_editMaterialSettings, m_editChunkSettings, m_editLodSettings,
-            m_editNoiseSettings, m_editErosionSettings };
+            m_editNoiseSettings, m_editErosionSettings, m_editVegetationSettings };
         auto task = TerrainGenerationQueue::instance().submit(std::move(request), [this, drafts](TerrainBuildResult&& result)
         {
             std::string success = "Background terrain applied.";
@@ -233,6 +249,48 @@ namespace Engine
         const bool updateLod = !submittedDrafts || m_editLodSettings == submittedDrafts->lod;
         const bool updateNoise = !submittedDrafts || m_editNoiseSettings == submittedDrafts->noise;
         const bool updateErosion = !submittedDrafts || m_editErosionSettings == submittedDrafts->erosion;
+        const bool updateVegetation = !submittedDrafts || m_editVegetationSettings == submittedDrafts->vegetation;
+        std::array<ModelRenderSubmission, TERRAIN_VEGETATION_LAYERS> vegetationSubmissions;
+        for (std::size_t index = 0; index < vegetationSubmissions.size(); ++index)
+        {
+            const auto& layer = request.vegetation.layers[index];
+            if (!request.vegetation.enabled || !layer.enabled)
+                continue;
+            auto& submission = vegetationSubmissions[index];
+            submission.model = ModelManager::instance().load(layer.modelPath);
+            submission.modelSnapshot = ModelManager::instance().get(submission.model);
+            if (!submission.modelSnapshot || submission.modelSnapshot->skeleton || submission.modelSnapshot->skeletonAssetGuid.isValid())
+            {
+                LOG_ERROR("[TerrainVegetation] Cannot load static model: {}", layer.modelPath.string());
+                return false;
+            }
+            submission.instanceTransforms = result.vegetation[index];
+            auto snapshots = std::make_shared<std::vector<std::shared_ptr<const MaterialAsset>>>();
+            for (const auto& slot : submission.modelSnapshot->materialSlots)
+            {
+                const auto handle = MaterialManager::instance().findByGuid(slot.defaultMaterialGuid);
+                auto snapshot = MaterialManager::instance().get(handle);
+                if (!snapshot)
+                {
+                    LOG_ERROR("[TerrainVegetation] Model material slot cannot be resolved: {}", slot.name);
+                    return false;
+                }
+                submission.materials.push_back(handle);
+                snapshots->push_back(std::move(snapshot));
+            }
+            if (submission.materials.empty())
+            {
+                const auto handle = MaterialManager::instance().getDefaultMaterial();
+                submission.materials.push_back(handle);
+                snapshots->push_back(MaterialManager::instance().get(handle));
+            }
+            submission.materialSnapshots = std::move(snapshots);
+            submission.objectID = m_objectID;
+            submission.castShadows = layer.castShadows;
+        }
+        TerrainVegetationSettings editVegetation;
+        if (updateVegetation)
+            editVegetation = request.vegetation;
         TerrainMaterialSettings editMaterialSettings;
         if (updateMaterial)
             editMaterialSettings = request.material;
@@ -271,6 +329,11 @@ namespace Engine
         m_model = std::exchange(pending.model, ModelHandle{});
         m_material = std::exchange(pending.material, MaterialHandle{});
         m_materialSettings = std::move(request.material);
+        m_vegetationSettings = std::move(request.vegetation);
+        m_vegetationPlacement = std::move(result.vegetation);
+        m_vegetationSubmissions = std::move(vegetationSubmissions);
+        if (updateVegetation)
+            m_editVegetationSettings = std::move(editVegetation);
         if (updateMesh)
             m_editSettings = request.mesh;
         if (updateChunks)
@@ -342,10 +405,18 @@ namespace Engine
             m_erosionSettings.inertia, m_erosionSettings.capacity, m_erosionSettings.minSlope,
             m_erosionSettings.depositRate, m_erosionSettings.erosionRate, m_erosionSettings.evaporation,
             m_erosionSettings.gravity, m_erosionSettings.initialWater, m_erosionSettings.initialSpeed);
+        std::vector<flatbuffers::Offset<Serialization::TerrainVegetationLayer>> vegetationLayers;
+        for (const auto& layer : m_vegetationSettings.layers)
+            vegetationLayers.push_back(Serialization::CreateTerrainVegetationLayer(builder, layer.enabled,
+                builder.CreateString(layer.modelPath.generic_string()), layer.seed, layer.density, layer.minimumSpacing,
+                layer.maxInstances, layer.minimumHeight, layer.maximumHeight, layer.minimumSlope, layer.maximumSlope,
+                layer.minimumScale, layer.maximumScale, layer.heightOffset, layer.alignToNormal, layer.castShadows));
+        const auto vegetation = Serialization::CreateTerrainVegetationSettings(builder, m_vegetationSettings.enabled,
+            builder.CreateVector(vegetationLayers));
         const auto root = Serialization::CreateTerrainComponentPayload(builder,
             m_heightmap.width(), m_heightmap.height(), builder.CreateVector(samples.data(), samples.size()),
             m_settings.sizeX, m_settings.sizeZ, m_settings.heightScale, m_settings.heightOffset,
-            m_settings.uvRepeatX, m_settings.uvRepeatZ, m_castShadows, noise, surface, m_chunkSettings.cellsPerChunk, lod, erosion);
+            m_settings.uvRepeatX, m_settings.uvRepeatZ, m_castShadows, noise, surface, m_chunkSettings.cellsPerChunk, lod, erosion, vegetation);
         Serialization::FinishTerrainComponentPayloadBuffer(builder, root);
         payload.assign(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
         return true;
@@ -355,7 +426,7 @@ namespace Engine
         const std::span<const std::uint8_t> payload)
     {
         flatbuffers::Verifier verifier(payload.data(), payload.size());
-        if ((version < 1 || version > 6) || payload.size() < 8
+        if ((version < 1 || version > 7) || payload.size() < 8
             || !Serialization::VerifyTerrainComponentPayloadBuffer(verifier))
         {
             LOG_ERROR("[Terrain] Invalid terrain payload or version.");
@@ -414,11 +485,48 @@ namespace Engine
         }
         if (!validateTerrainErosionSettings(erosion))
             return false;
+        TerrainVegetationSettings vegetation;
+        if (version >= 7)
+        {
+            const auto* saved = source->vegetation_settings();
+            if (!saved || !saved->layers() || saved->layers()->size() != TERRAIN_VEGETATION_LAYERS)
+            {
+                LOG_ERROR("[TerrainVegetation] Payload must contain exactly four vegetation layers.");
+                return false;
+            }
+            vegetation.enabled = saved->enabled();
+            for (std::size_t index = 0; index < vegetation.layers.size(); ++index)
+            {
+                const auto* item = saved->layers()->Get(static_cast<flatbuffers::uoffset_t>(index));
+                if (!item)
+                {
+                    LOG_ERROR("[TerrainVegetation] Missing serialized vegetation layer.");
+                    return false;
+                }
+                auto& layer = vegetation.layers[index];
+                layer.enabled = item->enabled();
+                if (item->model_path())
+                    layer.modelPath = std::filesystem::path(item->model_path()->str());
+                layer.seed = item->seed();
+                layer.density = item->density();
+                layer.minimumSpacing = item->minimum_spacing();
+                layer.maxInstances = item->max_instances();
+                layer.minimumHeight = item->minimum_height();
+                layer.maximumHeight = item->maximum_height();
+                layer.minimumSlope = item->minimum_slope();
+                layer.maximumSlope = item->maximum_slope();
+                layer.minimumScale = item->minimum_scale();
+                layer.maximumScale = item->maximum_scale();
+                layer.heightOffset = item->height_offset();
+                layer.alignToNormal = item->align_to_normal();
+                layer.castShadows = item->cast_shadows();
+            }
+        }
         Heightmap heightmap;
         if (!heightmap.assign(source->width(), source->height(), { samples->data(), samples->size() })
             || !rebuild(heightmap, { source->size_x(), source->size_z(), source->height_scale(),
                 source->height_offset(), source->uv_repeat_x(), source->uv_repeat_z() }, surface,
-                { version >= 4 ? source->chunk_cells() : 1024u }, lod))
+                { version >= 4 ? source->chunk_cells() : 1024u }, lod, vegetation))
             return false;
         m_castShadows = source->cast_shadows();
         m_noiseSettings = noise;
@@ -448,7 +556,7 @@ namespace Engine
             LOG_ERROR("[Terrain] Clone type mismatch.");
             return false;
         }
-        if (!target->rebuild(m_heightmap, m_settings, m_materialSettings, m_chunkSettings, m_lodSettings))
+        if (!target->rebuild(m_heightmap, m_settings, m_materialSettings, m_chunkSettings, m_lodSettings, m_vegetationSettings))
             return false;
         target->m_castShadows = m_castShadows;
         target->m_noiseSettings = m_noiseSettings;
@@ -507,6 +615,15 @@ namespace Engine
         submission.layer = getGameObject()->getLayer();
         submission.castShadows = m_castShadows;
         ModelRenderSubmissionQueue::instance().submit(std::move(submission));
+        for (const auto& vegetation : m_vegetationSubmissions)
+        {
+            if (!vegetation.instanceTransforms || vegetation.instanceTransforms->empty())
+                continue;
+            auto instances = vegetation;
+            instances.worldMatrix = getGameObject()->getWorldMatrix();
+            instances.layer = getGameObject()->getLayer();
+            ModelRenderSubmissionQueue::instance().submit(std::move(instances));
+        }
     }
 
     void TerrainComponent::requestHeightmapImport()
@@ -595,6 +712,84 @@ namespace Engine
             *references[texture].second = TextureManager::instance().getAssetPath(guid);
             terrain->m_status = "Texture selected. Apply Terrain Material to update the surface.";
         });
+    }
+
+    void TerrainComponent::requestVegetationModel(const std::size_t layer)
+    {
+        const auto* object = getGameObject();
+        if (!object || layer >= TERRAIN_VEGETATION_LAYERS)
+            return;
+        const auto guid = object->getGUID();
+        const auto componentID = m_objectID;
+        const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+        MainThreadDispatcher::instance().post([guid, componentID, ownerWindow, layer]
+        {
+            static constexpr std::array filters{ FileDialogFilter{ L"Static Model Asset", L"*.model;*.mdl" } };
+            std::vector<std::filesystem::path> paths;
+            const auto result = Dialog::openFile(paths, L"Select Vegetation Model", std::filesystem::path(L"Assets"),
+                filters, false, ownerWindow);
+            auto& manager = SceneManager::instance();
+            auto* target = manager.getActiveScene() ? manager.getActiveScene()->find(guid) : nullptr;
+            if (!target)
+                target = manager.getPersistentScene()->find(guid);
+            auto* terrain = target ? target->getComponent<TerrainComponent>() : nullptr;
+            if (!terrain || terrain->m_objectID != componentID || result == DialogResult::Cancel)
+                return;
+            if (result != DialogResult::Ok || paths.empty())
+            {
+                LOG_ERROR("[TerrainVegetation] Model selection dialog failed.");
+                terrain->m_status = "Vegetation model dialog failed. See log.";
+                return;
+            }
+            terrain->m_editVegetationSettings.layers[layer].modelPath = paths.front();
+            terrain->m_status = "Model selected. Apply Vegetation to scatter.";
+        });
+    }
+
+    void TerrainComponent::drawVegetationInspector()
+    {
+        if (!ImGui::CollapsingHeader("Terrain Vegetation"))
+            return;
+        ImGui::Checkbox("Enable Vegetation", &m_editVegetationSettings.enabled);
+        ImGui::TextWrapped("Static .model/.mdl assets only; +Y up, origin at root. Local-space density/spacing, "
+            "normalized height and slope in degrees. Up to 100000 candidates / 25000 instances per layer. "
+            "Spacing is per layer. No plant collision or wind. Terrain changes automatically re-scatter applied recipes.");
+        for (std::size_t index = 0; index < TERRAIN_VEGETATION_LAYERS; ++index)
+        {
+            ImGui::PushID(static_cast<int>(index));
+            const std::string label = "Vegetation Layer " + std::to_string(index);
+            if (ImGui::TreeNode(label.c_str()))
+            {
+                auto& layer = m_editVegetationSettings.layers[index];
+                ImGui::Checkbox("Enabled", &layer.enabled);
+                ImGui::TextWrapped("Model: %s", layer.modelPath.empty() ? "(none)" : layer.modelPath.string().c_str());
+                if (ImGui::Button("Select Model..."))
+                    requestVegetationModel(index);
+                ImGui::InputScalar("Vegetation Seed", ImGuiDataType_U32, &layer.seed);
+                ImGui::DragFloat("Density / Local Area", &layer.density, 0.001f, 0, 100, "%.4f");
+                ImGui::DragFloat("Minimum Spacing", &layer.minimumSpacing, 0.1f, 0.1f, 10000);
+                ImGui::InputScalar("Maximum Instances (1..25000)", ImGuiDataType_U32, &layer.maxInstances);
+                ImGui::SliderFloat("Minimum Height", &layer.minimumHeight, 0, 1);
+                ImGui::SliderFloat("Maximum Height", &layer.maximumHeight, 0, 1);
+                ImGui::SliderFloat("Minimum Slope", &layer.minimumSlope, 0, 90);
+                ImGui::SliderFloat("Maximum Slope", &layer.maximumSlope, 0, 90);
+                ImGui::DragFloat("Minimum Scale", &layer.minimumScale, 0.01f, 0.001f, 1000);
+                ImGui::DragFloat("Maximum Scale", &layer.maximumScale, 0.01f, 0.001f, 1000);
+                ImGui::DragFloat("Root Offset", &layer.heightOffset, 0.01f, -1000, 1000);
+                ImGui::Checkbox("Align To Surface Normal", &layer.alignToNormal);
+                ImGui::Checkbox("Vegetation Cast Shadows", &layer.castShadows);
+                const auto& placement = m_vegetationPlacement[index];
+                ImGui::Text("Applied Instances: %zu", placement ? placement->size() : 0);
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+        if (ImGui::Button("Apply Vegetation"))
+            m_status = requestVegetation(m_editVegetationSettings)
+                ? "Vegetation scatter queued." : "Vegetation request failed; previous terrain preserved. See log.";
+        ImGui::SameLine();
+        if (ImGui::Button("Reset Vegetation Draft"))
+            m_editVegetationSettings = TerrainVegetationSettings{};
     }
 
     void TerrainComponent::drawMaterialInspector()
@@ -712,6 +907,8 @@ namespace Engine
         }
         ImGui::Separator();
         drawMaterialInspector();
+        ImGui::Separator();
+        drawVegetationInspector();
         ImGui::Separator();
         ImGui::TextUnformatted("Procedural Heightmap");
         int mode = static_cast<int>(m_editNoiseSettings.mode);

@@ -267,7 +267,7 @@ namespace Engine
             const auto eroded = terrain->getHeightmap();
             std::vector<std::uint8_t> payload, rebuilt;
             TerrainComponent restored, clone;
-            if (!checks.expect(terrain->serializePayload(payload) && terrain->getPayloadVersion() == 6
+            if (!checks.expect(terrain->serializePayload(payload) && terrain->getPayloadVersion() == 7
                 && restored.deserializePayload(6, payload) && restored.getErosionSettings() == settings
                 && same(restored.getHeightmap(), eroded) && terrain->copyConfigurationTo(clone)
                 && clone.getErosionSettings() == settings && same(clone.getHeightmap(), eroded),

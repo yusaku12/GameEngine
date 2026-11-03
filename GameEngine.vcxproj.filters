@@ -11,6 +11,8 @@
     <ClCompile Include="Source\Terrain\TerrainGpuNoise.cpp" />
     <ClCompile Include="Source\Terrain\TerrainGpuValidation.cpp" />
     <ClCompile Include="Source\Terrain\TerrainErosion.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainVegetation.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainVegetationValidation.cpp" />
     <ClCompile Include="Source\Terrain\TerrainErosionValidation.cpp" />
     <ClCompile Include="Source\Terrain\TerrainGeneration.cpp" />
     <ClCompile Include="Source\Terrain\TerrainBackgroundValidation.cpp" />
@@ -151,6 +153,8 @@
     <ClInclude Include="Source\Terrain\TerrainGpuNoise.h" />
     <ClInclude Include="Source\Terrain\TerrainGpuValidation.h" />
     <ClInclude Include="Source\Terrain\TerrainErosion.h" />
+    <ClInclude Include="Source\Terrain\TerrainVegetation.h" />
+    <ClInclude Include="Source\Terrain\TerrainVegetationValidation.h" />
     <ClInclude Include="Source\Terrain\TerrainErosionValidation.h" />
     <ClInclude Include="Source\Terrain\TerrainGeneration.h" />
     <ClInclude Include="Source\Terrain\TerrainBackgroundValidation.h" />

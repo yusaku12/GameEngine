@@ -862,8 +862,8 @@ triangles, area-weighted smooth normals, orthonormal tangent frames, UVs and
 mesh/model bounds. Rebuilds retire the previous model handle; queued immutable
 CPU snapshots and GPU fences keep already submitted geometry safe.
 
-These phases intentionally do **not** implement streaming or vegetation.
-Phase 8 adds explicit CPU hydraulic erosion; Phase 9 adds GPU noise below.
+Streaming remains out of scope. Phase 8 adds explicit CPU hydraulic erosion,
+Phase 9 adds GPU noise, and Phase 10 adds static vegetation placement below.
 Phase 7 makes Inspector generation/import/Apply work
 asynchronous. Existing synchronous C++ APIs and Scene/Prefab loading remain
 synchronous for compatibility; neither API style should regenerate every frame.
@@ -1223,7 +1223,8 @@ The worker pipeline is:
    generate whole-grid vertices, smooth normals, tangents and UVs.
 3. Calculate whole-grid material layer weights, then partition chunks.
 4. Cook full-resolution PhysX chunk data if a TerrainCollider was attached.
-5. Append LOD indices and publish the prepared CPU result.
+5. Append LOD indices, scatter applied vegetation recipes (Phase 10) and publish
+   the prepared CPU result.
 
 Requests own value snapshots. Workers do **not** access components, scenes,
 resource registries, renderer-owned resources, PhysX scenes, actors or shapes.
@@ -1236,7 +1237,7 @@ does not create one thread per terrain/chunk/request.
 
 The **Background** label shows Queued, Height samples, GPU noise, GPU readback,
 Hydraulic erosion, Mesh, Material weights,
-Chunks, PhysX cooking, LOD, Ready to apply, Applied, Cancelled or Failed.
+Chunks, PhysX cooking, LOD, Vegetation, Ready to apply, Applied, Cancelled or Failed.
 These are stages, not equal-duration progress percentages. Whole-build and final
 apply timings appear after completion. **Ready to apply** does not mean that
 the new terrain is live. While work is pending, rendering, collision, surface
@@ -1469,6 +1470,82 @@ queue does not guarantee simultaneous execution, speedup or a particular frame
 budget. Readback and old/replacement terrain increase memory use. Final PhysX
 shape attachment and initial renderer uploads can still cause application spikes.
 
+## Automatic vegetation (Phase 10)
+
+**Scope:** opt-in, seeded static-model scatter owned by `TerrainComponent`.
+There are four independent layers; no per-plant GameObjects, PhysX shapes,
+wind deformation, streaming or vegetation-specific distance LOD are created.
+Existing static-model frustum/layer/shadow culling, compatible opaque/alpha-test
+GPU instancing and Hi-Z occlusion are reused. Transparent materials keep the
+renderer’s ordinary sorted, noninstanced path.
+
+1. Prepare and save a static `.model` / `.mdl` asset using the existing model
+   tools. Use +Y up, with the origin at the plant root; model meshes, nodes,
+   embedded/default materials and alpha-test materials are retained.
+2. Expand **Terrain Vegetation**, enable **Enable Vegetation**, open one of the
+   four **Vegetation Layer** entries, enable it, and **Select Model...**.
+3. Configure the seed, density, minimum spacing, maximum instances,
+   normalized height/slope ranges, uniform scale range and root offset.
+   Yaw is randomized over a full turn. **Align To Surface Normal** aligns local
+   +Y with the exact geometric triangle normal; otherwise plants stay upright.
+   Root offset follows this chosen up axis. Shadows are controlled per layer,
+   independently of the terrain surface's Cast Shadows toggle.
+4. Click **Apply Vegetation**. The previous terrain and vegetation remain live
+   until the complete replacement succeeds. **Reset Vegetation Draft** changes
+   only unapplied edits. Existing cancellation/latest-accepted-wins behavior and
+   preservation of newer Inspector drafts apply to vegetation too.
+
+**Placement contract:** dimensions, spacing and scale are terrain-local.
+Height filters use the original normalized triangle-interpolated samples,
+even with zero height scale; slopes use the actual local geometric normals.
+Height/slope ranges are inclusive. Grounding follows the mesh's exact
+`a,c,b; b,c,d` diagonal, not bilinear interpolation. Object/parent translation,
+rotation, nonuniform scaling and reflection are composed at rendering time;
+they do not reseed or redistribute instances.
+
+For each enabled layer, the worker tests `ceil(sizeX * sizeZ * density)`
+uniform random XZ candidates in a deterministic order, rejecting height/slope
+violations and centers closer than Minimum Spacing to an accepted center.
+Spacing is checked at terrain surface anchors **before** root offset and
+independently per layer, not between layers or model bounding boxes.
+`density` therefore controls the **candidate budget**, not a guaranteed final
+population. Filtering/spacing can reduce counts; `maxInstances` stops further
+placement when reached. Layers with the same seed/rules intentionally produce
+the same layout; use different seeds to avoid matching distributions.
+
+Limits are density **0..100** per local XZ area, spacing **0.1..10000**,
+maximum instances **1..25000** per layer (**100000** per terrain),
+normalized height **0..1**, slope **0..90 degrees**, scale **0.001..1000**,
+and root offset **-1000..1000**. Each layer permits at most **100000
+candidates**; exceeding this budget fails explicitly instead of silently
+truncating or blocking for an unbounded workload. Disabled numeric fields
+are still validated. Zero density is valid and produces no instances.
+The cap is a safety bound, not a promise that 100000 visible models will fit
+your frame budget.
+
+**Regeneration and persistence:** ordinary height imports, flat/noise/GPU
+generation, erosion and mesh/material/chunk/LOD rebuilds all capture the
+currently **applied** vegetation recipes and re-scatter against the resulting
+authoritative samples. Chunk/LOD changes do not change the distribution.
+`setVegetationSettings` is synchronous; `requestVegetation` prepares on the
+dedicated terrain worker. CPU placement never accesses scene objects or asset
+managers. Model/material loading and final registration remain owner-thread
+operations; missing/skinned models fail explicitly and preserve the previous
+mesh, vegetation and PhysX together. Loading assets, attaching physics and
+initial GPU uploads can still cause frame spikes.
+
+Payload **7** stores applied recipes and model paths alongside authoritative
+height samples. Versions **1..6** migrate to disabled vegetation. Scene,
+Prefab and Play/duplicate reconstruct exactly the same local transforms from
+saved samples and recipes; pending work and newer Inspector drafts are not
+saved. Vegetation uses model asset paths with the same working-directory /
+absolute reference convention as Model Renderer; deploy those model assets
+and their material/texture dependencies too. Models/materials are shared
+manager resources, not owned/unloaded by individual vegetation layers.
+Queued instance/model/material snapshots remain immutable and alive across
+regeneration or scene destruction. Reapply vegetation to capture changed
+model/default-material assets.
+
 ## Terrain validation
 
 Build **Debug x64**, then run from the project root:
@@ -1601,3 +1678,19 @@ Outputs include `gpu-noise.scene`, `gpu-noise.prefab`, `terrain-gpu-noise`
 HDR/display captures, numerical/readback `gpu-noise-timing.txt`, and end-to-end
 `gpu-noise-frame-timing.txt`. Timings are local measurements, not universal
 performance guarantees.
+
+Phase 10 checks deterministic candidate/transform repeats, independent analytic
+triangle grounding, pairwise minimum spacing, height/slope/scale/range
+boundaries, zero density/height scale, the four-layer 100000-instance cap,
+budget rejection and transactional cancellation. Authoring tests cover v7 and
+v1..6 migration, malformed payloads, missing model assets, Scene/Prefab/Play,
+Inspector enable/apply/reset with newer-draft preservation, terrain re-grounding,
+unchanged chunk/LOD distribution, terrain-only PhysX, busy-physics rollback,
+active-worker cancellation, latest-wins, disable and destruction. Actual GPU
+captures compare compact instance batches to individually expanded noninstanced
+oracles byte-for-byte in Deferred/Forward, including opaque/alpha-test embedded
+materials, layer masks, Hi-Z, reflected/rotated/nonuniform parent transforms
+and independent off-camera shadows. Resource snapshots must survive scene
+destruction and external handle removal. Outputs include `vegetation.model`,
+`vegetation.scene`, `vegetation.prefab`, `terrain-vegetation` HDR/display captures
+and measured batched/individual GPU draw counts in `vegetation-draws.txt`.
