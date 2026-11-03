@@ -1,5 +1,18 @@
 namespace Engine.Serialization;
 
+table TerrainNoiseSettings {
+    mode:ubyte = 1;
+    seed:uint = 0;
+    width:uint = 65;
+    height:uint = 65;
+    frequency:float = 4;
+    offset_x:float = 0;
+    offset_z:float = 0;
+    octaves:uint = 6;
+    persistence:float = 0.5;
+    lacunarity:float = 2;
+}
+
 table TerrainComponentPayload {
     width:uint = 2;
     height:uint = 2;
@@ -11,6 +24,7 @@ table TerrainComponentPayload {
     uv_repeat_x:float = 1;
     uv_repeat_z:float = 1;
     cast_shadows:bool = true;
+    noise_settings:TerrainNoiseSettings;
 }
 
 root_type TerrainComponentPayload;

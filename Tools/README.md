@@ -809,7 +809,7 @@ bounds culling. `RenderItem::animationBoundsValid` defaults to false, so callers
 that only provide bind-pose bounds retain the previous safe animation bypass.
 Near-plane intersections also retain Hi-Z's visibility bypass.
 
-# Terrain Phase 1: Heightmap and mesh generation
+# Terrain Phase 1/2: Heightmap, mesh generation and Perlin/FBM
 
 In the Hierarchy context menu choose **Create Terrain**, or add the **Terrain**
 component to an existing GameObject. A new component contains a flat 65x65 grid.
@@ -826,6 +826,8 @@ The Terrain Inspector provides:
   the edited dimensions. 8/16-bit grayscale PNG precision is preserved.
 - **Create Flat**: replace heights with a constant normalized value and the
   specified X/Z sample counts. This replaces any imported height data.
+- **Generate Noise**: replace heights with seeded Perlin noise or FBM and apply
+  the edited mesh dimensions. See the procedural generation controls below.
 
 Height samples are linear numeric data in `[0, 1]`, not sRGB colors. Import
 ignores gamma metadata, takes the red channel (ignoring alpha), and maps the
@@ -850,10 +852,73 @@ triangles, area-weighted smooth normals, orthonormal tangent frames, UVs and
 mesh/model bounds. Rebuilds retire the previous model handle; queued immutable
 CPU snapshots and GPU fences keep already submitted geometry safe.
 
-This phase intentionally does **not** implement noise/FBM, terrain material
-layers, world-space height queries, collision, chunks, terrain LOD, asynchronous
+These phases intentionally do **not** implement terrain material layers,
+world-space height queries, collision, chunks, terrain LOD, asynchronous
 generation, erosion, compute generation or vegetation. Generation/import is
 synchronous and should be triggered by an authoring action, not every frame.
+
+## Procedural generation (Phase 2)
+
+In the Terrain Inspector, edit **Procedural Heightmap**, then click
+**Generate Noise**. Generation is explicit, not performed continuously while
+dragging controls. It replaces the existing imported/flat/generated heights;
+failure logs a diagnostic, displays status, and preserves the previous terrain
+and last successfully applied recipe.
+
+| Control | Meaning / supported values |
+| --- | --- |
+| Noise Mode | Perlin (one octave) or FBM (weighted Perlin octaves) |
+| Seed | Any unsigned 32-bit value, including 0 and 4294967295 |
+| Noise Samples X / Z | 2..1025 samples on each axis, including rectangular grids |
+| Frequency | 0.001..1024 base noise cells across each complete grid axis |
+| Noise Offset X / Z | -100000..100000 base noise-space translation |
+| Octaves | 1..12 (FBM only) |
+| Persistence | 0..1 amplitude multiplier for successive octaves (FBM only) |
+| Lacunarity | 1..4 coordinate/frequency multiplier for successive octaves (FBM only) |
+
+Defaults are FBM, seed 0, 65x65 samples, frequency 4, zero offsets, 6 octaves,
+persistence 0.5 and lacunarity 2. Perlin disables the FBM-only controls but retains
+their settings; all stored fields must remain valid in both modes.
+The existing **Height Scale / Height Offset** map generated normalized samples to
+local Y. Mesh width/depth affect physical size, not the sampled noise domain.
+Changing resolution preserves the field at shared coordinates.
+
+The base sample coordinate is
+`(x / (width - 1) * frequency + offsetX, z / (height - 1) * frequency + offsetZ)`.
+Each octave multiplies both coordinates by lacunarity, retaining the same seed,
+and multiplies its amplitude by persistence. Offset is applied before octave
+scaling. Negative coordinates use mathematical floor, not truncation.
+Perlin uses hashed lattice coordinates, eight fixed unit gradients and quintic
+interpolation, with no mutable permutation table or global random generator.
+FBM divides its weighted sum by the sum of octave amplitudes. Signed noise is
+converted with `0.5 + 0.5 / sqrt(2) * signedNoise`, using a conservative fixed
+gradient bound. Output is finite and in `[0, 1]`, but is not stretched to fill
+that range on every map. This preserves relative height across adjacent domains
+instead of changing terrain contrast according to each grid's extrema.
+One FBM octave, or zero persistence, produces exactly the Perlin result.
+
+Use enough samples for the highest octave frequency: undersampling can alias
+fine detail, and samples landing entirely on lattice intersections produce a
+flat 0.5 map. The generator does not silently change resolution, frequency or
+octave count. Maximum settings are bounds for safe arithmetic and allocation,
+not a recommendation to generate million-vertex terrain with twelve octaves
+on every frame. Background generation belongs to Phase 7.
+
+`generateTerrainNoise` in `Source\Terrain\TerrainNoise.h` generates CPU height
+data without registering a model. `TerrainComponent::generateNoise` generates
+and applies both the heightmap and mesh settings transactionally.
+The same recipe reproduces the same samples in the same build, independently
+of generation order and other engine random operations.
+
+Terrain payload version 2 adds the **last successfully applied noise recipe**.
+Scene/Prefab/Play clones retain that recipe as well as the actual height samples.
+Saved samples remain authoritative: loading never regenerates them implicitly.
+Importing an image, creating a flat grid or rebuilding dimensions keeps the last
+noise recipe available for future generation, even though the current heights
+may no longer match it. Unapplied Inspector recipe edits are not saved.
+Version 1 terrain payloads still load their original samples unchanged and get
+the default recipe; their next save writes version 2. Invalid/missing version 2
+recipes are rejected without replacing the existing terrain.
 
 ## Terrain validation
 
@@ -876,5 +941,11 @@ Inspector rebuild interaction, component lifecycle and transforms, Deferred
 and Forward GPU rendering, existing GPU occlusion, and queued geometry surviving
 component destruction before its first GPU upload. It writes generated fixtures,
 `terrain.scene`, `terrain.prefab`, HDR/display captures and `terrain-results.txt`.
+Phase 2 additionally checks independent Perlin reference values, negative-cell
+continuity, FBM octave composition and normalization, reproducible seeds,
+resolution invariance, shared domain edges, maximum grid size and parameter
+boundaries, generation rollback, version 1 migration, recipe Scene/Prefab/Play
+roundtrips, Inspector **Generate Noise**, and actual FBM/Perlin GPU rendering.
+Generated noise persistence fixtures are `noise.scene` and `noise.prefab`.
 Expected invalid-input tests emit error logs; the process exit code and final
 PASS report determine success.

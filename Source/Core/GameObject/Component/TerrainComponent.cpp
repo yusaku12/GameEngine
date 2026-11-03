@@ -58,10 +58,15 @@ namespace Engine
     {
         flatbuffers::FlatBufferBuilder builder;
         const auto samples = m_heightmap.samples();
+        const auto noise = Serialization::CreateTerrainNoiseSettings(builder,
+            static_cast<std::uint8_t>(m_noiseSettings.mode), m_noiseSettings.seed,
+            m_noiseSettings.width, m_noiseSettings.height, m_noiseSettings.frequency,
+            m_noiseSettings.offsetX, m_noiseSettings.offsetZ, m_noiseSettings.octaves,
+            m_noiseSettings.persistence, m_noiseSettings.lacunarity);
         const auto root = Serialization::CreateTerrainComponentPayload(builder,
             m_heightmap.width(), m_heightmap.height(), builder.CreateVector(samples.data(), samples.size()),
             m_settings.sizeX, m_settings.sizeZ, m_settings.heightScale, m_settings.heightOffset,
-            m_settings.uvRepeatX, m_settings.uvRepeatZ, m_castShadows);
+            m_settings.uvRepeatX, m_settings.uvRepeatZ, m_castShadows, noise);
         Serialization::FinishTerrainComponentPayloadBuffer(builder, root);
         payload.assign(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
         return true;
@@ -71,19 +76,48 @@ namespace Engine
         const std::span<const std::uint8_t> payload)
     {
         flatbuffers::Verifier verifier(payload.data(), payload.size());
-        if (version != 1 || payload.size() < 8 || !Serialization::VerifyTerrainComponentPayloadBuffer(verifier))
+        if ((version != 1 && version != 2) || payload.size() < 8
+            || !Serialization::VerifyTerrainComponentPayloadBuffer(verifier))
         {
             LOG_ERROR("[Terrain] Invalid terrain payload or version.");
             return false;
         }
         const auto* source = Serialization::GetTerrainComponentPayload(payload.data());
         const auto* samples = source->samples();
+        TerrainNoiseSettings noise;
+        if (const auto* saved = source->noise_settings())
+        {
+            noise = { static_cast<TerrainNoiseMode>(saved->mode()), saved->seed(), saved->width(), saved->height(),
+                saved->frequency(), saved->offset_x(), saved->offset_z(), saved->octaves(),
+                saved->persistence(), saved->lacunarity() };
+        }
+        else if (version == 2)
+        {
+            LOG_ERROR("[Terrain] Version 2 payload is missing noise authoring settings.");
+            return false;
+        }
+        if (!validateTerrainNoiseSettings(noise))
+            return false;
         Heightmap heightmap;
         if (!heightmap.assign(source->width(), source->height(), { samples->data(), samples->size() })
             || !setTerrain(heightmap, { source->size_x(), source->size_z(), source->height_scale(),
                 source->height_offset(), source->uv_repeat_x(), source->uv_repeat_z() }))
             return false;
         m_castShadows = source->cast_shadows();
+        m_noiseSettings = noise;
+        m_editNoiseSettings = noise;
+        return true;
+    }
+
+    bool TerrainComponent::generateNoise(const TerrainNoiseSettings& noise, const TerrainMeshSettings& mesh)
+    {
+        if (!validateTerrainMeshSettings(mesh))
+            return false;
+        Heightmap heightmap;
+        if (!generateTerrainNoise(noise, heightmap) || !setTerrain(heightmap, mesh))
+            return false;
+        m_noiseSettings = noise;
+        m_editNoiseSettings = noise;
         return true;
     }
 
@@ -98,6 +132,8 @@ namespace Engine
         if (!target->setTerrain(m_heightmap, m_settings))
             return false;
         target->m_castShadows = m_castShadows;
+        target->m_noiseSettings = m_noiseSettings;
+        target->m_editNoiseSettings = m_noiseSettings;
         return true;
     }
 
@@ -213,6 +249,27 @@ namespace Engine
                 static_cast<std::uint32_t>(m_flatHeight), m_flatValue) && setTerrain(heightmap, m_editSettings)
                 ? "Flat terrain created." : "Flat terrain creation failed; previous terrain preserved. See log.";
         }
+        ImGui::Separator();
+        ImGui::TextUnformatted("Procedural Heightmap");
+        int mode = static_cast<int>(m_editNoiseSettings.mode);
+        if (ImGui::Combo("Noise Mode", &mode, "Perlin\0FBM\0"))
+            m_editNoiseSettings.mode = static_cast<TerrainNoiseMode>(mode);
+        ImGui::InputScalar("Seed", ImGuiDataType_U32, &m_editNoiseSettings.seed);
+        ImGui::InputScalar("Noise Samples X", ImGuiDataType_U32, &m_editNoiseSettings.width);
+        ImGui::InputScalar("Noise Samples Z", ImGuiDataType_U32, &m_editNoiseSettings.height);
+        ImGui::DragFloat("Frequency", &m_editNoiseSettings.frequency, 0.05f, 0.001f, 1024.0f);
+        ImGui::DragFloat("Noise Offset X", &m_editNoiseSettings.offsetX, 0.05f, -100000.0f, 100000.0f);
+        ImGui::DragFloat("Noise Offset Z", &m_editNoiseSettings.offsetZ, 0.05f, -100000.0f, 100000.0f);
+        ImGui::BeginDisabled(m_editNoiseSettings.mode == TerrainNoiseMode::Perlin);
+        ImGui::InputScalar("Octaves (1..12)", ImGuiDataType_U32, &m_editNoiseSettings.octaves);
+        ImGui::SliderFloat("Persistence", &m_editNoiseSettings.persistence, 0.0f, 1.0f);
+        ImGui::SliderFloat("Lacunarity", &m_editNoiseSettings.lacunarity, 1.0f, 4.0f);
+        ImGui::EndDisabled();
+        ImGui::TextWrapped("Generate replaces heights and applies mesh settings above. "
+            "Frequency spans each grid axis; offsets are noise-space coordinates.");
+        if (ImGui::Button("Generate Noise"))
+            m_status = generateNoise(m_editNoiseSettings, m_editSettings)
+                ? "Noise terrain generated." : "Noise generation failed; previous terrain preserved. See log.";
         if (!m_status.empty())
             ImGui::TextWrapped("%s", m_status.c_str());
     }

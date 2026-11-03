@@ -8,6 +8,7 @@
 #include "Core\Scene\SceneClone.h"
 #include "Core\Scene\SceneSerializer.h"
 #include "Core\System\StartupOptions.h"
+#include "Core\Threading\JobSystem.h"
 #include "Generated\FlatBuffers\TerrainComponent_generated.h"
 #include "Graphics\Camera\CameraRenderSubmission.h"
 #include "Graphics\DirectX12\FrameCapture.h"
@@ -44,6 +45,230 @@ namespace Engine
         {
             return left.width() == right.width() && left.height() == right.height()
                 && std::equal(left.samples().begin(), left.samples().end(), right.samples().begin(), right.samples().end());
+        }
+
+        bool normalizedHeights(const Heightmap& heightmap)
+        {
+            return std::all_of(heightmap.samples().begin(), heightmap.samples().end(), [](const float value)
+            {
+                return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
+            });
+        }
+
+        bool validateNoise(Checks& checks)
+        {
+            TerrainNoiseSettings settings;
+            settings.seed = 42;
+            settings.width = 33;
+            settings.height = 17;
+            settings.offsetX = -2.25f;
+            settings.offsetZ = 3.75f;
+            Heightmap perlin;
+            Heightmap fbm;
+            Heightmap repeated;
+            settings.mode = TerrainNoiseMode::Perlin;
+            if (!checks.expect(generateTerrainNoise(settings, perlin) && generateTerrainNoise(settings, repeated)
+                && sameHeights(perlin, repeated) && normalizedHeights(perlin), "seeded Perlin repeatability and bounds"))
+                return false;
+            settings.mode = TerrainNoiseMode::FBM;
+            if (!checks.expect(generateTerrainNoise(settings, fbm) && generateTerrainNoise(settings, repeated)
+                && sameHeights(fbm, repeated) && normalizedHeights(fbm) && !sameHeights(fbm, perlin),
+                "seeded FBM repeatability and additional detail"))
+                return false;
+            const auto [minimum, maximum] = std::minmax_element(fbm.samples().begin(), fbm.samples().end());
+            if (!checks.expect(*maximum - *minimum > 0.05f, "default FBM has measurable relief"))
+                return false;
+            settings.seed = 43;
+            if (!checks.expect(generateTerrainNoise(settings, repeated) && !sameHeights(fbm, repeated), "different seeds change heights"))
+                return false;
+            settings.seed = 42;
+            settings.octaves = 1;
+            if (!checks.expect(generateTerrainNoise(settings, repeated) && sameHeights(repeated, perlin),
+                "one-octave FBM equals Perlin"))
+                return false;
+            settings.octaves = 12;
+            settings.persistence = 0;
+            if (!checks.expect(generateTerrainNoise(settings, repeated) && sameHeights(repeated, perlin),
+                "zero persistence equals Perlin without zero denominator"))
+                return false;
+            settings.persistence = 1;
+            settings.lacunarity = 1;
+            if (!checks.expect(generateTerrainNoise(settings, repeated) && sameHeights(repeated, perlin),
+                "unit lacunarity repeats the same field without amplitude growth"))
+                return false;
+
+            settings = {};
+            settings.mode = TerrainNoiseMode::Perlin;
+            settings.width = settings.height = 2;
+            settings.frequency = 1;
+            const std::array<std::uint32_t, 3> seeds = { 0, 42, UINT32_MAX };
+            const std::array<std::array<float, 3>, 3> references = {{
+                { 0.609854681f, 0.551854593f, 0.336715817f },
+                { 0.575054628f, 0.646833864f, 0.638267339f },
+                { 0.464348824f, 0.426122307f, 0.499219811f },
+            }};
+            const std::array<Vector2, 3> coordinates = { Vector2(0.25f, 0.75f),
+                Vector2(-0.25f, -0.75f), Vector2(-1.25f, 2.5f) };
+            for (std::size_t seed = 0; seed < seeds.size(); ++seed)
+                for (std::size_t point = 0; point < coordinates.size(); ++point)
+                {
+                    settings.seed = seeds[seed];
+                    settings.offsetX = coordinates[point].x;
+                    settings.offsetZ = coordinates[point].y;
+                    if (!checks.expect(generateTerrainNoise(settings, repeated), "reference Perlin generation")
+                        || !checks.close(repeated.samples()[0], references[seed][point], "Perlin independent reference including negative cells"))
+                        return false;
+                }
+            settings.offsetX = -2;
+            settings.offsetZ = -1;
+            if (!checks.expect(generateTerrainNoise(settings, repeated)
+                && std::all_of(repeated.samples().begin(), repeated.samples().end(), [](const float value) { return value == 0.5f; }),
+                "Perlin lattice points have neutral normalized height"))
+                return false;
+            // A quintic gradient field must remain continuous on both sides of a negative cell boundary.
+            settings.offsetX = -1.0001f;
+            settings.offsetZ = 0.375f;
+            if (!generateTerrainNoise(settings, repeated))
+                return false;
+            const float beforeBoundary = repeated.samples()[0];
+            settings.offsetX = -0.9999f;
+            if (!checks.expect(generateTerrainNoise(settings, repeated)
+                && std::abs(repeated.samples()[0] - beforeBoundary) < 0.0002f, "negative lattice boundary continuity"))
+                return false;
+
+            settings = {};
+            settings.seed = 17;
+            settings.width = 17;
+            settings.height = 9;
+            settings.frequency = 3.5f;
+            settings.offsetX = 0.25f;
+            settings.offsetZ = -0.75f;
+            settings.octaves = 4;
+            if (!generateTerrainNoise(settings, fbm))
+                return false;
+            std::vector<double> reference(fbm.samples().size(), 0.0);
+            double amplitude = 1;
+            double weight = 0;
+            TerrainNoiseSettings octave = settings;
+            octave.mode = TerrainNoiseMode::Perlin;
+            for (std::uint32_t index = 0; index < settings.octaves; ++index)
+            {
+                if (!generateTerrainNoise(octave, repeated))
+                    return false;
+                for (std::size_t sample = 0; sample < reference.size(); ++sample)
+                    reference[sample] += amplitude * repeated.samples()[sample];
+                weight += amplitude;
+                amplitude *= settings.persistence;
+                octave.frequency *= settings.lacunarity;
+                octave.offsetX *= settings.lacunarity;
+                octave.offsetZ *= settings.lacunarity;
+            }
+            bool matches = true;
+            for (std::size_t sample = 0; sample < reference.size(); ++sample)
+                matches = matches && std::abs(fbm.samples()[sample] - reference[sample] / weight) < 0.000001;
+            if (!checks.expect(matches, "FBM equals independently weighted Perlin octave maps"))
+                return false;
+            TerrainNoiseSettings dense = settings;
+            dense.width = 33;
+            dense.height = 17;
+            if (!generateTerrainNoise(dense, repeated))
+                return false;
+            matches = true;
+            for (std::uint32_t z = 0; z < settings.height; ++z)
+                for (std::uint32_t x = 0; x < settings.width; ++x)
+                    matches = matches && fbm.samples()[static_cast<std::size_t>(z) * settings.width + x]
+                        == repeated.samples()[static_cast<std::size_t>(z * 2) * dense.width + x * 2];
+            if (!checks.expect(matches, "shared coordinates are invariant under grid resolution"))
+                return false;
+            TerrainNoiseSettings neighbor = settings;
+            neighbor.offsetX += settings.frequency;
+            if (!generateTerrainNoise(neighbor, repeated))
+                return false;
+            matches = true;
+            for (std::uint32_t z = 0; z < settings.height; ++z)
+                matches = matches && fbm.samples()[static_cast<std::size_t>(z) * settings.width + settings.width - 1]
+                    == repeated.samples()[static_cast<std::size_t>(z) * settings.width];
+            if (!checks.expect(matches, "adjacent coordinate domains agree without per-map min/max normalization"))
+                return false;
+            std::array<Heightmap, 4> workerMaps;
+            std::array<bool, 4> workerSuccess{};
+            JobSystem::instance().parallelFor(workerMaps.size(), [&](const std::size_t index)
+            {
+                workerSuccess[index] = generateTerrainNoise(settings, workerMaps[index]);
+            });
+            if (!checks.expect(std::all_of(workerSuccess.begin(), workerSuccess.end(), [](const bool value) { return value; })
+                && std::all_of(workerMaps.begin(), workerMaps.end(), [&](const Heightmap& map) { return sameHeights(map, fbm); }),
+                "parallel independent noise generation has no shared RNG state"))
+                return false;
+
+            const Heightmap previous = repeated;
+            const auto rejected = [&](const TerrainNoiseSettings& invalid)
+            {
+                return checks.expect(!generateTerrainNoise(invalid, repeated) && sameHeights(repeated, previous),
+                    "invalid noise settings preserve previous heightmap");
+            };
+            using Field = float TerrainNoiseSettings::*;
+            const std::array<Field, 5> floatFields = { &TerrainNoiseSettings::frequency, &TerrainNoiseSettings::offsetX,
+                &TerrainNoiseSettings::offsetZ, &TerrainNoiseSettings::persistence, &TerrainNoiseSettings::lacunarity };
+            for (const auto field : floatFields)
+                for (const float invalid : { std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(),
+                    -std::numeric_limits<float>::infinity(), -100001.0f, 100001.0f })
+                {
+                    auto invalidSettings = settings;
+                    invalidSettings.*field = invalid;
+                    if (!rejected(invalidSettings))
+                        return false;
+                }
+            for (const auto field : { &TerrainNoiseSettings::width, &TerrainNoiseSettings::height })
+                for (const auto invalid : { 0u, 1u, Heightmap::MAX_DIMENSION + 1, UINT32_MAX })
+                {
+                    auto invalidSettings = settings;
+                    invalidSettings.*field = invalid;
+                    if (!rejected(invalidSettings))
+                        return false;
+                }
+            for (const auto invalid : { 0u, 13u, UINT32_MAX })
+            {
+                auto invalidSettings = settings;
+                invalidSettings.octaves = invalid;
+                if (!rejected(invalidSettings))
+                    return false;
+            }
+            auto invalidSettings = settings;
+            invalidSettings.mode = static_cast<TerrainNoiseMode>(255);
+            if (!rejected(invalidSettings))
+                return false;
+            const std::array<std::pair<Field, float>, 11> invalidBounds = {{
+                { &TerrainNoiseSettings::frequency, 0.0f }, { &TerrainNoiseSettings::frequency, 1024.01f },
+                { &TerrainNoiseSettings::frequency, 0.00099f },
+                { &TerrainNoiseSettings::persistence, -0.001f }, { &TerrainNoiseSettings::persistence, 1.001f },
+                { &TerrainNoiseSettings::lacunarity, 0.999f }, { &TerrainNoiseSettings::lacunarity, 4.001f },
+                { &TerrainNoiseSettings::offsetX, -100001.0f }, { &TerrainNoiseSettings::offsetX, 100001.0f },
+                { &TerrainNoiseSettings::offsetZ, -100001.0f }, { &TerrainNoiseSettings::offsetZ, 100001.0f },
+            }};
+            for (const auto& [field, invalid] : invalidBounds)
+            {
+                invalidSettings = settings;
+                invalidSettings.*field = invalid;
+                if (!rejected(invalidSettings))
+                    return false;
+            }
+            settings = { TerrainNoiseMode::FBM, UINT32_MAX, 9, 7, 1024, -100000, 100000, 12, 1, 4 };
+            if (!checks.expect(generateTerrainNoise(settings, repeated) && normalizedHeights(repeated),
+                "maximum octave coordinate range stays finite and defined"))
+                return false;
+            settings.frequency = 0.001f;
+            settings.offsetX = settings.offsetZ = 0;
+            settings.persistence = 0;
+            settings.lacunarity = 1;
+            if (!checks.expect(generateTerrainNoise(settings, repeated) && normalizedHeights(repeated),
+                "minimum noise parameter boundaries"))
+                return false;
+            settings = {};
+            settings.width = settings.height = Heightmap::MAX_DIMENSION;
+            settings.octaves = 2;
+            return checks.expect(generateTerrainNoise(settings, repeated) && normalizedHeights(repeated)
+                && repeated.samples().size() == 1050625, "maximum 1025x1025 generated heightmap");
         }
 
         bool validateHeightmap(Checks& checks, const std::filesystem::path& directory, Heightmap& imported)
@@ -252,7 +477,7 @@ namespace Engine
                 if (!checks.expect(!terrain->deserializePayload(1, std::span(payload).first(size))
                     && terrain->getModel() == original, "truncated payload preserves terrain"))
                     return false;
-            if (!checks.expect(!terrain->deserializePayload(2, payload), "reject unknown payload version"))
+            if (!checks.expect(!terrain->deserializePayload(3, payload), "reject unknown payload version"))
                 return false;
             flatbuffers::FlatBufferBuilder builder;
             const std::array<float, 4> invalidSamples = { 0, 0, 0, std::numeric_limits<float>::quiet_NaN() };
@@ -359,6 +584,126 @@ namespace Engine
             return checks.expect(ModelManager::instance().get(finalHandle) == nullptr, "runtime terrain cleanup");
         }
 
+        bool validateNoisePersistence(Checks& checks, const std::filesystem::path& directory)
+        {
+            Scene scene(ObjectGUID::generate(), "Noise source");
+            auto* object = scene.createGameObject("Generated terrain");
+            auto* terrain = object != nullptr ? object->addComponent<TerrainComponent>() : nullptr;
+            TerrainNoiseSettings settings{ TerrainNoiseMode::FBM, UINT32_MAX, 17, 9, 3.25f, -0.75f, 0.125f, 4, 0.625f, 2.5f };
+            const TerrainMeshSettings mesh{ 7, 11, 6, -2, 2, 3 };
+            if (!checks.expect(terrain != nullptr && terrain->generateNoise(settings, mesh)
+                && terrain->getNoiseSettings() == settings, "component applies and retains noise recipe"))
+                return false;
+            const Heightmap generated = terrain->getHeightmap();
+            const auto model = terrain->getModel();
+            auto invalid = settings;
+            invalid.persistence = std::numeric_limits<float>::quiet_NaN();
+            auto badMesh = mesh;
+            badMesh.sizeX = 0;
+            if (!checks.expect(!terrain->generateNoise(invalid, mesh) && !terrain->generateNoise(settings, badMesh)
+                && terrain->getModel() == model && terrain->getNoiseSettings() == settings
+                && sameHeights(terrain->getHeightmap(), generated), "failed noise generation preserves recipe and geometry"))
+                return false;
+            const auto cpuModel = ModelManager::instance().get(model);
+            if (!checks.expect(cpuModel != nullptr && cpuModel->meshes[0].vertices.size() == generated.samples().size(),
+                "noise generation feeds existing mesh builder"))
+                return false;
+            bool matches = true;
+            for (std::size_t sample = 0; sample < generated.samples().size(); ++sample)
+                matches = matches && std::abs(cpuModel->meshes[0].vertices[sample].position.y
+                    - (mesh.heightOffset + generated.samples()[sample] * mesh.heightScale)) < 0.00001f;
+            if (!checks.expect(matches, "noise height samples map to every mesh vertex"))
+                return false;
+            std::vector<std::uint8_t> payload;
+            TerrainComponent restored;
+            if (!checks.expect(terrain->serializePayload(payload) && terrain->getPayloadVersion() == 2
+                && restored.deserializePayload(2, payload) && restored.getNoiseSettings() == settings
+                && sameHeights(restored.getHeightmap(), generated), "version 2 noise recipe and samples roundtrip"))
+                return false;
+            if (!checks.expect(restored.generateNoise(restored.getNoiseSettings(), restored.getSettings())
+                && sameHeights(restored.getHeightmap(), generated), "loaded recipe regenerates exact heights with aliased arguments"))
+                return false;
+
+            const auto previous = restored.getModel();
+            for (const std::uint32_t version : { 0u, 3u })
+                if (!checks.expect(!restored.deserializePayload(version, payload) && restored.getModel() == previous,
+                    "reject unsupported terrain payload versions"))
+                    return false;
+            flatbuffers::FlatBufferBuilder legacy;
+            const std::array<float, 4> flat = { 0.125f, 0.25f, 0.5f, 0.75f };
+            const auto legacyRoot = Serialization::CreateTerrainComponentPayload(legacy, 2, 2,
+                legacy.CreateVector(flat.data(), flat.size()), 12, 14, 8, -3, 5, 6, false);
+            Serialization::FinishTerrainComponentPayloadBuffer(legacy, legacyRoot);
+            if (!checks.expect(!restored.deserializePayload(2, { legacy.GetBufferPointer(), legacy.GetSize() })
+                && restored.getModel() == previous && restored.getNoiseSettings() == settings,
+                "version 2 missing recipe is rejected transactionally"))
+                return false;
+            for (const auto invalidMode : { 0u, 255u })
+            {
+                flatbuffers::FlatBufferBuilder malformed;
+                const auto noise = Serialization::CreateTerrainNoiseSettings(malformed, static_cast<std::uint8_t>(invalidMode),
+                    7, invalidMode == 0 ? 1u : 17u, 9);
+                const auto root = Serialization::CreateTerrainComponentPayload(malformed, 2, 2,
+                    malformed.CreateVector(flat.data(), flat.size()), 12, 14, 8, -3, 5, 6, false, noise);
+                Serialization::FinishTerrainComponentPayloadBuffer(malformed, root);
+                if (!checks.expect(!restored.deserializePayload(2, { malformed.GetBufferPointer(), malformed.GetSize() })
+                    && restored.getModel() == previous && restored.getNoiseSettings() == settings
+                    && sameHeights(restored.getHeightmap(), generated), "invalid serialized recipe preserves all component state"))
+                    return false;
+            }
+            if (!checks.expect(restored.deserializePayload(1, { legacy.GetBufferPointer(), legacy.GetSize() })
+                && restored.getNoiseSettings() == TerrainNoiseSettings{} && !restored.getCastShadows()
+                && restored.getSettings().sizeX == 12 && restored.getHeightmap().samples()[3] == 0.75f,
+                "legacy version 1 loads embedded heights unchanged with default recipe"))
+                return false;
+            std::vector<std::uint8_t> upgraded;
+            TerrainComponent migrated;
+            if (!checks.expect(restored.serializePayload(upgraded) && migrated.deserializePayload(2, upgraded)
+                && sameHeights(migrated.getHeightmap(), restored.getHeightmap())
+                && migrated.getNoiseSettings() == TerrainNoiseSettings{}, "legacy payload upgrades to version 2"))
+                return false;
+
+            if (!checks.expect(Serialization::SceneSerializer{}.save(directory / L"noise.scene", scene), "save noise terrain scene"))
+                return false;
+            Scene loaded(ObjectGUID::generate(), "Loaded noise");
+            if (!checks.expect(Serialization::SceneSerializer{}.load(directory / L"noise.scene", loaded), "reload noise terrain scene"))
+                return false;
+            const auto* loadedObject = loaded.find(object->getGUID());
+            const auto* reloaded = loadedObject != nullptr ? loadedObject->getComponent<TerrainComponent>() : nullptr;
+            if (!checks.expect(reloaded != nullptr && reloaded->getNoiseSettings() == settings
+                && sameHeights(reloaded->getHeightmap(), generated), "scene preserves generated samples and complete recipe"))
+                return false;
+            Scene clonedScene(ObjectGUID::generate(), "Noise clone");
+            const SceneClonePair pair{ scene, clonedScene };
+            if (!checks.expect(cloneScenes(std::span(&pair, 1)), "clone noise scene"))
+                return false;
+            const auto* clonedObject = clonedScene.find(object->getGUID());
+            const auto* cloned = clonedObject != nullptr ? clonedObject->getComponent<TerrainComponent>() : nullptr;
+            if (!checks.expect(cloned != nullptr && cloned->getNoiseSettings() == settings
+                && cloned->getModel() != terrain->getModel() && sameHeights(cloned->getHeightmap(), generated),
+                "Play clone preserves recipe with independent terrain"))
+                return false;
+            Prefab prefab;
+            Prefab loadedPrefab;
+            if (!checks.expect(prefab.capture(*object) && Serialization::PrefabSerializer{}.save(directory / L"noise.prefab", prefab)
+                && Serialization::PrefabSerializer{}.load(directory / L"noise.prefab", loadedPrefab), "save and reload noise prefab"))
+                return false;
+            Scene instances(ObjectGUID::generate(), "Noise instances");
+            auto* instance = loadedPrefab.instantiate(instances);
+            const auto* instanceTerrain = instance != nullptr ? instance->getComponent<TerrainComponent>() : nullptr;
+            if (!checks.expect(instanceTerrain != nullptr && instanceTerrain->getNoiseSettings() == settings
+                && sameHeights(instanceTerrain->getHeightmap(), generated), "prefab retains noise recipe and heights"))
+                return false;
+            Heightmap flatMap;
+            if (!checks.expect(flatMap.createFlat(3, 2, 0.25f) && terrain->setTerrain(flatMap, mesh)
+                && terrain->getNoiseSettings() == settings && sameHeights(cloned->getHeightmap(), generated),
+                "import/flat replacement retains last noise recipe without modifying clones"))
+                return false;
+            return checks.expect(terrain->serializePayload(payload) && restored.deserializePayload(2, payload)
+                && sameHeights(restored.getHeightmap(), flatMap) && restored.getNoiseSettings() == settings,
+                "saved samples remain authoritative even when they differ from last noise recipe");
+        }
+
         bool validateInspector(Checks& checks)
         {
             struct Context
@@ -379,7 +724,11 @@ namespace Engine
             io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
             io.Fonts->SetTexID(static_cast<ImTextureID>(1));
             TerrainComponent terrain;
+            TerrainComponent noiseTerrain;
+            TerrainComponent* selected = &terrain;
             ImVec2 rebuildButton;
+            ImVec2 noiseButton;
+            bool locateNoiseButton = false;
             const auto frame = [&]
             {
                 ImGui::NewFrame();
@@ -387,7 +736,13 @@ namespace Engine
                 ImGui::SetNextWindowSize({ 1500, 1900 }, ImGuiCond_Always);
                 ImGui::Begin("Terrain Inspector Validation", nullptr, ImGuiWindowFlags_NoSavedSettings);
                 const auto origin = ImGui::GetCursorScreenPos();
-                terrain.drawImGui();
+                selected->drawImGui();
+                if (locateNoiseButton)
+                {
+                    const auto minimum = ImGui::GetItemRectMin();
+                    const auto maximum = ImGui::GetItemRectMax();
+                    noiseButton = { (minimum.x + maximum.x) * 0.5f, (minimum.y + maximum.y) * 0.5f };
+                }
                 rebuildButton = { origin.x + 30, origin.y + 3 * ImGui::GetTextLineHeightWithSpacing()
                     + 7 * ImGui::GetFrameHeightWithSpacing() + ImGui::GetFrameHeight() * 0.5f };
                 ImGui::End();
@@ -397,8 +752,19 @@ namespace Engine
             io.AddMousePosEvent(rebuildButton.x, rebuildButton.y); frame();
             io.AddMouseButtonEvent(0, true); frame();
             io.AddMouseButtonEvent(0, false); frame();
-            return checks.expect(terrain.getModel().isValid() && terrain.getHeightmap().width() == 65,
-                "Inspector Apply/Rebuild button generates terrain");
+            if (!checks.expect(terrain.getModel().isValid() && terrain.getHeightmap().width() == 65,
+                "Inspector Apply/Rebuild button generates terrain"))
+                return false;
+            selected = &noiseTerrain;
+            locateNoiseButton = true;
+            frame();
+            locateNoiseButton = false;
+            io.AddMousePosEvent(noiseButton.x, noiseButton.y); frame();
+            io.AddMouseButtonEvent(0, true); frame();
+            io.AddMouseButtonEvent(0, false); frame();
+            Heightmap expected;
+            return checks.expect(generateTerrainNoise({}, expected) && noiseTerrain.getModel().isValid()
+                && sameHeights(noiseTerrain.getHeightmap(), expected), "Inspector Generate Noise applies default FBM recipe");
         }
 
         bool renderFrame(DX12Renderer& renderer, Scene* scene)
@@ -439,9 +805,12 @@ namespace Engine
             auto* object = scene.createGameObject("Terrain");
             auto* terrain = object != nullptr ? object->addComponent<TerrainComponent>() : nullptr;
             Heightmap heights;
-            const std::array<float, 9> hill = { 0, 0.2f, 0, 0.2f, 1, 0.2f, 0, 0.2f, 0 };
+            TerrainNoiseSettings recipe;
+            recipe.width = recipe.height = 33;
+            recipe.seed = 42;
             const TerrainMeshSettings settings{ 4, 4, 2, 0, 1, 1 };
-            if (!checks.expect(terrain != nullptr && heights.assign(3, 3, hill) && terrain->setTerrain(heights, settings),
+            if (!checks.expect(terrain != nullptr && generateTerrainNoise(recipe, heights)
+                && terrain->generateNoise(recipe, settings),
                 "GPU terrain fixture") || !renderer.resize(256, 256))
                 return false;
             renderer.setEditorOverlayEnabled(false);
@@ -475,7 +844,7 @@ namespace Engine
                 return false;
 
             // Destroy the model before its first GPU upload; the queued snapshot must still render.
-            if (!checks.expect(terrain->setTerrain(heights, settings), "new unuploaded terrain"))
+            if (!checks.expect(terrain->generateNoise(recipe, settings), "new unuploaded terrain"))
                 return false;
             scene.submitRenderData();
             const ModelHandle retired = terrain->getModel();
@@ -494,7 +863,8 @@ namespace Engine
             renderer.setDeferredRenderingEnabled(false);
             auto* forwardObject = scene.createGameObject("Forward terrain");
             auto* forward = forwardObject != nullptr ? forwardObject->addComponent<TerrainComponent>() : nullptr;
-            if (!checks.expect(forward != nullptr && forward->setTerrain(heights, settings), "forward terrain fixture"))
+            recipe.mode = TerrainNoiseMode::Perlin;
+            if (!checks.expect(forward != nullptr && forward->generateNoise(recipe, settings), "forward Perlin terrain fixture"))
                 return false;
             renderer.setOcclusionCullingEnabled(true);
             for (int frame = 0; frame < 4; ++frame)
@@ -548,14 +918,16 @@ namespace Engine
             }
             Checks checks;
             Heightmap imported;
-            if (!validateOptions(checks) || !validateHeightmap(checks, directory, imported) || !validateMesh(checks)
-                || !validateComponent(checks, directory, imported) || !validateInspector(checks)
+            if (!validateOptions(checks) || !validateHeightmap(checks, directory, imported) || !validateNoise(checks) || !validateMesh(checks)
+                || !validateComponent(checks, directory, imported) || !validateNoisePersistence(checks, directory)
+                || !validateInspector(checks)
                 || !validateRendering(checks, renderer, directory))
                 return false;
             std::ofstream report(directory / L"terrain-results.txt");
             report << "PASS: " << checks.count << " terrain checks\n"
                 << "8/16-bit image precision, mesh geometry, scene/prefab/clone, Inspector, lifecycle,\n"
-                << "Deferred/Forward rendering, queued geometry lifetime and D3D12 diagnostics.\n";
+                << "Perlin/FBM reproducibility, parameter bounds, Deferred/Forward noise terrain rendering,\n"
+                << "queued geometry lifetime and D3D12 diagnostics.\n";
             report.close();
             if (!report)
             {

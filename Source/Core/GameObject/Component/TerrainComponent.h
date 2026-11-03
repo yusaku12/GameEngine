@@ -5,6 +5,7 @@
 #include "Core\GameObject\Component.h"
 #include "Terrain\Heightmap.h"
 #include "Terrain\TerrainMeshBuilder.h"
+#include "Terrain\TerrainNoise.h"
 
 namespace Engine
 {
@@ -29,6 +30,17 @@ namespace Engine
          */
         bool setTerrain(const Heightmap& heightmap, const TerrainMeshSettings& settings);
 
+        /**
+         * @brief Generates and applies Perlin/FBM heights and mesh settings transactionally.
+         * @param noise Generation recipe to retain for reproducible editing.
+         * @param mesh Local-space dimensions and UV tiling.
+         * @return True on success. Failure preserves the previous geometry and applied recipe.
+         */
+        bool generateNoise(const TerrainNoiseSettings& noise, const TerrainMeshSettings& mesh);
+
+        /** @brief Gets the last applied noise recipe, or defaults if none was applied. */
+        const TerrainNoiseSettings& getNoiseSettings() const noexcept { return m_noiseSettings; }
+
         /** @brief Gets immutable height data, including all samples saved with the scene. */
         const Heightmap& getHeightmap() const noexcept { return m_heightmap; }
         /** @brief Gets the applied mesh settings. */
@@ -41,7 +53,7 @@ namespace Engine
         bool getCastShadows() const noexcept { return m_castShadows; }
 
         /** @brief Gets the version of the embedded terrain payload. */
-        std::uint32_t getPayloadVersion() const noexcept override { return 1; }
+        std::uint32_t getPayloadVersion() const noexcept override { return 2; }
         /** @brief Saves samples and settings; no external image/model reference is required. */
         bool serializePayload(std::vector<std::uint8_t>& payload) const override;
         /** @brief Restores and validates samples and settings before replacing the terrain. */
@@ -61,6 +73,8 @@ namespace Engine
         Heightmap m_heightmap;
         TerrainMeshSettings m_settings;
         TerrainMeshSettings m_editSettings;
+        TerrainNoiseSettings m_noiseSettings;
+        TerrainNoiseSettings m_editNoiseSettings;
         ModelHandle m_model;
         std::uint32_t m_objectID = 0;
         bool m_castShadows = true;

@@ -2,6 +2,7 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="Source\Terrain\Heightmap.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainNoise.cpp" />
     <ClCompile Include="Source\Terrain\TerrainMeshBuilder.cpp" />
     <ClCompile Include="Source\Terrain\TerrainValidation.cpp" />
     <ClCompile Include="Source\Core\GameObject\Component\TerrainComponent.cpp" />
@@ -126,6 +127,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Terrain\Heightmap.h" />
+    <ClInclude Include="Source\Terrain\TerrainNoise.h" />
     <ClInclude Include="Source\Terrain\TerrainMeshBuilder.h" />
     <ClInclude Include="Source\Terrain\TerrainValidation.h" />
     <ClInclude Include="Source\Core\GameObject\Component\TerrainComponent.h" />
