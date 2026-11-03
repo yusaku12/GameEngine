@@ -2404,6 +2404,11 @@ namespace Engine
         GameObject* const gameObject = component.getGameObject();
         if (m_impl->rigidbodies.contains(gameObject))
             return true;
+        if (gameObject->hasComponent<CharacterControllerComponent>())
+        {
+            LOG_ERROR("[PhysicsWorld] A GameObject with a Character Controller cannot receive a Rigidbody.");
+            return false;
+        }
         const bool hasTriangleMesh = std::any_of(
             m_impl->colliders.begin(),
             m_impl->colliders.end(),
@@ -2810,6 +2815,11 @@ namespace Engine
             return true;
 
         GameObject* const gameObject = component.getGameObject();
+        if (gameObject->hasComponent<RigidbodyComponent>())
+        {
+            LOG_ERROR("[PhysicsWorld] A GameObject with a Rigidbody cannot receive a Character Controller.");
+            return false;
+        }
         const Vector3 position = gameObject->getWorldPosition();
         PxMaterial* const material = m_impl->physics->createMaterial(0.5f, 0.5f, 0.0f);
         if (material == nullptr)

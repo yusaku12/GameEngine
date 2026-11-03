@@ -171,6 +171,7 @@
     <ClInclude Include="Source\Physics\PhysicsWorld.h" />
     <ClInclude Include="Source\Physics\Internal\PhysicsPayload.h" />
     <ClInclude Include="Source\Physics\Character\CharacterControllerComponent.h" />
+    <ClInclude Include="Source\Physics\Character\CharacterControllerMovementComponent.h" />
     <ClInclude Include="Source\Physics\Joint\JointComponent.h" />
     <ClInclude Include="Source\Physics\Rigidbody\RigidbodyComponent.h" />
     <ClInclude Include="Source\Physics\Collider\ColliderComponent.h" />
@@ -330,6 +331,7 @@
     <ClCompile Include="Source\Physics\PhysicsMeshAsset.cpp" />
     <ClCompile Include="Source\Physics\PhysicsWorld.cpp" />
     <ClCompile Include="Source\Physics\Character\CharacterControllerComponent.cpp" />
+    <ClCompile Include="Source\Physics\Character\CharacterControllerMovementComponent.cpp" />
     <ClCompile Include="Source\Physics\Joint\JointComponent.cpp" />
     <ClCompile Include="Source\Physics\Rigidbody\RigidbodyComponent.cpp" />
     <ClCompile Include="Source\Physics\Collider\ColliderComponent.cpp" />

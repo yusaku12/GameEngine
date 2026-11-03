@@ -3,6 +3,7 @@
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Core\GameObject\GameObject.h"
 #include "Physics\Character\CharacterControllerComponent.h"
+#include "Physics\Character\CharacterControllerMovementComponent.h"
 #include "Physics\Joint\JointComponent.h"
 #include "Physics\Collider\BoxColliderComponent.h"
 #include "Physics\Collider\CapsuleColliderComponent.h"
@@ -48,6 +49,8 @@ namespace Engine
         if (registry.registerType<RigidbodyComponent>("Rigidbody", false, false, true,
                 [](const GameObject& object) -> std::string_view
                 {
+                    if (object.hasComponent<CharacterControllerComponent>())
+                        return "Rigidbody cannot share a GameObject with a CharacterController.";
                     return object.hasComponent<MeshColliderComponent>() || object.hasComponent<TerrainColliderComponent>()
                         ? "Mesh Collider requires a static actor without a Rigidbody." : std::string_view{};
                 }) == 0
@@ -68,7 +71,21 @@ namespace Engine
                         return "Terrain Collider requires a static actor without a Rigidbody.";
                     return object.hasComponent<TerrainComponent>() ? std::string_view{} : "Add a Terrain first.";
                 }) == 0
-            || registry.registerType<CharacterControllerComponent>("CharacterController", false, false, true) == 0
+            || registry.registerType<CharacterControllerComponent>("CharacterController", false, false, true,
+                [](const GameObject& object) -> std::string_view
+                {
+                    return object.hasComponent<RigidbodyComponent>()
+                        ? "CharacterController cannot share a GameObject with a Rigidbody." : std::string_view{};
+                }) == 0
+            || registry.registerType<CharacterControllerMovementComponent>("Character Controller Movement",
+                false, false, true,
+                [](const GameObject& object) -> std::string_view
+                {
+                    if (object.hasComponent<RigidbodyComponent>())
+                        return "Remove the Rigidbody; CharacterController manages its own physics actor.";
+                    return object.hasComponent<CharacterControllerComponent>()
+                        ? std::string_view{} : "Add a CharacterController first.";
+                }) == 0
             || registry.registerType<JointComponent>("Joint", false, false, true,
                 [](const GameObject& object) -> std::string_view
                 {

@@ -1031,10 +1031,21 @@ terrain samples when activated.
   Terrain also detaches collision; adding Terrain again reconnects during the
   next fixed update.
 - Existing **CharacterController** movement collides with terrain triangles,
-  uses its slope/step settings, and reports grounding. Gameplay still supplies
-  gravity/downward movement through `move`; no height-snapping player script or
-  automatic gravity was added. Regeneration invalidates cached controller
-  triangles; it does not teleport bodies when ground rises through them.
+  uses its slope/step settings, and reports grounding. The controller itself
+  does not add gravity or height snapping; gameplay supplies downward movement
+  through `move`, or can use the opt-in movement component below. Regeneration
+  invalidates cached controller triangles; it does not teleport bodies when
+  ground rises through them.
+- For a basic playable character, add **CharacterController** and **Character
+  Controller Movement** to the Player GameObject, then make the active **Main
+  Camera** a child of the Player. The movement component reads WASD during
+  fixed updates, moves along world X/Z at 5 units/second, smoothly turns toward
+  movement, and applies gravity. Hold the right mouse button and move the mouse
+  to orbit the third-person camera; it follows behind the Player at a fixed
+  distance and sphere-casts against colliders to avoid clipping through them.
+  Focus the **Game** view while playing. Do not add a **Rigidbody** to the
+  Player: CharacterController already owns its PhysX actor, and the engine
+  rejects using both on the same object.
 
 The public CPU API is independent of PhysX:
 
