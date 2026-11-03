@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <atomic>
 
 namespace Engine
 {
@@ -48,8 +49,10 @@ namespace Engine
      * Identical recipes reproduce identical samples in the same build.
      * @param settings Validated generation recipe; Perlin evaluates exactly one octave.
      * @param destination Replaced only on success. Invalid input is logged.
-     * @return True when all samples were generated and assigned successfully.
+     * @param cancelled Optional cancellation flag, checked each sample row.
+     * @return True when assigned successfully; false on logged invalid input or explicit cancellation.
      * @thread_safety Thread-safe for independent destinations; no shared mutable state.
      */
-    bool generateTerrainNoise(const TerrainNoiseSettings& settings, Heightmap& destination);
+    bool generateTerrainNoise(const TerrainNoiseSettings& settings, Heightmap& destination,
+        const std::atomic<bool>* cancelled = nullptr);
 }

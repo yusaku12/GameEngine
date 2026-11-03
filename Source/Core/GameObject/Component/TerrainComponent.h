@@ -11,6 +11,7 @@
 #include "Terrain\TerrainSurface.h"
 #include "Terrain\TerrainChunks.h"
 #include "Terrain\TerrainLod.h"
+#include "Terrain\TerrainGeneration.h"
 
 namespace Engine
 {
@@ -42,6 +43,28 @@ namespace Engine
          * @return True on success. Failure preserves the previous geometry and applied recipe.
          */
         bool generateNoise(const TerrainNoiseSettings& noise, const TerrainMeshSettings& mesh);
+
+        /**
+         * @brief Queues a background heightmap build using the other applied settings.
+         * @param heightmap Samples copied at request time; caller may change them after return.
+         * @param mesh Dimensions/UVs captured for this request.
+         * @return True if accepted, not necessarily applied. A newer accepted request supersedes this one.
+         * @thread_safety Owner thread only; do not call concurrently with rendering/scene updates.
+         */
+        bool requestTerrain(const Heightmap& heightmap, const TerrainMeshSettings& mesh);
+        /** @brief Queues noise generation and terrain preparation; last applied noise recipe changes only on success. */
+        bool requestNoise(const TerrainNoiseSettings& noise, const TerrainMeshSettings& mesh);
+        /** @brief Queues flat sample generation and terrain preparation; invalid input preserves existing work. */
+        bool requestFlat(std::uint32_t width, std::uint32_t height, float value, const TerrainMeshSettings& mesh);
+        /** @brief Queues image decode and terrain preparation; image I/O happens on the background worker. */
+        bool requestHeightmap(const std::filesystem::path& path, const TerrainMeshSettings& mesh);
+        /** @brief Queues rebuild of applied heights with captured mesh/material/chunk/LOD settings. */
+        bool requestRebuild(const TerrainMeshSettings& mesh, const TerrainMaterialSettings& material,
+            const TerrainChunkSettings& chunks, const TerrainLodSettings& lod);
+        /** @brief Cancels pending work without waiting; the previous terrain remains active. */
+        void cancelGeneration() noexcept;
+        /** @brief Gets owner-thread progress/telemetry; only Applied means the new terrain is live. */
+        TerrainGenerationStatus getGenerationStatus() const noexcept;
 
         /** @brief Gets the last applied noise recipe, or defaults if none was applied. */
         const TerrainNoiseSettings& getNoiseSettings() const noexcept { return m_noiseSettings; }
@@ -109,14 +132,26 @@ namespace Engine
     protected:
         void onLateUpdate(float deltaTime) override;
         void onImGui() override;
+        void onDisable() override;
         void onDestroy() override;
 
     private:
         friend class GameObjectManager;
+        struct DraftSettings
+        {
+            TerrainMeshSettings mesh;
+            TerrainMaterialSettings material;
+            TerrainChunkSettings chunks;
+            TerrainLodSettings lod;
+            TerrainNoiseSettings noise;
+        };
         void submitRenderData();
         void requestHeightmapImport();
         bool rebuild(const Heightmap& heights, const TerrainMeshSettings& mesh, const TerrainMaterialSettings& surface,
             const TerrainChunkSettings& chunks, const TerrainLodSettings& lod);
+        TerrainBuildRequest makeBuildRequest() const;
+        bool queueBuild(TerrainBuildRequest request);
+        bool applyBuild(TerrainBuildResult&& result, const DraftSettings* submittedDrafts = nullptr);
         void drawMaterialInspector();
         void requestLayerTexture(std::size_t layer, std::size_t texture);
 
@@ -129,6 +164,7 @@ namespace Engine
         TerrainLodSettings m_lodSettings;
         TerrainLodSettings m_editLodSettings;
         std::shared_ptr<const TerrainLodSnapshot> m_lodSnapshot;
+        std::shared_ptr<TerrainGenerationTask> m_generation;
         TerrainNoiseSettings m_noiseSettings;
         TerrainNoiseSettings m_editNoiseSettings;
         TerrainMaterialSettings m_materialSettings;

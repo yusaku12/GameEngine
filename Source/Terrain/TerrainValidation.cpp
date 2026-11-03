@@ -2,6 +2,7 @@
 #include "Terrain\TerrainValidation.h"
 #include "Terrain\TerrainCollisionValidation.h"
 #include "Terrain\TerrainLodValidation.h"
+#include "Terrain\TerrainBackgroundValidation.h"
 #include "Terrain\TerrainMeshBuilder.h"
 #include "Terrain\TerrainMaterialSerialization.h"
 #include "Assets\Material\MaterialManager.h"
@@ -890,7 +891,7 @@ namespace Engine
                 return false;
             auto& io = ImGui::GetIO();
             io.IniFilename = io.LogFilename = nullptr;
-            io.DisplaySize = { 1600, 2000 };
+            io.DisplaySize = { 1600, 3200 };
             io.DeltaTime = 1.0f / 60.0f;
             unsigned char* pixels = nullptr;
             int width = 0, height = 0;
@@ -900,14 +901,13 @@ namespace Engine
             TerrainComponent noiseTerrain;
             TerrainComponent* selected = &terrain;
             ImGuiID rebuildButton = 0, applyChunks = 0, enableLod = 0, applyLod = 0;
-            ImVec2 noiseButton;
+            ImGuiID noiseButton = 0, cancelButton = 0;
             ImGuiID materialHeader = 0, enableLayers = 0, applyLayers = 0, resetLayers = 0;
-            bool locateNoiseButton = false;
             const auto frame = [&]
             {
                 ImGui::NewFrame();
                 ImGui::SetNextWindowPos({ 10, 10 }, ImGuiCond_Always);
-                ImGui::SetNextWindowSize({ 1500, 1900 }, ImGuiCond_Always);
+                ImGui::SetNextWindowSize({ 1500, 3100 }, ImGuiCond_Always);
                 ImGui::Begin("Terrain Inspector Validation", nullptr, ImGuiWindowFlags_NoSavedSettings);
                 rebuildButton = ImGui::GetID("Apply / Rebuild");
                 applyChunks = ImGui::GetID("Apply Chunk Settings");
@@ -917,23 +917,35 @@ namespace Engine
                 enableLayers = ImGui::GetID("Enable Layered Material");
                 applyLayers = ImGui::GetID("Apply Terrain Material");
                 resetLayers = ImGui::GetID("Reset Layer Draft");
+                noiseButton = ImGui::GetID("Generate Noise");
+                cancelButton = ImGui::GetID("Cancel Terrain Generation");
                 selected->drawImGui();
-                if (locateNoiseButton)
-                {
-                    const auto minimum = ImGui::GetItemRectMin();
-                    const auto maximum = ImGui::GetItemRectMax();
-                    noiseButton = { (minimum.x + maximum.x) * 0.5f, (minimum.y + maximum.y) * 0.5f };
-                }
                 ImGui::End();
                 ImGui::Render();
             };
+            const auto complete = [&]
+            {
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+                while (selected->getGenerationStatus().pending() && std::chrono::steady_clock::now() < deadline)
+                {
+                    TerrainGenerationQueue::instance().applyCompleted();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+                return checks.expect(selected->getGenerationStatus().stage == TerrainGenerationStage::Applied,
+                    "Inspector background request applies at a frame barrier");
+            };
             frame();
             ImGui::ActivateItemByID(rebuildButton); frame();
+            if (!checks.expect(!terrain.getModel().isValid() && terrain.getGenerationStatus().pending(),
+                "Inspector Apply queues work without generating on the UI thread") || !complete())
+                return false;
             if (!checks.expect(terrain.getModel().isValid() && terrain.getHeightmap().width() == 65,
                 "Inspector Apply/Rebuild button generates terrain"))
                 return false;
             const auto beforeChunks = terrain.getModel();
             ImGui::ActivateItemByID(applyChunks); frame();
+            if (!complete())
+                return false;
             if (!checks.expect(terrain.getModel() != beforeChunks && terrain.getChunks().size() == 1
                 && terrain.getChunkSettings().cellsPerChunk == 64, "Inspector applies chunk settings and publishes metadata"))
                 return false;
@@ -941,21 +953,23 @@ namespace Engine
             if (!checks.expect(!terrain.getLodSettings().enabled, "Inspector LOD edits remain drafts until Apply"))
                 return false;
             ImGui::ActivateItemByID(applyLod); frame();
+            ImGui::ActivateItemByID(enableLod); frame();
+            if (!complete())
+                return false;
             if (!checks.expect(terrain.getLodSettings().enabled && terrain.getLodSnapshot()->chunks[0].levelCount > 1,
                 "Inspector Apply LOD Settings publishes enabled immutable levels"))
                 return false;
-            ImGui::ActivateItemByID(enableLod); frame();
             ImGui::ActivateItemByID(applyLod); frame();
+            if (!complete())
+                return false;
             if (!checks.expect(!terrain.getLodSettings().enabled && terrain.getLodSnapshot()->chunks[0].levelCount == 1,
                 "Inspector can disable LOD and restore full-resolution-only indices"))
                 return false;
             selected = &noiseTerrain;
-            locateNoiseButton = true;
             frame();
-            locateNoiseButton = false;
-            io.AddMousePosEvent(noiseButton.x, noiseButton.y); frame();
-            io.AddMouseButtonEvent(0, true); frame();
-            io.AddMouseButtonEvent(0, false); frame();
+            ImGui::ActivateItemByID(noiseButton); frame();
+            if (!complete())
+                return false;
             Heightmap expected;
             if (!checks.expect(generateTerrainNoise({}, expected) && noiseTerrain.getModel().isValid()
                 && sameHeights(noiseTerrain.getHeightmap(), expected), "Inspector Generate Noise applies default FBM recipe"))
@@ -965,6 +979,8 @@ namespace Engine
             if (!checks.expect(!noiseTerrain.getMaterialSettings().enabled, "Inspector material edits are staged until Apply"))
                 return false;
             ImGui::ActivateItemByID(applyLayers); frame();
+            if (!complete())
+                return false;
             if (!checks.expect(noiseTerrain.getMaterialSettings().enabled && noiseTerrain.getMaterial().isValid(),
                 "Inspector Apply Terrain Material creates layered surface"))
                 return false;
@@ -972,8 +988,17 @@ namespace Engine
             if (!checks.expect(noiseTerrain.getMaterialSettings().enabled, "Inspector Reset Layer Draft does not alter applied material"))
                 return false;
             ImGui::ActivateItemByID(applyLayers); frame();
-            return checks.expect(!noiseTerrain.getMaterialSettings().enabled && !noiseTerrain.getMaterial().isValid(),
-                "Inspector applying disabled draft restores default material");
+            if (!complete())
+                return false;
+            if (!checks.expect(!noiseTerrain.getMaterialSettings().enabled && !noiseTerrain.getMaterial().isValid(),
+                "Inspector applying disabled draft restores default material"))
+                return false;
+            const auto previous = noiseTerrain.getModel();
+            ImGui::ActivateItemByID(noiseButton); frame();
+            ImGui::ActivateItemByID(cancelButton); frame();
+            TerrainGenerationQueue::instance().applyCompleted();
+            return checks.expect(noiseTerrain.getGenerationStatus().stage == TerrainGenerationStage::Cancelled
+                && noiseTerrain.getModel() == previous, "Inspector cancel prevents ready or active background work from applying");
         }
 
         bool renderFrame(DX12Renderer& renderer, Scene* scene)
@@ -1816,6 +1841,7 @@ namespace Engine
             TerrainLayer textured;
             std::size_t collisionChecks = 0;
             std::size_t lodChecks = 0;
+            std::size_t backgroundChecks = 0;
             if (!validateOptions(checks) || !validateHeightmap(checks, directory, imported) || !validateNoise(checks) || !validateMesh(checks)
                 || !validateComponent(checks, directory, imported) || !validateNoisePersistence(checks, directory)
                 || !validateInspector(checks)
@@ -1826,10 +1852,12 @@ namespace Engine
                 || !validateRendering(checks, renderer, directory)
                 || !validateLayerRendering(checks, renderer, directory, textured)
                 || !validateChunkRendering(checks, renderer, directory, textured)
-                || !validateTerrainLod(renderer, directory, lodChecks))
+                || !validateTerrainLod(renderer, directory, lodChecks)
+                || !validateTerrainBackground(renderer, directory, backgroundChecks))
                 return false;
             checks.count += collisionChecks;
             checks.count += lodChecks;
+            checks.count += backgroundChecks;
             std::ofstream report(directory / L"terrain-results.txt");
             report << "PASS: " << checks.count << " terrain checks\n"
                 << "8/16-bit image precision, mesh geometry, scene/prefab/clone, Inspector, lifecycle,\n"
@@ -1843,6 +1871,8 @@ namespace Engine
             report << "Opt-in distance LOD, exact full-resolution boundary edges at all levels, manifold/area checks,\n"
                 << "payload v5/legacy migration, immutable queued LOD snapshots, unchanged cooked physics,\n"
                 << "mixed-LOD pixel comparisons, per-camera chunk culling/LOD and independent full-resolution shadows.\n";
+            report << "Background build parity, latest-wins/cancel/lifetime, applied-only persistence, busy-physics rollback,\n"
+                << "independent CPU thread/owner-thread commit, maximum-grid concurrent frames and atomic GPU snapshots.\n";
             report.close();
             if (!report)
             {

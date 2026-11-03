@@ -809,7 +809,7 @@ bounds culling. `RenderItem::animationBoundsValid` defaults to false, so callers
 that only provide bind-pose bounds retain the previous safe animation bypass.
 Near-plane intersections also retain Hi-Z's visibility bypass.
 
-# Terrain Phase 1/2/3/4/5/6: Generation, materials, PhysX, chunks and LOD
+# Terrain Phase 1/2/3/4/5/6/7: Generation, materials, PhysX, chunks, LOD and background builds
 
 In the Hierarchy context menu choose **Create Terrain**, or add the **Terrain**
 component to an existing GameObject. A new component contains a flat 65x65 grid.
@@ -833,6 +833,9 @@ The Terrain Inspector provides:
   specified X/Z sample counts. This replaces any imported height data.
 - **Generate Noise**: replace heights with seeded Perlin noise or FBM and apply
   the edited mesh dimensions. See the procedural generation controls below.
+- **Background** stage/timings and **Cancel Terrain Generation**: generation
+  and all Apply buttons now queue CPU work; the current terrain stays active
+  until the completed result is applied at a safe frame boundary.
 
 Height samples are linear numeric data in `[0, 1]`, not sRGB colors. Import
 ignores gamma metadata, takes the red channel (ignoring alpha), and maps the
@@ -857,9 +860,10 @@ triangles, area-weighted smooth normals, orthonormal tangent frames, UVs and
 mesh/model bounds. Rebuilds retire the previous model handle; queued immutable
 CPU snapshots and GPU fences keep already submitted geometry safe.
 
-These phases intentionally do **not** implement streaming, asynchronous
-generation, erosion, compute generation or vegetation. Generation/import/cooking is
-synchronous and should be triggered by an authoring action, not every frame.
+These phases intentionally do **not** implement streaming, erosion, compute
+generation or vegetation. Phase 7 makes Inspector generation/import/Apply work
+asynchronous. Existing synchronous C++ APIs and Scene/Prefab loading remain
+synchronous for compatibility; neither API style should regenerate every frame.
 
 ## Procedural generation (Phase 2)
 
@@ -906,7 +910,7 @@ fine detail, and samples landing entirely on lattice intersections produce a
 flat 0.5 map. The generator does not silently change resolution, frequency or
 octave count. Maximum settings are bounds for safe arithmetic and allocation,
 not a recommendation to generate million-vertex terrain with twelve octaves
-on every frame. Background generation belongs to Phase 7.
+on every frame. Background generation is provided by Phase 7 below.
 
 `generateTerrainNoise` in `Source\Terrain\TerrainNoise.h` generates CPU height
 data without registering a model. `TerrainComponent::generateNoise` generates
@@ -1015,7 +1019,8 @@ terrain samples when activated.
   rendered surface and height-query APIs.
 - Import, noise generation and Apply/Rebuild update active collision together
   with geometry. A failed cook/backend update preserves the previous terrain.
-  Rebuild only between physics simulation steps. Cooking is synchronous; do not
+  Synchronous C++ rebuilds must run between physics simulation steps. Phase 7
+  Inspector requests cook in the background and apply at a frame barrier; do not
   rebuild every frame. Object transform changes synchronize at the next physics
   simulation step, just like other static colliders.
 - Collider enablement is independent of Terrain visibility. Disabling/deleting
@@ -1071,10 +1076,10 @@ most 4096 meshes/shapes. The image import limit is unchanged.
 Chunk size edits are drafts until **Apply Chunk Settings**. That button uses
 the applied terrain dimensions, not unapplied Size/Height/UV edits.
 **Apply / Rebuild**, import, flat creation, noise generation and material
-changes retain the applied chunk settings. All chunks rebuild synchronously
-and remain resident: partitioning adds neither distance loading/unloading,
-asynchronous generation nor partial height edits. Phase 6 adds opt-in LOD
-and early chunk culling as described below; terrain-wide bounds are retained.
+changes retain the applied chunk settings. All chunks remain resident:
+partitioning adds neither distance loading/unloading nor partial height edits.
+Phase 6 adds opt-in LOD and early chunk culling; Phase 7 moves Inspector
+rebuilds to the background. Terrain-wide bounds are retained.
 
 Normals, tangent frames and automatic layer weights are calculated from the
 **whole** grid before partitioning. Border vertices copy identical position,
@@ -1186,8 +1191,9 @@ if (!terrain->setLodSettings({ true, 4, 50.0f }))
 
 `getLodSettings()` returns applied settings. `getLodSnapshot()` is null before
 generation and otherwise exposes immutable chunk index ranges matching
-`getModel()`. Applying settings is a synchronous authoring rebuild, including
-full-resolution cooking if a TerrainCollider is attached; it is not intended
+`getModel()`. `setLodSettings` is a synchronous authoring rebuild, including
+full-resolution cooking if a TerrainCollider is attached. Inspector Apply
+queues the same CPU preparation in the background; neither is intended
 as a per-frame camera update. Distance selection and culling do not recook,
 allocate meshes, or modify component state each frame.
 
@@ -1195,6 +1201,104 @@ Payload **version 5** saves applied LOD settings with embedded samples, chunk
 dimensions and materials. Scene/Prefab/Play restore independent generated
 resources; missing/invalid version 5 LOD settings are rejected transactionally.
 Versions 1..4 load with LOD disabled and retain their existing chunk migration.
+
+## Background terrain generation (Phase 7)
+
+The Terrain Inspector's **Generate Noise**, **Create Flat**, **Import Heightmap**,
+**Apply / Rebuild**, **Apply Terrain Material**, **Apply Chunk Settings** and
+**Apply LOD Settings** now submit background requests. No additional checkbox
+is needed. The modal file picker still runs on the main thread; image metadata
+read/decode and all expensive CPU preparation run after selection, on a dedicated
+terrain worker. Material texture-reference registration remains on the owner
+thread; texture decoding/upload still uses the existing renderer texture path.
+
+The worker pipeline is:
+
+1. Copy captured heights, generate Perlin/FBM, create flat samples, or decode WIC.
+2. Generate whole-grid vertices, smooth normals, tangents and UVs.
+3. Calculate whole-grid material layer weights, then partition chunks.
+4. Cook full-resolution PhysX chunk data if a TerrainCollider was attached.
+5. Append LOD indices and publish the prepared CPU result.
+
+Requests own value snapshots. Workers do **not** access components, scenes,
+resource registries, D3D12 resources, PhysX scenes, actors or shapes. Cooking
+uses local parameters/output buffers and produces immutable bytes only.
+One lazy-started background thread is shared by all terrains. It is separate
+from the cooperative frame JobSystem, so a frame/job waiter cannot accidentally
+execute a multi-second terrain build. Work is serial within this queue; it
+does not create one thread per terrain/chunk/request.
+
+The **Background** label shows Queued, Height samples, Mesh, Material weights,
+Chunks, PhysX cooking, LOD, Ready to apply, Applied, Cancelled or Failed.
+These are stages, not equal-duration progress percentages. CPU build and final
+apply timings appear after completion. **Ready to apply** does not mean that
+the new terrain is live. While work is pending, rendering, collision, surface
+queries, model handles, applied settings and saved samples continue using the
+previous terrain. An ungenerated component with an accepted request does not
+run the automatic synchronous fallback or draw partial data.
+
+After game/render/physics work has joined, `Window::run` calls
+`TerrainGenerationQueue::applyCompleted()`. It never waits for the worker and
+attempts at most **one prepared live terrain result per frame**. Resource
+registration and PhysX shape replacement are staged before committing the new
+heightmap, geometry, material, chunk/LOD settings and noise recipe together.
+Invalid input, decoding/cooking failures or backend failure preserve the
+previous applied terrain and emit diagnostics. If TerrainCollider presence
+changed while a build ran, the result is rejected explicitly; request again
+with the current configuration. There is no surprise main-thread recooking.
+
+**Latest accepted request wins for each component.** A new request cancels
+older work without waiting; cancelled queued inputs are pruned and an active
+build drops its result. Noise checks cancellation each sample row, cooking
+checks each chunk, and the remaining work checks between CPU stages. WIC decode
+and an individual CPU stage/cooked chunk are not forcibly interrupted.
+**Cancel Terrain Generation** also discards already-Ready output. Invalid
+requests do not supersede valid work. A successful synchronous edit/load/clone
+into the same component invalidates its pending asynchronous result.
+Destruction/removal cancels before callbacks can access the owner; lifecycle
+deactivation also cancels active gameplay builds. A replacement component at
+the same GameObject GUID cannot receive the old component's result.
+
+Each Apply button captures the applied heightmap and **other applied settings**
+plus that button's draft. Mesh generation/import/flat/noise captures the mesh
+dimension draft. Requests do not implicitly merge a previous pending Apply;
+submit the desired complete configuration through `requestRebuild` when
+changing multiple settings together. Editing drafts after submission does not
+alter the captured build, and completing a build does not overwrite newer
+Inspector drafts. Scene/Prefab/Play snapshots contain only applied data:
+pending/cancelled requests, progress and unapplied drafts are never saved,
+cloned or replayed. Payload version stays **5**.
+
+Existing immediate-return APIs (`setTerrain`, `generateNoise`, `setMaterialSettings`,
+`setChunkSettings`, `setLodSettings`) retain synchronous success/failure semantics.
+The new owner-thread APIs return **request acceptance**, not completion:
+
+```cpp
+if (terrain->requestNoise(recipe, meshSettings))
+{
+    // Keep using the current terrain. Later, at an owner-thread update:
+    const auto status = terrain->getGenerationStatus();
+    // Only status.stage == TerrainGenerationStage::Applied means the result is live.
+}
+```
+
+Additional APIs are `requestTerrain`, `requestFlat`, `requestHeightmap`,
+`requestRebuild` and `cancelGeneration`. They must be serialized with scene,
+render and other owner operations, just like the existing component APIs.
+Custom/headless loops must call `TerrainGenerationQueue::applyCompleted()`
+after joining all game/render/physics work, and `shutdown()` **before**
+`PhysicsSystem::shutdown()`. Shutdown cancels and joins the worker; component
+destruction and ordinary cancellation never join. The normal engine loop and
+shutdown are already wired.
+
+**Limits:** this phase removes expensive CPU preparation from the frame, not
+all final-application costs. Creating/attaching PhysX shapes and the renderer's
+first GPU buffer/texture uploads remain synchronous at their existing safe
+points. A large result can therefore still cause a one-time application/upload
+spike; this is not a guaranteed 16ms-frame streaming system. Generation keeps
+the previous terrain and an independent replacement in memory, increasing
+peak RAM. Chunks remain resident; there is no incremental GPU upload,
+distance streaming or partial terrain editing.
 
 ## Terrain validation
 
@@ -1276,3 +1380,21 @@ queued snapshot lifetime. The maximum 4096-chunk grid also renders with LOD
 enabled: the test requires more than 50% fewer camera triangles and unchanged
 flat reference pixels. Outputs include `lod.scene`, `lod.prefab`,
 `terrain-lod` and `terrain-lod-layers` HDR/display captures.
+
+Phase 7 checks byte-identical applied payloads, chunk/LOD indices, bounds,
+every vertex attribute and cooked physics against synchronous oracles;
+8/16-bit worker WIC decoding; immutable input snapshots; saved/cloned applied
+state during generation; latest-wins stress, invalid replacement, active/Ready
+cancellation, Inspector cancel and preservation of newer drafts, first-use
+lazy generation, component removal/re-addition, destruction, worker shutdown/
+restart, independent terrain requests and one-result-per-frame application.
+Busy-physics and collider-presence-change cases must reject without changing
+live geometry or collision. The maximum 1025x1025 12-octave fixture verifies
+distinct worker/apply thread IDs, real concurrent frames and JobSystem work,
+old GPU pixels and physics queries, concurrent PhysX cooking/simulation,
+256-chunk application, Deferred/Forward+Hi-Z, old queued snapshots and first
+GPU upload after owner destruction. Timing assertions are intentionally broad
+(request <100ms, observed CPU-generation frames <150ms on the validation
+machine), not a portable frame-rate guarantee. Fixtures include
+`background-pending.scene`, `background-height16.png`, `terrain-background`
+HDR/display captures and measured `background-timing.txt`.

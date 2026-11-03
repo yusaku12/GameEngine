@@ -6,7 +6,6 @@
 namespace Engine
 {
     class TerrainComponent;
-    struct ModelResource;
 
     /**
      * @brief Optional static PhysX triangle collider generated from a Terrain on the same GameObject.
@@ -38,7 +37,6 @@ namespace Engine
 
     private:
         friend class TerrainComponent;
-        static bool cookChunks(const ModelResource& model, std::vector<std::shared_ptr<const PhysicsMeshAsset>>& assets);
         bool replaceAssets(std::vector<std::shared_ptr<const PhysicsMeshAsset>> assets, ModelHandle source) noexcept;
         bool generateAsset();
         void detachTerrain() noexcept;

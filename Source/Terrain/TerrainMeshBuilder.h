@@ -14,6 +14,8 @@ namespace Engine
         float heightOffset = 0.0f;
         float uvRepeatX = 1.0f;
         float uvRepeatZ = 1.0f;
+        /** @brief Compares all dimension and UV settings. */
+        bool operator==(const TerrainMeshSettings&) const = default;
     };
 
     /**

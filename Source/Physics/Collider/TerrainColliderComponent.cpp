@@ -8,42 +8,11 @@
 #include "Assets\Model\ModelManager.h"
 #include "Terrain\TerrainMeshBuilder.h"
 #include "Terrain\TerrainChunks.h"
+#include "Terrain\TerrainBuild.h"
 #include <imgui.h>
 
 namespace Engine
 {
-    bool TerrainColliderComponent::cookChunks(const ModelResource& model,
-        std::vector<std::shared_ptr<const PhysicsMeshAsset>>& assets)
-    {
-        if (model.meshes.empty())
-        {
-            LOG_ERROR("[TerrainCollider] Terrain must contain at least one chunk.");
-            return false;
-        }
-        std::vector<std::shared_ptr<const PhysicsMeshAsset>> replacement;
-        replacement.reserve(model.meshes.size());
-        for (const auto& mesh : model.meshes)
-        {
-            std::vector<Vector3> vertices;
-            vertices.reserve(mesh.vertices.size());
-            for (const auto& vertex : mesh.vertices)
-                vertices.push_back(vertex.position);
-            if (mesh.subMeshes.size() != 1 || mesh.subMeshes[0].indexStart != 0
-                || mesh.subMeshes[0].indexCount > mesh.indices.size())
-            {
-                LOG_ERROR("[TerrainCollider] Expected the full-resolution chunk in submesh zero.");
-                return false;
-            }
-            auto asset = PhysicsMeshAsset::cookTriangle(vertices,
-                std::span(mesh.indices).first(mesh.subMeshes[0].indexCount));
-            if (!asset)
-                return false;
-            replacement.push_back(std::move(asset));
-        }
-        assets = std::move(replacement);
-        return true;
-    }
-
     bool TerrainColliderComponent::replaceAssets(std::vector<std::shared_ptr<const PhysicsMeshAsset>> assets,
         const ModelHandle source) noexcept
     {
@@ -79,14 +48,14 @@ namespace Engine
         }
         std::vector<std::shared_ptr<const PhysicsMeshAsset>> assets;
         if (const auto model = ModelManager::instance().get(terrain->getModel()))
-            return cookChunks(*model, assets) && replaceAssets(std::move(assets), terrain->getModel());
+            return cookTerrainChunks(*model, assets) && replaceAssets(std::move(assets), terrain->getModel());
         ModelResource model;
         std::vector<TerrainChunk> chunks;
         if (!buildTerrainModel(terrain->getHeightmap(), terrain->getSettings(), model)
             || !partitionTerrainModel(model, terrain->getHeightmap().width(), terrain->getHeightmap().height(),
                 terrain->getChunkSettings(), chunks))
             return false;
-        return cookChunks(model, assets) && replaceAssets(std::move(assets), terrain->getModel());
+        return cookTerrainChunks(model, assets) && replaceAssets(std::move(assets), terrain->getModel());
     }
 
     PhysicsShapeGeometry TerrainColliderComponent::getGeometry(const Vector3& scale) const noexcept

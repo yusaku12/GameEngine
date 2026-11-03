@@ -1,4 +1,5 @@
 ﻿#include "Pch.h"
+#include "Terrain\TerrainGeneration.h"
 #include "Assets\Model\ModelManager.h"
 #include "Core\Scene\SceneManager.h"
 #include "Core\System\Window.h"
@@ -163,6 +164,7 @@ namespace Engine
             if (scene == nullptr || !Serialization::SceneSerializer{}.load(options.scenePath, *scene))
             {
                 LOG_ERROR("[Startup] Runtime scene could not be loaded: {}", String::fromWide(options.scenePath.c_str()).view());
+                TerrainGenerationQueue::instance().shutdown();
                 SceneManager::instance().shutdown();
                 PhysicsSystem::instance().shutdown();
                 finalizeCore();
@@ -193,6 +195,7 @@ namespace Engine
         if (!RegisterClassEx(&windowClass))
         {
             LOG_CRITICAL("[Engine] ウィンドウクラスの登録に失敗しました");
+            TerrainGenerationQueue::instance().shutdown();
             SceneManager::instance().shutdown();
             PhysicsSystem::instance().shutdown();
             finalizeCore();
@@ -213,6 +216,7 @@ namespace Engine
         if (hwnd == nullptr)
         {
             LOG_CRITICAL("[Engine] ウィンドウの作成に失敗しました");
+            TerrainGenerationQueue::instance().shutdown();
             SceneManager::instance().shutdown();
             PhysicsSystem::instance().shutdown();
             finalizeCore();
@@ -234,6 +238,7 @@ namespace Engine
                 // 描画スレッドの役割をメインスレッドに戻す
                 setCurrentThreadRole(ThreadRole::Main);
                 DestroyWindow(hwnd);
+                TerrainGenerationQueue::instance().shutdown();
                 SceneManager::instance().shutdown();
                 PhysicsSystem::instance().shutdown();
                 finalizeCore();
@@ -263,6 +268,7 @@ namespace Engine
                 SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
             }
             setCurrentThreadRole(ThreadRole::Main);
+            TerrainGenerationQueue::instance().shutdown();
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
 
             // GPUリソースの終了処理は描画側の役割として扱う

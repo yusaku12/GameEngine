@@ -43,6 +43,7 @@ namespace Engine
 
     TerrainComponent::~TerrainComponent()
     {
+        cancelGeneration();
         if (m_model.isValid())
             ModelManager::instance().unload(m_model);
         if (m_material.isValid())
@@ -72,44 +73,146 @@ namespace Engine
     bool TerrainComponent::rebuild(const Heightmap& heightmap, const TerrainMeshSettings& settings,
         const TerrainMaterialSettings& surface, const TerrainChunkSettings& chunkSettings, const TerrainLodSettings& lodSettings)
     {
-        if (!validateTerrainChunkSettings(chunkSettings) || !validateTerrainLodSettings(lodSettings))
+        auto request = makeBuildRequest();
+        request.heightmap = heightmap;
+        request.mesh = settings;
+        request.material = surface;
+        request.chunks = chunkSettings;
+        request.lod = lodSettings;
+        if (!resolveTerrainMaterialTextures(request.material))
             return false;
-        Heightmap replacement = heightmap;
-        TerrainMaterialSettings materialSettings = surface;
-        if (!resolveTerrainMaterialTextures(materialSettings))
+        TerrainBuildResult result;
+        if (!buildTerrain(std::move(request), result) || !applyBuild(std::move(result)))
             return false;
-        TerrainMaterialSettings editMaterialSettings = materialSettings;
-        ModelResource model;
-        if (!buildTerrainModel(replacement, settings, model)
-            || !applyTerrainLayerWeights(replacement, materialSettings, model))
+        cancelGeneration();
+        return true;
+    }
+
+    TerrainBuildRequest TerrainComponent::makeBuildRequest() const
+    {
+        TerrainBuildRequest request;
+        request.mesh = m_settings;
+        request.material = m_materialSettings;
+        request.chunks = m_chunkSettings;
+        request.lod = m_lodSettings;
+        request.noise = m_noiseSettings;
+        request.collision = getGameObject() && getGameObject()->hasComponent<TerrainColliderComponent>();
+        return request;
+    }
+
+    bool TerrainComponent::requestTerrain(const Heightmap& heightmap, const TerrainMeshSettings& mesh)
+    {
+        auto request = makeBuildRequest();
+        request.heightmap = heightmap;
+        request.mesh = mesh;
+        return queueBuild(std::move(request));
+    }
+
+    bool TerrainComponent::requestNoise(const TerrainNoiseSettings& noise, const TerrainMeshSettings& mesh)
+    {
+        auto request = makeBuildRequest();
+        request.source = TerrainBuildSource::Noise;
+        request.noise = noise;
+        request.mesh = mesh;
+        return queueBuild(std::move(request));
+    }
+
+    bool TerrainComponent::requestFlat(const std::uint32_t width, const std::uint32_t height, const float value,
+        const TerrainMeshSettings& mesh)
+    {
+        auto request = makeBuildRequest();
+        request.source = TerrainBuildSource::Flat;
+        request.flatWidth = width;
+        request.flatHeight = height;
+        request.flatHeightValue = value;
+        request.mesh = mesh;
+        return queueBuild(std::move(request));
+    }
+
+    bool TerrainComponent::requestHeightmap(const std::filesystem::path& path, const TerrainMeshSettings& mesh)
+    {
+        auto request = makeBuildRequest();
+        request.source = TerrainBuildSource::Image;
+        request.image = path;
+        request.mesh = mesh;
+        return queueBuild(std::move(request));
+    }
+
+    bool TerrainComponent::requestRebuild(const TerrainMeshSettings& mesh, const TerrainMaterialSettings& material,
+        const TerrainChunkSettings& chunks, const TerrainLodSettings& lod)
+    {
+        auto request = makeBuildRequest();
+        request.heightmap = m_heightmap;
+        request.mesh = mesh;
+        request.material = material;
+        request.chunks = chunks;
+        request.lod = lod;
+        return queueBuild(std::move(request));
+    }
+
+    bool TerrainComponent::queueBuild(TerrainBuildRequest request)
+    {
+        if (!validateTerrainBuildRequest(request) || !resolveTerrainMaterialTextures(request.material))
             return false;
-        std::vector<TerrainChunk> chunks;
-        if (!partitionTerrainModel(model, replacement.width(), replacement.height(), chunkSettings, chunks))
+        const DraftSettings drafts{ m_editSettings, m_editMaterialSettings, m_editChunkSettings, m_editLodSettings, m_editNoiseSettings };
+        auto task = TerrainGenerationQueue::instance().submit(std::move(request), [this, drafts](TerrainBuildResult&& result)
+        {
+            std::string success = "Background terrain applied.";
+            std::string failure = "Background apply failed; previous terrain preserved. See log.";
+            const bool applied = applyBuild(std::move(result), &drafts);
+            m_status = applied ? std::move(success) : std::move(failure);
+            return applied;
+        });
+        if (!task)
             return false;
+        cancelGeneration();
+        m_generation = std::move(task);
+        m_status = "Background terrain queued; previous terrain remains active.";
+        return true;
+    }
+
+    void TerrainComponent::cancelGeneration() noexcept
+    {
+        if (m_generation && m_generation->status().pending())
+            m_generation->cancel();
+    }
+
+    TerrainGenerationStatus TerrainComponent::getGenerationStatus() const noexcept
+    {
+        return m_generation ? m_generation->status() : TerrainGenerationStatus{};
+    }
+
+    bool TerrainComponent::applyBuild(TerrainBuildResult&& result, const DraftSettings* submittedDrafts)
+    {
+        auto& request = result.applied;
+        auto* collider = getGameObject() ? getGameObject()->getComponent<TerrainColliderComponent>() : nullptr;
+        if (request.collision != (collider != nullptr))
+        {
+            LOG_ERROR("[Terrain] Collider presence changed during generation; request generation again.");
+            return false;
+        }
+        const bool updateMesh = !submittedDrafts || m_editSettings == submittedDrafts->mesh;
+        const bool updateMaterial = !submittedDrafts || m_editMaterialSettings == submittedDrafts->material;
+        const bool updateChunks = !submittedDrafts || m_editChunkSettings == submittedDrafts->chunks;
+        const bool updateLod = !submittedDrafts || m_editLodSettings == submittedDrafts->lod;
+        const bool updateNoise = !submittedDrafts || m_editNoiseSettings == submittedDrafts->noise;
+        TerrainMaterialSettings editMaterialSettings;
+        if (updateMaterial)
+            editMaterialSettings = request.material;
         MaterialAsset material;
-        if (materialSettings.enabled)
+        if (request.material.enabled)
         {
             material.name = "Terrain Layers";
-            material.terrain = materialSettings;
+            material.terrain = request.material;
         }
         PendingTerrainResources pending;
-        auto* collider = getGameObject() ? getGameObject()->getComponent<TerrainColliderComponent>() : nullptr;
-        std::vector<std::shared_ptr<const PhysicsMeshAsset>> collision;
-        if (collider)
-        {
-            if (!TerrainColliderComponent::cookChunks(model, collision))
-                return false;
-        }
-        auto lod = std::make_shared<TerrainLodSnapshot>();
-        if (!buildTerrainLods(model, chunks, lodSettings, *lod))
-            return false;
-        pending.model = ModelManager::instance().create(std::move(model));
+        pending.model = ModelManager::instance().create(std::move(result.model));
         if (!pending.model.isValid())
         {
             LOG_ERROR("[Terrain] Cannot register generated terrain model.");
             return false;
         }
-        if (materialSettings.enabled)
+        if (request.material.enabled)
         {
             pending.material = MaterialManager::instance().create(std::move(material));
             if (!pending.material.isValid())
@@ -120,21 +223,31 @@ namespace Engine
         }
         const ModelHandle previous = m_model;
         const MaterialHandle previousMaterial = m_material;
-        if (collider && !collider->replaceAssets(std::move(collision), pending.model))
+        if (collider && !collider->replaceAssets(std::move(result.collision), pending.model))
             return false;
-        m_heightmap = std::move(replacement);
-        m_settings = settings;
-        m_editSettings = settings;
-        m_chunkSettings = chunkSettings;
-        m_editChunkSettings = chunkSettings;
-        m_chunks = std::move(chunks);
-        m_lodSettings = lodSettings;
-        m_editLodSettings = lodSettings;
-        m_lodSnapshot = std::move(lod);
+        m_heightmap = std::move(request.heightmap);
+        m_settings = request.mesh;
+        m_chunkSettings = request.chunks;
+        m_chunks = std::move(result.chunks);
+        m_lodSettings = request.lod;
+        m_lodSnapshot = std::move(result.lod);
         m_model = std::exchange(pending.model, ModelHandle{});
         m_material = std::exchange(pending.material, MaterialHandle{});
-        m_materialSettings = std::move(materialSettings);
-        m_editMaterialSettings = std::move(editMaterialSettings);
+        m_materialSettings = std::move(request.material);
+        if (updateMesh)
+            m_editSettings = request.mesh;
+        if (updateChunks)
+            m_editChunkSettings = request.chunks;
+        if (updateLod)
+            m_editLodSettings = request.lod;
+        if (updateMaterial)
+            m_editMaterialSettings = std::move(editMaterialSettings);
+        if (request.source == TerrainBuildSource::Noise)
+        {
+            m_noiseSettings = request.noise;
+            if (updateNoise)
+                m_editNoiseSettings = request.noise;
+        }
         m_generationFailed = false;
         if (previous.isValid())
             ModelManager::instance().unload(previous);
@@ -156,9 +269,15 @@ namespace Engine
 
     void TerrainComponent::onDestroy()
     {
+        cancelGeneration();
         if (auto* object = getGameObject())
             if (auto* collider = object->getComponent<TerrainColliderComponent>())
                 collider->detachTerrain();
+    }
+
+    void TerrainComponent::onDisable()
+    {
+        cancelGeneration();
     }
 
     bool TerrainComponent::serializePayload(std::vector<std::uint8_t>& payload) const
@@ -283,6 +402,8 @@ namespace Engine
             return;
         if (!m_model.isValid())
         {
+            if (getGenerationStatus().pending())
+                return;
             if (m_generationFailed)
                 return;
             if (!setTerrain(m_heightmap, m_settings))
@@ -327,8 +448,9 @@ namespace Engine
         if (object == nullptr)
             return;
         const ObjectGUID objectGuid = object->getGUID();
+        const auto componentID = m_objectID;
         const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
-        MainThreadDispatcher::instance().post([objectGuid, ownerWindow]
+        MainThreadDispatcher::instance().post([objectGuid, componentID, ownerWindow]
         {
             static constexpr std::array filters = {
                 FileDialogFilter{ L"Heightmap Images", L"*.png;*.tif;*.tiff;*.bmp" },
@@ -343,7 +465,7 @@ namespace Engine
             if (target == nullptr)
                 target = manager.getPersistentScene()->find(objectGuid);
             auto* terrain = target != nullptr ? target->getComponent<TerrainComponent>() : nullptr;
-            if (terrain == nullptr || result == DialogResult::Cancel)
+            if (terrain == nullptr || terrain->m_objectID != componentID || result == DialogResult::Cancel)
                 return;
             if (result != DialogResult::Ok || paths.empty())
             {
@@ -351,13 +473,11 @@ namespace Engine
                 LOG_ERROR("[Terrain] Heightmap file dialog failed.");
                 return;
             }
-            Heightmap heightmap;
-            if (!heightmap.loadImage(paths.front()) || !terrain->setTerrain(heightmap, terrain->m_editSettings))
+            if (!terrain->requestHeightmap(paths.front(), terrain->m_editSettings))
             {
                 terrain->m_status = "Heightmap import failed; previous terrain preserved. See log.";
                 return;
             }
-            terrain->m_status = "Heightmap imported and embedded in terrain.";
         });
     }
 
@@ -367,8 +487,9 @@ namespace Engine
         if (object == nullptr)
             return;
         const ObjectGUID objectGuid = object->getGUID();
+        const auto componentID = m_objectID;
         const HWND ownerWindow = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
-        MainThreadDispatcher::instance().post([objectGuid, ownerWindow, layer, texture]
+        MainThreadDispatcher::instance().post([objectGuid, componentID, ownerWindow, layer, texture]
         {
             static constexpr std::array filters = {
                 FileDialogFilter{ L"Terrain Textures", L"*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.tif;*.tiff;*.dds" },
@@ -382,7 +503,7 @@ namespace Engine
             if (target == nullptr)
                 target = manager.getPersistentScene()->find(objectGuid);
             auto* terrain = target != nullptr ? target->getComponent<TerrainComponent>() : nullptr;
-            if (terrain == nullptr || result == DialogResult::Cancel)
+            if (terrain == nullptr || terrain->m_objectID != componentID || result == DialogResult::Cancel)
                 return;
             if (result != DialogResult::Ok || paths.empty())
             {
@@ -471,8 +592,8 @@ namespace Engine
             m_editMaterialSettings = TerrainMaterialSettings{};
         ImGui::SameLine();
         if (ImGui::Button("Apply Terrain Material"))
-            m_status = setMaterialSettings(m_editMaterialSettings)
-                ? "Terrain material applied." : "Material apply failed; previous terrain preserved. See log.";
+            m_status = requestRebuild(m_settings, m_editMaterialSettings, m_chunkSettings, m_lodSettings)
+                ? "Terrain material queued." : "Material request failed; previous terrain preserved. See log.";
     }
 
     void TerrainComponent::onImGui()
@@ -492,19 +613,19 @@ namespace Engine
         ImGui::Text("Applied Chunks: %zu", m_chunks.size());
         ImGui::TextWrapped("Chunk edges share height, normal, UV and layer data. All chunks remain resident.");
         if (ImGui::Button("Apply Chunk Settings"))
-            m_status = setChunkSettings(m_editChunkSettings)
-                ? "Terrain chunks rebuilt." : "Chunk rebuild failed; previous terrain preserved. See log.";
+            m_status = requestRebuild(m_settings, m_materialSettings, m_editChunkSettings, m_lodSettings)
+                ? "Terrain chunks queued." : "Chunk request failed; previous terrain preserved. See log.";
         ImGui::Checkbox("Enable Terrain LOD", &m_editLodSettings.enabled);
         ImGui::InputScalar("Maximum LOD (1..4)", ImGuiDataType_U32, &m_editLodSettings.maxLevel);
         ImGui::DragFloat("LOD Distance", &m_editLodSettings.distance, 1, 0.1f, 1000000);
         ImGui::TextWrapped("Distance to chunk bounds; thresholds double each level. "
             "Borders stay full resolution. Physics is unchanged. Chunk frustum culling is per view.");
         if (ImGui::Button("Apply LOD Settings"))
-            m_status = setLodSettings(m_editLodSettings)
-                ? "Terrain LOD applied." : "LOD apply failed; previous terrain preserved. See log.";
+            m_status = requestRebuild(m_settings, m_materialSettings, m_chunkSettings, m_editLodSettings)
+                ? "Terrain LOD queued." : "LOD request failed; previous terrain preserved. See log.";
         if (ImGui::Button("Apply / Rebuild"))
-            m_status = setTerrain(m_heightmap, m_editSettings)
-                ? "Terrain rebuilt." : "Rebuild failed; previous terrain preserved. See log.";
+            m_status = requestTerrain(m_heightmap, m_editSettings)
+                ? "Terrain rebuild queued." : "Rebuild request failed; previous terrain preserved. See log.";
         ImGui::SameLine();
         if (ImGui::Button("Import Heightmap..."))
             requestHeightmapImport();
@@ -515,13 +636,12 @@ namespace Engine
         ImGui::TextDisabled("2..%u samples per axis. Replaces current heights.", Heightmap::MAX_DIMENSION);
         if (ImGui::Button("Create Flat"))
         {
-            Heightmap heightmap;
             const bool valid = m_flatWidth >= 2 && m_flatHeight >= 2;
             if (!valid)
                 LOG_ERROR("[Terrain] Flat grid dimensions must be at least 2.");
-            m_status = valid && heightmap.createFlat(static_cast<std::uint32_t>(m_flatWidth),
-                static_cast<std::uint32_t>(m_flatHeight), m_flatValue) && setTerrain(heightmap, m_editSettings)
-                ? "Flat terrain created." : "Flat terrain creation failed; previous terrain preserved. See log.";
+            m_status = valid && requestFlat(static_cast<std::uint32_t>(m_flatWidth),
+                static_cast<std::uint32_t>(m_flatHeight), m_flatValue, m_editSettings)
+                ? "Flat terrain queued." : "Flat request failed; previous terrain preserved. See log.";
         }
         ImGui::Separator();
         drawMaterialInspector();
@@ -544,9 +664,24 @@ namespace Engine
         ImGui::TextWrapped("Generate replaces heights and applies mesh settings above. "
             "Frequency spans each grid axis; offsets are noise-space coordinates.");
         if (ImGui::Button("Generate Noise"))
-            m_status = generateNoise(m_editNoiseSettings, m_editSettings)
-                ? "Noise terrain generated." : "Noise generation failed; previous terrain preserved. See log.";
-        if (!m_status.empty())
+            m_status = requestNoise(m_editNoiseSettings, m_editSettings)
+                ? "Noise generation queued." : "Noise request failed; previous terrain preserved. See log.";
+        const auto generation = getGenerationStatus();
+        ImGui::Text("Background: %s", terrainGenerationStageName(generation.stage));
+        if (generation.pending())
+        {
+            ImGui::TextWrapped("Current terrain stays active. New requests replace older work; unapplied edits are not saved.");
+            if (ImGui::Button("Cancel Terrain Generation"))
+            {
+                cancelGeneration();
+                m_status = "Background generation cancelled; previous terrain preserved.";
+            }
+        }
+        if (generation.buildMilliseconds > 0)
+            ImGui::Text("CPU build: %.2f ms  Apply: %.2f ms", generation.buildMilliseconds, generation.applyMilliseconds);
+        if (generation.stage == TerrainGenerationStage::Failed)
+            ImGui::TextWrapped("Background generation/apply failed. Previous terrain preserved; see log and retry.");
+        else if (!m_status.empty())
             ImGui::TextWrapped("%s", m_status.c_str());
     }
 }

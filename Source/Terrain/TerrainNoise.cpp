@@ -80,7 +80,7 @@ namespace Engine
         return true;
     }
 
-    bool generateTerrainNoise(const TerrainNoiseSettings& settings, Heightmap& destination)
+    bool generateTerrainNoise(const TerrainNoiseSettings& settings, Heightmap& destination, const std::atomic<bool>* cancelled)
     {
         if (!validateTerrainNoiseSettings(settings))
             return false;
@@ -88,6 +88,8 @@ namespace Engine
         const std::uint32_t octaves = settings.mode == TerrainNoiseMode::Perlin ? 1 : settings.octaves;
         for (std::uint32_t z = 0; z < settings.height; ++z)
         {
+            if (cancelled && cancelled->load(std::memory_order_acquire))
+                return false;
             for (std::uint32_t x = 0; x < settings.width; ++x)
             {
                 double sampleX = static_cast<double>(x) / (settings.width - 1) * settings.frequency + settings.offsetX;

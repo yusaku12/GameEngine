@@ -9,6 +9,7 @@
 #include "Physics\PhysicsSystem.h"
 #include "Core\System\GameSession.h"
 #include "UI\RuntimeUI.h"
+#include "Terrain\TerrainGeneration.h"
 
 namespace Engine
 {
@@ -76,6 +77,7 @@ namespace Engine
             else
             {
                 runThreadedFrame();
+                TerrainGenerationQueue::instance().applyCompleted();
                 MainThreadDispatcher::instance().dispatchPending();
                 updateTitleBar();
             }

@@ -34,6 +34,8 @@ namespace Engine
         std::filesystem::path baseColorPath;
         std::filesystem::path normalPath;
         std::filesystem::path metallicRoughnessPath;
+        /** @brief Compares complete layer parameters and texture references. */
+        bool operator==(const TerrainLayer&) const = default;
     };
 
     /**
@@ -49,6 +51,8 @@ namespace Engine
 
         /** @brief Creates soil, grass, rock and snow defaults without external textures. */
         TerrainMaterialSettings();
+        /** @brief Compares enabled state and all layer authoring data. */
+        bool operator==(const TerrainMaterialSettings&) const = default;
     };
 
     /**
