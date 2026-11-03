@@ -8,6 +8,8 @@
 #include "Physics\Collider\CapsuleColliderComponent.h"
 #include "Physics\Collider\ConvexColliderComponent.h"
 #include "Physics\Collider\MeshColliderComponent.h"
+#include "Physics\Collider\TerrainColliderComponent.h"
+#include "Core\GameObject\Component\TerrainComponent.h"
 #include "Physics\Collider\SphereColliderComponent.h"
 #include "Physics\PhysicsSystem.h"
 #include "Physics\PhysicsWorld.h"
@@ -46,7 +48,7 @@ namespace Engine
         if (registry.registerType<RigidbodyComponent>("Rigidbody", false, false, true,
                 [](const GameObject& object) -> std::string_view
                 {
-                    return object.hasComponent<MeshColliderComponent>()
+                    return object.hasComponent<MeshColliderComponent>() || object.hasComponent<TerrainColliderComponent>()
                         ? "Mesh Collider requires a static actor without a Rigidbody." : std::string_view{};
                 }) == 0
             || registry.registerType<BoxColliderComponent>("BoxCollider", false, false, true) == 0
@@ -59,6 +61,13 @@ namespace Engine
                         ? "Mesh Collider cannot be attached to a Rigidbody." : std::string_view{};
                 }) == 0
             || registry.registerType<ConvexColliderComponent>("ConvexCollider", false, false, true) == 0
+            || registry.registerType<TerrainColliderComponent>("TerrainCollider", false, false, true,
+                [](const GameObject& object) -> std::string_view
+                {
+                    if (object.hasComponent<RigidbodyComponent>())
+                        return "Terrain Collider requires a static actor without a Rigidbody.";
+                    return object.hasComponent<TerrainComponent>() ? std::string_view{} : "Add a Terrain first.";
+                }) == 0
             || registry.registerType<CharacterControllerComponent>("CharacterController", false, false, true) == 0
             || registry.registerType<JointComponent>("Joint", false, false, true,
                 [](const GameObject& object) -> std::string_view

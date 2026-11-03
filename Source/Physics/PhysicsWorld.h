@@ -15,6 +15,7 @@ namespace Engine
     class JointComponent;
     class PhysicsSystem;
     class RigidbodyComponent;
+    class TerrainColliderComponent;
 
     /**
      * @brief PhysXシーンをエンジン側から隔離して管理する。
@@ -146,6 +147,7 @@ namespace Engine
         friend class JointComponent;
         friend class PhysicsSystem;
         friend class RigidbodyComponent;
+        friend class TerrainColliderComponent;
 
         struct Impl;
 
@@ -163,7 +165,7 @@ namespace Engine
 
         bool createCollider(ColliderComponent& component) noexcept;
         void destroyCollider(ColliderComponent& component) noexcept;
-        void updateCollider(ColliderComponent& component) noexcept;
+        bool updateCollider(ColliderComponent& component) noexcept;
 
         bool createController(CharacterControllerComponent& component) noexcept;
         void destroyController(CharacterControllerComponent& component) noexcept;

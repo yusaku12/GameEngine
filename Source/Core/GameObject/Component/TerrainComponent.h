@@ -7,12 +7,13 @@
 #include "Terrain\TerrainMeshBuilder.h"
 #include "Terrain\TerrainNoise.h"
 #include "Terrain\TerrainMaterial.h"
+#include "Terrain\TerrainSurface.h"
 
 namespace Engine
 {
     /**
      * @brief Owns height samples and generated terrain geometry, independent of source images.
-     * @details Uses the model rendering path with optional layered PBR; no collider is created.
+     * @details Optional TerrainCollider provides PhysX collision. Surface queries do not require a collider.
      * @thread_safety Not thread-safe. Use on the game/editor thread without concurrent rendering updates.
      */
     class TerrainComponent final : public Component
@@ -53,6 +54,15 @@ namespace Engine
         /** @brief Gets the generated terrain material handle; invalid when layers are disabled. Do not unload externally. */
         MaterialHandle getMaterial() const noexcept { return m_material; }
 
+        /** @brief Gets local height and geometric normal; nullopt outside the centered local XZ grid. */
+        std::optional<TerrainSurface> sampleLocalSurface(float x, float z) const noexcept;
+        /**
+         * @brief Gets the highest terrain intersection at world XZ, ignoring input Y.
+         * @param position Finite world coordinates. Uses the full GameObject/parent transform.
+         * @return World position and upward geometric normal, or nullopt if no intersection.
+         */
+        std::optional<TerrainSurface> sampleWorldSurface(const Vector3& position) const noexcept;
+
         /** @brief Gets immutable height data, including all samples saved with the scene. */
         const Heightmap& getHeightmap() const noexcept { return m_heightmap; }
         /** @brief Gets the applied mesh settings. */
@@ -76,6 +86,7 @@ namespace Engine
     protected:
         void onLateUpdate(float deltaTime) override;
         void onImGui() override;
+        void onDestroy() override;
 
     private:
         friend class GameObjectManager;

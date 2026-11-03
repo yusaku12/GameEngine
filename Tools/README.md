@@ -809,7 +809,7 @@ bounds culling. `RenderItem::animationBoundsValid` defaults to false, so callers
 that only provide bind-pose bounds retain the previous safe animation bypass.
 Near-plane intersections also retain Hi-Z's visibility bypass.
 
-# Terrain Phase 1/2/3: Heightmaps, procedural generation and layered materials
+# Terrain Phase 1/2/3/4: Generation, layered materials and PhysX collision
 
 In the Hierarchy context menu choose **Create Terrain**, or add the **Terrain**
 component to an existing GameObject. A new component contains a flat 65x65 grid.
@@ -853,9 +853,8 @@ triangles, area-weighted smooth normals, orthonormal tangent frames, UVs and
 mesh/model bounds. Rebuilds retire the previous model handle; queued immutable
 CPU snapshots and GPU fences keep already submitted geometry safe.
 
-These phases intentionally do **not** implement world-space height queries,
-collision, chunks, terrain LOD, asynchronous
-generation, erosion, compute generation or vegetation. Generation/import is
+These phases intentionally do **not** implement chunks, terrain LOD, asynchronous
+generation, erosion, compute generation or vegetation. Generation/import/cooking is
 synchronous and should be triggered by an authoring action, not every frame.
 
 ## Procedural generation (Phase 2)
@@ -990,6 +989,62 @@ Material/model asset version 3 also supports the optional terrain extension;
 versions 1 and 2 remain readable. The standard material property layout and
 override block remain unchanged.
 
+## Surface queries and PhysX collision (Phase 4)
+
+Add **TerrainCollider** through **Add Component** on the same GameObject as
+**Terrain**. It is optional: surface queries and rendering do not require it.
+The collider cooks the generated triangles in memory through the existing
+PhysX mesh backend. No external `.physics` file is needed. Scene/Prefab/Play
+copies retain common collider settings and rebuild collision from the embedded
+terrain samples when activated.
+
+- Terrain Collider is **static**, non-trigger, and cannot share its GameObject
+  with a **Rigidbody**. It supports positive, nonzero world scales and rotation,
+  including parent transforms supported by the engine's normal TRS hierarchy.
+  Reflected, zero-scale and sheared collision transforms are unsupported and
+  log errors. Apply supported transforms before enabling collision.
+- Common collider friction/restitution, layer, collision mask, query filtering
+  and Rigidbody collision events use the existing physics paths. **Center** is
+  an optional local collider-only offset; keep it zero to align physics with the
+  rendered surface and height-query APIs.
+- Import, noise generation and Apply/Rebuild update active collision together
+  with geometry. A failed cook/backend update preserves the previous terrain.
+  Rebuild only between physics simulation steps. Cooking is synchronous; do not
+  rebuild every frame. Object transform changes synchronize at the next physics
+  simulation step, just like other static colliders.
+- Collider enablement is independent of Terrain visibility. Disabling/deleting
+  the collider or deactivating the object removes its physics shape. Removing
+  Terrain also detaches collision; adding Terrain again reconnects during the
+  next fixed update.
+- Existing **CharacterController** movement collides with terrain triangles,
+  uses its slope/step settings, and reports grounding. Gameplay still supplies
+  gravity/downward movement through `move`; no height-snapping player script or
+  automatic gravity was added. Regeneration invalidates cached controller
+  triangles; it does not teleport bodies when ground rises through them.
+
+The public CPU API is independent of PhysX:
+
+```cpp
+const auto local = terrain->sampleLocalSurface(localX, localZ);
+const auto world = terrain->sampleWorldSurface(worldPosition);
+if (world)
+{
+    const float groundY = world->position.y;
+    const Engine::Vector3 groundNormal = world->normal;
+    // Use the surface in gameplay; do not replace CharacterController collision.
+}
+```
+
+`TerrainSurface` contains position and **geometric face normal**, not the
+smoothed rendering normal. Local XZ includes the grid boundary. Heights match
+the actual `a,c,b; b,c,d` mesh triangles, not bilinear interpolation.
+World queries ignore input Y and find the **highest** vertical intersection
+at world XZ, with an upward-facing normal. They support invertible affine
+transforms, use allocation-free grid traversal, and return `std::nullopt`
+outside the projected terrain. At a shared edge either adjacent face normal
+can apply. Invalid/nonfinite query inputs are logged. Queries use applied
+terrain data, independent of collider Center, enabled state and filters.
+
 ## Terrain validation
 
 Build **Debug x64**, then run from the project root:
@@ -1030,3 +1085,13 @@ include `layers.scene`, `layers.prefab`, `layers.matl`, `layers.model`,
 three generated textures and the `terrain-layers` captures.
 Expected invalid-input tests emit error logs; the process exit code and final
 PASS report determine success.
+
+Phase 4 compares exact local heights and world grid traversal against an
+independent all-triangle oracle, including rotated/nonuniform, reflected,
+overturned and sheared CPU transforms. PhysX tests cover ray/sphere queries,
+nonflat face heights/normals, default and explicit layer masks, collider-only
+Center, static transform updates, regeneration rollback during simulation,
+Rigidbody resting/contact events, Character Controller grounding/ramp walking,
+cached geometry refresh, bilateral filters, Scene/Prefab/Play persistence,
+source replacement before/after activation, invalid scales and shape cleanup.
+Persistence fixtures are `collision.scene` and `collision.prefab`.

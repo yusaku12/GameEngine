@@ -11,6 +11,7 @@
 #include "Graphics\Renderer\ModelRenderSubmission.h"
 #include "Terrain\TerrainMaterialSerialization.h"
 #include "Graphics\Texture\TextureManager.h"
+#include "Physics\Collider\TerrainColliderComponent.h"
 #include <imgui.h>
 
 namespace Engine
@@ -77,6 +78,14 @@ namespace Engine
             material.terrain = materialSettings;
         }
         PendingTerrainResources pending;
+        auto* collider = getGameObject() ? getGameObject()->getComponent<TerrainColliderComponent>() : nullptr;
+        std::shared_ptr<const PhysicsMeshAsset> collision;
+        if (collider)
+        {
+            collision = PhysicsMeshAsset::cookTriangle(model.meshes[0]);
+            if (!collision)
+                return false;
+        }
         pending.model = ModelManager::instance().create(std::move(model));
         if (!pending.model.isValid())
         {
@@ -94,6 +103,8 @@ namespace Engine
         }
         const ModelHandle previous = m_model;
         const MaterialHandle previousMaterial = m_material;
+        if (collider && !collider->replaceAsset(std::move(collision), pending.model))
+            return false;
         m_heightmap = std::move(replacement);
         m_settings = settings;
         m_editSettings = settings;
@@ -107,6 +118,24 @@ namespace Engine
         if (previousMaterial.isValid())
             MaterialManager::instance().unload(previousMaterial);
         return true;
+    }
+
+    std::optional<TerrainSurface> TerrainComponent::sampleLocalSurface(const float x, const float z) const noexcept
+    {
+        return sampleTerrainSurface(m_heightmap, m_settings, x, z);
+    }
+
+    std::optional<TerrainSurface> TerrainComponent::sampleWorldSurface(const Vector3& position) const noexcept
+    {
+        return sampleTerrainSurfaceWorld(m_heightmap, m_settings,
+            getGameObject() ? getGameObject()->getWorldMatrix() : Matrix::Identity, position);
+    }
+
+    void TerrainComponent::onDestroy()
+    {
+        if (auto* object = getGameObject())
+            if (auto* collider = object->getComponent<TerrainColliderComponent>())
+                collider->detachTerrain();
     }
 
     bool TerrainComponent::serializePayload(std::vector<std::uint8_t>& payload) const
@@ -413,7 +442,7 @@ namespace Engine
         ImGui::Text("Heightmap: %u x %u", m_heightmap.width(), m_heightmap.height());
         ImGui::Text("Vertices: %zu  Triangles: %zu", m_heightmap.samples().size(),
             static_cast<std::size_t>(m_heightmap.width() - 1) * (m_heightmap.height() - 1) * 2);
-        ImGui::TextWrapped("Local XZ grid centered at the origin. +Y is up. No collider.");
+        ImGui::TextWrapped("Local XZ grid centered at the origin. +Y is up. Add TerrainCollider for PhysX collision.");
         ImGui::DragFloat("Size X", &m_editSettings.sizeX, 0.1f, 0.01f, 100000.0f);
         ImGui::DragFloat("Size Z", &m_editSettings.sizeZ, 0.1f, 0.01f, 100000.0f);
         ImGui::DragFloat("Height Scale", &m_editSettings.heightScale, 0.1f, 0.0f, 100000.0f);

@@ -6,6 +6,7 @@
 #include "Physics\Collider\ColliderComponent.h"
 #include "Physics\Collider\ConvexColliderComponent.h"
 #include "Physics\Collider\MeshColliderComponent.h"
+#include "Physics\Collider\TerrainColliderComponent.h"
 #include "Physics\Internal\PhysXConversions.h"
 #include "Physics\Joint\JointComponent.h"
 #include "Physics\PhysicsEventListener.h"
@@ -311,7 +312,7 @@ namespace Engine
                 const auto* const collider = static_cast<const ColliderComponent*>(shape->userData);
                 if (collider->getGameObject() == nullptr
                     || collider->getGameObject() == m_filter.ignoredGameObject
-                    || (filterData.word0 & physicsLayerBit(collider->getLayer())) == 0)
+                    || (m_filter.layerMask & physicsLayerBit(collider->getLayer())) == 0)
                     return PxQueryHitType::eNONE;
 
                 if (!m_filter.includeTriggers && shape->getFlags().isSet(PxShapeFlag::eTRIGGER_SHAPE))
@@ -368,16 +369,19 @@ namespace Engine
                 const PxRigidActor* actor,
                 PxHitFlags& queryFlags) override
             {
+                GE_UNUSED(filterData);
                 GE_UNUSED(actor);
                 GE_UNUSED(queryFlags);
                 if (shape == nullptr
-                    || shape->getFlags().isSet(PxShapeFlag::eTRIGGER_SHAPE)
-                    || filterData.word0 >= 32)
+                    || shape->getFlags().isSet(PxShapeFlag::eTRIGGER_SHAPE))
                     return PxQueryHitType::eNONE;
 
+                const PxFilterData shapeData = shape->getSimulationFilterData();
+                if (shapeData.word0 >= 32)
+                    return PxQueryHitType::eNONE;
                 const PxU32 ownLayer = static_cast<PxU32>(m_layer);
-                return (m_mask & (1u << filterData.word0)) != 0
-                    && (filterData.word1 & (1u << ownLayer)) != 0
+                return (m_mask & (1u << shapeData.word0)) != 0
+                    && (shapeData.word1 & (1u << ownLayer)) != 0
                     ? PxQueryHitType::eBLOCK
                     : PxQueryHitType::eNONE;
             }
@@ -433,7 +437,7 @@ namespace Engine
             if (reportAllHits)
                 flags |= PxQueryFlag::eNO_BLOCK;
             PxFilterData queryFilterData;
-            queryFilterData.word0 = filter.layerMask;
+            // Shape word0 stores a layer index, not a bitmask. Apply the mask in preFilter.
             return PxQueryFilterData(queryFilterData, flags);
         }
 
@@ -1111,7 +1115,6 @@ namespace Engine
                 return false;
 
             const Vector3& scale = gameObject->getWorldScale();
-            record.lastWorldScale = scale;
             const PhysicsShapeGeometry geometry = record.component->geometryForPhysics(scale);
             if (!isValidGeometry(geometry))
             {
@@ -1155,6 +1158,14 @@ namespace Engine
                 triangleMesh->release();
             if (convexMesh != nullptr)
                 convexMesh->release();
+            record.lastWorldScale = scale;
+            if (controllerManager != nullptr)
+                for (auto& [component, controller] : controllers)
+                {
+                    GE_UNUSED(component);
+                    if (controller.controller != nullptr)
+                        controller.controller->invalidateCache();
+                }
             record.shape->setLocalPose(toShapePose(*record.component, scale, geometry.type));
 
             PxFilterData filterData = record.shape->getSimulationFilterData();
@@ -2267,7 +2278,8 @@ namespace Engine
             {
                 return entry.first != nullptr
                     && entry.first->getGameObject() == gameObject
-                    && dynamic_cast<const MeshColliderComponent*>(entry.first) != nullptr;
+                    && (dynamic_cast<const MeshColliderComponent*>(entry.first) != nullptr
+                        || dynamic_cast<const TerrainColliderComponent*>(entry.first) != nullptr);
             });
         if (hasTriangleMesh)
         {
@@ -2631,13 +2643,17 @@ namespace Engine
         m_impl->removeEmptyStaticActor(gameObject);
     }
 
-    void PhysicsWorld::updateCollider(ColliderComponent& component) noexcept
+    bool PhysicsWorld::updateCollider(ColliderComponent& component) noexcept
     {
         if (m_impl == nullptr || m_impl->simulationPending)
-            return;
+        {
+            LOG_ERROR("[PhysicsWorld] Collider updates require an initialized world between simulation steps.");
+            return false;
+        }
         const auto found = m_impl->colliders.find(&component);
         if (found != m_impl->colliders.end())
-            m_impl->setShapeGeometry(found->second);
+            return m_impl->setShapeGeometry(found->second);
+        return true;
     }
 
     bool PhysicsWorld::createController(CharacterControllerComponent& component) noexcept
@@ -2806,8 +2822,6 @@ namespace Engine
         CharacterShapeFilterCallback shapeFilter(component.m_layer, component.m_collisionMask);
         CharacterControllerFilterCallback controllerFilter;
         PxFilterData filterData;
-        filterData.word0 = static_cast<PxU32>(component.m_layer);
-        filterData.word1 = component.m_collisionMask;
         const PxControllerFilters filters(&filterData, &shapeFilter, &controllerFilter);
         const PxControllerCollisionFlags collisionFlags = found->second.controller->move(
             PhysicsConversions::toPx(displacement),

@@ -4,6 +4,8 @@
     <ClCompile Include="Source\Terrain\Heightmap.cpp" />
     <ClCompile Include="Source\Terrain\TerrainNoise.cpp" />
     <ClCompile Include="Source\Terrain\TerrainMaterial.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainSurface.cpp" />
+    <ClCompile Include="Source\Terrain\TerrainCollisionValidation.cpp" />
     <ClCompile Include="Source\Terrain\TerrainMaterialSerialization.cpp" />
     <ClCompile Include="Source\Terrain\TerrainMeshBuilder.cpp" />
     <ClCompile Include="Source\Terrain\TerrainValidation.cpp" />
@@ -124,6 +126,7 @@
     <ClCompile Include="Source\Physics\Collider\SphereColliderComponent.cpp" />
     <ClCompile Include="Source\Physics\Collider\CapsuleColliderComponent.cpp" />
     <ClCompile Include="Source\Physics\Collider\MeshColliderComponent.cpp" />
+    <ClCompile Include="Source\Physics\Collider\TerrainColliderComponent.cpp" />
     <ClCompile Include="Source\Physics\Collider\ConvexColliderComponent.cpp" />
     <ClCompile Include="Source\Physics\Internal\PhysXConversions.cpp" />
   </ItemGroup>
@@ -131,6 +134,8 @@
     <ClInclude Include="Source\Terrain\Heightmap.h" />
     <ClInclude Include="Source\Terrain\TerrainNoise.h" />
     <ClInclude Include="Source\Terrain\TerrainMaterial.h" />
+    <ClInclude Include="Source\Terrain\TerrainSurface.h" />
+    <ClInclude Include="Source\Terrain\TerrainCollisionValidation.h" />
     <ClInclude Include="Source\Terrain\TerrainMaterialSerialization.h" />
     <ClInclude Include="Source\Terrain\TerrainMeshBuilder.h" />
     <ClInclude Include="Source\Terrain\TerrainValidation.h" />
@@ -328,6 +333,7 @@
     <ClInclude Include="Source\Physics\Collider\SphereColliderComponent.h" />
     <ClInclude Include="Source\Physics\Collider\CapsuleColliderComponent.h" />
     <ClInclude Include="Source\Physics\Collider\MeshColliderComponent.h" />
+    <ClInclude Include="Source\Physics\Collider\TerrainColliderComponent.h" />
     <ClInclude Include="Source\Physics\Collider\ConvexColliderComponent.h" />
     <ClInclude Include="Source\Physics\Internal\PhysXConversions.h" />
   </ItemGroup>

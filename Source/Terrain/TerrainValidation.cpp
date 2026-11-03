@@ -1,5 +1,6 @@
 #include "Pch.h"
 #include "Terrain\TerrainValidation.h"
+#include "Terrain\TerrainCollisionValidation.h"
 #include "Terrain\TerrainMeshBuilder.h"
 #include "Terrain\TerrainMaterialSerialization.h"
 #include "Assets\Material\MaterialManager.h"
@@ -1508,20 +1509,25 @@ namespace Engine
             Checks checks;
             Heightmap imported;
             TerrainLayer textured;
+            std::size_t collisionChecks = 0;
             if (!validateOptions(checks) || !validateHeightmap(checks, directory, imported) || !validateNoise(checks) || !validateMesh(checks)
                 || !validateComponent(checks, directory, imported) || !validateNoisePersistence(checks, directory)
                 || !validateInspector(checks)
                 || !validateLayerWeights(checks) || !writeLayerTextures(checks, directory, textured)
                 || !validateLayerPersistence(checks, directory, textured)
+                || !validateTerrainCollision(directory, collisionChecks)
                 || !validateRendering(checks, renderer, directory)
                 || !validateLayerRendering(checks, renderer, directory, textured))
                 return false;
+            checks.count += collisionChecks;
             std::ofstream report(directory / L"terrain-results.txt");
             report << "PASS: " << checks.count << " terrain checks\n"
                 << "8/16-bit image precision, mesh geometry, scene/prefab/clone, Inspector, lifecycle,\n"
                 << "Perlin/FBM reproducibility, parameter bounds, Deferred/Forward noise terrain rendering,\n"
                 << "four-layer height/slope blends, texture/PBR channels, UV repeat, normal transforms,\n"
                 << "layer Scene/Prefab/Play/MATL/model roundtrips, queued resource lifetime and D3D12 diagnostics.\n";
+            report << "Triangle-exact local/world surfaces, PhysX queries, terrain collision regeneration,\n"
+                << "Rigidbody contacts/events, Character Controller grounding/walking, filters and persistence.\n";
             report.close();
             if (!report)
             {

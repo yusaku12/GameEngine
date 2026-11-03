@@ -6,6 +6,7 @@
 #include "Physics\Collider\CapsuleColliderComponent.h"
 #include "Physics\Collider\ConvexColliderComponent.h"
 #include "Physics\Collider\MeshColliderComponent.h"
+#include "Physics\Collider\TerrainColliderComponent.h"
 #include "Physics\Collider\SphereColliderComponent.h"
 #include "Core\Serialization\SerializationVersions.h"
 #include "Generated\FlatBuffers\PhysicsComponent_generated.h"
@@ -200,7 +201,7 @@ namespace Engine
             }
             physicsAssetPath = convex->getPhysicsAsset()->getPath();
         }
-        else
+        else if (dynamic_cast<const TerrainColliderComponent*>(this) == nullptr)
         {
             LOG_ERROR("[ColliderComponent] Cannot serialize an unsupported Collider type.");
             return false;
@@ -257,7 +258,7 @@ namespace Engine
             static_cast<MeshColliderComponent*>(target)->setPhysicsAsset(mesh->getPhysicsAsset());
         else if (const auto* convex = dynamic_cast<const ConvexColliderComponent*>(this))
             static_cast<ConvexColliderComponent*>(target)->setPhysicsAsset(convex->getPhysicsAsset());
-        else
+        else if (dynamic_cast<const TerrainColliderComponent*>(this) == nullptr)
         {
             LOG_ERROR("[Play] Unsupported collider clone type.");
             return false;
@@ -344,7 +345,7 @@ namespace Engine
                 return false;
             }
         }
-        else
+        else if (dynamic_cast<TerrainColliderComponent*>(this) == nullptr)
         {
             return false;
         }
