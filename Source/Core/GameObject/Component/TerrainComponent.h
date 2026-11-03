@@ -45,6 +45,23 @@ namespace Engine
         bool generateNoise(const TerrainNoiseSettings& noise, const TerrainMeshSettings& mesh);
 
         /**
+         * @brief Synchronously erodes applied heights and rebuilds all dependent resources transactionally.
+         * @param settings Seeded droplet recipe in grid-cell/normalized-height units.
+         * @return True on success. Failure preserves applied terrain, recipe and pending work.
+         * @details Explicit, cumulative operation; ordinary rebuilds never repeat erosion.
+         */
+        bool applyErosion(const TerrainErosionSettings& settings);
+        /**
+         * @brief Queues erosion of a snapshot of applied heights, retaining applied mesh/material/chunk/LOD settings.
+         * @param settings Recipe copied at acceptance; repeated requests do not accumulate pending results.
+         * @return True if accepted. Latest accepted request wins; previous terrain stays live until application.
+         * @thread_safety Owner thread only, as with other generation requests.
+         */
+        bool requestErosion(const TerrainErosionSettings& settings);
+        /** @brief Gets the last applied erosion recipe, or defaults before any erosion. Not a replay flag. */
+        const TerrainErosionSettings& getErosionSettings() const noexcept { return m_erosionSettings; }
+
+        /**
          * @brief Queues a background heightmap build using the other applied settings.
          * @param heightmap Samples copied at request time; caller may change them after return.
          * @param mesh Dimensions/UVs captured for this request.
@@ -121,7 +138,7 @@ namespace Engine
         bool getCastShadows() const noexcept { return m_castShadows; }
 
         /** @brief Gets the version of the embedded terrain payload. */
-        std::uint32_t getPayloadVersion() const noexcept override { return 5; }
+        std::uint32_t getPayloadVersion() const noexcept override { return 6; }
         /** @brief Saves samples and settings; no external image/model reference is required. */
         bool serializePayload(std::vector<std::uint8_t>& payload) const override;
         /** @brief Restores and validates samples and settings before replacing the terrain. */
@@ -144,6 +161,7 @@ namespace Engine
             TerrainChunkSettings chunks;
             TerrainLodSettings lod;
             TerrainNoiseSettings noise;
+            TerrainErosionSettings erosion;
         };
         void submitRenderData();
         void requestHeightmapImport();
@@ -167,6 +185,8 @@ namespace Engine
         std::shared_ptr<TerrainGenerationTask> m_generation;
         TerrainNoiseSettings m_noiseSettings;
         TerrainNoiseSettings m_editNoiseSettings;
+        TerrainErosionSettings m_erosionSettings;
+        TerrainErosionSettings m_editErosionSettings;
         TerrainMaterialSettings m_materialSettings;
         TerrainMaterialSettings m_editMaterialSettings;
         ModelHandle m_model;

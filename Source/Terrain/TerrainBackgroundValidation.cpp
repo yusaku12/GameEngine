@@ -427,6 +427,84 @@ namespace Engine
             return FrameProfiler::instance().endFrame(frame, 1) && rendered;
         }
 
+        bool erosionFrames(Checks& checks, DX12Renderer& renderer, const std::filesystem::path& directory)
+        {
+            Scene scene(ObjectGUID::generate(), "Erosion frames"), reference(ObjectGUID::generate(), "Sync erosion frames");
+            Scene empty(ObjectGUID::generate(), "No lights");
+            LightingFrame::instance().capture(nullptr, empty);
+            auto* terrain = scene.createGameObject("Async erosion")->addComponent<TerrainComponent>();
+            auto* oracle = reference.createGameObject("Sync erosion")->addComponent<TerrainComponent>();
+            TerrainNoiseSettings noise;
+            noise.width = 65;
+            noise.height = 41;
+            noise.seed = 987;
+            TerrainMaterialSettings material;
+            material.enabled = true;
+            TerrainErosionSettings erosion;
+            erosion.seed = 723;
+            if (!checks.expect(terrain->generateNoise(noise, { 4, 4, 2, 0, 3, 5 })
+                && terrain->setMaterialSettings(material) && terrain->setChunkSettings({ 17 })
+                && terrain->setLodSettings({ true, 4, 3 }) && terrain->copyConfigurationTo(*oracle)
+                && oracle->applyErosion(erosion), "async erosion GPU synchronous oracle"))
+                return false;
+            renderer.setDeferredRenderingEnabled(true);
+            renderer.setOcclusionCullingEnabled(false);
+            for (int frame = 0; frame < 3; ++frame)
+                if (!checks.expect(draw(renderer, &scene), "warm original erosion surface"))
+                    return false;
+            DX12FrameCapture before, pending, after, expected;
+            if (!checks.expect(renderer.captureFrame(before) && before.save(directory, L"terrain-erosion-before")
+                && terrain->requestErosion(erosion), "capture original and queue erosion"))
+                return false;
+            for (int frame = 0; frame < 4; ++frame)
+                if (!checks.expect(draw(renderer, &scene), "render original surface during erosion"))
+                    return false;
+            if (!awaitReady(checks, *terrain)
+                || !checks.expect(renderer.captureFrame(pending), "capture prepared but unapplied erosion"))
+                return false;
+            const auto equalPixels = [](const DX12FrameCapture& a, const DX12FrameCapture& b)
+            {
+                const auto* x = a.display.GetImage(0, 0, 0), *y = b.display.GetImage(0, 0, 0);
+                return x && y && x->slicePitch == y->slicePitch && std::memcmp(x->pixels, y->pixels, x->slicePitch) == 0;
+            };
+            if (!checks.expect(equalPixels(before, pending), "erosion never publishes partial GPU pixels")
+                || !awaitApplied(checks, *terrain) || !equivalent(checks, *terrain, *oracle))
+                return false;
+            for (int frame = 0; frame < 3; ++frame)
+                if (!checks.expect(draw(renderer, &scene), "render eroded Deferred/LOD/material surface"))
+                    return false;
+            if (!checks.expect(renderer.captureFrame(after) && after.save(directory, L"terrain-erosion-after")
+                && !equalPixels(before, after), "erosion creates visibly changed rendered terrain"))
+                return false;
+            for (int frame = 0; frame < 3; ++frame)
+                if (!checks.expect(draw(renderer, &reference), "render synchronous erosion GPU oracle"))
+                    return false;
+            if (!checks.expect(renderer.captureFrame(expected) && equalPixels(after, expected),
+                "Deferred asynchronous erosion pixels exactly match synchronous erosion"))
+                return false;
+            renderer.setDeferredRenderingEnabled(false);
+            renderer.setOcclusionCullingEnabled(true);
+            for (int frame = 0; frame < 4; ++frame)
+                if (!checks.expect(draw(renderer, &scene), "Forward/Hi-Z renders eroded chunks"))
+                    return false;
+            if (!checks.expect(renderer.captureFrame(after), "capture Forward erosion surface"))
+                return false;
+            for (int frame = 0; frame < 4; ++frame)
+                if (!checks.expect(draw(renderer, &reference), "Forward/Hi-Z synchronous erosion oracle"))
+                    return false;
+            if (!checks.expect(renderer.captureFrame(expected) && equalPixels(after, expected),
+                "Forward asynchronous erosion pixels exactly match synchronous erosion"))
+                return false;
+            renderer.setDeferredRenderingEnabled(true);
+            renderer.setOcclusionCullingEnabled(false);
+            scene.clear();
+            reference.clear();
+            for (int frame = 0; frame < 6; ++frame)
+                if (!checks.expect(draw(renderer, nullptr), "retire eroded GPU resources"))
+                    return false;
+            return checks.expect(renderer.validateDebugMessages(), "eroded GPU resources produce no D3D12 diagnostics");
+        }
+
         bool frames(Checks& checks, DX12Renderer& renderer, const std::filesystem::path& directory)
         {
             Scene scene(ObjectGUID::generate(), "Live background terrain");
@@ -573,7 +651,7 @@ namespace Engine
         passed = 0;
         Checks checks;
         if (!parity(checks, directory) || !lifecycle(checks, directory) || !physicsRollback(checks)
-            || !frames(checks, renderer, directory))
+            || !erosionFrames(checks, renderer, directory) || !frames(checks, renderer, directory))
             return false;
         TerrainGenerationQueue::instance().shutdown();
         passed = checks.count;

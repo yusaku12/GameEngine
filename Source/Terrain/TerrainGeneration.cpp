@@ -6,7 +6,7 @@ namespace Engine
 {
     const char* terrainGenerationStageName(const TerrainGenerationStage stage) noexcept
     {
-        static constexpr std::array names{ "Idle", "Queued", "Height samples", "Mesh", "Material weights",
+        static constexpr std::array names{ "Idle", "Queued", "Height samples", "Hydraulic erosion", "Mesh", "Material weights",
             "Chunks", "PhysX cooking", "LOD", "Ready to apply", "Applied", "Cancelled", "Failed" };
         const auto index = static_cast<std::size_t>(stage);
         return index < names.size() ? names[index] : "Invalid stage";

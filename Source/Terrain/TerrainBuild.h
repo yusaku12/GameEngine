@@ -9,6 +9,7 @@
 #include "Terrain\TerrainMaterial.h"
 #include "Terrain\TerrainMeshBuilder.h"
 #include "Terrain\TerrainNoise.h"
+#include "Terrain\TerrainErosion.h"
 
 namespace Engine
 {
@@ -19,7 +20,7 @@ namespace Engine
     /** @brief Stage of a background build. Cancellation is checked between CPU stages and cooked chunks. */
     enum class TerrainGenerationStage
     {
-        Idle, Queued, Source, Mesh, Layers, Chunks, Collision, Lod, Ready, Applied, Cancelled, Failed
+        Idle, Queued, Source, Erosion, Mesh, Layers, Chunks, Collision, Lod, Ready, Applied, Cancelled, Failed
     };
 
     /** @brief Value-only CPU input. No components, managers, GPU resources or PhysX actors are accessed by builders. */
@@ -28,6 +29,8 @@ namespace Engine
         TerrainBuildSource source = TerrainBuildSource::Heightmap;
         Heightmap heightmap;
         TerrainNoiseSettings noise;
+        TerrainErosionSettings erosion;
+        bool applyErosion = false;
         TerrainMeshSettings mesh;
         TerrainMaterialSettings material;
         TerrainChunkSettings chunks;

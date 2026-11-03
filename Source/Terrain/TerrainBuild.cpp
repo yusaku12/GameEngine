@@ -42,7 +42,7 @@ namespace Engine
     {
         if (!validateTerrainMeshSettings(request.mesh) || !validateTerrainMaterial(request.material)
             || !validateTerrainChunkSettings(request.chunks) || !validateTerrainLodSettings(request.lod)
-            || !validateTerrainNoiseSettings(request.noise))
+            || !validateTerrainNoiseSettings(request.noise) || !validateTerrainErosionSettings(request.erosion))
             return false;
         switch (request.source)
         {
@@ -100,6 +100,9 @@ namespace Engine
             break;
         }
         TerrainBuildResult prepared;
+        if (request.applyErosion && (!enter(TerrainGenerationStage::Erosion)
+            || !erodeTerrain(request.heightmap, request.erosion, request.heightmap, cancelled)))
+            return false;
         if (!enter(TerrainGenerationStage::Mesh) || !buildTerrainModel(request.heightmap, request.mesh, prepared.model)
             || !enter(TerrainGenerationStage::Layers) || !applyTerrainLayerWeights(request.heightmap, request.material, prepared.model)
             || !enter(TerrainGenerationStage::Chunks) || !partitionTerrainModel(prepared.model,

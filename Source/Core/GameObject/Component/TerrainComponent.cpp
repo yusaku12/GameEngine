@@ -96,6 +96,7 @@ namespace Engine
         request.chunks = m_chunkSettings;
         request.lod = m_lodSettings;
         request.noise = m_noiseSettings;
+        request.erosion = m_erosionSettings;
         request.collision = getGameObject() && getGameObject()->hasComponent<TerrainColliderComponent>();
         return request;
     }
@@ -154,7 +155,8 @@ namespace Engine
     {
         if (!validateTerrainBuildRequest(request) || !resolveTerrainMaterialTextures(request.material))
             return false;
-        const DraftSettings drafts{ m_editSettings, m_editMaterialSettings, m_editChunkSettings, m_editLodSettings, m_editNoiseSettings };
+        const DraftSettings drafts{ m_editSettings, m_editMaterialSettings, m_editChunkSettings, m_editLodSettings,
+            m_editNoiseSettings, m_editErosionSettings };
         auto task = TerrainGenerationQueue::instance().submit(std::move(request), [this, drafts](TerrainBuildResult&& result)
         {
             std::string success = "Background terrain applied.";
@@ -182,6 +184,30 @@ namespace Engine
         return m_generation ? m_generation->status() : TerrainGenerationStatus{};
     }
 
+    bool TerrainComponent::applyErosion(const TerrainErosionSettings& settings)
+    {
+        auto request = makeBuildRequest();
+        request.heightmap = m_heightmap;
+        request.applyErosion = true;
+        request.erosion = settings;
+        if (!resolveTerrainMaterialTextures(request.material))
+            return false;
+        TerrainBuildResult result;
+        if (!buildTerrain(std::move(request), result) || !applyBuild(std::move(result)))
+            return false;
+        cancelGeneration();
+        return true;
+    }
+
+    bool TerrainComponent::requestErosion(const TerrainErosionSettings& settings)
+    {
+        auto request = makeBuildRequest();
+        request.heightmap = m_heightmap;
+        request.applyErosion = true;
+        request.erosion = settings;
+        return queueBuild(std::move(request));
+    }
+
     bool TerrainComponent::applyBuild(TerrainBuildResult&& result, const DraftSettings* submittedDrafts)
     {
         auto& request = result.applied;
@@ -196,6 +222,7 @@ namespace Engine
         const bool updateChunks = !submittedDrafts || m_editChunkSettings == submittedDrafts->chunks;
         const bool updateLod = !submittedDrafts || m_editLodSettings == submittedDrafts->lod;
         const bool updateNoise = !submittedDrafts || m_editNoiseSettings == submittedDrafts->noise;
+        const bool updateErosion = !submittedDrafts || m_editErosionSettings == submittedDrafts->erosion;
         TerrainMaterialSettings editMaterialSettings;
         if (updateMaterial)
             editMaterialSettings = request.material;
@@ -248,6 +275,12 @@ namespace Engine
             if (updateNoise)
                 m_editNoiseSettings = request.noise;
         }
+        if (request.applyErosion)
+        {
+            m_erosionSettings = request.erosion;
+            if (updateErosion)
+                m_editErosionSettings = request.erosion;
+        }
         m_generationFailed = false;
         if (previous.isValid())
             ModelManager::instance().unload(previous);
@@ -294,10 +327,15 @@ namespace Engine
             return false;
         const auto lod = Serialization::CreateTerrainLodSettings(builder,
             m_lodSettings.enabled, m_lodSettings.maxLevel, m_lodSettings.distance);
+        const auto erosion = Serialization::CreateTerrainErosionSettings(builder, m_erosionSettings.seed,
+            m_erosionSettings.droplets, m_erosionSettings.maxLifetime, m_erosionSettings.radius,
+            m_erosionSettings.inertia, m_erosionSettings.capacity, m_erosionSettings.minSlope,
+            m_erosionSettings.depositRate, m_erosionSettings.erosionRate, m_erosionSettings.evaporation,
+            m_erosionSettings.gravity, m_erosionSettings.initialWater, m_erosionSettings.initialSpeed);
         const auto root = Serialization::CreateTerrainComponentPayload(builder,
             m_heightmap.width(), m_heightmap.height(), builder.CreateVector(samples.data(), samples.size()),
             m_settings.sizeX, m_settings.sizeZ, m_settings.heightScale, m_settings.heightOffset,
-            m_settings.uvRepeatX, m_settings.uvRepeatZ, m_castShadows, noise, surface, m_chunkSettings.cellsPerChunk, lod);
+            m_settings.uvRepeatX, m_settings.uvRepeatZ, m_castShadows, noise, surface, m_chunkSettings.cellsPerChunk, lod, erosion);
         Serialization::FinishTerrainComponentPayloadBuffer(builder, root);
         payload.assign(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
         return true;
@@ -307,7 +345,7 @@ namespace Engine
         const std::span<const std::uint8_t> payload)
     {
         flatbuffers::Verifier verifier(payload.data(), payload.size());
-        if ((version < 1 || version > 5) || payload.size() < 8
+        if ((version < 1 || version > 6) || payload.size() < 8
             || !Serialization::VerifyTerrainComponentPayloadBuffer(verifier))
         {
             LOG_ERROR("[Terrain] Invalid terrain payload or version.");
@@ -351,6 +389,21 @@ namespace Engine
             }
             lod = { saved->enabled(), saved->max_level(), saved->distance() };
         }
+        TerrainErosionSettings erosion;
+        if (version >= 6)
+        {
+            const auto* saved = source->erosion_settings();
+            if (!saved)
+            {
+                LOG_ERROR("[Terrain] Version 6 payload is missing erosion settings.");
+                return false;
+            }
+            erosion = { saved->seed(), saved->droplets(), saved->max_lifetime(), saved->radius(),
+                saved->inertia(), saved->capacity(), saved->min_slope(), saved->deposit_rate(),
+                saved->erosion_rate(), saved->evaporation(), saved->gravity(), saved->initial_water(), saved->initial_speed() };
+        }
+        if (!validateTerrainErosionSettings(erosion))
+            return false;
         Heightmap heightmap;
         if (!heightmap.assign(source->width(), source->height(), { samples->data(), samples->size() })
             || !rebuild(heightmap, { source->size_x(), source->size_z(), source->height_scale(),
@@ -360,6 +413,8 @@ namespace Engine
         m_castShadows = source->cast_shadows();
         m_noiseSettings = noise;
         m_editNoiseSettings = noise;
+        m_erosionSettings = erosion;
+        m_editErosionSettings = erosion;
         return true;
     }
 
@@ -388,6 +443,8 @@ namespace Engine
         target->m_castShadows = m_castShadows;
         target->m_noiseSettings = m_noiseSettings;
         target->m_editNoiseSettings = m_noiseSettings;
+        target->m_erosionSettings = m_erosionSettings;
+        target->m_editErosionSettings = m_erosionSettings;
         return true;
     }
 
@@ -666,6 +723,33 @@ namespace Engine
         if (ImGui::Button("Generate Noise"))
             m_status = requestNoise(m_editNoiseSettings, m_editSettings)
                 ? "Noise generation queued." : "Noise request failed; previous terrain preserved. See log.";
+        ImGui::Separator();
+        if (ImGui::TreeNode("Hydraulic Erosion"))
+        {
+            ImGui::InputScalar("Erosion Seed", ImGuiDataType_U32, &m_editErosionSettings.seed);
+            ImGui::InputScalar("Droplets (1..1000000)", ImGuiDataType_U32, &m_editErosionSettings.droplets);
+            ImGui::InputScalar("Droplet Lifetime (1..256)", ImGuiDataType_U32, &m_editErosionSettings.maxLifetime);
+            ImGui::InputScalar("Erosion Radius (1..8)", ImGuiDataType_U32, &m_editErosionSettings.radius);
+            ImGui::SliderFloat("Inertia", &m_editErosionSettings.inertia, 0, 1);
+            ImGui::DragFloat("Sediment Capacity", &m_editErosionSettings.capacity, 0.1f, 0.01f, 100);
+            ImGui::DragFloat("Minimum Slope", &m_editErosionSettings.minSlope, 0.0001f, 0.00001f, 1, "%.5f");
+            ImGui::SliderFloat("Deposition Rate", &m_editErosionSettings.depositRate, 0, 1);
+            ImGui::SliderFloat("Erosion Rate", &m_editErosionSettings.erosionRate, 0, 1);
+            ImGui::SliderFloat("Evaporation", &m_editErosionSettings.evaporation, 0, 1);
+            ImGui::DragFloat("Erosion Gravity", &m_editErosionSettings.gravity, 0.1f, 0, 100);
+            ImGui::DragFloat("Initial Water", &m_editErosionSettings.initialWater, 0.1f, 0.01f, 10);
+            ImGui::DragFloat("Initial Speed", &m_editErosionSettings.initialSpeed, 0.1f, 0, 10);
+            ImGui::TextWrapped("Erodes applied heights using applied mesh settings. Grid-cell/normalized-height units; "
+                "mesh scaling does not change erosion. Open edges export sediment. Repeated applications are cumulative; "
+                "Rebuild does not repeat erosion. Pending requests replace, not combine with, earlier requests.");
+            if (ImGui::Button("Apply Hydraulic Erosion"))
+                m_status = requestErosion(m_editErosionSettings)
+                    ? "Hydraulic erosion queued." : "Erosion request failed; previous terrain preserved. See log.";
+            ImGui::SameLine();
+            if (ImGui::Button("Reset Erosion Draft"))
+                m_editErosionSettings = TerrainErosionSettings{};
+            ImGui::TreePop();
+        }
         const auto generation = getGenerationStatus();
         ImGui::Text("Background: %s", terrainGenerationStageName(generation.stage));
         if (generation.pending())

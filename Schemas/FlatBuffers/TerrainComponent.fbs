@@ -21,6 +21,22 @@ table TerrainLodSettings {
     distance:float = 50;
 }
 
+table TerrainErosionSettings {
+    seed:uint = 0;
+    droplets:uint = 5000;
+    max_lifetime:uint = 64;
+    radius:uint = 3;
+    inertia:float = 0.05;
+    capacity:float = 4;
+    min_slope:float = 0.001;
+    deposit_rate:float = 0.3;
+    erosion_rate:float = 0.3;
+    evaporation:float = 0.01;
+    gravity:float = 4;
+    initial_water:float = 1;
+    initial_speed:float = 1;
+}
+
 table TerrainComponentPayload {
     width:uint = 2;
     height:uint = 2;
@@ -36,6 +52,7 @@ table TerrainComponentPayload {
     material_settings:TerrainMaterialData;
     chunk_cells:uint = 64;
     lod_settings:TerrainLodSettings;
+    erosion_settings:TerrainErosionSettings;
 }
 
 root_type TerrainComponentPayload;

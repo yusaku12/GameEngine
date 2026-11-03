@@ -3,6 +3,7 @@
 #include "Terrain\TerrainCollisionValidation.h"
 #include "Terrain\TerrainLodValidation.h"
 #include "Terrain\TerrainBackgroundValidation.h"
+#include "Terrain\TerrainErosionValidation.h"
 #include "Terrain\TerrainMeshBuilder.h"
 #include "Terrain\TerrainMaterialSerialization.h"
 #include "Assets\Material\MaterialManager.h"
@@ -486,7 +487,7 @@ namespace Engine
                 if (!checks.expect(!terrain->deserializePayload(1, std::span(payload).first(size))
                     && terrain->getModel() == original, "truncated payload preserves terrain"))
                     return false;
-            if (!checks.expect(!terrain->deserializePayload(6, payload), "reject unknown payload version"))
+            if (!checks.expect(!terrain->deserializePayload(7, payload), "reject unknown payload version"))
                 return false;
             flatbuffers::FlatBufferBuilder builder;
             const std::array<float, 4> invalidSamples = { 0, 0, 0, std::numeric_limits<float>::quiet_NaN() };
@@ -625,7 +626,7 @@ namespace Engine
                 return false;
             std::vector<std::uint8_t> payload;
             TerrainComponent restored;
-            if (!checks.expect(terrain->serializePayload(payload) && terrain->getPayloadVersion() == 5
+            if (!checks.expect(terrain->serializePayload(payload) && terrain->getPayloadVersion() == 6
                 && restored.deserializePayload(2, payload) && restored.getNoiseSettings() == settings
                 && sameHeights(restored.getHeightmap(), generated), "version 2 noise recipe and samples roundtrip"))
                 return false;
@@ -634,7 +635,7 @@ namespace Engine
                 return false;
 
             const auto previous = restored.getModel();
-            for (const std::uint32_t version : { 0u, 6u })
+            for (const std::uint32_t version : { 0u, 7u })
                 if (!checks.expect(!restored.deserializePayload(version, payload) && restored.getModel() == previous,
                     "reject unsupported terrain payload versions"))
                     return false;
@@ -902,6 +903,7 @@ namespace Engine
             TerrainComponent* selected = &terrain;
             ImGuiID rebuildButton = 0, applyChunks = 0, enableLod = 0, applyLod = 0;
             ImGuiID noiseButton = 0, cancelButton = 0;
+            ImGuiID erosionHeader = 0, erosionButton = 0, resetErosion = 0;
             ImGuiID materialHeader = 0, enableLayers = 0, applyLayers = 0, resetLayers = 0;
             const auto frame = [&]
             {
@@ -919,6 +921,11 @@ namespace Engine
                 resetLayers = ImGui::GetID("Reset Layer Draft");
                 noiseButton = ImGui::GetID("Generate Noise");
                 cancelButton = ImGui::GetID("Cancel Terrain Generation");
+                erosionHeader = ImGui::GetID("Hydraulic Erosion");
+                ImGui::PushOverrideID(erosionHeader);
+                erosionButton = ImGui::GetID("Apply Hydraulic Erosion");
+                resetErosion = ImGui::GetID("Reset Erosion Draft");
+                ImGui::PopID();
                 selected->drawImGui();
                 ImGui::End();
                 ImGui::Render();
@@ -992,6 +999,31 @@ namespace Engine
                 return false;
             if (!checks.expect(!noiseTerrain.getMaterialSettings().enabled && !noiseTerrain.getMaterial().isValid(),
                 "Inspector applying disabled draft restores default material"))
+                return false;
+            TerrainErosionSettings erosion;
+            erosion.seed = 17;
+            erosion.droplets = 500;
+            if (!checks.expect(noiseTerrain.applyErosion(erosion), "nondefault erosion Inspector fixture"))
+                return false;
+            Heightmap eroded;
+            if (!checks.expect(erodeTerrain(noiseTerrain.getHeightmap(), erosion, eroded), "Inspector erosion oracle"))
+                return false;
+            frame();
+            ImGui::ActivateItemByID(erosionHeader); frame();
+            const auto oldErosionModel = noiseTerrain.getModel();
+            ImGui::ActivateItemByID(erosionButton); frame();
+            if (!checks.expect(noiseTerrain.getGenerationStatus().pending() && noiseTerrain.getModel() == oldErosionModel,
+                "Inspector erosion queues rather than blocking/replacing live geometry"))
+                return false;
+            ImGui::ActivateItemByID(resetErosion); frame();
+            if (!complete() || !checks.expect(noiseTerrain.getErosionSettings() == erosion
+                && sameHeights(noiseTerrain.getHeightmap(), eroded), "Inspector erosion applies captured recipe and heights"))
+                return false;
+            if (!checks.expect(erodeTerrain(eroded, {}, eroded), "cumulative default erosion Inspector oracle"))
+                return false;
+            ImGui::ActivateItemByID(erosionButton); frame();
+            if (!complete() || !checks.expect(noiseTerrain.getErosionSettings() == TerrainErosionSettings{}
+                && sameHeights(noiseTerrain.getHeightmap(), eroded), "newer erosion draft reset survives older background completion"))
                 return false;
             const auto previous = noiseTerrain.getModel();
             ImGui::ActivateItemByID(noiseButton); frame();
@@ -1842,6 +1874,7 @@ namespace Engine
             std::size_t collisionChecks = 0;
             std::size_t lodChecks = 0;
             std::size_t backgroundChecks = 0;
+            std::size_t erosionChecks = 0;
             if (!validateOptions(checks) || !validateHeightmap(checks, directory, imported) || !validateNoise(checks) || !validateMesh(checks)
                 || !validateComponent(checks, directory, imported) || !validateNoisePersistence(checks, directory)
                 || !validateInspector(checks)
@@ -1853,11 +1886,13 @@ namespace Engine
                 || !validateLayerRendering(checks, renderer, directory, textured)
                 || !validateChunkRendering(checks, renderer, directory, textured)
                 || !validateTerrainLod(renderer, directory, lodChecks)
-                || !validateTerrainBackground(renderer, directory, backgroundChecks))
+                || !validateTerrainBackground(renderer, directory, backgroundChecks)
+                || !validateTerrainErosion(directory, erosionChecks))
                 return false;
             checks.count += collisionChecks;
             checks.count += lodChecks;
             checks.count += backgroundChecks;
+            checks.count += erosionChecks;
             std::ofstream report(directory / L"terrain-results.txt");
             report << "PASS: " << checks.count << " terrain checks\n"
                 << "8/16-bit image precision, mesh geometry, scene/prefab/clone, Inspector, lifecycle,\n"
@@ -1873,6 +1908,8 @@ namespace Engine
                 << "mixed-LOD pixel comparisons, per-camera chunk culling/LOD and independent full-resolution shadows.\n";
             report << "Background build parity, latest-wins/cancel/lifetime, applied-only persistence, busy-physics rollback,\n"
                 << "independent CPU thread/owner-thread commit, maximum-grid concurrent frames and atomic GPU snapshots.\n";
+            report << "Hydraulic droplet erosion: deterministic paths, sediment conservation/export, normalized bounds,\n"
+                << "v6 recipe migration, applied-only persistence, async parity/cancellation, rebuilt PhysX and CCT grounding.\n";
             report.close();
             if (!report)
             {

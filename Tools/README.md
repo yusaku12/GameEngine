@@ -860,8 +860,9 @@ triangles, area-weighted smooth normals, orthonormal tangent frames, UVs and
 mesh/model bounds. Rebuilds retire the previous model handle; queued immutable
 CPU snapshots and GPU fences keep already submitted geometry safe.
 
-These phases intentionally do **not** implement streaming, erosion, compute
-generation or vegetation. Phase 7 makes Inspector generation/import/Apply work
+These phases intentionally do **not** implement streaming, compute generation
+or vegetation. Phase 8 adds explicit CPU hydraulic erosion below.
+Phase 7 makes Inspector generation/import/Apply work
 asynchronous. Existing synchronous C++ APIs and Scene/Prefab loading remain
 synchronous for compatibility; neither API style should regenerate every frame.
 
@@ -1215,7 +1216,8 @@ thread; texture decoding/upload still uses the existing renderer texture path.
 The worker pipeline is:
 
 1. Copy captured heights, generate Perlin/FBM, create flat samples, or decode WIC.
-2. Generate whole-grid vertices, smooth normals, tangents and UVs.
+2. Apply hydraulic erosion only when explicitly requested (Phase 8), then
+   generate whole-grid vertices, smooth normals, tangents and UVs.
 3. Calculate whole-grid material layer weights, then partition chunks.
 4. Cook full-resolution PhysX chunk data if a TerrainCollider was attached.
 5. Append LOD indices and publish the prepared CPU result.
@@ -1228,7 +1230,7 @@ from the cooperative frame JobSystem, so a frame/job waiter cannot accidentally
 execute a multi-second terrain build. Work is serial within this queue; it
 does not create one thread per terrain/chunk/request.
 
-The **Background** label shows Queued, Height samples, Mesh, Material weights,
+The **Background** label shows Queued, Height samples, Hydraulic erosion, Mesh, Material weights,
 Chunks, PhysX cooking, LOD, Ready to apply, Applied, Cancelled or Failed.
 These are stages, not equal-duration progress percentages. CPU build and final
 apply timings appear after completion. **Ready to apply** does not mean that
@@ -1249,7 +1251,7 @@ with the current configuration. There is no surprise main-thread recooking.
 
 **Latest accepted request wins for each component.** A new request cancels
 older work without waiting; cancelled queued inputs are pruned and an active
-build drops its result. Noise checks cancellation each sample row, cooking
+build drops its result. Erosion checks every droplet/step, noise checks each sample row, cooking
 checks each chunk, and the remaining work checks between CPU stages. WIC decode
 and an individual CPU stage/cooked chunk are not forcibly interrupted.
 **Cancel Terrain Generation** also discards already-Ready output. Invalid
@@ -1267,7 +1269,8 @@ changing multiple settings together. Editing drafts after submission does not
 alter the captured build, and completing a build does not overwrite newer
 Inspector drafts. Scene/Prefab/Play snapshots contain only applied data:
 pending/cancelled requests, progress and unapplied drafts are never saved,
-cloned or replayed. Payload version stays **5**.
+cloned or replayed. Phase 7 retained payload **5**; Phase 8 uses **6** to store
+the last applied erosion recipe alongside the authoritative samples.
 
 Existing immediate-return APIs (`setTerrain`, `generateNoise`, `setMaterialSettings`,
 `setChunkSettings`, `setLodSettings`) retain synchronous success/failure semantics.
@@ -1299,6 +1302,86 @@ spike; this is not a guaranteed 16ms-frame streaming system. Generation keeps
 the previous terrain and an independent replacement in memory, increasing
 peak RAM. Chunks remain resident; there is no incremental GPU upload,
 distance streaming or partial terrain editing.
+
+## Hydraulic erosion (Phase 8)
+
+Open **Hydraulic Erosion** in the Terrain Inspector and click
+**Apply Hydraulic Erosion**. This explicitly erodes a snapshot of the **applied**
+heightmap, using the other **applied** mesh/material/chunk/LOD settings, not their
+unapplied drafts. The dedicated terrain worker runs seeded CPU droplets and
+rebuilds the whole mesh, normals, tangents, layer weights, chunks, full-resolution
+PhysX collision and LOD ranges. The previous terrain remains active until the
+normal frame-boundary transaction succeeds. Progress includes a **Hydraulic
+erosion** stage; cancellation and latest-accepted-request semantics are unchanged.
+
+The simulation uses bilinear heights/gradients, inertia-driven unit-cell steps,
+water/speed-dependent sediment capacity, and evaporation. Downhill height loss
+increases speed; uphill motion decreases it. Erosion uses a radius-weighted disk
+centered on the nearest vertex (clipped and weight-normalized at map boundaries);
+removal is bounded by the step's downhill drop and available sample heights.
+Deposition distributes sediment bilinearly and is bounded by each sample's
+remaining normalized-height capacity. There is no min/max renormalization.
+Flat maps remain flat; normalized samples always stay within `[0,1]`.
+
+**Units and boundaries:** horizontal distances/radius are in grid cells, vertical
+heights are normalized sample values. Mesh dimensions, height scale, object
+transforms and rectangular-cell world aspect ratio do not affect the simulation.
+This is an authoring model, not a physical water solver. Increasing grid resolution
+changes its spatial scale. Edges are open: droplets leaving the grid export carried
+sediment. Droplets stopping from lifetime, evaporation or zero direction settle
+locally; any sediment exceeding local deposition capacity is also exported.
+Consequently total height mass can decrease, but never appears from nowhere.
+`TerrainErosionBudget` reports eroded/deposited/exported totals before float output
+rounding; eroded equals deposited plus exported.
+
+| Parameter | Default | Accepted range |
+|---|---:|---|
+| Seed | 0 | uint32 |
+| Droplets | 5000 | 1..1000000 |
+| Droplet Lifetime | 64 | 1..256 |
+| Erosion Radius | 3 | 1..8 cells |
+| Inertia | 0.05 | 0..1 |
+| Sediment Capacity | 4 | 0.01..100 |
+| Minimum Slope | 0.001 | 0.00001..1 |
+| Deposition / Erosion Rate | 0.3 / 0.3 | 0..1 |
+| Evaporation | 0.01 | 0..1 per step |
+| Gravity | 4 | 0..100 |
+| Initial Water | 1 | 0.01..10 |
+| Initial Speed | 1 | 0..10 |
+
+Identical samples and recipes produce identical samples in the same build,
+independently of global RNG state. A fixed droplet count is **not** scaled with
+resolution. Costs grow with droplets, lifetime and brush area; extreme settings
+can take substantial time. Cancellation is cooperative at every droplet/step,
+but subsequent mesh/cooking/upload and final-application limits from Phase 7
+still apply. **Reset Erosion Draft** only resets unapplied controls.
+
+```cpp
+TerrainErosionSettings erosion;
+erosion.seed = 723;
+erosion.droplets = 5000;
+if (terrain->requestErosion(erosion))
+{
+    // Accepted, not yet applied. Poll getGenerationStatus() at normal owner-thread updates.
+}
+```
+
+`TerrainComponent::applyErosion` provides synchronous transactional success/failure;
+`erodeTerrain(source, settings, destination, cancelled, budget)` is the standalone
+CPU operation and supports aliased source/destination. Invalid input/cancellation
+preserves destination and budget. Component APIs preserve pending work on invalid
+requests and cancel older work only after successful replacement/acceptance.
+
+**Persistence and cumulative editing:** payload **6** saves the actual eroded
+samples plus the last successfully applied recipe. Versions **1..5** load unchanged
+samples and default erosion controls. Scene/Prefab/Play clones never replay erosion.
+Ordinary Rebuild, material/chunk/LOD changes, save/load, and noise/image/flat
+replacement do not automatically run it. Repeated successful erosion applications
+are cumulative. Requests submitted while another is pending all capture current
+applied samples; they replace, rather than chain onto, pending results.
+Pending requests and newer Inspector draft edits are not saved.
+There is no erosion undo/history, rainfall mask, cross-terrain flow, live water
+rendering or GPU erosion in this phase; GPU processing remains Phase 9.
 
 ## Terrain validation
 
@@ -1398,3 +1481,18 @@ GPU upload after owner destruction. Timing assertions are intentionally broad
 machine), not a portable frame-rate guarantee. Fixtures include
 `background-pending.scene`, `background-height16.png`, `terrain-background`
 HDR/display captures and measured `background-timing.txt`.
+
+Phase 8 checks seeded droplet reproducibility, every parameter's inclusive
+bounds and immediate out-of-range neighbors, cancellation and aliasing,
+flat/zero-rate invariance, tiny/rectangular/1025x1025 extreme cliffs, bounded
+samples and sediment conservation against the actual float output. The default
+fixture must transport/deposit meaningful sediment without exporting most of its
+height mass. It also checks v6/legacy migration and malformed payload rollback,
+Scene/Prefab/Play, applied-only saving and non-replay rebuilds, cumulative/latest
+requests, active/Ready cancellation, newer Inspector draft preservation,
+exact CPU/PhysX sync/async parity, ray heights/normals, busy-physics rollback
+and CharacterController grounding. Deferred and Forward+Hi-Z must render
+byte-identical sync/async erosion results while pending work leaves old pixels
+unchanged. Outputs include `erosion.scene`, `erosion.prefab`, measured
+`erosion-budget.txt`, and `terrain-erosion-before` / `terrain-erosion-after`
+HDR/display captures.
