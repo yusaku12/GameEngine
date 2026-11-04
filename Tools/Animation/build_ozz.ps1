@@ -1,6 +1,11 @@
 param(
     [ValidateSet("Debug", "Release")]
-    [string]$Configuration = "Debug"
+    [string]$Configuration = "Debug",
+    [string]$VisualStudioPath = "",
+    [string]$CMakePath = "",
+    [string]$ToolsetVersion = "",
+    [string]$WindowsSdkVersion = "",
+    [switch]$CleanFirst
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,19 +22,27 @@ if (-not (Test-Path $vswherePath)) {
     throw "Visual Studio Installer's vswhere.exe was not found at '$vswherePath'."
 }
 
-$visualStudioPath = (& $vswherePath -latest -products "*" -property installationPath).Trim()
-if ($LASTEXITCODE -ne 0 -or -not $visualStudioPath) {
-    throw "A Visual Studio installation was not found."
+if ([string]::IsNullOrWhiteSpace($VisualStudioPath)) {
+    $VisualStudioPath = (& $vswherePath -latest -products "*" -property installationPath).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $VisualStudioPath) {
+        throw "A Visual Studio installation was not found."
+    }
 }
 
-$visualStudioVersion = (& $vswherePath -latest -products "*" -property installationVersion).Trim()
-if ($LASTEXITCODE -ne 0 -or -not $visualStudioVersion.StartsWith("18.")) {
+$instances = & $vswherePath -products "*" -format json | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to query Visual Studio installations."
+}
+$visualStudioVersion = ($instances | Where-Object { $_.installationPath -eq $VisualStudioPath.TrimEnd("\") } | Select-Object -First 1).installationVersion
+if (-not $visualStudioVersion -or -not $visualStudioVersion.StartsWith("18.")) {
     throw "Visual Studio 2026 is required by the v145 project toolset."
 }
 
-$cmakePath = (Get-Command cmake.exe -ErrorAction SilentlyContinue).Source
-if (-not $cmakePath) {
-    $cmakePath = Join-Path $visualStudioPath "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+if ([string]::IsNullOrWhiteSpace($CMakePath)) {
+    $CMakePath = (Get-Command cmake.exe -ErrorAction SilentlyContinue).Source
+    if (-not $CMakePath) {
+        $CMakePath = Join-Path $VisualStudioPath "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+    }
 }
 if (-not (Test-Path $cmakePath)) {
     throw "CMake was not found in PATH or the Visual Studio installation."
@@ -86,6 +99,8 @@ if (Test-Path $cmakeCachePath) {
     $cachedBuild = Get-CMakeCacheValue $cmakeCachePath "CMAKE_CACHEFILE_DIR"
     $cachedGenerator = Get-CMakeCacheValue $cmakeCachePath "CMAKE_GENERATOR"
     $cachedInstance = Get-CMakeCacheValue $cmakeCachePath "CMAKE_GENERATOR_INSTANCE"
+    $cachedToolset = Get-CMakeCacheValue $cmakeCachePath "CMAKE_GENERATOR_TOOLSET"
+    $cachedSdk = Get-CMakeCacheValue $cmakeCachePath "CMAKE_SYSTEM_VERSION"
 
     $needsFreshConfigure =
         -not $cachedSource -or
@@ -95,7 +110,9 @@ if (Test-Path $cmakeCachePath) {
         (Get-NormalizedPath $cachedSource) -ne (Get-NormalizedPath $source) -or
         (Get-NormalizedPath $cachedBuild) -ne (Get-NormalizedPath $build) -or
         $cachedGenerator -ne "Visual Studio 18 2026" -or
-        (Get-NormalizedPath $cachedInstance) -ne (Get-NormalizedPath $visualStudioPath)
+        (Get-NormalizedPath $cachedInstance) -ne (Get-NormalizedPath $visualStudioPath) -or
+        ($ToolsetVersion -and $cachedToolset -ne "version=$ToolsetVersion") -or
+        ($WindowsSdkVersion -and $cachedSdk -ne $WindowsSdkVersion)
 }
 
 $cmakeArguments = @(
@@ -107,6 +124,7 @@ $cmakeArguments = @(
     "Visual Studio 18 2026"
     "-A"
     "x64"
+    "-DCMAKE_GENERATOR_INSTANCE=$VisualStudioPath"
     "-D"
     "ozz_build_tests=OFF"
     "-D"
@@ -124,6 +142,12 @@ $cmakeArguments = @(
     "-D"
     "ozz_build_msvc_rt_dll=OFF"
 )
+if ($ToolsetVersion) {
+    $cmakeArguments += @("-T", "version=$ToolsetVersion")
+}
+if ($WindowsSdkVersion) {
+    $cmakeArguments += "-DCMAKE_SYSTEM_VERSION=$WindowsSdkVersion"
+}
 if ($needsFreshConfigure) {
     $cmakeArguments = @("--fresh") + $cmakeArguments
 }
@@ -135,10 +159,11 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "=== Build ozz-animation ==="
 
-& $cmakePath `
-    --build $build `
-    --config $Configuration `
-    --parallel
+$buildArguments = @("--build", $build, "--config", $Configuration, "--parallel")
+if ($CleanFirst) {
+    $buildArguments += "--clean-first"
+}
+& $cmakePath @buildArguments
 
 if ($LASTEXITCODE -ne 0) {
     throw "ozz-animation build failed."

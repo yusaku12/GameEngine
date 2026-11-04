@@ -17,8 +17,54 @@ The project builds PhysX, ozz-animation and DirectXTex and generates FlatBuffers
 headers and compiled shaders before compiling the engine. No existing dependency
 libraries or generated headers are required. DXC and flatc are supplied in
 `Tools`. Compilation errors are not bypassed; engine warnings remain errors.
-Each dependency's build system checks its own source dependencies on every
-engine build, so existing libraries do not mask changes to dependency source.
+PhysX and ozz-animation use content-tracked incremental builds. Before compiling
+the engine, MSBuild hashes dependency source/build inputs and checks the required
+libraries and generated CMake projects. Unchanged dependencies do not launch
+PowerShell or CMake. DirectXTex retains its own MSBuild incremental checks.
+
+## Incremental native dependencies
+
+`Tools\Build\NativeDependencies.targets` maintains separate Debug/Release
+records under `Build\GameEngine\x64\<Configuration>\NativeDependencies`.
+The records are regenerable build state, not checked-in libraries or a way to
+ignore compilation failures.
+
+- SHA-256 fingerprints cover PhysX's `physx` tree and ozz's `src`, `include`,
+  `extern`, `build-utils` and top-level CMake configuration, plus the engine's
+  dependency scripts/targets. File addition, deletion and content changes are
+  detected, even when timestamps are restored. Engine-only C++ edits do not
+  invalidate dependency records.
+- ozz Git HEAD/refs are included so changing the pinned submodule revision still
+  reaches the existing revision check. Test/sample/media directories are not
+  inputs to the disabled ozz test/tool/sample builds.
+- Configuration, toolset/SDK selection, compiler/linker flags, CMake and native
+  tool binaries are tracked. MSBuild passes its selected Visual Studio instance,
+  CMake executable, VC toolset version and Windows SDK selection to both scripts.
+  `DependencyCMakeExecutable` can select an alternate CMake explicitly.
+- A changed fingerprint or CMake cache causes a clean build of that dependency's
+  selected configuration. This is deliberately conservative: CMake/MSBuild's
+  inner timestamp checks alone cannot detect backdated source or tool changes.
+  Other dependencies and the other configuration are not marked successful by it.
+- Every required linked library, CMake cache, generation stamp and recorded
+  generated project must exist before skipping. Deleting an output or cleaning
+  a build tree triggers recovery instead of trusting an old success record.
+- Linked libraries are also hashed against the last successful build. Replacing
+  or corrupting an archive, including a manual build with different flags, cannot
+  silently reuse the previous configuration's success record.
+- A success record is written only after configure/build and output checks
+  succeed. A failed build removes that configuration's record, so the next
+  invocation retries. Shared CMake cache changes are detected independently by
+  both configurations. Use one build at a time for the shared dependency trees.
+
+The first build after enabling/changing these rules rebuilds the dependencies;
+subsequent unchanged builds only perform the fingerprint/output checks.
+`Clean` clears the current configuration's records, and `Rebuild` establishes
+them again. To rebuild an individual dependency manually, the existing
+`Tools\Animation\build_ozz.ps1` and `Tools\Physics\build_physx.ps1` still work;
+pass `-CleanFirst` when a clean dependency compilation is required. Do not
+disable these checks merely because a `.lib` already exists.
+
+## Repository directories
 
 - `Source`: engine and editor C++ source, including public extension APIs.
 - `Assets`: authoring assets and HLSL source; preserve scenes, prefabs and models.

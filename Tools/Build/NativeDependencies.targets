@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <DependencyCMakeExecutable Condition="'$(DependencyCMakeExecutable)' == ''">$(VSInstallDir)Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe</DependencyCMakeExecutable>
+    <NativeDependencyStateDirectory>$(IntDir)NativeDependencies\</NativeDependencyStateDirectory>
+    <NativeDependencyBuildArguments>-Configuration $(Configuration) -VisualStudioPath &quot;$(VSInstallDir.TrimEnd('\'))&quot; -CMakePath &quot;$(DependencyCMakeExecutable)&quot; -ToolsetVersion &quot;$(VCToolsVersion)&quot; -WindowsSdkVersion &quot;$(WindowsTargetPlatformVersion)&quot;</NativeDependencyBuildArguments>
+  </PropertyGroup>
+
+  <Target Name="PrepareNativeDependencies" Condition="'$(Platform)' == 'x64'">
+    <Error Condition="!Exists('$(DependencyCMakeExecutable)')" Text="Dependency CMake was not found: $(DependencyCMakeExecutable)" />
+    <Error Condition="!Exists('$(ProjectDir)Library\PhysX\physx\CMakeLists.txt')" Text="PhysX source is not initialized." />
+    <Error Condition="!Exists('$(ProjectDir)Library\ozz-animation\CMakeLists.txt')" Text="ozz-animation source is not initialized." />
+    <MakeDir Directories="$(NativeDependencyStateDirectory)" />
+    <ItemGroup>
+      <_NativeDependencyTool Include="$(DependencyCMakeExecutable);$(MSBuildThisFileFullPath);$(VCToolsInstallDir)bin\Hostx64\x64\*.exe;$(VCToolsInstallDir)bin\Hostx64\x64\*.dll;$(VSInstallDir)VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt" />
+      <_OzzSource Include="$(ProjectDir)Library\ozz-animation\src\**\*;$(ProjectDir)Library\ozz-animation\include\**\*;$(ProjectDir)Library\ozz-animation\extern\**\*;$(ProjectDir)Library\ozz-animation\build-utils\**\*;$(ProjectDir)Library\ozz-animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\CMakeLists.txt;$(ProjectDir)Tools\Animation\build_ozz.ps1" />
+      <_PhysXSource Include="$(ProjectDir)Library\PhysX\physx\**\*;$(ProjectDir)Tools\Physics\build_physx.ps1" />
+    </ItemGroup>
+    <ReadLinesFromFile File="$(ProjectDir)Library\ozz-animation\.git" Condition="Exists('$(ProjectDir)Library\ozz-animation\.git') and !Exists('$(ProjectDir)Library\ozz-animation\.git\HEAD')">
+      <Output TaskParameter="Lines" ItemName="_OzzGitPointer" />
+    </ReadLinesFromFile>
+    <PropertyGroup>
+      <_OzzGitDirectory>$(ProjectDir)Library\ozz-animation\.git</_OzzGitDirectory>
+      <_OzzGitPointerText>@(_OzzGitPointer)</_OzzGitPointerText>
+      <_OzzGitRelativeDirectory>$(_OzzGitPointerText.Replace('gitdir: ', ''))</_OzzGitRelativeDirectory>
+      <_OzzGitDirectory Condition="'$(_OzzGitPointerText)' != ''">$([System.IO.Path]::GetFullPath('$(ProjectDir)Library\ozz-animation\$(_OzzGitRelativeDirectory)'))</_OzzGitDirectory>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_OzzGitDirectory)\HEAD')" Text="ozz-animation Git metadata is missing; initialize the registered submodule." />
+    <ItemGroup>
+      <_OzzSource Include="$(_OzzGitDirectory)\HEAD;$(_OzzGitDirectory)\packed-refs;$(_OzzGitDirectory)\refs\**\*" Condition="Exists('%(Identity)')" />
+      <_NativeDependencyTool Remove="@(_NativeDependencyTool)" Condition="!Exists('%(Identity)')" />
+      <_OzzLibrary Include="$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration)\ozz_animation_offline$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration)\ozz_animation$(OzzLibraryPostfix).lib;$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration)\ozz_base$(OzzLibraryPostfix).lib" />
+      <_PhysXLibraryName Include="PhysX_static_64;PhysXExtensions_static_64;PhysXCharacterKinematic_static_64;PhysXCooking_static_64;PhysXCommon_static_64;PhysXPvdSDK_static_64;PhysXFoundation_static_64" />
+      <_PhysXLibrary Include="@(_PhysXLibraryName->'$(ProjectDir)Build\PhysX\lib\bin\win.x86_64.vc143.mt\$(Configuration.ToLowerInvariant())\%(Identity).lib')" />
+      <_OzzRequired Include="@(_OzzLibrary);$(ProjectDir)Build\ozz-animation\CMakeCache.txt;$(ProjectDir)Build\ozz-animation\ALL_BUILD.vcxproj;$(ProjectDir)Build\ozz-animation\ZERO_CHECK.vcxproj;$(ProjectDir)Build\ozz-animation\CMakeFiles\generate.stamp;$(NativeDependencyStateDirectory)ozz.outputs" />
+      <_PhysXRequired Include="@(_PhysXLibrary);$(ProjectDir)Build\PhysX\CMakeCache.txt;$(ProjectDir)Build\PhysX\ALL_BUILD.vcxproj;$(ProjectDir)Build\PhysX\ZERO_CHECK.vcxproj;$(ProjectDir)Build\PhysX\CMakeFiles\generate.stamp;$(NativeDependencyStateDirectory)physx.outputs" />
+    </ItemGroup>
+    <ReadLinesFromFile File="$(NativeDependencyStateDirectory)ozz.outputs" Condition="Exists('$(NativeDependencyStateDirectory)ozz.outputs')">
+      <Output TaskParameter="Lines" ItemName="_OzzRequired" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(NativeDependencyStateDirectory)physx.outputs" Condition="Exists('$(NativeDependencyStateDirectory)physx.outputs')">
+      <Output TaskParameter="Lines" ItemName="_PhysXRequired" />
+    </ReadLinesFromFile>
+    <Delete Files="$(NativeDependencyStateDirectory)ozz.success" Condition="!Exists('%(_OzzRequired.Identity)')" />
+    <Delete Files="$(NativeDependencyStateDirectory)physx.success" Condition="!Exists('%(_PhysXRequired.Identity)')" />
+    <GetFileHash Files="@(_NativeDependencyTool)">
+      <Output TaskParameter="Items" ItemName="_NativeDependencyToolHash" />
+    </GetFileHash>
+    <GetFileHash Files="@(_OzzSource)">
+      <Output TaskParameter="Items" ItemName="_OzzSourceHash" />
+    </GetFileHash>
+    <GetFileHash Files="@(_PhysXSource)">
+      <Output TaskParameter="Items" ItemName="_PhysXSourceHash" />
+    </GetFileHash>
+    <PropertyGroup>
+      <_NativeDependencySettings>$(Configuration)|$(Platform)|$(PlatformToolset)|$(VCToolsVersion)|$(VSInstallDir)|$(VCTargetsPath)|$(WindowsTargetPlatformVersion)|$(WindowsSDK_IncludePath)|$(WindowsSDK_LibraryPath)|$(CL)|$(_CL_)|$(LINK)|$(_LINK_)|$(CC)|$(CXX)|$(CFLAGS)|$(CXXFLAGS)|$(LDFLAGS)</_NativeDependencySettings>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(NativeDependencyStateDirectory)ozz.inputs" Lines="$(_NativeDependencySettings);@(_NativeDependencyToolHash->'%(FullPath)|%(FileHash)');@(_OzzSourceHash->'%(FullPath)|%(FileHash)')" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <WriteLinesToFile File="$(NativeDependencyStateDirectory)physx.inputs" Lines="$(_NativeDependencySettings);@(_NativeDependencyToolHash->'%(FullPath)|%(FileHash)');@(_PhysXSourceHash->'%(FullPath)|%(FileHash)')" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <GetFileHash Files="$(NativeDependencyStateDirectory)ozz.inputs">
+      <Output TaskParameter="Hash" PropertyName="_OzzInputHash" />
+    </GetFileHash>
+    <GetFileHash Files="$(NativeDependencyStateDirectory)physx.inputs">
+      <Output TaskParameter="Hash" PropertyName="_PhysXInputHash" />
+    </GetFileHash>
+    <GetFileHash Files="$(ProjectDir)Build\ozz-animation\CMakeCache.txt" Condition="Exists('$(ProjectDir)Build\ozz-animation\CMakeCache.txt')">
+      <Output TaskParameter="Hash" PropertyName="_OzzCacheHash" />
+    </GetFileHash>
+    <GetFileHash Files="$(ProjectDir)Build\PhysX\CMakeCache.txt" Condition="Exists('$(ProjectDir)Build\PhysX\CMakeCache.txt')">
+      <Output TaskParameter="Hash" PropertyName="_PhysXCacheHash" />
+    </GetFileHash>
+    <ItemGroup>
+      <_OzzExistingLibrary Include="@(_OzzLibrary)" />
+      <_PhysXExistingLibrary Include="@(_PhysXLibrary)" />
+      <_OzzExistingLibrary Remove="@(_OzzExistingLibrary)" Condition="!Exists('%(Identity)')" />
+      <_PhysXExistingLibrary Remove="@(_PhysXExistingLibrary)" Condition="!Exists('%(Identity)')" />
+    </ItemGroup>
+    <GetFileHash Files="@(_OzzExistingLibrary)">
+      <Output TaskParameter="Items" ItemName="_OzzExistingLibraryHash" />
+    </GetFileHash>
+    <GetFileHash Files="@(_PhysXExistingLibrary)">
+      <Output TaskParameter="Items" ItemName="_PhysXExistingLibraryHash" />
+    </GetFileHash>
+    <ReadLinesFromFile File="$(NativeDependencyStateDirectory)ozz.success" Condition="Exists('$(NativeDependencyStateDirectory)ozz.success')">
+      <Output TaskParameter="Lines" ItemName="_OzzPreviousSuccess" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(NativeDependencyStateDirectory)physx.success" Condition="Exists('$(NativeDependencyStateDirectory)physx.success')">
+      <Output TaskParameter="Lines" ItemName="_PhysXPreviousSuccess" />
+    </ReadLinesFromFile>
+    <PropertyGroup>
+      <_OzzExpectedSuccess>$(_OzzInputHash)|$(_OzzCacheHash);@(_OzzExistingLibraryHash->'%(FullPath)|%(FileHash)')</_OzzExpectedSuccess>
+      <_PhysXExpectedSuccess>$(_PhysXInputHash)|$(_PhysXCacheHash);@(_PhysXExistingLibraryHash->'%(FullPath)|%(FileHash)')</_PhysXExpectedSuccess>
+      <_OzzCleanFirstArgument Condition="'@(_OzzPreviousSuccess)' != '$(_OzzExpectedSuccess)'">-CleanFirst</_OzzCleanFirstArgument>
+      <_PhysXCleanFirstArgument Condition="'@(_PhysXPreviousSuccess)' != '$(_PhysXExpectedSuccess)'">-CleanFirst</_PhysXCleanFirstArgument>
+    </PropertyGroup>
+    <Delete Files="$(NativeDependencyStateDirectory)ozz.success" Condition="'$(_OzzCleanFirstArgument)' != ''" />
+    <Delete Files="$(NativeDependencyStateDirectory)physx.success" Condition="'$(_PhysXCleanFirstArgument)' != ''" />
+  </Target>
+
+  <Target Name="BuildOzzAnimation" BeforeTargets="ClCompile" DependsOnTargets="PrepareNativeDependencies" Condition="'$(Platform)' == 'x64'" Inputs="$(NativeDependencyStateDirectory)ozz.inputs;$(ProjectDir)Build\ozz-animation\CMakeCache.txt" Outputs="$(NativeDependencyStateDirectory)ozz.success">
+    <Delete Files="$(NativeDependencyStateDirectory)ozz.success" />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Animation\build_ozz.ps1&quot; $(NativeDependencyBuildArguments) $(_OzzCleanFirstArgument)" />
+    <Error Condition="!Exists('%(_OzzLibrary.Identity)')" Text="ozz-animation build produced no required library: %(_OzzLibrary.Identity)" />
+    <ItemGroup>
+      <_OzzGeneratedProject Include="$(ProjectDir)Build\ozz-animation\**\*.vcxproj" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(NativeDependencyStateDirectory)ozz.outputs" Lines="@(_OzzGeneratedProject->'%(FullPath)')" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <GetFileHash Files="$(ProjectDir)Build\ozz-animation\CMakeCache.txt">
+      <Output TaskParameter="Hash" PropertyName="_OzzCacheHash" />
+    </GetFileHash>
+    <GetFileHash Files="@(_OzzLibrary)">
+      <Output TaskParameter="Items" ItemName="_OzzBuiltLibraryHash" />
+    </GetFileHash>
+    <WriteLinesToFile File="$(NativeDependencyStateDirectory)ozz.success" Lines="$(_OzzInputHash)|$(_OzzCacheHash);@(_OzzBuiltLibraryHash->'%(FullPath)|%(FileHash)')" Overwrite="true" />
+  </Target>
+
+  <Target Name="BuildPhysX" BeforeTargets="ClCompile" DependsOnTargets="PrepareNativeDependencies" Condition="'$(Platform)' == 'x64'" Inputs="$(NativeDependencyStateDirectory)physx.inputs;$(ProjectDir)Build\PhysX\CMakeCache.txt" Outputs="$(NativeDependencyStateDirectory)physx.success">
+    <Delete Files="$(NativeDependencyStateDirectory)physx.success" />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Physics\build_physx.ps1&quot; $(NativeDependencyBuildArguments) $(_PhysXCleanFirstArgument)" />
+    <Error Condition="!Exists('%(_PhysXLibrary.Identity)')" Text="PhysX build produced no required library: %(_PhysXLibrary.Identity)" />
+    <ItemGroup>
+      <_PhysXGeneratedProject Include="$(ProjectDir)Build\PhysX\**\*.vcxproj" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(NativeDependencyStateDirectory)physx.outputs" Lines="@(_PhysXGeneratedProject->'%(FullPath)')" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <GetFileHash Files="$(ProjectDir)Build\PhysX\CMakeCache.txt">
+      <Output TaskParameter="Hash" PropertyName="_PhysXCacheHash" />
+    </GetFileHash>
+    <GetFileHash Files="@(_PhysXLibrary)">
+      <Output TaskParameter="Items" ItemName="_PhysXBuiltLibraryHash" />
+    </GetFileHash>
+    <WriteLinesToFile File="$(NativeDependencyStateDirectory)physx.success" Lines="$(_PhysXInputHash)|$(_PhysXCacheHash);@(_PhysXBuiltLibraryHash->'%(FullPath)|%(FileHash)')" Overwrite="true" />
+  </Target>
+
+  <Target Name="CleanNativeDependencyState" AfterTargets="Clean">
+    <Delete Files="$(NativeDependencyStateDirectory)ozz.inputs;$(NativeDependencyStateDirectory)ozz.outputs;$(NativeDependencyStateDirectory)ozz.success;$(NativeDependencyStateDirectory)physx.inputs;$(NativeDependencyStateDirectory)physx.outputs;$(NativeDependencyStateDirectory)physx.success" />
+  </Target>
+</Project>

@@ -265,6 +265,9 @@
     <Filter Include="Tools">
       <UniqueIdentifier>{A046C185-BAD5-4175-B36B-CA3DA40E3EEA}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Tools\Build">
+      <UniqueIdentifier>{25A1B11E-85BC-48BE-8C37-4A90D8458A29}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Tools\FlatBuffers">
       <UniqueIdentifier>{658722AC-BB3B-4509-9FCF-764B18D08A72}</UniqueIdentifier>
     </Filter>
@@ -1410,6 +1413,9 @@
     </None>
     <None Include="Tools\FlatBuffers\build_schema.bat">
       <Filter>Tools\FlatBuffers</Filter>
+    </None>
+    <None Include="Tools\Build\NativeDependencies.targets">
+      <Filter>Tools\Build</Filter>
     </None>
     <None Include="Tools\FlatBuffers\build_schema.ps1">
       <Filter>Tools\FlatBuffers</Filter>

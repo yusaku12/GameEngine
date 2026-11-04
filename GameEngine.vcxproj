@@ -416,6 +416,7 @@
     <None Include="Tools\Shaders\CompileShaders.bat" />
     <None Include="Tools\Shaders\CompileShaders.ps1" />
     <None Include="Tools\Shaders\CleanShaderCache.bat" />
+    <None Include="Tools\Build\NativeDependencies.targets" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -523,12 +524,7 @@
   <Target Name="GenerateFlatBuffers" BeforeTargets="ClCompile" Inputs="@(FlatBufferSchema);$(IntDir)FlatBuffers.schemas;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1;$(FLATBUFFERS_FLATC_EXECUTABLE)" Outputs="@(FlatBufferSchema->'$(ProjectDir)Generated\FlatBuffers\%(Filename)_generated.h')">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
   </Target>
-  <Target Name="BuildOzzAnimation" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'">
-    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Animation\build_ozz.ps1&quot; -Configuration $(Configuration)" />
-  </Target>
-  <Target Name="BuildPhysX" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'">
-    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Physics\build_physx.ps1&quot; -Configuration $(Configuration)" />
-  </Target>
+  <Import Project="$(ProjectDir)Tools\Build\NativeDependencies.targets" />
   <Target Name="BuildDirectXTex" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'">
     <MSBuild Projects="$(ProjectDir)Library\DirectXTex-main\DirectXTex\DirectXTex_Desktop_2022_Win10.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=x64;PlatformToolset=$(PlatformToolset)" RemoveProperties="IntDir;OutDir" />
   </Target>
