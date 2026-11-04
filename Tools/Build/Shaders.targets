@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ShaderBuildState>$(ProjectDir)Assets\Shaders\Compiled\.build\</ShaderBuildState>
+  </PropertyGroup>
+  <Target Name="PrepareShaderBuild">
+    <ItemGroup>
+      <_ShaderInput Include="$(ProjectDir)Assets\Shaders\**\*" Exclude="$(ProjectDir)Assets\Shaders\Compiled\**\*;$(ProjectDir)Assets\Shaders\.cache\**\*" />
+      <_ShaderInput Include="$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(MSBuildThisFileFullPath);$(ProjectDir)Tools\DXC\dxc.exe;$(ProjectDir)Tools\DXC\dxcompiler.dll;$(ProjectDir)Tools\DXC\dxil.dll" />
+      <_ShaderRequired Include="$(ShaderBuildState)outputs.list;$(ShaderBuildState)dependencies.list;$(ShaderBuildState)success" />
+    </ItemGroup>
+    <ReadLinesFromFile File="$(ShaderBuildState)outputs.list" Condition="Exists('$(ShaderBuildState)outputs.list')">
+      <Output TaskParameter="Lines" ItemName="_ShaderOutput" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(ShaderBuildState)dependencies.list" Condition="Exists('$(ShaderBuildState)dependencies.list')">
+      <Output TaskParameter="Lines" ItemName="_ShaderDependency" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_ShaderRequired Include="@(_ShaderOutput);@(_ShaderDependency)" />
+      <_ShaderExistingOutput Include="@(_ShaderOutput)" Condition="Exists('%(Identity)')" />
+      <_ShaderExistingDependency Include="@(_ShaderDependency)" Condition="Exists('%(Identity)')" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_ShaderNeedsBuild Condition="!Exists('%(_ShaderRequired.Identity)')">true</_ShaderNeedsBuild>
+    </PropertyGroup>
+    <GetFileHash Files="@(_ShaderInput)">
+      <Output TaskParameter="Items" ItemName="_ShaderInputHash" />
+    </GetFileHash>
+    <GetFileHash Files="@(_ShaderExistingDependency)">
+      <Output TaskParameter="Items" ItemName="_ShaderDependencyHash" />
+    </GetFileHash>
+    <GetFileHash Files="@(_ShaderExistingOutput)">
+      <Output TaskParameter="Items" ItemName="_ShaderOutputHash" />
+    </GetFileHash>
+    <ReadLinesFromFile File="$(ShaderBuildState)success" Condition="Exists('$(ShaderBuildState)success')">
+      <Output TaskParameter="Lines" ItemName="_ShaderPreviousSuccess" />
+    </ReadLinesFromFile>
+    <PropertyGroup>
+      <_ShaderExpectedSuccess>@(_ShaderInputHash->'%(FullPath)|%(FileHash)');@(_ShaderDependencyHash->'%(FullPath)|%(FileHash)');@(_ShaderOutputHash->'%(FullPath)|%(FileHash)')</_ShaderExpectedSuccess>
+      <_ShaderNeedsBuild Condition="'@(_ShaderPreviousSuccess)' != '$(_ShaderExpectedSuccess)'">true</_ShaderNeedsBuild>
+    </PropertyGroup>
+  </Target>
+  <Target Name="CompileShaders" BeforeTargets="ClCompile" DependsOnTargets="PrepareShaderBuild;BuildChangedShaders" />
+  <Target Name="BuildChangedShaders" Condition="'$(_ShaderNeedsBuild)' == 'true'">
+    <Delete Files="$(ShaderBuildState)success" />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
+    <ReadLinesFromFile File="$(ShaderBuildState)dependencies.list">
+      <Output TaskParameter="Lines" ItemName="_ShaderBuiltDependency" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(ShaderBuildState)outputs.list">
+      <Output TaskParameter="Lines" ItemName="_ShaderBuiltOutput" />
+    </ReadLinesFromFile>
+    <GetFileHash Files="@(_ShaderBuiltDependency)">
+      <Output TaskParameter="Items" ItemName="_ShaderBuiltDependencyHash" />
+    </GetFileHash>
+    <GetFileHash Files="@(_ShaderBuiltOutput)">
+      <Output TaskParameter="Items" ItemName="_ShaderBuiltOutputHash" />
+    </GetFileHash>
+    <WriteLinesToFile File="$(ShaderBuildState)success" Lines="@(_ShaderInputHash->'%(FullPath)|%(FileHash)');@(_ShaderBuiltDependencyHash->'%(FullPath)|%(FileHash)');@(_ShaderBuiltOutputHash->'%(FullPath)|%(FileHash)')" Overwrite="true" />
+  </Target>
+</Project>

@@ -64,6 +64,39 @@ them again. To rebuild an individual dependency manually, the existing
 pass `-CleanFirst` when a clean dependency compilation is required. Do not
 disable these checks merely because a `.lib` already exists.
 
+## Incremental shaders
+
+`Tools\Build\Shaders.targets` is the single build entry point for all 32 built-in
+shader entry points, including Terrain and every post-process pass. The job list
+and compiler options live in `Tools\Shaders\CompileShaders.ps1`; Debug and Release
+share the same bytecode and records because their shader options are identical.
+The existing optimization/debug options are preserved, including Terrain's
+warnings-as-errors option.
+
+- Unchanged solution builds hash shader inputs, DXC binaries and recorded
+  outputs without starting PowerShell or DXC.
+- When inputs change, the script checks each entry point separately using
+  SHA-256 records and the actual transitive includes emitted by DXC's `-MD`.
+  Editing a source rebuilds only its entry points; editing an include rebuilds
+  only its consumers. Restoring timestamps does not hide content changes.
+- Missing or modified bytecode rebuilds only that output. Missing per-entry
+  records are regenerated. File additions/deletions conservatively invalidate
+  all entries because they can change include resolution. DXC/script changes
+  also invalidate all entries.
+- Bytecode is compiled to a temporary file before publication. A compiler error
+  fails the build, removes that entry's success record, and preserves its last
+  bytecode only as an old artifact, never as a successful build fallback.
+- Records live under `Assets\Shaders\Compiled\.build`. Use
+  `Tools\Shaders\CompileShaders.bat` for the same incremental behavior manually,
+  or add `-Force` to compile every entry. `CleanShaderCache.bat` removes bytecode
+  and records, so the next build recompiles all shaders. Normal C++ Clean/Rebuild
+  does not discard unchanged, configuration-independent shader artifacts.
+
+Run one shader build at a time; the outputs are shared. Runtime hot reload and
+custom post-process shader compilation are unchanged. Invalid state-file JSON
+is reported as an error; use `-Force`, remove the affected record or clean the
+shader cache to regenerate it.
+
 ## Repository directories
 
 - `Source`: engine and editor C++ source, including public extension APIs.

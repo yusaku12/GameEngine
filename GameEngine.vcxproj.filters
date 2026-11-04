@@ -1417,6 +1417,9 @@
     <None Include="Tools\Build\NativeDependencies.targets">
       <Filter>Tools\Build</Filter>
     </None>
+    <None Include="Tools\Build\Shaders.targets">
+      <Filter>Tools\Build</Filter>
+    </None>
     <None Include="Tools\FlatBuffers\build_schema.ps1">
       <Filter>Tools\FlatBuffers</Filter>
     </None>

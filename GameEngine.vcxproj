@@ -417,6 +417,7 @@
     <None Include="Tools\Shaders\CompileShaders.ps1" />
     <None Include="Tools\Shaders\CleanShaderCache.bat" />
     <None Include="Tools\Build\NativeDependencies.targets" />
+    <None Include="Tools\Build\Shaders.targets" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -528,15 +529,7 @@
   <Target Name="BuildDirectXTex" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'">
     <MSBuild Projects="$(ProjectDir)Library\DirectXTex-main\DirectXTex\DirectXTex_Desktop_2022_Win10.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=x64;PlatformToolset=$(PlatformToolset)" RemoveProperties="IntDir;OutDir" />
   </Target>
-  <Target Name="CompileShaders" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Assets\Shaders\Deferred.hlsl;$(ProjectDir)Assets\Shaders\PostProcess.hlsl;$(ProjectDir)Assets\Shaders\PostProcessEffects.hlsl;$(ProjectDir)Assets\Shaders\PostProcess.hlsli;$(ProjectDir)Assets\Shaders\ColorOutput.hlsli;$(ProjectDir)Assets\Shaders\DebugPrimitive.hlsl;$(ProjectDir)Assets\Shaders\HiZ.hlsl;$(ProjectDir)Assets\Shaders\Occlusion.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(ProjectDir)Tools\DXC\dxc.exe;$(ProjectDir)Tools\DXC\dxcompiler.dll;$(ProjectDir)Tools\DXC\dxil.dll" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psGBuffer_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psGBufferAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Deferred_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Deferred_psLighting_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Deferred_psDebug_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcess_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcess_psToneMapping_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcess_psOutput_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomPrefilter_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomDownsample_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomUpsample_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomComposite_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psVignette_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psFxaa_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\HiZ_csMain_cs.cso;$(ProjectDir)Assets\Shaders\Compiled\Occlusion_csMain_cs.cso">
-    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
-  </Target>
-  <Target Name="CompileTerrainNoiseShader" BeforeTargets="ClCompile" DependsOnTargets="CompileShaders" Inputs="$(ProjectDir)Assets\Shaders\TerrainNoise.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(ProjectDir)Tools\DXC\dxc.exe;$(ProjectDir)Tools\DXC\dxcompiler.dll;$(ProjectDir)Tools\DXC\dxil.dll" Outputs="$(ProjectDir)Assets\Shaders\Compiled\TerrainNoise_csMain_cs.cso">
-    <Exec Command="&quot;$(ProjectDir)Tools\DXC\dxc.exe&quot; -HV 2021 -E csMain -T cs_6_0 -O3 -Zi -Qembed_debug -WX -Fo &quot;$(ProjectDir)Assets\Shaders\Compiled\TerrainNoise_csMain_cs.cso&quot; &quot;$(ProjectDir)Assets\Shaders\TerrainNoise.hlsl&quot;" />
-  </Target>
-  <Target Name="CompilePhase6PostProcessShaders" BeforeTargets="ClCompile" DependsOnTargets="CompileShaders" Inputs="$(ProjectDir)Assets\Shaders\PostProcessEffects.hlsl;$(ProjectDir)Assets\Shaders\PostProcess.hlsl;$(ProjectDir)Assets\Shaders\PostProcess.hlsli;$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(ProjectDir)Tools\DXC\dxc.exe" Outputs="$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psDepthOfField_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psColorGradingLut_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psAutoExposureDownsample_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psChromaticAberration_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psFilmGrain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psTemporalAA_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psMotionBlur_ps.cso">
-    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
-  </Target>
+  <Import Project="$(ProjectDir)Tools\Build\Shaders.targets" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

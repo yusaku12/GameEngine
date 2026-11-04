@@ -2,7 +2,8 @@
 param(
     [string]$Dxc = "",
     [string]$ShaderRoot = "",
-    [string]$OutputRoot = ""
+    [string]$OutputRoot = "",
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +15,32 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $OutputRoot = Join-Path $Shader
 if (!(Test-Path -LiteralPath $Dxc)) { throw "DXC was not found: $Dxc. Place the pinned DXC package under Tools/DXC or pass -Dxc." }
 if (!(Test-Path -LiteralPath $ShaderRoot)) { throw "Shader directory was not found: $ShaderRoot" }
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
+$Dxc = (Resolve-Path -LiteralPath $Dxc).Path
+$ShaderRoot = (Resolve-Path -LiteralPath $ShaderRoot).Path
+$OutputRoot = (Resolve-Path -LiteralPath $OutputRoot).Path
+$stateRoot = Join-Path $OutputRoot ".build"
+New-Item -ItemType Directory -Force -Path $stateRoot | Out-Null
+$successFile = Join-Path $stateRoot "success"
+if (Test-Path -LiteralPath $successFile) { Remove-Item -LiteralPath $successFile }
+
+$toolFiles = @($PSCommandPath, $Dxc, (Join-Path (Split-Path $Dxc) "dxcompiler.dll"), (Join-Path (Split-Path $Dxc) "dxil.dll"))
+$toolIdentity = @($toolFiles | ForEach-Object { "$_|$((Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash)" }) -join ";"
+# File names affect include lookup even if previously resolved includes did not change.
+$sourceInventory = @(Get-ChildItem -LiteralPath $ShaderRoot -File -Recurse |
+    Where-Object { !$_.FullName.StartsWith($OutputRoot + "\", [StringComparison]::OrdinalIgnoreCase) -and
+        !$_.FullName.StartsWith((Join-Path $ShaderRoot ".cache") + "\", [StringComparison]::OrdinalIgnoreCase) } |
+    Sort-Object FullName | ForEach-Object { $_.FullName }) -join ";"
+
+function Test-CurrentShader($record, [string]$settings, [string]$output) {
+    if ($Force -or $null -eq $record -or $record.Settings -cne $settings -or !(Test-Path -LiteralPath $output)) { return $false }
+    if ($record.OutputHash -cne (Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash) { return $false }
+    if (@($record.Dependencies).Count -eq 0) { return $false }
+    foreach ($dependency in $record.Dependencies) {
+        if (!(Test-Path -LiteralPath $dependency.Path) -or
+            $dependency.Hash -cne (Get-FileHash -LiteralPath $dependency.Path -Algorithm SHA256).Hash) { return $false }
+    }
+    return $true
+}
 
 $jobs = @(
     @{ Source = Join-Path $ShaderRoot "Model.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "Model_vsMain_vs.cso" },
@@ -47,14 +74,61 @@ $jobs = @(
     @{ Source = Join-Path $ShaderRoot "DebugPrimitive.hlsl"; Entry = "psMain"; Target = "ps_6_0"; Output = "DebugPrimitive_psMain_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "HiZ.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "HiZ_csMain_cs.cso"; Optimize = $true },
     @{ Source = Join-Path $ShaderRoot "Occlusion.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "Occlusion_csMain_cs.cso"; Optimize = $true },
-    @{ Source = Join-Path $ShaderRoot "TerrainNoise.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "TerrainNoise_csMain_cs.cso"; Optimize = $true }
+    @{ Source = Join-Path $ShaderRoot "TerrainNoise.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "TerrainNoise_csMain_cs.cso"; Optimize = $true; WarningsAsErrors = $true }
 )
 
+$outputs = @()
+$dependencies = @()
+$compiled = 0
 foreach ($job in $jobs) {
-    Write-Host "[ShaderCompiler] $($job.Entry) -> $($job.Output)"
     $optimization = "-Od"
     if ($job.Optimize) { $optimization = "-O3" }
-    & $Dxc -HV 2021 -E $job.Entry -T $job.Target -Fo (Join-Path $OutputRoot $job.Output) -I $ShaderRoot -Zi -Qembed_debug $optimization $job.Source
-    if ($LASTEXITCODE -ne 0) { throw "DXC failed for $($job.Source)::$($job.Entry)" }
+    $output = Join-Path $OutputRoot $job.Output
+    $recordFile = Join-Path $stateRoot ($job.Output + ".json")
+    $settings = "$toolIdentity|$sourceInventory|$ShaderRoot|$($job.Source)|$($job.Entry)|$($job.Target)|$optimization|$($job.WarningsAsErrors)|-HV 2021 -Zi -Qembed_debug"
+    $record = $null
+    if (!$Force -and (Test-Path -LiteralPath $recordFile)) { $record = Get-Content -LiteralPath $recordFile -Raw | ConvertFrom-Json }
+    if (!(Test-CurrentShader $record $settings $output)) {
+        Write-Host "[ShaderCompiler] $($job.Entry) -> $($job.Output)"
+        if (Test-Path -LiteralPath $recordFile) { Remove-Item -LiteralPath $recordFile }
+        $temporaryOutput = $output + ".tmp"
+        $dependencyFile = $output + ".d"
+        try {
+            $arguments = @("-HV", "2021", "-E", $job.Entry, "-T", $job.Target, "-Fo", $temporaryOutput,
+                "-I", $ShaderRoot, "-Zi", "-Qembed_debug", $optimization)
+            if ($job.WarningsAsErrors) { $arguments += "-WX" }
+            & $Dxc @arguments $job.Source
+            if ($LASTEXITCODE -ne 0) { throw "DXC failed for $($job.Source)::$($job.Entry)" }
+            & $Dxc @arguments -MD -MF $dependencyFile $job.Source
+            if ($LASTEXITCODE -ne 0) { throw "DXC dependency scan failed for $($job.Source)::$($job.Entry)" }
+            # DXC emits one dependency per continued line, preserving spaces in paths.
+            $dependencyLines = @(Get-Content -LiteralPath $dependencyFile)
+            $dependencyLines[0] = $dependencyLines[0] -replace '^.*?:\s+', ''
+            $resolvedDependencies = @($dependencyLines | ForEach-Object {
+                $path = $_.Trim().TrimEnd('\').Trim()
+                if ($path) { (Resolve-Path -LiteralPath $path).Path }
+            } | Sort-Object -Unique)
+            if ($resolvedDependencies -notcontains $job.Source) { throw "DXC dependency output did not contain $($job.Source)" }
+            $record = @{
+                Settings = $settings
+                OutputHash = (Get-FileHash -LiteralPath $temporaryOutput -Algorithm SHA256).Hash
+                Dependencies = @($resolvedDependencies | ForEach-Object {
+                    @{ Path = $_; Hash = (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
+                })
+            }
+            Move-Item -LiteralPath $temporaryOutput -Destination $output -Force
+            $record | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $recordFile -Encoding UTF8
+            ++$compiled
+        }
+        finally {
+            foreach ($temporaryFile in @($temporaryOutput, $dependencyFile)) {
+                if (Test-Path -LiteralPath $temporaryFile) { Remove-Item -LiteralPath $temporaryFile }
+            }
+        }
+    }
+    $outputs += $output, $recordFile
+    $dependencies += @($record.Dependencies | ForEach-Object { $_.Path })
 }
-Write-Host "[ShaderCompiler] Shader compilation succeeded."
+$outputs | Set-Content -LiteralPath (Join-Path $stateRoot "outputs.list") -Encoding UTF8
+$dependencies | Sort-Object -Unique | Set-Content -LiteralPath (Join-Path $stateRoot "dependencies.list") -Encoding UTF8
+Write-Host "[ShaderCompiler] Shader compilation succeeded: $compiled compiled, $($jobs.Count - $compiled) unchanged."
