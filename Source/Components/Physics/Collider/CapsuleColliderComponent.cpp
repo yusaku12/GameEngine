@@ -1,5 +1,7 @@
 #include "Pch.h"
 #include "Components\Physics\Collider\CapsuleColliderComponent.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
 
 namespace Engine
 {

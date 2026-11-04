@@ -2,6 +2,8 @@
 #include "Core\System\Dialog.h"
 
 #include <shobjidl.h>
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
 
 #pragma comment(lib, "Ole32.lib")
 #pragma comment(lib, "Shell32.lib")

@@ -8,6 +8,9 @@
 #include "Generated\FlatBuffers\PhysicsComponent_generated.h"
 #include "Physics\Internal\PhysicsPayload.h"
 #include <imgui.h>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
 
 namespace Engine
 {

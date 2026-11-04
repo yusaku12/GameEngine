@@ -2,6 +2,7 @@
 #include "Graphics\DirectX12\Pipeline\Pipeline.h"
 #include "Graphics\DirectX12\Command\Command.h"
 #include "Graphics\Shader\Shader.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

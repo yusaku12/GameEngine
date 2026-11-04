@@ -5,6 +5,8 @@
 #include <ImGuizmo.h>
 #include <backends\imgui_impl_dx12.h>
 #include <backends\imgui_impl_win32.h>
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 

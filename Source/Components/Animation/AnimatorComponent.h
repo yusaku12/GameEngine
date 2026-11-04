@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <span>
+
 #include "Animation\Runtime\AnimatorInstance.h"
 #include "Assets\Animation\AnimationTypes.h"
 #include "Core\GameObject\Component.h"

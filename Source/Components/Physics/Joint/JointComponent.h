@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include <array>
 #include <cstdint>
 

@@ -10,6 +10,14 @@
 #include "Core\System\GameSession.h"
 #include "UI\RuntimeUI.h"
 #include "Terrain\Generation\TerrainGeneration.h"
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Containers\String.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Threading\JobSystem.h"
+#include "Core\Threading\ThreadUtility.h"
+#include "Core\Time\TimeManager.h"
+#include "Core\Input\InputManager.h"
 
 namespace Engine
 {

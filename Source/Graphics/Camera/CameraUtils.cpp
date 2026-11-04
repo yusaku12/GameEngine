@@ -1,6 +1,9 @@
 ﻿#include "Pch.h"
 #include "Graphics\Camera\CameraUtils.h"
 #include "Core\Logging\Logging.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Geometry.h"
 
 namespace Engine::CameraUtils
 {

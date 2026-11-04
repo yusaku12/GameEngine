@@ -7,6 +7,7 @@
 #include "Core\Serialization\FlatBufferReader.h"
 #include "Core\Serialization\FlatBufferWriter.h"
 #include "Core\Serialization\SerializationVersions.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine::Serialization
 {

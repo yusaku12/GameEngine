@@ -3,6 +3,7 @@
 #include <DirectXTex.h>
 #include <cmath>
 #include <cstring>
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "HighResolutionTimer.h"
+#include "Core\CoreDefines.h"
 
 namespace Engine
 {

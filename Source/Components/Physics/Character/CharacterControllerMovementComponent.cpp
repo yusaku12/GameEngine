@@ -10,6 +10,9 @@
 #include "Physics\PhysicsWorld.h"
 #include "Physics\PhysicsQuery.h"
 #include "Components\Physics\Rigidbody\RigidbodyComponent.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
 
 namespace Engine
 {

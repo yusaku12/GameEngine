@@ -8,6 +8,9 @@
 #include "Core\Serialization\FlatBufferWriter.h"
 #include "Core\Serialization\SerializationVersions.h"
 #include "Terrain\Serialization\TerrainMaterialSerialization.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Containers\String.h"
+#include "Core\Math\MathTypes.h"
 
 namespace Engine::Serialization
 {

@@ -5,6 +5,7 @@
 #include "Assets\Animation\Serialization\AnimatorControllerSerializer.h"
 #include "Assets\Animation\Serialization\SkeletonSerializer.h"
 #include "Assets\Model\Import\FbxModelImporter.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

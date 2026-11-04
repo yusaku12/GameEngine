@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <span>
+
 namespace Engine::Serialization
 {
     /**

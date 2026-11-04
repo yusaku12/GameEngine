@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <span>
+
 #include "Assets\Material\MaterialTypes.h"
 #include "Assets\Model\ModelTypes.h"
 #include "Core\GameObject\Component.h"

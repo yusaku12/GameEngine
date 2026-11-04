@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include "Core\GameObject\Component.h"
 #include "Core\Math\MathTypes.h"
 

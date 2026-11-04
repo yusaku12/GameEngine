@@ -1,6 +1,8 @@
 ﻿#include "Pch.h"
 #include <tuple>
 #include "Graphics\Renderer\RenderQueue.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\Geometry.h"
 
 namespace Engine
 {

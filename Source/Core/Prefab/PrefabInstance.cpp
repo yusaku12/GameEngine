@@ -1,5 +1,7 @@
 ﻿#include "Pch.h"
 #include "Core\Prefab\PrefabInstance.h"
+#include "Core\GameObject\GameObject.h"
+#include "Core\Scene\Scene.h"
 
 namespace Engine
 {

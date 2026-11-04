@@ -1,5 +1,7 @@
 ﻿#include "Pch.h"
 #include "TimeManager.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine
 {

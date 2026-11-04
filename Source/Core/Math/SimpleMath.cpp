@@ -1,4 +1,5 @@
 ﻿#include "Pch.h"
+#include "Core\Math\MathTypes.h"
 
 //-------------------------------------------------------------------------------------
 // SimpleMath.cpp -- Simplified C++ Math wrapper for DirectXMath

@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 // エンジン基盤機能の集約ヘッダ
-// Pch.h から読み込まれるため、通常はこのヘッダを直接インクルードする必要はない
+// 明示的に利用するための集約ヘッダ。通常は必要な機能のヘッダだけをインクルードする
 
 #include "Core\CoreDefines.h"
 #include "Core\Logging\Logging.h"

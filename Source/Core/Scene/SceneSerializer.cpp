@@ -8,6 +8,14 @@
 #include "Core\Serialization\ComponentSerialization.h"
 #include "Core\Serialization\SerializationVersions.h"
 #include "Core\GameObject\ComponentRegistry.h"
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Containers\String.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
+#include "Core\GameObject\GameObject.h"
+#include "Core\Scene\Scene.h"
+#include "Core\Scene\TagManager.h"
 
 namespace Engine::Serialization
 {

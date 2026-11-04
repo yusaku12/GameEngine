@@ -7,6 +7,8 @@
 #include "Core\Serialization\SerializationVersions.h"
 #include "Generated\FlatBuffers\PostProcessEffectAsset_generated.h"
 #include <cmath>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine::Serialization
 {

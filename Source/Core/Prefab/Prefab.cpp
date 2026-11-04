@@ -4,6 +4,10 @@
 #include "Core\Serialization\ComponentSerialization.h"
 #include "Core\GameObject\ComponentRegistry.h"
 #include <unordered_map>
+#include "Core\Logging\Logger.h"
+#include "Core\GameObject\Component.h"
+#include "Core\GameObject\GameObject.h"
+#include "Core\Scene\Scene.h"
 
 namespace Engine
 {

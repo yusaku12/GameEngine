@@ -3,6 +3,9 @@
 #include "Terrain\Geometry\TerrainChunks.h"
 #include "Assets\Model\Resource\ModelResource.h"
 #include <cmath>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Geometry.h"
 
 namespace Engine
 {

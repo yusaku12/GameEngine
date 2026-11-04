@@ -6,6 +6,12 @@
 #include "Core\Serialization\FlatBufferWriter.h"
 #include "Core\Serialization\ComponentSerialization.h"
 #include "Core\Serialization\SerializationVersions.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Containers\String.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
+#include "Core\Scene\TagManager.h"
+#include "Core\Prefab\Prefab.h"
 
 namespace Engine::Serialization
 {

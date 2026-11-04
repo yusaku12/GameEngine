@@ -5,6 +5,8 @@
 #include "Core\Scene\Scene.h"
 #include <tuple>
 #include <cmath>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
 
 namespace Engine
 {

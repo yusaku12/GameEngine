@@ -1,6 +1,7 @@
 ﻿#include "Pch.h"
 #include "Editor\Scene\SceneDocument.h"
 #include "Core\Scene\SceneSerializer.h"
+#include "Core\Scene\Scene.h"
 
 namespace Engine::Editor
 {

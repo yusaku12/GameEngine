@@ -4,6 +4,10 @@
 #include "Graphics\DirectX12\Device\Device.h"
 #include "Graphics\DirectX12\Command\Fence.h"
 #include "Graphics\Shader\Shader.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine
 {

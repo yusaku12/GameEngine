@@ -1,4 +1,6 @@
 #pragma once
+
+#include <span>
 #include <functional>
 #include <unordered_map>
 #include "Components\UI\RuntimeUIComponents.h"

@@ -8,6 +8,10 @@
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Generated\FlatBuffers\AudioComponent_generated.h"
 #include <imgui.h>
+#include "Core\Logging\Logger.h"
+#include "Core\Containers\String.h"
+#include "Core\GameObject\Component.h"
+#include "Core\Scene\Scene.h"
 
 namespace Engine
 {

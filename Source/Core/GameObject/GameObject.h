@@ -3,6 +3,7 @@
 #include "Core\GameObject\Component.h"
 #include "Components\Transform\TransformComponent.h"
 #include "Core\GameObject\ComponentRegistry.h"
+#include "Core\Logging\Logger.h"
 #include "Core\Math\Transform.h"
 #include "Core\Object\ObjectGUID.h"
 #include "Core\Scene\LayerManager.h"

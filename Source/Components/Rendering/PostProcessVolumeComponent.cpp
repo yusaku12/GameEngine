@@ -8,6 +8,10 @@
 #include "Generated\FlatBuffers\PostProcessVolumeComponent_generated.h"
 #include <cmath>
 #include <imgui.h>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
+#include "Core\GameObject\Component.h"
 
 namespace Engine
 {

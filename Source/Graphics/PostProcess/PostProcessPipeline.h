@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include "Graphics\PostProcess\PostProcessTargetPool.h"
 #include "Graphics\DirectX12\Pipeline\Pipeline.h"
 #include "Graphics\Shader\Shader.h"

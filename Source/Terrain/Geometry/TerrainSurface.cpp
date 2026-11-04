@@ -4,6 +4,9 @@
 #include "Terrain\Geometry\TerrainMeshBuilder.h"
 #include <cmath>
 #include <limits>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
 
 namespace Engine
 {

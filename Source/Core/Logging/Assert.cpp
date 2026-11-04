@@ -1,5 +1,7 @@
 ﻿#include "Pch.h"
 #include "Core\Logging\Assert.h"
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

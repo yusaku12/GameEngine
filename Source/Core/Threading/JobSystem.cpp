@@ -1,6 +1,8 @@
 ﻿#include "Pch.h"
 #include "Core\Threading\JobSystem.h"
 #include "Core\Threading\ThreadDebugStats.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Threading\ThreadUtility.h"
 
 namespace Engine
 {

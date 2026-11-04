@@ -11,6 +11,11 @@
 #include "Graphics\Lighting\LightingFrame.h"
 #include "Audio\AudioSystem.h"
 #include "UI\RuntimeUI.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Time\TimeManager.h"
+#include "Core\Input\InputManager.h"
+#include "Core\GameObject\GameObject.h"
+#include "Core\Scene\Scene.h"
 
 namespace Engine
 {

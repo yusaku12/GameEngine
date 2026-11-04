@@ -6,6 +6,9 @@
 #include <d2d1effects.h>
 #include <dwrite.h>
 #include <wincodec.h>
+#include "Core\Logging\Logger.h"
+#include "Core\Containers\String.h"
+#include "Core\Math\MathTypes.h"
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d2d1.lib")
 #pragma comment(lib, "dwrite.lib")

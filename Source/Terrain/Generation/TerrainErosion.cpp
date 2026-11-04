@@ -3,6 +3,8 @@
 #include "Terrain\Data\Heightmap.h"
 #include <cmath>
 #include <random>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine
 {

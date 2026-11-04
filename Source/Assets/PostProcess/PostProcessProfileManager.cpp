@@ -3,6 +3,8 @@
 #include "Assets\PostProcess\PostProcessEffectAssetManager.h"
 #include "Assets\PostProcess\Serialization\PostProcessProfileSerializer.h"
 #include "Core\Containers\String.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine
 {

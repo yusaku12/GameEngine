@@ -29,6 +29,13 @@
 #include <extensions/PxShapeExt.h>
 #include <atomic>
 #include <mutex>
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
+#include "Core\GameObject\Component.h"
+#include "Core\Scene\Scene.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine
 {

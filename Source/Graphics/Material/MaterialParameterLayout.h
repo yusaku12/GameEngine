@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <span>
+
 #include "Core\Math\MathTypes.h"
 
 namespace Engine

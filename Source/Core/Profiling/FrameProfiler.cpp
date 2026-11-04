@@ -1,6 +1,7 @@
 #include "Pch.h"
 #include "Core\Profiling\FrameProfiler.h"
 #include "Core\Logging\Logging.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

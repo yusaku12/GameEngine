@@ -1,4 +1,6 @@
 #pragma once
+
+#include <span>
 #include "Audio\AudioSystem.h"
 #include "Core\GameObject\Component.h"
 

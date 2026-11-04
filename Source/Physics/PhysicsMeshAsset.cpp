@@ -6,6 +6,8 @@
 #include <extensions/PxDefaultAllocator.h>
 #include <extensions/PxDefaultStreams.h>
 #include <fstream>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
 
 namespace Engine
 {

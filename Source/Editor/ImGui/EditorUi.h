@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "Editor\Scene\SceneDocument.h"
+#include "Core\Object\ObjectGUID.h"
 
 struct ImVec2;
 

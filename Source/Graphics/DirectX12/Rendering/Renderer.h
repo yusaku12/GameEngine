@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <span>
+
 #include "Core\CoreDefines.h"
 #include "Core\System\ExecutionMode.h"
 #include "Graphics\DirectX12\Command\Command.h"

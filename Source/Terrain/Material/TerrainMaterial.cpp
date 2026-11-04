@@ -6,6 +6,9 @@
 #include "Graphics\Texture\TextureManager.h"
 #include <cmath>
 #include <numbers>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine
 {

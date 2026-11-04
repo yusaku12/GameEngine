@@ -1,5 +1,8 @@
 ﻿#include "Pch.h"
 #include "Core\Scene\SceneManager.h"
+#include "Core\Logging\Logger.h"
+#include "Core\GameObject\GameObject.h"
+#include "Core\Scene\Scene.h"
 
 namespace Engine
 {

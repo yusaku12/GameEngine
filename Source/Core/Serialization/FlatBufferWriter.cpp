@@ -1,6 +1,7 @@
 ﻿#include "Pch.h"
 #include "Core\Logging\Logging.h"
 #include "Core\Serialization\FlatBufferWriter.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine::Serialization
 {

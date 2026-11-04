@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <span>
+
 #include "Graphics\DirectX12\Command\Command.h"
 #include "Graphics\Renderer\CommandRecordingRange.h"
 #include "Graphics\Renderer\RenderItem.h"

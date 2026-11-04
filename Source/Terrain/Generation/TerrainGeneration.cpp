@@ -1,6 +1,7 @@
 #include "Pch.h"
 #include "Terrain\Generation\TerrainGeneration.h"
 #include "Core\Threading\ThreadUtility.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

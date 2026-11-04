@@ -1,5 +1,9 @@
 #include "Pch.h"
 #include "Graphics\Renderer\SkinningBounds.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\MathFunction.h"
+#include "Core\Math\Geometry.h"
 
 namespace Engine
 {

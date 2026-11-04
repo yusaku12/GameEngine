@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
 #include "Core\Threading\ThreadUtility.h"
 
 namespace Engine

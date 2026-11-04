@@ -1,5 +1,7 @@
 #include "Pch.h"
 #include "Physics\Internal\PhysXConversions.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
 
 namespace Engine::PhysicsConversions
 {

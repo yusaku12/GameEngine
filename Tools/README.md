@@ -97,6 +97,28 @@ custom post-process shader compilation are unchanged. Invalid state-file JSON
 is reported as an error; use `-Force`, remove the affected record or clean the
 shader cache to regenerate it.
 
+## Precompiled headers and engine dependencies
+
+`Source\Pch.h` contains stable STL, Windows/DirectX SDK and vendored spdlog
+headers only. It must not include engine feature headers, even indirectly.
+In particular, keep `Core\Core.h`, GameObject/Component, Scene, Prefab, input,
+time and job-system headers out of the PCH; changing them should rebuild their
+consumers, not every engine translation unit.
+
+- Keep `#include "Pch.h"` first in engine `.cpp` files, followed by the
+  implementation's header and explicit dependencies for the APIs used.
+- Engine headers include their own declaration, inline implementation and macro
+  dependencies. Prefer forward declarations for non-owning incomplete types
+  where an implementation does not require the definition. Do not rely on an
+  unrelated `.cpp` include or the former Core umbrella to supply engine types.
+- `Core\Core.h` remains an opt-in convenience header for clients that want the
+  whole foundation API. Engine implementation files use individual headers;
+  adding a future API to the umbrella must not invalidate the PCH.
+- Compiler settings, ABI, runtime behavior and Debug/Release configuration
+  choices are unchanged. PCH/STL/SDK changes still legitimately rebuild all PCH
+  consumers; this change reduces feature-header edit fanout, not a guarantee of
+  faster clean builds.
+
 ## Repository directories
 
 - `Source`: engine and editor C++ source, including public extension APIs.

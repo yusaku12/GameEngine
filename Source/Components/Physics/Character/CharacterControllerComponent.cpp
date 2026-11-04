@@ -8,6 +8,8 @@
 #include "Physics\Internal\PhysicsPayload.h"
 #include <imgui.h>
 #include <limits>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
 
 namespace Engine
 {

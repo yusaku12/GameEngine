@@ -1,4 +1,6 @@
 ﻿#pragma once
+
+#include <span>
 #include "Core\GameObject\Component.h"
 #include "Graphics\Camera\CameraData.h"
 #include "Graphics\PostProcess\PostProcessVolumeResolver.h"

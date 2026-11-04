@@ -3,6 +3,7 @@
 #include "Graphics\DirectX12\Culling\GpuOcclusionCulling.h"
 #include "Graphics\DirectX12\Pipeline\Pipeline.h"
 #include "Core\Threading\JobSystem.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

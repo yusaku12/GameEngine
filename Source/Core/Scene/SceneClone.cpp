@@ -2,6 +2,11 @@
 #include "Core\Scene\SceneClone.h"
 #include "Core\Scene\Scene.h"
 #include "Core\Serialization\ComponentSerialization.h"
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
+#include "Core\GameObject\Component.h"
+#include "Core\GameObject\ComponentRegistry.h"
+#include "Core\GameObject\GameObject.h"
 
 namespace Engine
 {

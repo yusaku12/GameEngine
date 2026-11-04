@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <span>
+
 #include <ozz/animation/runtime/animation.h>
 #include <ozz/animation/runtime/skeleton.h>
 

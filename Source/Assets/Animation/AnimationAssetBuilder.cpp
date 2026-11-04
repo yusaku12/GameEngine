@@ -4,6 +4,8 @@
 #include <ozz/animation/offline/raw_animation.h>
 #include <ozz/animation/offline/raw_skeleton.h>
 #include <ozz/animation/offline/skeleton_builder.h>
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
 
 namespace Engine
 {

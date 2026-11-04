@@ -1,5 +1,7 @@
 ﻿#include "Pch.h"
 #include "InputManager.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Time\TimeManager.h"
 #pragma comment(lib, "Xinput.lib")
 
 namespace Engine

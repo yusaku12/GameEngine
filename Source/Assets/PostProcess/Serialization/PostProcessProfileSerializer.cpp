@@ -10,6 +10,9 @@
 #include "Graphics\Texture\TextureManager.h"
 #include "Generated\FlatBuffers\PostProcessProfile_generated.h"
 #include "Core\Containers\String.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine::Serialization
 {

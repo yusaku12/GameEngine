@@ -1,6 +1,7 @@
 ﻿#include "Pch.h"
 #include "Graphics\DirectX12\Command\Command.h"
 #include "Graphics\DirectX12\Command\Fence.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

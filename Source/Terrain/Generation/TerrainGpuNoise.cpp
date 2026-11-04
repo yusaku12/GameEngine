@@ -4,6 +4,7 @@
 #include "Terrain\Generation\TerrainBuild.h"
 #include "Graphics\Shader\Shader.h"
 #include <cmath>
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

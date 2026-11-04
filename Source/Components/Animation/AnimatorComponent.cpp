@@ -12,6 +12,10 @@
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Serialization\SerializationVersions.h"
 #include <imgui.h>
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
+#include "Core\GameObject\Component.h"
+#include "Core\Scene\Scene.h"
 
 namespace Engine
 {

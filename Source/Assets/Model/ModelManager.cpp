@@ -7,6 +7,8 @@
 #include "Assets\Model\Import\FbxModelImporter.h"
 #include "Assets\Model\Serialization\ModelSerializer.h"
 #include "Graphics\Texture\TextureManager.h"
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

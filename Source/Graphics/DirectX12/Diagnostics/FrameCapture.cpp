@@ -1,6 +1,7 @@
 #include "Pch.h"
 #include "Graphics\DirectX12\Diagnostics\FrameCapture.h"
 #include "Graphics\DirectX12\Rendering\Renderer.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

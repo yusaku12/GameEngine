@@ -7,6 +7,9 @@
 #include <numbers>
 #include <random>
 #include <unordered_map>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine
 {

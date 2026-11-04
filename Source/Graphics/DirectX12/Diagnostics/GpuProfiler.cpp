@@ -2,6 +2,7 @@
 #include "Graphics\DirectX12\Diagnostics\GpuProfiler.h"
 #include "Graphics\DirectX12\Command\Command.h"
 #include "Core\Logging\Logging.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

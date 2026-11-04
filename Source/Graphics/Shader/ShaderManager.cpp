@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "ShaderManager.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

@@ -2,6 +2,13 @@
 #include "Core\Logging\Logging.h"
 #include "Core\GameObject\GameObject.h"
 #include "Core\GameObject\GameObjectManager.h"
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
+#include "Core\GameObject\Component.h"
+#include "Core\GameObject\ComponentRegistry.h"
+#include "Core\Scene\LayerManager.h"
 
 namespace Engine
 {

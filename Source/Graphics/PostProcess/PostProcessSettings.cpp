@@ -1,6 +1,9 @@
 #include "Pch.h"
 #include "Graphics\PostProcess\PostProcessSettings.h"
 #include <cmath>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine
 {

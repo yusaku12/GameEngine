@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <span>
+
 #include "Assets\Animation\AnimationClipAsset.h"
 #include "Assets\Animation\SkeletonAsset.h"
 #include "Assets\Model\Resource\ModelResource.h"

@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "Core\CoreDefines.h"
+#include "Core\Math\MathTypes.h"
 #include "Graphics\DirectX12\Pipeline\Pipeline.h"
 #include "Graphics\DirectX12\Resource\Resource.h"
 

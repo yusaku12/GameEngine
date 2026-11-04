@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Graphics\Material\MaterialPropertyBlock.h"
+#include "Core\Math\MathTypes.h"
 
 namespace Engine
 {

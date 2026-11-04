@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #undef ERROR
+#undef DEBUG
 
 #include <algorithm>
 #include <chrono>
@@ -30,4 +31,5 @@
 #include <array>
 #include <unordered_set>
 #include <cwctype>
-#include "Core\Core.h"
+#include <spdlog/fmt/fmt.h>
+#include <spdlog/logger.h>

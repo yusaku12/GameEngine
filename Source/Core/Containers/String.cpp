@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Core\Containers\String.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

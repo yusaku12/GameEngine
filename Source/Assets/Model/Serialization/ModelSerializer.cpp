@@ -8,6 +8,10 @@
 #include "Core\Serialization\FlatBufferReader.h"
 #include "Core\Serialization\FlatBufferWriter.h"
 #include "Core\Serialization\SerializationVersions.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Containers\String.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Geometry.h"
 
 namespace Engine::Serialization
 {

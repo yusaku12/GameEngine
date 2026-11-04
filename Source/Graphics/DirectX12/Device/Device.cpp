@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Graphics\DirectX12\Device\Device.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

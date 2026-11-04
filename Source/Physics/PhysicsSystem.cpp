@@ -16,6 +16,7 @@
 #include "Physics\PhysicsWorld.h"
 #include "Components\Physics\Rigidbody\RigidbodyComponent.h"
 #include <chrono>
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

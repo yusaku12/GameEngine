@@ -2,6 +2,7 @@
 #include <flatbuffers/flatbuffers.h>
 #include "Core\Logging\Logging.h"
 #include "Core\Serialization\FlatBufferReader.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine::Serialization
 {

@@ -17,6 +17,8 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine
 {

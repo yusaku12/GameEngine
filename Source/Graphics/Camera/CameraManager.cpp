@@ -4,6 +4,7 @@
 #include "Components\Rendering\CameraComponent.h"
 #include "Core\GameObject\GameObject.h"
 #include "Graphics\Camera\CameraRenderSubmission.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {

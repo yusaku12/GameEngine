@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include <memory>
 #include "Assets\Model\ModelTypes.h"
 #include "Core\CoreDefines.h"

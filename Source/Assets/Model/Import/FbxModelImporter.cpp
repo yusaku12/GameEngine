@@ -2,6 +2,11 @@
 #include "Assets\Model\Import\FbxModelImporter.h"
 #include "Core\Serialization\AssetReferencePaths.h"
 #include <fbxsdk.h>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
+#include "Core\Math\MathFunction.h"
+#include "Core\Math\Geometry.h"
 
 namespace Engine
 {

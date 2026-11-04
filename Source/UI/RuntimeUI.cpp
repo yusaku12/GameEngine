@@ -2,6 +2,10 @@
 #include "UI\RuntimeUI.h"
 #include "Core\Scene\SceneManager.h"
 #include "Core\Input\InputManager.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\GameObject\GameObject.h"
+#include "Core\Scene\Scene.h"
 
 namespace Engine
 {

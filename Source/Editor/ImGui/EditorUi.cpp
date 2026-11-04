@@ -21,6 +21,16 @@
 #include "UI\RuntimeUI.h"
 #include <imgui.h>
 #include <ImGuizmo.h>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
+#include "Core\GameObject\Component.h"
+#include "Core\GameObject\ComponentRegistry.h"
+#include "Core\GameObject\GameObject.h"
+#include "Core\Scene\Scene.h"
+#include "Core\Scene\TagManager.h"
+#include "Core\Scene\LayerManager.h"
+#include "Core\Math\Geometry.h"
 
 namespace Engine
 {

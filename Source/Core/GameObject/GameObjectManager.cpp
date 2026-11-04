@@ -7,6 +7,11 @@
 #include "Components\Terrain\TerrainComponent.h"
 #include "Core\Threading\JobSystem.h"
 #include "Graphics\Camera\CameraManager.h"
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
+#include "Core\GameObject\GameObject.h"
+#include "Core\Scene\TagManager.h"
+#include "Core\Scene\LayerManager.h"
 
 namespace Engine
 {

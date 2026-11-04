@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include "Core\GameObject\Component.h"
+
 namespace Engine
 {
     class GameObject;

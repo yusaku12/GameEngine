@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "Core\Containers\Hash.h"
+#include "Core\Logging\Assert.h"
 
 namespace Engine
 {

@@ -13,6 +13,11 @@
 #include <shellapi.h>
 #include "Audio\AudioSystem.h"
 #include "UI\RuntimeUI.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Containers\String.h"
+#include "Core\Threading\JobSystem.h"
+#include "Core\Threading\ThreadUtility.h"
+#include "Core\Scene\Scene.h"
 #pragma comment(lib, "Shell32.lib")
 
 namespace Engine

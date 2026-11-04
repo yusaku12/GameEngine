@@ -2,6 +2,8 @@
 #include "Terrain\Generation\TerrainNoise.h"
 #include "Terrain\Data\Heightmap.h"
 #include <cmath>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine
 {

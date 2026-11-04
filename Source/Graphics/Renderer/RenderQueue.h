@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <span>
+
 #include "Core\CoreDefines.h"
 #include "Graphics\Renderer\RenderItem.h"
 

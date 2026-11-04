@@ -4,6 +4,8 @@
 #include <ozz/animation/runtime/local_to_model_job.h>
 #include <ozz/base/maths/simd_math.h>
 #include <ozz/base/span.h>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
 
 namespace Engine
 {

@@ -1,6 +1,9 @@
 #include "Pch.h"
 #include "Terrain\Serialization\TerrainMaterialSerialization.h"
 #include "Core\Serialization\AssetReferencePaths.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Containers\String.h"
+#include "Core\Math\MathTypes.h"
 
 namespace Engine::Serialization
 {

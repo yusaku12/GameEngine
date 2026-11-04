@@ -7,6 +7,10 @@
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Generated\FlatBuffers\RuntimeUI_generated.h"
 #include <imgui.h>
+#include "Core\Logging\Logger.h"
+#include "Core\Containers\String.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Scene\Scene.h"
 
 namespace Engine
 {

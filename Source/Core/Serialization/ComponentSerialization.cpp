@@ -4,6 +4,8 @@
 #include "Components\Transform\TransformComponent.h"
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Core\GameObject\GameObject.h"
+#include "Core\Logging\Logger.h"
+#include "Core\GameObject\Component.h"
 
 namespace Engine::Serialization
 {

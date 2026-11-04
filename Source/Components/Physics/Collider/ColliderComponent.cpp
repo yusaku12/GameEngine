@@ -14,6 +14,9 @@
 #include "Physics\PhysicsMeshAsset.h"
 #include <imgui.h>
 #include <system_error>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\GameObject\Component.h"
 
 namespace Engine
 {

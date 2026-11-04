@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include "Components\Physics\Collider\ColliderComponent.h"
 #include "Assets\Model\ModelTypes.h"
 

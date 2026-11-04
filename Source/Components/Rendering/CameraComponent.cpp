@@ -14,6 +14,13 @@
 #include "Editor\PostProcess\PostProcessInspector.h"
 #include "Core\Containers\String.h"
 #include <imgui.h>
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
+#include "Core\GameObject\Component.h"
+#include "Core\Scene\Scene.h"
+#include "Core\Math\Geometry.h"
 
 namespace Engine
 {

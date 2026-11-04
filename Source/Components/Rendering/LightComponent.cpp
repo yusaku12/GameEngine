@@ -3,6 +3,8 @@
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Generated\FlatBuffers\LightComponent_generated.h"
 #include <imgui.h>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
 
 namespace Engine
 {

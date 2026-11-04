@@ -9,6 +9,8 @@
 #include <cmath>
 #include <iomanip>
 #include <sstream>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathFunction.h"
 
 namespace Engine
 {

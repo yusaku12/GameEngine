@@ -2,6 +2,7 @@
 #include "Components\Transform\TransformComponent.h"
 
 #include <imgui.h>
+#include "Core\Math\MathTypes.h"
 
 namespace Engine
 {

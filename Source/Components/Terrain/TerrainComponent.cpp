@@ -13,6 +13,10 @@
 #include "Graphics\Texture\TextureManager.h"
 #include "Components\Physics\Collider\TerrainColliderComponent.h"
 #include <imgui.h>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
+#include "Core\GameObject\Component.h"
 
 namespace Engine
 {

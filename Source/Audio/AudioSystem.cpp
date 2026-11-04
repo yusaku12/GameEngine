@@ -9,6 +9,10 @@
 #include <cstring>
 #include <atomic>
 #include <bit>
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
+#include "Core\GameObject\GameObject.h"
 #pragma comment(lib, "xaudio2.lib")
 
 namespace Engine

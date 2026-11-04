@@ -2,6 +2,10 @@
 #include "Terrain\Geometry\TerrainChunks.h"
 #include "Terrain\Data\Heightmap.h"
 #include "Assets\Model\Resource\ModelResource.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
+#include "Core\Math\MathFunction.h"
+#include "Core\Math\Geometry.h"
 
 namespace Engine
 {

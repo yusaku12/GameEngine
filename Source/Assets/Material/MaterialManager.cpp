@@ -3,6 +3,9 @@
 #include "Assets\Material\Serialization\MaterialSerializer.h"
 #include "Assets\Material\Serialization\TextureReferencePaths.h"
 #include "Graphics\Texture\TextureManager.h"
+#include "Core\CoreDefines.h"
+#include "Core\Logging\Logger.h"
+#include "Core\Math\MathTypes.h"
 
 namespace Engine
 {
