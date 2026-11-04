@@ -28,8 +28,6 @@ $jobs = @(
     @{ Source = Join-Path $ShaderRoot "PostProcess.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "PostProcess_vsMain_vs.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcess.hlsl"; Entry = "psToneMapping"; Target = "ps_6_0"; Output = "PostProcess_psToneMapping_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcess.hlsl"; Entry = "psOutput"; Target = "ps_6_0"; Output = "PostProcess_psOutput_ps.cso" },
-    @{ Source = Join-Path $ShaderRoot "PostProcessValidation.hlsl"; Entry = "psScale"; Target = "ps_6_0"; Output = "PostProcessValidation_psScale_ps.cso" },
-    @{ Source = Join-Path $ShaderRoot "PostProcessValidation.hlsl"; Entry = "psCustomGain"; Target = "ps_6_0"; Output = "PostProcessValidation_psCustomGain_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psBloomPrefilter"; Target = "ps_6_0"; Output = "PostProcessEffects_psBloomPrefilter_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psBloomDownsample"; Target = "ps_6_0"; Output = "PostProcessEffects_psBloomDownsample_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psBloomUpsample"; Target = "ps_6_0"; Output = "PostProcessEffects_psBloomUpsample_ps.cso" },

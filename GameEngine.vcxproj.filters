@@ -262,15 +262,6 @@
     <Filter Include="Source\UI">
       <UniqueIdentifier>{DEADE6DC-9603-40AC-B2BB-E8C3451BE4C7}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source\Validation">
-      <UniqueIdentifier>{150A24C3-1DE9-469D-AB78-BF39C90FB160}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source\Validation\Rendering">
-      <UniqueIdentifier>{50277D1F-314B-4B3D-B035-F2DF31DDFF34}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source\Validation\Terrain">
-      <UniqueIdentifier>{A6B74E15-6D8C-4A45-91C7-97D81F4C6708}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Tools">
       <UniqueIdentifier>{A046C185-BAD5-4175-B36B-CA3DA40E3EEA}</UniqueIdentifier>
     </Filter>
@@ -704,42 +695,6 @@
     </ClCompile>
     <ClCompile Include="Source\UI\RuntimeUI.cpp">
       <Filter>Source\UI</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Validation\Rendering\PostProcessAuthoringValidation.cpp">
-      <Filter>Source\Validation\Rendering</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Validation\Rendering\PostProcessCustomEffectValidation.cpp">
-      <Filter>Source\Validation\Rendering</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Validation\Rendering\PostProcessEffectsValidation.cpp">
-      <Filter>Source\Validation\Rendering</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Validation\Rendering\PostProcessVolumeValidation.cpp">
-      <Filter>Source\Validation\Rendering</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Validation\Rendering\RenderingValidation.cpp">
-      <Filter>Source\Validation\Rendering</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Validation\Terrain\TerrainBackgroundValidation.cpp">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Validation\Terrain\TerrainCollisionValidation.cpp">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Validation\Terrain\TerrainErosionValidation.cpp">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Validation\Terrain\TerrainGpuValidation.cpp">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Validation\Terrain\TerrainLodValidation.cpp">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Validation\Terrain\TerrainValidation.cpp">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Validation\Terrain\TerrainVegetationValidation.cpp">
-      <Filter>Source\Validation\Terrain</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1358,42 +1313,6 @@
     <ClInclude Include="Source\UI\RuntimeUI.h">
       <Filter>Source\UI</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Validation\Rendering\PostProcessAuthoringValidation.h">
-      <Filter>Source\Validation\Rendering</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Validation\Rendering\PostProcessCustomEffectValidation.h">
-      <Filter>Source\Validation\Rendering</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Validation\Rendering\PostProcessEffectsValidation.h">
-      <Filter>Source\Validation\Rendering</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Validation\Rendering\PostProcessVolumeValidation.h">
-      <Filter>Source\Validation\Rendering</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Validation\Rendering\RenderingValidation.h">
-      <Filter>Source\Validation\Rendering</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Validation\Terrain\TerrainBackgroundValidation.h">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Validation\Terrain\TerrainCollisionValidation.h">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Validation\Terrain\TerrainErosionValidation.h">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Validation\Terrain\TerrainGpuValidation.h">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Validation\Terrain\TerrainLodValidation.h">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Validation\Terrain\TerrainValidation.h">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Validation\Terrain\TerrainVegetationValidation.h">
-      <Filter>Source\Validation\Terrain</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Shaders\ColorOutput.hlsli">
@@ -1424,9 +1343,6 @@
       <Filter>Assets\Shaders</Filter>
     </None>
     <None Include="Assets\Shaders\PostProcessExample.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </None>
-    <None Include="Assets\Shaders\PostProcessValidation.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>
     <None Include="Assets\Shaders\TerrainNoise.hlsl">

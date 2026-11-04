@@ -19,18 +19,11 @@
     <ClInclude Include="Source\Terrain\Geometry\TerrainLod.h" />
     <ClInclude Include="Source\Terrain\Generation\TerrainBuild.h" />
     <ClInclude Include="Source\Terrain\Generation\TerrainGpuNoise.h" />
-    <ClInclude Include="Source\Validation\Terrain\TerrainGpuValidation.h" />
     <ClInclude Include="Source\Terrain\Generation\TerrainErosion.h" />
     <ClInclude Include="Source\Terrain\Vegetation\TerrainVegetation.h" />
-    <ClInclude Include="Source\Validation\Terrain\TerrainVegetationValidation.h" />
-    <ClInclude Include="Source\Validation\Terrain\TerrainErosionValidation.h" />
     <ClInclude Include="Source\Terrain\Generation\TerrainGeneration.h" />
-    <ClInclude Include="Source\Validation\Terrain\TerrainBackgroundValidation.h" />
-    <ClInclude Include="Source\Validation\Terrain\TerrainLodValidation.h" />
-    <ClInclude Include="Source\Validation\Terrain\TerrainCollisionValidation.h" />
     <ClInclude Include="Source\Terrain\Serialization\TerrainMaterialSerialization.h" />
     <ClInclude Include="Source\Terrain\Geometry\TerrainMeshBuilder.h" />
-    <ClInclude Include="Source\Validation\Terrain\TerrainValidation.h" />
     <ClInclude Include="Source\Components\Terrain\TerrainComponent.h" />
     <ClInclude Include="Generated\FlatBuffers\TerrainComponent_generated.h" />
     <ClInclude Include="Source\Core\System\ExecutionMode.h" />
@@ -47,7 +40,6 @@
     <ClInclude Include="Source\Core\System\GameSession.h" />
     <ClInclude Include="Source\Core\System\StartupOptions.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Diagnostics\FrameCapture.h" />
-    <ClInclude Include="Source\Validation\Rendering\RenderingValidation.h" />
     <ClInclude Include="Source\Graphics\PostProcess\PostProcessPipeline.h" />
     <ClInclude Include="Source\Graphics\PostProcess\PostProcessTargetPool.h" />
     <ClInclude Include="Source\Core\Scene\SceneClone.h" />
@@ -65,10 +57,6 @@
     <ClInclude Include="Source\Assets\PostProcess\Serialization\PostProcessProfileSerializer.h" />
     <ClInclude Include="Generated\FlatBuffers\PostProcessEffectAsset_generated.h" />
     <ClInclude Include="Source\Editor\PostProcess\PostProcessInspector.h" />
-    <ClInclude Include="Source\Validation\Rendering\PostProcessAuthoringValidation.h" />
-    <ClInclude Include="Source\Validation\Rendering\PostProcessEffectsValidation.h" />
-    <ClInclude Include="Source\Validation\Rendering\PostProcessVolumeValidation.h" />
-    <ClInclude Include="Source\Validation\Rendering\PostProcessCustomEffectValidation.h" />
     <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimationClip_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimatorController_generated.h" />
@@ -240,18 +228,11 @@
     <ClCompile Include="Source\Terrain\Geometry\TerrainLod.cpp" />
     <ClCompile Include="Source\Terrain\Generation\TerrainBuild.cpp" />
     <ClCompile Include="Source\Terrain\Generation\TerrainGpuNoise.cpp" />
-    <ClCompile Include="Source\Validation\Terrain\TerrainGpuValidation.cpp" />
     <ClCompile Include="Source\Terrain\Generation\TerrainErosion.cpp" />
     <ClCompile Include="Source\Terrain\Vegetation\TerrainVegetation.cpp" />
-    <ClCompile Include="Source\Validation\Terrain\TerrainVegetationValidation.cpp" />
-    <ClCompile Include="Source\Validation\Terrain\TerrainErosionValidation.cpp" />
     <ClCompile Include="Source\Terrain\Generation\TerrainGeneration.cpp" />
-    <ClCompile Include="Source\Validation\Terrain\TerrainBackgroundValidation.cpp" />
-    <ClCompile Include="Source\Validation\Terrain\TerrainLodValidation.cpp" />
-    <ClCompile Include="Source\Validation\Terrain\TerrainCollisionValidation.cpp" />
     <ClCompile Include="Source\Terrain\Serialization\TerrainMaterialSerialization.cpp" />
     <ClCompile Include="Source\Terrain\Geometry\TerrainMeshBuilder.cpp" />
-    <ClCompile Include="Source\Validation\Terrain\TerrainValidation.cpp" />
     <ClCompile Include="Source\Components\Terrain\TerrainComponent.cpp" />
     <ClCompile Include="Source\Components\Rendering\LightComponent.cpp" />
     <ClCompile Include="Source\Graphics\Lighting\LightingFrame.cpp" />
@@ -262,7 +243,6 @@
     <ClCompile Include="Source\Components\Audio\AudioSourceComponent.cpp" />
     <ClCompile Include="Source\Core\System\StartupOptions.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Diagnostics\FrameCapture.cpp" />
-    <ClCompile Include="Source\Validation\Rendering\RenderingValidation.cpp" />
     <ClCompile Include="Source\Graphics\PostProcess\PostProcessPipeline.cpp" />
     <ClCompile Include="Source\Graphics\PostProcess\PostProcessTargetPool.cpp" />
     <ClCompile Include="Source\Core\Scene\SceneClone.cpp" />
@@ -288,10 +268,6 @@
     <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessEffectSerializer.cpp" />
     <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessProfileSerializer.cpp" />
     <ClCompile Include="Source\Editor\PostProcess\PostProcessInspector.cpp" />
-    <ClCompile Include="Source\Validation\Rendering\PostProcessAuthoringValidation.cpp" />
-    <ClCompile Include="Source\Validation\Rendering\PostProcessEffectsValidation.cpp" />
-    <ClCompile Include="Source\Validation\Rendering\PostProcessVolumeValidation.cpp" />
-    <ClCompile Include="Source\Validation\Rendering\PostProcessCustomEffectValidation.cpp" />
     <ClCompile Include="Source\Core\Serialization\FlatBufferWriter.cpp" />
     <ClCompile Include="Source\Assets\Model\Import\FbxModelImporter.cpp" />
     <ClCompile Include="Source\Graphics\DirectX12\Command\Command.cpp" />
@@ -411,7 +387,6 @@
     <None Include="Assets\Shaders\PostProcessExample.hlsl" />
     <None Include="Assets\Shaders\PostProcess.hlsli" />
     <None Include="Assets\Shaders\ColorOutput.hlsli" />
-    <None Include="Assets\Shaders\PostProcessValidation.hlsl" />
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
     <None Include="Assets\Shaders\Occlusion.hlsl" />
     <None Include="Assets\Shaders\HiZ.hlsl" />
@@ -557,7 +532,7 @@
   <Target Name="BuildDirectXTex" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'">
     <MSBuild Projects="$(ProjectDir)Library\DirectXTex-main\DirectXTex\DirectXTex_Desktop_2022_Win10.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=x64;PlatformToolset=$(PlatformToolset)" RemoveProperties="IntDir;OutDir" />
   </Target>
-  <Target Name="CompileShaders" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Assets\Shaders\Deferred.hlsl;$(ProjectDir)Assets\Shaders\PostProcess.hlsl;$(ProjectDir)Assets\Shaders\PostProcessEffects.hlsl;$(ProjectDir)Assets\Shaders\PostProcess.hlsli;$(ProjectDir)Assets\Shaders\ColorOutput.hlsli;$(ProjectDir)Assets\Shaders\PostProcessValidation.hlsl;$(ProjectDir)Assets\Shaders\DebugPrimitive.hlsl;$(ProjectDir)Assets\Shaders\HiZ.hlsl;$(ProjectDir)Assets\Shaders\Occlusion.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(ProjectDir)Tools\DXC\dxc.exe;$(ProjectDir)Tools\DXC\dxcompiler.dll;$(ProjectDir)Tools\DXC\dxil.dll" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psGBuffer_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psGBufferAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Deferred_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Deferred_psLighting_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Deferred_psDebug_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcess_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcess_psToneMapping_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcess_psOutput_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomPrefilter_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomDownsample_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomUpsample_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomComposite_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psVignette_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psFxaa_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessValidation_psScale_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\HiZ_csMain_cs.cso;$(ProjectDir)Assets\Shaders\Compiled\Occlusion_csMain_cs.cso">
+  <Target Name="CompileShaders" BeforeTargets="ClCompile" Inputs="$(ProjectDir)Assets\Shaders\Model.hlsl;$(ProjectDir)Assets\Shaders\Deferred.hlsl;$(ProjectDir)Assets\Shaders\PostProcess.hlsl;$(ProjectDir)Assets\Shaders\PostProcessEffects.hlsl;$(ProjectDir)Assets\Shaders\PostProcess.hlsli;$(ProjectDir)Assets\Shaders\ColorOutput.hlsli;$(ProjectDir)Assets\Shaders\DebugPrimitive.hlsl;$(ProjectDir)Assets\Shaders\HiZ.hlsl;$(ProjectDir)Assets\Shaders\Occlusion.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(ProjectDir)Tools\DXC\dxc.exe;$(ProjectDir)Tools\DXC\dxcompiler.dll;$(ProjectDir)Tools\DXC\dxil.dll" Outputs="$(ProjectDir)Assets\Shaders\Compiled\Model_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psDepthAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psGBuffer_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Model_psGBufferAlphaTest_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Deferred_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\Deferred_psLighting_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\Deferred_psDebug_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcess_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcess_psToneMapping_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcess_psOutput_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomPrefilter_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomDownsample_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomUpsample_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psBloomComposite_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psVignette_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\PostProcessEffects_psFxaa_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_vsMain_vs.cso;$(ProjectDir)Assets\Shaders\Compiled\DebugPrimitive_psMain_ps.cso;$(ProjectDir)Assets\Shaders\Compiled\HiZ_csMain_cs.cso;$(ProjectDir)Assets\Shaders\Compiled\Occlusion_csMain_cs.cso">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\Shaders\CompileShaders.ps1&quot;" />
   </Target>
   <Target Name="CompileTerrainNoiseShader" BeforeTargets="ClCompile" DependsOnTargets="CompileShaders" Inputs="$(ProjectDir)Assets\Shaders\TerrainNoise.hlsl;$(ProjectDir)Tools\Shaders\CompileShaders.ps1;$(ProjectDir)Tools\DXC\dxc.exe;$(ProjectDir)Tools\DXC\dxcompiler.dll;$(ProjectDir)Tools\DXC\dxil.dll" Outputs="$(ProjectDir)Assets\Shaders\Compiled\TerrainNoise_csMain_cs.cso">

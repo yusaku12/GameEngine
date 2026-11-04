@@ -93,9 +93,6 @@ Source\
     Serialization\             Terrain material serialization
     Vegetation\                Vegetation recipes and placement
   UI\                          Runtime UI layout and interaction services
-  Validation\
-    Rendering\                 Rendering and post-process regression fixtures
-    Terrain\                   Terrain CPU/GPU, collision and persistence fixtures
 ```
 
 Keep concrete runtime components in `Source\Components\<Feature>`, with further
@@ -104,7 +101,7 @@ subfolders when that feature has distinct families (as in Physics). Keep the
 are infrastructure, not attachable feature implementations. Editor-only
 components belong in `Editor\Components\<Feature>`.
 
-Services, asset resources, rendering backends and validation fixtures do not
+Services, asset resources and rendering backends do not
 belong in `Components`. Preserve the existing feature split under `Assets`,
 `Graphics` and `Editor` rather than collecting unrelated managers or utilities
 in a catch-all folder. Add a new feature folder when it has a distinct
@@ -120,8 +117,7 @@ When adding or moving a file, update `GameEngine.vcxproj` and
 `GameEngine.vcxproj.filters` together. Every source/header/inl file is explicitly
 listed, and each Visual Studio filter matches its physical directory, including
 the `Source` prefix. Keep paired headers and implementations together.
-Build Debug/Release and run the rendering and terrain validation commands below
-after a cross-feature reorganization.
+Build Debug/Release after a cross-feature reorganization.
 
 # Core scheduling and input boundaries
 
@@ -181,61 +177,6 @@ Launch from the project root:
 .\x64\Debug\GameEngine.exe --help
 ```
 
-## PostEffect Phase 0/1/2/3/4 validation
-
-Run the deterministic GPU validation from the project root with a **Debug x64**
-build. It uses the hardware D3D12 renderer with Debug Layer and GPU-based
-validation, a hidden Runtime window, and procedurally generated geometry and
-materials. It does not load or modify the editor scene or preferences. Runtime UI
-interop is not initialized in this UI-free mode; normal launches retain it.
-
-```powershell
-.\x64\Debug\GameEngine.exe --validate-rendering ".\Build\RenderingBaseline"
-```
-
-The output directory must be new or empty; existing baselines are not overwritten.
-This option cannot be combined with `--runtime` or `--scene`. The process exits
-automatically with code 0 only after all checks and saves succeed. Release builds
-cannot pass the required Debug Layer checks.
-
-The fixture contains middle gray, an HDR highlight `(4, 2, 1)`, linear albedo,
-transparent-over-opaque blending, and visible/discarded alpha-tested panels.
-Camera, background, ambient lighting, exposure (1), and geometry remain fixed.
-For baseline, repeat, serial command recording, odd-size resize (641x359), and
-restored size (1280x720), three frames exercise both in-flight slots before capture.
-Same-size captures must match bit-for-bit. Resize captures must independently pass
-the same analytical probes. Saved DDS/PNG images are decoded again and must match
-the GPU readback bit-for-bit.
-
-Each case saves `*-hdr.dds` (linear RGBA16F, preserving values above 1) and
-`*-display.png` (sRGB-encoded final RGBA8). Every final pixel is compared against
-an independent CPU implementation of the ACES fitted tone-mapping curve and
-sRGB encoding,
-with at most 2 byte levels of RGB error. HDR probes use a 0.003 absolute tolerance
-for half-float and G-Buffer quantization. Nonfinite/negative HDR, unexpected final
-alpha, D3D12 warnings/errors, and discarded debug messages fail validation.
-`white.dds` is the generated fixture texture; `results.json` records successful
-checks. An incomplete directory without a successful process exit is not a valid
-baseline.
-
-Keep a known-good directory unchanged and run subsequent checks into a different
-directory. These tests establish the Runtime HDR/composite baseline; they do not
-certify perspective cameras, shadows, real asset textures, or editor UI.
-
-Phase 1 also checks empty/disabled lists (one required output draw, no temporary
-textures), eight HDR identity passes over 30 frames, repeated pool reuse, LDR
-identity passes, HDR/LDR stage ordering, half-resolution processing including odd
-sizes, fractional camera viewports, and descriptor release after replacement and
-resize. Half-resolution output is compared pixel-by-pixel against independent CPU
-bilinear resampling with half-float intermediate quantization, still with at most
-2 byte levels of error. Cropped-view probes and unchanged pixels outside the
-camera viewport are checked separately. Debug views and Forward/`Nothing` rendering
-must remain identical with optional effects on/off. Invalid stage, divisor, and
-nonfinite parameter tests intentionally log three application errors; accepting
-these inputs or replacing the previous valid list fails validation. D3D12 diagnostics
-must still contain **zero** warnings/errors. The version 2 report records draw and
-pool counts in addition to image results.
-
 ## PostEffect Phase 1 execution contract
 
 `DX12Renderer::setPostProcessPasses` copies an ordered list of
@@ -289,8 +230,7 @@ render graph. Depth/normal inputs, compute passes, history,
 and custom shader asset/hot-reload tracking are later phases. Profile authoring
 is implemented separately in Phase 2 below.
 Common output shaders participate in the existing ShaderManager reload flow;
-user-supplied snapshots are replaced explicitly. The validation scale shader is
-a diagnostic fixture, not a production effect.
+user-supplied snapshots are replaced explicitly.
 
 ## PostEffect Phase 2 Profiles and Camera authoring
 
@@ -325,7 +265,7 @@ mutate old snapshots. The CPU-only `RenderView::postProcess` contains resolved
 values, camera enable and weight, with no manager handles or GPU resources.
 Subsequent edits cannot change a queued render view. Fixed exposure is expressed
 in EV stops, contrast/saturation in percent, and colors in **linear RGB**;
-scalar/color ranges are shared between the Inspector and validation.
+scalar/color ranges are shared between the Inspector and settings validation.
 
 Scene/Prefab Camera payload v7 stores enable, weight, local values/flags, Volume
 layer mask, and
@@ -344,24 +284,6 @@ save references, not shared asset edits; save the Profile separately to persist
 those edits. In-memory Play cloning works even before the first Profile save:
 only immutable assets are shared and local overrides remain independent.
 Inspector editing remains disabled during Play as in the existing editor.
-
-`--validate-rendering` now runs Profile and Camera authoring checks first, writes
-`authoring-results.json` plus isolated files under `authoring-fixtures`, and
-then runs the full rendering and post-effect GPU regressions. It tests all setting values and override
-flags, inclusive scalar bounds and invalid inputs, atomic saves/path conflicts,
-reload failures, Unicode references, Camera v0/v1/v2/v4/v7 compatibility,
-legacy Profile defaults and current Profile round trips, Scene/Prefab round trips,
-actual Play scene cloning, Windows path case aliases, and queued
-snapshot independence. A headless ImGui context expands all authoring sections
-and exercises the camera enable checkbox and New Profile button without writing
-editor preferences or opening native dialogs.
-Expected negative tests log application errors, clearly bracketed in the log;
-only their rejection and preservation of previous state count as success.
-Finally, a nonneutral, zero-weight authoring snapshot is submitted to the GPU:
-it must be delivered intact while leaving both baseline images unchanged.
-D3D12 diagnostics must still contain zero warnings/errors. The combined
-`results.json` is version 8 and links to authoring, built-in effects, custom
-effects, Volume, and Phase 6/7 reports.
 
 ## PostEffect Phase 3 built-in effects
 
@@ -413,20 +335,7 @@ Rebuild constructs all candidate PSOs before replacing the previous pipelines.
 Bloom's multi-input passes never alias their output with either source.
 Sampling honors Direct3D's implicit viewport scissor (floor right/bottom), so
 fractional viewports never sample the undrawn bottom/right rows of temporary
-targets. This fixes the old reduced-resolution cropped-viewport display fixture;
-the remaining Phase 2 baseline images stay bit-for-bit unchanged.
-
-`effects-results.json` records independent CPU/GPU per-pixel comparisons for
-global and tonal-range grading, weighted White Balance, Chromatic Aberration,
-temporal Film Grain and the other built-ins, still limited to **2 RGB byte
-levels**, raw scene HDR preservation, alpha, draw counts,
-Bloom depth, bounded fence-aware target/descriptor reuse and zero D3D12 warnings
-or errors. Tests include EV limits, weighted colors and effects, threshold/scatter
-limits, constant-field Bloom normalization, rotated diagonal FXAA (at least 10%
-lower squared edge energy), combined custom HDR/LDR stages over 30 frames,
-fractional/odd viewports, 1x1, single-row/column targets, disabled/zero-weight/neutral
-values and Camera removal. Saved DDS/PNG files are round-trip verified. Keep
-the Phase 0/1/2 baselines unchanged; save Phase 3 results into a new directory.
+targets.
 
 ## PostEffect Phase 4 Volumes
 
@@ -499,19 +408,6 @@ queued snapshot. Disabled/zero-weight Cameras skip Volume collection. Allocation
 failure is explicitly diagnosed and disables that Camera's effects for the frame.
 No Volume change rebuilds PSOs or forces GPU waits.
 
-The GPU validation also writes `volume-results.json`, versioned Volume/Scene/
-Prefab fixtures, and captured moving-Camera results. It checks spatial faces/
-corners/shells, mirrored and parent transforms, ordering, masks, disabled/inactive/
-destroyed objects, ignored scenes, persistent scenes, snapshot isolation,
-workspace reuse, all scalar/color/switch descriptors, Unicode cold loading,
-old Camera versions, malformed payloads and failure preservation. Headless ImGui
-renders all three shapes and exercises New Profile creation. GPU cases compare
-the actual Camera Volume snapshot with independently predicted settings and verify
-all saved images round-trip; the effect suite additionally compares continuous
-contributions to independent CPU pixel references with at most 2 RGB byte levels.
-Native dialogs and arbitrary real-world scenes are not covered by these fixtures.
-Keep all Phase 0-4 baselines unchanged and validate into a new output directory.
-
 ## PostEffect Phase 5 custom HLSL Effect assets
 
 Create a **Custom Effect** from the shared Profile Inspector for either a Camera
@@ -567,14 +463,6 @@ motion vectors, arbitrary textures, UAVs, or temporal history; those belong to
 later effect phases. Compiled PSOs are cached per immutable Shader snapshot and
 rebuilt transactionally when the shared fullscreen vertex shader changes.
 
-Phase 5 validation writes `custom-effects-results.json` and HDR/LDR display
-captures. It compiles and cold-loads a custom asset, round-trips Profile
-references and parameter values, checks legacy Profile v1 compatibility,
-verifies failed compilation preserves the old Shader, compares both stages to
-an independent CPU display reference, exercises fractional Volume/Camera
-contributions, and checks Profile effect ordering through the real Camera
-snapshot path. Saved DDS/PNG round-trips and D3D12 diagnostics remain required.
-
 ## PostEffect Phase 6 depth, temporal effects, color grading and automatic exposure
 
 Depth-of-field uses the active Camera's linearized deferred depth buffer, with
@@ -602,13 +490,6 @@ compensation and minimum/maximum limits. Phase 7 adds per-Camera temporal
 adaptation using separate brighten/darken rates. The result is applied during
 tone mapping, after the HDR reduction and bloom stage.
 
-Phase 6 validation writes `phase6-results.json` and captures for neutral and
-active DOF, TAA history accumulation, camera-motion blur, a generated invert-red
-strip LUT, current-frame automatic exposure, and the combined stack. Checks
-compare raw HDR against the neutral baseline, verify the LUT and exposure
-against independent CPU references, assert effect/draw counts and output
-changes, round-trip saved captures, and require zero D3D12 diagnostics.
-
 Fog was removed from runtime settings and rendering. Its FlatBuffers fields are
 retained as reserved wire slots so older profiles remain readable without
 changing subsequent field IDs; saving a profile writes neutral values to those
@@ -633,13 +514,6 @@ Phase 7 fields load with those defaults. The Phase 7 Camera v5 and Profile v4
 payloads also load with the default Bloom Size Scale when that additive Phase 8
 setting is absent. Delta time comes from the active Camera's
 simulation update, so paused simulation holds the exposure history.
-
-Phase 7 validation writes `phase7-results.json` and checks immediate first
-sample, both adaptation directions, convergence, zero-delta freeze, Camera
-history isolation, and reset after disabling automatic exposure. Captured
-outputs are checked against an independent CPU recurrence and saved-image
-round-trips; each active case also checks HDR invariance, pass counts, and
-D3D12 diagnostics.
 
 ## Runtime and Play behavior
 
@@ -1635,152 +1509,3 @@ manager resources, not owned/unloaded by individual vegetation layers.
 Queued instance/model/material snapshots remain immutable and alive across
 regeneration or scene destruction. Reapply vegetation to capture changed
 model/default-material assets.
-
-## Terrain validation
-
-Build **Debug x64**, then run from the project root:
-
-```powershell
-.\x64\Debug\GameEngine.exe --validate-terrain ".\Build\TerrainValidation"
-```
-
-The output directory must be new or empty. This command uses a hidden UI-free
-Runtime window and requires the D3D12 Debug Layer. It returns zero only after
-all checks and output writes succeed. It does not load the editor scene or
-write editor preferences. It cannot be combined with `--runtime`, `--scene`
-or `--validate-rendering`.
-
-The suite covers 8/16-bit image precision, row ordering, red-channel/gamma
-semantics, corrupt/oversized inputs, flat/ramp/extreme meshes, 32-bit indices,
-invalid settings and payload rollback, Scene/Prefab/Play-clone persistence,
-Inspector rebuild interaction, component lifecycle and transforms, Deferred
-and Forward GPU rendering, existing GPU occlusion, and queued geometry surviving
-component destruction before its first GPU upload. It writes generated fixtures,
-`terrain.scene`, `terrain.prefab`, HDR/display captures and `terrain-results.txt`.
-Phase 2 additionally checks independent Perlin reference values, negative-cell
-continuity, FBM octave composition and normalization, reproducible seeds,
-resolution invariance, shared domain edges, maximum grid size and parameter
-boundaries, generation rollback, version 1 migration, recipe Scene/Prefab/Play
-roundtrips, Inspector **Generate Noise**, and actual FBM/Perlin GPU rendering.
-Generated noise persistence fixtures are `noise.scene` and `noise.prefab`.
-Phase 3 checks layer validation, ordered height/slope coverage, fallback and
-normalization, malformed payload rollback, Inspector enable/apply/reset,
-version 1/2 migration, Scene/Prefab/Play and standalone/embedded material
-roundtrips. GPU readbacks verify all four texture slots, sRGB/linear channels,
-untextured scalar factors, per-layer UV repeat, normal scale/rotation and
-weighted PBR/normal blending, smooth height bands, slope updates, disabled
-appearance, Forward/Deferred lighting, and queued material snapshots after
-regeneration/destruction. Multiple snapshots sharing a handle must not be
-instanced together or released before their submission fence. Layer fixtures
-include `layers.scene`, `layers.prefab`, `layers.matl`, `layers.model`,
-three generated textures and the `terrain-layers` captures.
-Expected invalid-input tests emit error logs; the process exit code and final
-PASS report determine success.
-
-Phase 4 compares exact local heights and world grid traversal against an
-independent all-triangle oracle, including rotated/nonuniform, reflected,
-overturned and sheared CPU transforms. PhysX tests cover ray/sphere queries,
-nonflat face heights/normals, default and explicit layer masks, collider-only
-Center, static transform updates, regeneration rollback during simulation,
-Rigidbody resting/contact events, Character Controller grounding/ramp walking,
-cached geometry refresh, bilateral filters, Scene/Prefab/Play persistence,
-source replacement before/after activation, invalid scales and shape cleanup.
-Persistence fixtures are `collision.scene` and `collision.prefab`.
-
-Phase 5 checks row-major ranges, non-power-of-two and partial edge chunks,
-exact whole-grid vertex attributes, winding, per-cell coverage, conservative
-bounds, the maximum 4096-chunk CPU/PhysX/GPU grid, invalid-setting rollback, Inspector apply,
-version 4 persistence and legacy migration. Multi-chunk PhysX tests verify
-split/merge/rebuild transactions, filters, source lifecycle, one stable contact
-and trigger stream at a four-chunk junction and Character Controller walking across a seam.
-GPU readbacks compare every display channel against an unpartitioned reference
-within two 8-bit UNORM steps for Deferred albedo/normal/final lighting and
-Forward with existing occlusion enabled. Unuploaded queued chunks must also
-render after component destruction. Fixtures include `chunks.scene`,
-`chunks.prefab`, and `terrain-chunks` HDR/display captures.
-The maximum-grid GPU case also compares all 4096 resident meshes against an
-equivalent two-triangle flat reference in both render paths and verifies teardown.
-
-Phase 6 verifies every level's index bounds, strictly reduced triangle counts,
-positive area, exact projected coverage, manifold edge incidence and retention
-of every unit border edge on regular, non-power-of-two, partial and narrow grids.
-It checks exact distance thresholds, legacy/v5 migration and invalid-payload
-rollback, Scene/Prefab/Play and Inspector draft/apply/disable behavior.
-Cooked collision bytes are compared with an independent full-resolution-only
-oracle and PhysX ray heights with authoritative CPU surface heights.
-GPU checks compare all display pixels for mixed LODs against level 0 in
-Deferred and Forward+Hi-Z, including an oblique boundary view, verify nonflat
-four-layer rendering, world-space parent transforms, successive cameras,
-layer/frustum culling, independent full-resolution off-camera shadows and
-queued snapshot lifetime. The maximum 4096-chunk grid also renders with LOD
-enabled: the test requires more than 50% fewer camera triangles and unchanged
-flat reference pixels. Outputs include `lod.scene`, `lod.prefab`,
-`terrain-lod` and `terrain-lod-layers` HDR/display captures.
-
-Phase 7 checks byte-identical applied payloads, chunk/LOD indices, bounds,
-every vertex attribute and cooked physics against synchronous oracles;
-8/16-bit worker WIC decoding; immutable input snapshots; saved/cloned applied
-state during generation; latest-wins stress, invalid replacement, active/Ready
-cancellation, Inspector cancel and preservation of newer drafts, first-use
-lazy generation, component removal/re-addition, destruction, worker shutdown/
-restart, independent terrain requests and one-result-per-frame application.
-Busy-physics and collider-presence-change cases must reject without changing
-live geometry or collision. The maximum 1025x1025 12-octave fixture verifies
-distinct worker/apply thread IDs, real concurrent frames and JobSystem work,
-old GPU pixels and physics queries, concurrent PhysX cooking/simulation,
-256-chunk application, Deferred/Forward+Hi-Z, old queued snapshots and first
-GPU upload after owner destruction. Timing assertions are intentionally broad
-(request <100ms, observed CPU-generation frames <150ms on the validation
-machine), not a portable frame-rate guarantee. Fixtures include
-`background-pending.scene`, `background-height16.png`, `terrain-background`
-HDR/display captures and measured `background-timing.txt`.
-
-Phase 8 checks seeded droplet reproducibility, every parameter's inclusive
-bounds and immediate out-of-range neighbors, cancellation and aliasing,
-flat/zero-rate invariance, tiny/rectangular/1025x1025 extreme cliffs, bounded
-samples and sediment conservation against the actual float output. The default
-fixture must transport/deposit meaningful sediment without exporting most of its
-height mass. It also checks v6/legacy migration and malformed payload rollback,
-Scene/Prefab/Play, applied-only saving and non-replay rebuilds, cumulative/latest
-requests, active/Ready cancellation, newer Inspector draft preservation,
-exact CPU/PhysX sync/async parity, ray heights/normals, busy-physics rollback
-and CharacterController grounding. Deferred and Forward+Hi-Z must render
-byte-identical sync/async erosion results while pending work leaves old pixels
-unchanged. Outputs include `erosion.scene`, `erosion.prefab`, measured
-`erosion-budget.txt`, and `terrain-erosion-before` / `terrain-erosion-after`
-HDR/display captures.
-
-Phase 9 dispatches real GPU Perlin/FBM and compares **every sample** against CPU
-double references within 2e-6, including negative/large coordinates, high octaves,
-minimum/maximum frequency, persistence/lacunarity edges, tiny/non-multiple-of-8/
-rectangular grids and the full 1025x1025 grid. It checks exact GPU repeats,
-Perlin/single-octave/zero-persistence equivalence, seed variation, invalid input,
-pre-submit and actual in-flight cancellation, and safe allocator/buffer reuse.
-Authoring tests cover GPU Inspector activation, applied-only saving/clone,
-Scene/Prefab/Play/rebuild without replay, worker shutdown/restart, component
-destruction, independent components, CPU supersession and busy-physics rollback.
-Every mesh attribute, LOD index and cooked collision byte is compared to the
-authoritative readback oracle; PhysX ray heights/normals must match surface
-queries. Actual maximum-grid rendering keeps old pixels/physics live while
-the worker builds, preserves old queued snapshots, and compares Deferred and
-Forward+Hi-Z output byte-for-byte against CPU meshes from the same heights.
-Outputs include `gpu-noise.scene`, `gpu-noise.prefab`, `terrain-gpu-noise`
-HDR/display captures, numerical/readback `gpu-noise-timing.txt`, and end-to-end
-`gpu-noise-frame-timing.txt`. Timings are local measurements, not universal
-performance guarantees.
-
-Phase 10 checks deterministic candidate/transform repeats, independent analytic
-triangle grounding, pairwise minimum spacing, height/slope/scale/range
-boundaries, zero density/height scale, the four-layer 100000-instance cap,
-budget rejection and transactional cancellation. Authoring tests cover v7 and
-v1..6 migration, malformed payloads, missing model assets, Scene/Prefab/Play,
-Inspector enable/apply/reset with newer-draft preservation, terrain re-grounding,
-unchanged chunk/LOD distribution, terrain-only PhysX, busy-physics rollback,
-active-worker cancellation, latest-wins, disable and destruction. Actual GPU
-captures compare compact instance batches to individually expanded noninstanced
-oracles byte-for-byte in Deferred/Forward, including opaque/alpha-test embedded
-materials, layer masks, Hi-Z, reflected/rotated/nonuniform parent transforms
-and independent off-camera shadows. Resource snapshots must survive scene
-destruction and external handle removal. Outputs include `vegetation.model`,
-`vegetation.scene`, `vegetation.prefab`, `terrain-vegetation` HDR/display captures
-and measured batched/individual GPU draw counts in `vegetation-draws.txt`.

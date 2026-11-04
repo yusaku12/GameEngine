@@ -9,7 +9,6 @@ namespace Engine
         error.clear();
         bool runtimeSeen = false;
         bool sceneSeen = false;
-        bool validationSeen = false;
         for (std::size_t index = 0; index < arguments.size(); ++index)
         {
             const auto argument = arguments[index];
@@ -29,20 +28,6 @@ namespace Engine
                 }
                 scenePath = arguments[index];
             }
-            else if ((argument == L"--validate-rendering" || argument == L"--validate-terrain") && !validationSeen)
-            {
-                validationSeen = true;
-                if (++index == arguments.size() || arguments[index].empty()
-                    || arguments[index].starts_with(L"--"))
-                {
-                    error = "Validation requires an output directory.";
-                    return false;
-                }
-                if (argument == L"--validate-terrain")
-                    terrainValidationDirectory = arguments[index];
-                else
-                    renderingValidationDirectory = arguments[index];
-            }
             else if ((argument == L"--help" || argument == L"-h") && arguments.size() == 1)
                 showHelp = true;
             else
@@ -50,16 +35,6 @@ namespace Engine
                 error = "Unknown or duplicate argument. Use --help for usage.";
                 return false;
             }
-        }
-        if (validationSeen)
-        {
-            if (runtimeSeen || sceneSeen)
-            {
-                error = "Validation cannot be combined with --runtime or --scene.";
-                return false;
-            }
-            mode = ExecutionMode::Runtime;
-            return true;
         }
         if (mode == ExecutionMode::Runtime && !sceneSeen)
         {

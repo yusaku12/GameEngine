@@ -210,13 +210,6 @@ namespace Engine
         bool captureFrame(DX12FrameCapture& destination);
 
         /**
-         * @brief GPU完了後のD3D12 Debug Layerメッセージを検証する。
-         * @return Debug Layerが利用可能で警告・エラー・メッセージ欠落がない場合はtrue。
-         * @thread_safety Render thread only. No concurrent rendering.
-         */
-        bool validateDebugMessages();
-
-        /**
          * @brief HDR/LDRのColorパス列を設定する。空の列は必須表示変換だけを実行する。
          * @param passes Shader Snapshotとパラメータを所有コピーするパス定義。
          * @return PSO構築成功時true。失敗時は既存列を維持する。

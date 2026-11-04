@@ -10,8 +10,6 @@
 #include "Core\Scene\SceneSerializer.h"
 #include "Core\System\GameSession.h"
 #include "Core\System\StartupOptions.h"
-#include "Validation\Rendering\RenderingValidation.h"
-#include "Validation\Terrain\TerrainValidation.h"
 #include <shellapi.h>
 #include "Audio\AudioSystem.h"
 #include "UI\RuntimeUI.h"
@@ -135,16 +133,14 @@ namespace Engine
             return -1;
         if (!validArguments)
         {
-            LOG_ERROR("[Startup] {} Usage: GameEngine.exe [--runtime --scene <scene file>] "
-                "[--validate-rendering <output directory> | --validate-terrain <output directory>] [--help]",
+            LOG_ERROR("[Startup] {} Usage: GameEngine.exe [--runtime --scene <scene file>] [--help]",
                 arguments == nullptr ? "Could not decode command line." : argumentError);
             finalizeCore();
             return -1;
         }
         if (options.showHelp)
         {
-            LOG_INFO("Usage: GameEngine.exe [--runtime --scene <scene file>] "
-                "[--validate-rendering <output directory> | --validate-terrain <output directory>] [--help]");
+            LOG_INFO("Usage: GameEngine.exe [--runtime --scene <scene file>] [--help]");
             finalizeCore();
             return 0;
         }
@@ -156,9 +152,7 @@ namespace Engine
             return -1;
         }
 
-        const bool renderingValidation = !options.renderingValidationDirectory.empty()
-            || !options.terrainValidationDirectory.empty();
-        if (options.mode == ExecutionMode::Runtime && !renderingValidation)
+        if (options.mode == ExecutionMode::Runtime)
         {
             Scene* scene = SceneManager::instance().createScene("RuntimeScene");
             if (scene == nullptr || !Serialization::SceneSerializer{}.load(options.scenePath, *scene))
@@ -223,8 +217,7 @@ namespace Engine
             return -1;
         }
 
-        if (!renderingValidation)
-            ShowWindow(hwnd, cmdShow);
+        ShowWindow(hwnd, cmdShow);
 
         int result = 0;
         {
@@ -233,7 +226,7 @@ namespace Engine
 
             // DirectX 12 レンダラーの初期化
             DX12Renderer renderer;
-            if (!renderer.initialize(hwnd, SCREEN_WIDTH, SCREEN_HEIGHT, options.mode, !renderingValidation))
+            if (!renderer.initialize(hwnd, SCREEN_WIDTH, SCREEN_HEIGHT, options.mode))
             {
                 // 描画スレッドの役割をメインスレッドに戻す
                 setCurrentThreadRole(ThreadRole::Main);
@@ -247,16 +240,6 @@ namespace Engine
 
             CameraManager::instance().setRenderTargetSize(SCREEN_WIDTH, SCREEN_HEIGHT);
 
-            if (renderingValidation)
-            {
-                const bool valid = !options.terrainValidationDirectory.empty()
-                    ? runTerrainValidation(renderer, options.terrainValidationDirectory)
-                    : runRenderingValidation(renderer, options.renderingValidationDirectory);
-                result = valid ? 0 : -1;
-                setCurrentThreadRole(ThreadRole::Main);
-                GameSession::instance().shutdown();
-            }
-            else
             {
                 Window window(hwnd, renderer);
                 SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&window));
@@ -281,8 +264,6 @@ namespace Engine
 
             // ComponentをSingleton Managerより先にMain Threadで破棄する
             setCurrentThreadRole(ThreadRole::Main);
-            if (renderingValidation)
-                DestroyWindow(hwnd);
             SceneManager::instance().shutdown();
             CameraManager::instance().shutdown();
             ModelManager::instance().clear();
