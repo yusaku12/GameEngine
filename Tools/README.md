@@ -134,10 +134,35 @@ consumers, not every engine translation unit.
 - `Config`, `Log`, `.vs`: local editor preferences, logs and IDE caches.
   Preserve preferences; do not remove IDE caches while the IDE is using them.
 
-The old `GameEngine\x64` intermediates and compiler files formerly mixed into
-`x64\<Configuration>` are not needed after rebuilding with the current project.
-Keep `GameEngine.exe`, its `.pdb`, and `libfbxsdk.dll` in the executable directory.
-Ignored or untracked files are not automatically safe to delete.
+### Generated-output cleanup boundaries
+
+The active build directories under `Build` are `GameEngine`, `PhysX` and
+`ozz-animation`. Preserve these for incremental builds, along with
+`Generated\FlatBuffers`, `Assets\Shaders\Compiled` and the executable directories.
+Keep `GameEngine.exe`, its `.pdb`, and `libfbxsdk.dll` in `x64\<Configuration>`.
+
+The retired engine validation suites left local-only output, not maintained
+source or runtime assets: `Build\RenderingBaseline-*`,
+`Build\Terrain*Validation-*`, `Build\source-layout-before-*`,
+`Build\source-layout-after-*` and `Build\Tests`. These historical directories
+and their root-level build/probe logs have been removed. The deleted suites'
+orphaned `*Validation.obj` files were also removed from engine intermediates;
+do not remove objects that still correspond to project compilation items.
+
+The obsolete built-in outputs `Deferred_psComposite_ps.cso`,
+`Occlusion_vsMain_vs.cso`, `PostProcessValidation_psCustomGain_ps.cso` and
+`PostProcessValidation_psScale_ps.cso` are no longer produced or consumed and
+have been removed. The 32 current built-in outputs and custom shader directories
+are retained. Do not infer that a custom shader or asset is unused merely because
+its filename is not a literal in the source.
+
+Engine source files, opt-in public APIs such as `Core\Core.h`, authoring assets,
+compatibility readers, preferences, third-party source/licenses and vendor
+samples/tests are not generated waste. A currently uncalled public API may be
+used by clients or future components. Verify references and intended ownership
+before deleting it. Ignored or untracked status alone never authorizes deletion;
+resolve and inspect specific targets, avoid junctions, and never broadly clean
+the repository or an active IDE cache.
 
 Initialize registered submodules with `git submodule update --init --recursive`.
 The current local PhysX, ImGui and spdlog checkouts also contain required files
