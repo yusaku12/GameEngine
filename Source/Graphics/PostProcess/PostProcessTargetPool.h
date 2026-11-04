@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Graphics\DirectX12\Descriptor.h"
-#include "Graphics\DirectX12\Resource.h"
+#include "Graphics\DirectX12\Resource\Descriptor.h"
+#include "Graphics\DirectX12\Resource\Resource.h"
 
 namespace Engine
 {

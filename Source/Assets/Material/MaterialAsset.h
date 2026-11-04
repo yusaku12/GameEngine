@@ -2,7 +2,7 @@
 
 #include <string>
 #include <optional>
-#include "Terrain\TerrainMaterial.h"
+#include "Terrain\Material\TerrainMaterial.h"
 #include "Assets\Material\MaterialTypes.h"
 #include "Core\Math\MathTypes.h"
 

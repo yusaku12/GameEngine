@@ -1,419 +1,1511 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClCompile Include="Source\Terrain\Heightmap.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainNoise.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainMaterial.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainSurface.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainChunks.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainLod.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainBuild.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainGpuNoise.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainGpuValidation.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainErosion.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainVegetation.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainVegetationValidation.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainErosionValidation.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainGeneration.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainBackgroundValidation.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainLodValidation.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainCollisionValidation.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainMaterialSerialization.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainMeshBuilder.cpp" />
-    <ClCompile Include="Source\Terrain\TerrainValidation.cpp" />
-    <ClCompile Include="Source\Core\GameObject\Component\TerrainComponent.cpp" />
-    <ClCompile Include="Source\Core\GameObject\Component\LightComponent.cpp" />
-    <ClCompile Include="Source\Graphics\Lighting\LightingFrame.cpp" />
-    <ClCompile Include="Source\Audio\AudioSystem.cpp" />
-    <ClCompile Include="Source\Audio\AudioSourceComponent.cpp" />
-    <ClCompile Include="Source\UI\RuntimeUI.cpp" />
-    <ClCompile Include="Source\UI\RuntimeUIComponents.cpp" />
-    <ClCompile Include="Source\Graphics\UI\RuntimeUIRenderer.cpp" />
-    <ClCompile Include="Source\Core\System\StartupOptions.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\FrameCapture.cpp" />
-    <ClCompile Include="Source\Graphics\Validation\RenderingValidation.cpp" />
-    <ClCompile Include="Source\Graphics\PostProcess\PostProcessPipeline.cpp" />
-    <ClCompile Include="Source\Graphics\PostProcess\PostProcessSettings.cpp" />
-    <ClCompile Include="Source\Graphics\PostProcess\PostProcessVolumeResolver.cpp" />
-    <ClCompile Include="Source\Core\GameObject\Component\PostProcessVolumeComponent.cpp" />
-    <ClCompile Include="Source\Assets\PostProcess\PostProcessProfileManager.cpp" />
-    <ClCompile Include="Source\Assets\PostProcess\PostProcessEffectAssetManager.cpp" />
-    <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessEffectSerializer.cpp" />
-    <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessProfileSerializer.cpp" />
-    <ClCompile Include="Source\Editor\PostProcess\PostProcessInspector.cpp" />
-    <ClCompile Include="Source\Graphics\Validation\PostProcessAuthoringValidation.cpp" />
-    <ClCompile Include="Source\Graphics\Validation\PostProcessEffectsValidation.cpp" />
-    <ClCompile Include="Source\Graphics\Validation\PostProcessVolumeValidation.cpp" />
-    <ClCompile Include="Source\Graphics\Validation\PostProcessCustomEffectValidation.cpp" />
-    <ClCompile Include="Source\Graphics\PostProcess\PostProcessTargetPool.cpp" />
-    <ClCompile Include="Source\Core\System\GameSession.cpp" />
-    <ClCompile Include="Source\Core\Scene\SceneClone.cpp" />
-    <ClCompile Include="Source\Animation\Runtime\AnimatorInstance.cpp" />
-    <ClCompile Include="Source\Assets\Animation\AnimatorControllerAsset.cpp" />
-    <ClCompile Include="Source\Core\GameObject\Component\AnimatorComponent.cpp" />
-    <ClCompile Include="Source\Assets\Animation\AnimationAssetBuilder.cpp" />
-    <ClCompile Include="Source\Assets\Animation\AnimationAssetManager.cpp" />
-    <ClCompile Include="Source\Assets\Animation\Serialization\AnimationClipSerializer.cpp" />
-    <ClCompile Include="Source\Assets\Animation\Serialization\AnimatorControllerSerializer.cpp" />
-    <ClCompile Include="Source\Assets\Animation\Serialization\OzzArchiveUtils.cpp" />
-    <ClCompile Include="Source\Assets\Animation\Serialization\SkeletonSerializer.cpp" />
-    <ClCompile Include="Source\Core\Serialization\ComponentSerialization.cpp" />
-    <ClCompile Include="Source\Assets\Material\MaterialInstance.cpp" />
-    <ClCompile Include="Source\Graphics\Material\MaterialPropertyBlock.cpp" />
-    <ClCompile Include="Source\Assets\Material\MaterialManager.cpp" />
-    <ClCompile Include="Source\Assets\Material\Serialization\MaterialSerializer.cpp" />
-    <ClCompile Include="Source\Assets\Model\Import\FbxModelImporter.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\Command.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\ModelCommandRecorder.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\Descriptor.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\Device.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\Fence.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\Pipeline.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\Queue.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\Resource.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\Renderer.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\GpuOcclusionCulling.cpp" />
-    <ClCompile Include="Source\Graphics\Renderer\SkinningBounds.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\GpuProfiler.cpp" />
-    <ClCompile Include="Source\Graphics\Renderer\RenderQueue.cpp" />
-    <ClCompile Include="Source\Graphics\Renderer\ModelRenderSubmission.cpp" />
-    <ClCompile Include="Source\Graphics\Camera\CameraManager.cpp" />
-    <ClCompile Include="Source\Graphics\Camera\CameraRenderSubmission.cpp" />
-    <ClCompile Include="Source\Graphics\Camera\CameraUtils.cpp" />
-    <ClCompile Include="Source\Graphics\Debug\DebugPrimitive.cpp" />
-    <ClCompile Include="Source\Graphics\Material\MaterialGpuCache.cpp" />
-    <ClCompile Include="Source\Graphics\Model\ModelGpuCache.cpp" />
-    <ClCompile Include="Source\Graphics\Shader\Shader.cpp" />
-    <ClCompile Include="Source\Graphics\DirectX12\SwapChain.cpp" />
-    <ClCompile Include="Source\Main.cpp" />
-    <ClCompile Include="Source\Core\Logging\Assert.cpp" />
-    <ClCompile Include="Source\Core\Logging\Logger.cpp" />
-    <ClCompile Include="Source\Core\Math\Random.cpp" />
-    <ClCompile Include="Source\Core\Math\SimpleMath.cpp" />
-    <ClCompile Include="Source\Core\Math\Transform.cpp" />
-    <ClCompile Include="Source\Core\Threading\JobSystem.cpp" />
-    <ClCompile Include="Source\Core\Threading\MainThreadDispatcher.cpp" />
-    <ClCompile Include="Source\Core\Threading\ThreadDebugStats.cpp" />
-    <ClCompile Include="Source\Core\Threading\ThreadUtility.cpp" />
-    <ClCompile Include="Source\Core\Profiling\FrameProfiler.cpp" />
-    <ClCompile Include="Source\Pch.cpp" />
-    <ClCompile Include="Source\Core\Time\HighResolutionTimer.cpp" />
-    <ClCompile Include="Source\Core\Time\TimeManager.cpp" />
-    <ClCompile Include="Source\Core\System\Window.cpp" />
-    <ClCompile Include="Source\Core\Containers\String.cpp" />
-    <ClCompile Include="Source\Core\Input\InputManager.cpp" />
-    <ClCompile Include="Source\Assets\Model\Serialization\ModelSerializer.cpp" />
-    <ClCompile Include="Source\Assets\Model\ModelManager.cpp" />
-    <ClCompile Include="Source\Core\Serialization\FlatBufferReader.cpp" />
-    <ClCompile Include="Source\Core\Serialization\FlatBufferWriter.cpp" />
-    <ClCompile Include="Source\Graphics\Shader\ShaderCompiler.cpp" />
-    <ClCompile Include="Source\Graphics\Shader\ShaderFileWatcher.cpp" />
-    <ClCompile Include="Source\Graphics\Shader\ShaderManager.cpp" />
-    <ClCompile Include="Source\Graphics\Texture\Texture.cpp" />
-    <ClCompile Include="Source\Graphics\Texture\TextureManager.cpp" />
-    <ClCompile Include="Source\Core\Object\ObjectGUID.cpp" />
-    <ClCompile Include="Source\Core\GameObject\GameObject.cpp" />
-    <ClCompile Include="Source\Core\GameObject\Component\CameraComponent.cpp" />
-    <ClCompile Include="Source\Core\GameObject\Component\TransformComponent.cpp" />
-    <ClCompile Include="Source\Core\GameObject\Component\ModelRendererComponent.cpp" />
-    <ClCompile Include="Source\Core\GameObject\ComponentRegistry.cpp" />
-    <ClCompile Include="Source\Core\Scene\Scene.cpp" />
-    <ClCompile Include="Source\Core\Scene\SceneManager.cpp" />
-    <ClCompile Include="Source\Core\Scene\TagManager.cpp" />
-    <ClCompile Include="Source\Core\Scene\LayerManager.cpp" />
-    <ClCompile Include="Source\Core\Scene\SceneSerializer.cpp" />
-    <ClCompile Include="Source\Core\Prefab\Prefab.cpp" />
-    <ClCompile Include="Source\Core\Prefab\PrefabInstance.cpp" />
-    <ClCompile Include="Source\Core\Prefab\PrefabSerializer.cpp" />
-    <ClCompile Include="Source\Core\GameObject\GameObjectManager.cpp" />
-    <ClCompile Include="Source\Physics\PhysicsSystem.cpp" />
-    <ClCompile Include="Source\Physics\PhysicsMaterial.cpp" />
-    <ClCompile Include="Source\Physics\PhysicsMeshAsset.cpp" />
-    <ClCompile Include="Source\Physics\PhysicsWorld.cpp" />
-    <ClCompile Include="Source\Physics\Character\CharacterControllerComponent.cpp" />
-    <ClCompile Include="Source\Physics\Character\CharacterControllerMovementComponent.cpp" />
-    <ClCompile Include="Source\Physics\Joint\JointComponent.cpp" />
-    <ClCompile Include="Source\Physics\Rigidbody\RigidbodyComponent.cpp" />
-    <ClCompile Include="Source\Physics\Collider\ColliderComponent.cpp" />
-    <ClCompile Include="Source\Physics\Collider\BoxColliderComponent.cpp" />
-    <ClCompile Include="Source\Physics\Collider\SphereColliderComponent.cpp" />
-    <ClCompile Include="Source\Physics\Collider\CapsuleColliderComponent.cpp" />
-    <ClCompile Include="Source\Physics\Collider\MeshColliderComponent.cpp" />
-    <ClCompile Include="Source\Physics\Collider\TerrainColliderComponent.cpp" />
-    <ClCompile Include="Source\Physics\Collider\ConvexColliderComponent.cpp" />
-    <ClCompile Include="Source\Physics\Internal\PhysXConversions.cpp" />
+    <Filter Include="Assets">
+      <UniqueIdentifier>{7BA2BB5E-69DD-4E6B-AAD6-6AE61C474DC9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Assets\Shaders">
+      <UniqueIdentifier>{14CB4C24-6ADD-4706-A4C1-1533E5ED9122}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Generated">
+      <UniqueIdentifier>{D7C7D67E-2408-42FD-8936-A1FE3902C5F6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Generated\FlatBuffers">
+      <UniqueIdentifier>{54DEB556-EF8A-4938-9FA6-D552C06BBADD}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Library">
+      <UniqueIdentifier>{66AD28A3-BB2F-4E0C-9E7F-50834C8CE04A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Library\imgui">
+      <UniqueIdentifier>{A76BB56C-347C-4A75-9F89-CC1C5A4934BD}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Library\imgui\backends">
+      <UniqueIdentifier>{41C5E21B-C383-49FF-8DBF-E27F24AE1180}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Library\ImGuizmo">
+      <UniqueIdentifier>{34C85845-CEF5-429A-9E53-989807808AA9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Schemas">
+      <UniqueIdentifier>{F2DFD545-28FE-4304-9031-29CF0C1EA915}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Schemas\FlatBuffers">
+      <UniqueIdentifier>{10022E90-9EFC-4F60-8029-B893E49A3E3E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source">
+      <UniqueIdentifier>{C6B589C6-0676-470E-A0E1-CB0B5610959C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Animation">
+      <UniqueIdentifier>{5A8FD762-EA0C-49A5-866A-C23BC6CE971D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Animation\Runtime">
+      <UniqueIdentifier>{3322993C-EB4C-4868-A1D2-D79776E8678A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Assets">
+      <UniqueIdentifier>{3873B6C6-9BB3-44FC-9D31-154C36A36B2A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Assets\Animation">
+      <UniqueIdentifier>{BF8FAE49-5136-48CA-836C-22D0840B0C9A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Assets\Animation\Serialization">
+      <UniqueIdentifier>{D1C3167B-7716-463F-A7A6-2D56E5ECA43C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Assets\Material">
+      <UniqueIdentifier>{FC3F7A64-813F-487A-AE46-DEF0B7A5DB29}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Assets\Material\Serialization">
+      <UniqueIdentifier>{1119730D-1301-47DC-B917-3491168B5FBF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Assets\Model">
+      <UniqueIdentifier>{0D85FC7B-C05B-405E-A312-87CD95507151}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Assets\Model\Import">
+      <UniqueIdentifier>{9BC5AC00-1220-474B-B48C-E920BB0A9CE9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Assets\Model\Resource">
+      <UniqueIdentifier>{D3717A9C-6E89-418F-B1E6-31B3FBFD9A19}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Assets\Model\Serialization">
+      <UniqueIdentifier>{0044FB6D-A2C3-4736-99E7-1E051986933B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Assets\PostProcess">
+      <UniqueIdentifier>{0C2E8A4B-F92A-4F54-924B-D04897417F2C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Assets\PostProcess\Serialization">
+      <UniqueIdentifier>{1E371C85-BD03-452A-BB14-F3A199811662}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Audio">
+      <UniqueIdentifier>{FA628E29-FDF0-48D0-9DC0-3C6B6CAFDD14}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components">
+      <UniqueIdentifier>{978B8B89-EBF1-4089-A094-3D8A18EA6CB6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components\Animation">
+      <UniqueIdentifier>{36CF4011-77A1-46E5-ACD8-3383F4DB8692}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components\Audio">
+      <UniqueIdentifier>{B8CBAE9D-4CD5-4BE3-A71C-A9F9F5C9D870}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components\Physics">
+      <UniqueIdentifier>{D8CAC882-5FE9-4E14-B29D-BB8147E6F7BC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components\Physics\Character">
+      <UniqueIdentifier>{69F9878C-61DF-4AB4-AA4E-BBD63A8BE20E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components\Physics\Collider">
+      <UniqueIdentifier>{FA9BB244-6A15-473C-8690-80D4080BF71A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components\Physics\Joint">
+      <UniqueIdentifier>{22382155-8D96-44D7-A7CB-6EA77A8454A1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components\Physics\Rigidbody">
+      <UniqueIdentifier>{D423B042-644B-4D16-8AB0-7577AB6BA544}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components\Rendering">
+      <UniqueIdentifier>{DC35FFE0-13B4-4054-9F64-C2DFA9F51D48}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components\Terrain">
+      <UniqueIdentifier>{A65711DD-486E-4BFD-976A-DEA8020C1973}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components\Transform">
+      <UniqueIdentifier>{AE57DB29-F7F0-47BE-83D7-D3207405FE7B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components\UI">
+      <UniqueIdentifier>{1E36C2C8-E4EF-4E57-8432-A7C1F3E605FE}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core">
+      <UniqueIdentifier>{B52527A0-8B5C-4E65-9E71-E0B91EE37708}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\Containers">
+      <UniqueIdentifier>{2EF36802-0AE4-470F-97B4-0DE608886FA5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\GameObject">
+      <UniqueIdentifier>{6937943E-4F4E-423D-9A7C-A3AEFEEFA5B8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\Input">
+      <UniqueIdentifier>{6E693E93-BDBF-45A8-A9B6-7142313C5883}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\Logging">
+      <UniqueIdentifier>{D65B9A57-0A05-4493-80C3-C3E579A8B21E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\Math">
+      <UniqueIdentifier>{7F30A4E6-A3AE-45D9-852A-199F5C38A4D4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\Object">
+      <UniqueIdentifier>{090E7176-B1CF-449C-826E-F20C7F7E80D0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\Prefab">
+      <UniqueIdentifier>{EC40A512-5102-45C1-8ECA-312AA80A3A26}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\Profiling">
+      <UniqueIdentifier>{EC09E8B2-1729-41DB-BBE2-C1A378843BBB}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\Scene">
+      <UniqueIdentifier>{EDEA0BDC-599E-418B-9325-CBF022970449}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\Serialization">
+      <UniqueIdentifier>{CF0576D0-9754-4738-A66E-A8C7FD58CDA5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\System">
+      <UniqueIdentifier>{E04B50FE-3175-4130-855C-D20EE77BB4AC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\Threading">
+      <UniqueIdentifier>{0B65707D-3A99-480A-857A-306A311046B5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Core\Time">
+      <UniqueIdentifier>{9A1AB63B-B091-40A8-8679-F22A70F953B5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Editor">
+      <UniqueIdentifier>{97378E27-2E27-4C7C-A5E6-6F5A189A7332}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Editor\Components">
+      <UniqueIdentifier>{A85A9E9C-37F6-4A5B-975F-6CDDD9D5A05A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Editor\Components\Camera">
+      <UniqueIdentifier>{0507192D-47B6-46E1-A408-4D7E5C8FB701}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Editor\ImGui">
+      <UniqueIdentifier>{8F07F22A-21E9-4D0B-BBA1-010C983F9D79}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Editor\PostProcess">
+      <UniqueIdentifier>{93A01B7D-1F86-410A-96BE-864453EBF6C3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Editor\Scene">
+      <UniqueIdentifier>{ECE6232A-4EA0-4699-953E-6E186179C4BE}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics">
+      <UniqueIdentifier>{FAEF165D-7019-45B1-9E17-617D5A0796DF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\Camera">
+      <UniqueIdentifier>{7825992F-840E-4FE3-8DC4-E7059B7E09FB}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\Debug">
+      <UniqueIdentifier>{26FEBB3D-B48C-4BB6-8945-3F23F18394FF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\DirectX12">
+      <UniqueIdentifier>{44C5701D-B9C3-43D4-A1E6-6DE522398BBF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\DirectX12\Command">
+      <UniqueIdentifier>{9CDBB439-85CB-4FF8-B4E1-957CEFD77428}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\DirectX12\Culling">
+      <UniqueIdentifier>{5959C3B2-5342-46E8-B538-CAA43F138C03}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\DirectX12\Device">
+      <UniqueIdentifier>{8A1A5A50-A409-4D76-B70A-01478FEC2BDC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\DirectX12\Diagnostics">
+      <UniqueIdentifier>{8D015F1C-73C9-446E-8F0E-F26CF4688960}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\DirectX12\Pipeline">
+      <UniqueIdentifier>{451D24D2-1DCB-44F6-AB5C-C5376B211C9D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\DirectX12\Presentation">
+      <UniqueIdentifier>{6D42DC2C-FD5C-4B18-BDB6-FC20976459BE}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\DirectX12\Rendering">
+      <UniqueIdentifier>{69E506E5-60FD-4BDB-8F57-10CCE05B09E7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\DirectX12\Resource">
+      <UniqueIdentifier>{71CA89B6-677D-479D-B489-1A8A2DFA508C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\Lighting">
+      <UniqueIdentifier>{D6F0C950-F815-420A-A373-F810C7D1B889}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\Material">
+      <UniqueIdentifier>{B76CFD55-AF1B-4DB5-8651-2BD187A5CBD9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\Model">
+      <UniqueIdentifier>{86C4F4C5-BC59-4309-9914-9AE340EBA30B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\PostProcess">
+      <UniqueIdentifier>{E33B4A57-343E-4096-B7F3-F44CB5541F19}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\Renderer">
+      <UniqueIdentifier>{A1119456-C97D-4E50-AC97-7347CE735CC8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\Shader">
+      <UniqueIdentifier>{C3FD965B-3796-4B8F-85BF-0775DD3BC42F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\Texture">
+      <UniqueIdentifier>{693B49D3-A009-4C32-A9CD-A7C13248D0F1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\UI">
+      <UniqueIdentifier>{6C044AF1-6E7D-4DB7-8ADF-5DD6BD7A7D3E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Physics">
+      <UniqueIdentifier>{3470792D-B82D-4684-A987-3A3A30B2E0C9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Physics\Internal">
+      <UniqueIdentifier>{04CA0A44-5FD3-4E20-95F3-8DE75938C00D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Terrain">
+      <UniqueIdentifier>{1C4F76C3-5FC7-4D36-A323-86E7FAE3AA99}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Terrain\Data">
+      <UniqueIdentifier>{36C5DDB0-E0F0-43A8-B49E-3293E39793B9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Terrain\Generation">
+      <UniqueIdentifier>{24AE7AE5-F50F-4565-A5CC-C4570182917A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Terrain\Geometry">
+      <UniqueIdentifier>{FEA6C032-05A9-4B05-9266-0D2450D666D8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Terrain\Material">
+      <UniqueIdentifier>{7A1D0B95-7313-4963-8BDF-F7F103A5CA2D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Terrain\Serialization">
+      <UniqueIdentifier>{AA13E6D4-CD0D-4817-9A90-8319FEE77CA7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Terrain\Vegetation">
+      <UniqueIdentifier>{609E8042-FC88-421A-9BF0-A67FA56AB537}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\UI">
+      <UniqueIdentifier>{DEADE6DC-9603-40AC-B2BB-E8C3451BE4C7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Validation">
+      <UniqueIdentifier>{150A24C3-1DE9-469D-AB78-BF39C90FB160}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Validation\Rendering">
+      <UniqueIdentifier>{50277D1F-314B-4B3D-B035-F2DF31DDFF34}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Validation\Terrain">
+      <UniqueIdentifier>{A6B74E15-6D8C-4A45-91C7-97D81F4C6708}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Tools">
+      <UniqueIdentifier>{A046C185-BAD5-4175-B36B-CA3DA40E3EEA}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Tools\FlatBuffers">
+      <UniqueIdentifier>{658722AC-BB3B-4509-9FCF-764B18D08A72}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Tools\Shaders">
+      <UniqueIdentifier>{7DB73B77-432E-41D8-8336-841DB97F958B}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Source\Terrain\Heightmap.h" />
-    <ClInclude Include="Source\Terrain\TerrainNoise.h" />
-    <ClInclude Include="Source\Terrain\TerrainMaterial.h" />
-    <ClInclude Include="Source\Terrain\TerrainSurface.h" />
-    <ClInclude Include="Source\Terrain\TerrainChunks.h" />
-    <ClInclude Include="Source\Terrain\TerrainLod.h" />
-    <ClInclude Include="Source\Terrain\TerrainBuild.h" />
-    <ClInclude Include="Source\Terrain\TerrainGpuNoise.h" />
-    <ClInclude Include="Source\Terrain\TerrainGpuValidation.h" />
-    <ClInclude Include="Source\Terrain\TerrainErosion.h" />
-    <ClInclude Include="Source\Terrain\TerrainVegetation.h" />
-    <ClInclude Include="Source\Terrain\TerrainVegetationValidation.h" />
-    <ClInclude Include="Source\Terrain\TerrainErosionValidation.h" />
-    <ClInclude Include="Source\Terrain\TerrainGeneration.h" />
-    <ClInclude Include="Source\Terrain\TerrainBackgroundValidation.h" />
-    <ClInclude Include="Source\Terrain\TerrainLodValidation.h" />
-    <ClInclude Include="Source\Terrain\TerrainCollisionValidation.h" />
-    <ClInclude Include="Source\Terrain\TerrainMaterialSerialization.h" />
-    <ClInclude Include="Source\Terrain\TerrainMeshBuilder.h" />
-    <ClInclude Include="Source\Terrain\TerrainValidation.h" />
-    <ClInclude Include="Source\Core\GameObject\Component\TerrainComponent.h" />
-    <ClInclude Include="Generated\FlatBuffers\TerrainComponent_generated.h" />
-    <ClInclude Include="Source\Core\System\ExecutionMode.h" />
-    <ClInclude Include="Source\Core\System\StartupOptions.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\FrameCapture.h" />
-    <ClInclude Include="Source\Graphics\Validation\RenderingValidation.h" />
-    <ClInclude Include="Source\Graphics\PostProcess\PostProcessPipeline.h" />
-    <ClInclude Include="Source\Graphics\PostProcess\PostProcessSettings.h" />
-    <ClInclude Include="Source\Graphics\PostProcess\PostProcessVolumeResolver.h" />
-    <ClInclude Include="Source\Core\GameObject\Component\PostProcessVolumeComponent.h" />
-    <ClInclude Include="Source\Assets\PostProcess\PostProcessProfile.h" />
-    <ClInclude Include="Source\Assets\PostProcess\PostProcessProfileManager.h" />
-    <ClInclude Include="Source\Assets\PostProcess\PostProcessEffectAsset.h" />
-    <ClInclude Include="Source\Assets\PostProcess\PostProcessEffectAssetManager.h" />
-    <ClInclude Include="Source\Assets\PostProcess\Serialization\PostProcessEffectSerializer.h" />
-    <ClInclude Include="Source\Assets\PostProcess\Serialization\PostProcessProfileSerializer.h" />
-    <ClInclude Include="Source\Editor\PostProcess\PostProcessInspector.h" />
-    <ClInclude Include="Source\Graphics\Validation\PostProcessAuthoringValidation.h" />
-    <ClInclude Include="Source\Graphics\Validation\PostProcessEffectsValidation.h" />
-    <ClInclude Include="Source\Graphics\Validation\PostProcessVolumeValidation.h" />
-    <ClInclude Include="Source\Graphics\Validation\PostProcessCustomEffectValidation.h" />
-    <ClInclude Include="Generated\FlatBuffers\PostProcessSettings_generated.h" />
-    <ClInclude Include="Generated\FlatBuffers\PostProcessProfile_generated.h" />
-    <ClInclude Include="Generated\FlatBuffers\PostProcessEffectAsset_generated.h" />
-    <ClInclude Include="Source\Graphics\PostProcess\PostProcessTargetPool.h" />
-    <ClInclude Include="Source\Core\System\GameSession.h" />
-    <ClInclude Include="Source\Core\Scene\SceneClone.h" />
-    <ClInclude Include="Generated\FlatBuffers\CameraComponent_generated.h" />
-    <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\ModelCommandRecorder.h" />
-    <ClInclude Include="Source\Graphics\Renderer\CommandRecordingRange.h" />
-    <ClInclude Include="Source\Core\GameObject\Component\AnimatorComponent.h" />
-    <ClInclude Include="Source\Graphics\Renderer\SkinningPaletteSnapshot.h" />
-    <ClInclude Include="Generated\FlatBuffers\AnimationClip_generated.h" />
-    <ClInclude Include="Generated\FlatBuffers\AnimatorController_generated.h" />
-    <ClInclude Include="Generated\FlatBuffers\AnimatorComponent_generated.h" />
-    <ClInclude Include="Generated\FlatBuffers\Skeleton_generated.h" />
-    <ClInclude Include="Source\Assets\Animation\AnimationAssetBuilder.h" />
-    <ClInclude Include="Source\Assets\Animation\AnimationAssetManager.h" />
-    <ClInclude Include="Source\Assets\Animation\AnimationClipAsset.h" />
-    <ClInclude Include="Source\Assets\Animation\AnimatorControllerAsset.h" />
-    <ClInclude Include="Source\Assets\Animation\AnimationTypes.h" />
-    <ClInclude Include="Source\Assets\Animation\Serialization\AnimationClipSerializer.h" />
-    <ClInclude Include="Source\Assets\Animation\Serialization\AnimatorControllerSerializer.h" />
-    <ClInclude Include="Source\Assets\Animation\Serialization\OzzArchiveUtils.h" />
-    <ClInclude Include="Source\Assets\Animation\Serialization\SkeletonSerializer.h" />
-    <ClInclude Include="Source\Core\Serialization\ComponentSerialization.h" />
-    <ClInclude Include="Source\Assets\Animation\SkeletonAsset.h" />
-    <ClInclude Include="Source\Assets\Material\MaterialAsset.h" />
-    <ClInclude Include="Source\Assets\Material\MaterialInstance.h" />
-    <ClInclude Include="Source\Assets\Material\MaterialManager.h" />
-    <ClInclude Include="Source\Assets\Material\MaterialTypes.h" />
-    <ClInclude Include="Source\Assets\Material\Serialization\MaterialSerializer.h" />
-    <ClInclude Include="Source\Assets\Material\Serialization\TextureReferencePaths.h" />
-    <ClInclude Include="Source\Assets\Model\Import\FbxModelImporter.h" />
-    <ClInclude Include="Source\Assets\Model\Resource\AnimationResource.h" />
-    <ClInclude Include="Source\Assets\Model\Resource\MaterialResource.h" />
-    <ClInclude Include="Source\Assets\Model\Resource\MeshResource.h" />
-    <ClInclude Include="Source\Assets\Model\Resource\ModelNode.h" />
-    <ClInclude Include="Source\Assets\Model\Resource\ModelResource.h" />
-    <ClInclude Include="Source\Assets\Model\Resource\SkeletonResource.h" />
-    <ClInclude Include="Source\Pch.h" />
-    <ClInclude Include="Source\Core\Core.h" />
-    <ClInclude Include="Source\Core\CoreDefines.h" />
-    <ClInclude Include="Source\Core\Containers\Containers.h" />
-    <ClInclude Include="Source\Core\Logging\Assert.h" />
-    <ClInclude Include="Source\Core\Logging\Logger.h" />
-    <ClInclude Include="Source\Core\Logging\Logging.h" />
-    <ClInclude Include="Source\Core\Math\Easing.h" />
-    <ClInclude Include="Source\Core\Math\Geometry.h" />
-    <ClInclude Include="Source\Core\Math\Math.h" />
-    <ClInclude Include="Source\Core\Math\MathFunction.h" />
-    <ClInclude Include="Source\Core\Math\MathTypes.h" />
-    <ClInclude Include="Source\Core\Math\Random.h" />
-    <ClInclude Include="Source\Core\Math\SimpleMath.h" />
-    <ClInclude Include="Source\Core\Math\Transform.h" />
-    <ClInclude Include="Source\Core\Threading\ConcurrentQueue.h" />
-    <ClInclude Include="Source\Core\Threading\JobSystem.h" />
-    <ClInclude Include="Source\Core\Threading\MainThreadDispatcher.h" />
-    <ClInclude Include="Source\Core\Threading\SpinLock.h" />
-    <ClInclude Include="Source\Core\Threading\ThreadDebugStats.h" />
-    <ClInclude Include="Source\Core\Threading\Threading.h" />
-    <ClInclude Include="Source\Core\Threading\ThreadUtility.h" />
-    <ClInclude Include="Source\Core\Profiling\FrameProfiler.h" />
-    <ClInclude Include="Source\Core\Time\HighResolutionTimer.h" />
-    <ClInclude Include="Source\Core\Time\TimeManager.h" />
-    <ClInclude Include="Source\Core\System\Window.h" />
-    <ClInclude Include="Source\Core\Containers\String.h" />
-    <ClInclude Include="Source\Core\Containers\Hash.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\Device.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\SwapChain.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\Descriptor.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\Fence.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\Queue.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\Command.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\Resource.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\Renderer.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\GpuOcclusionCulling.h" />
-    <ClInclude Include="Source\Graphics\Renderer\SkinningBounds.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\GpuProfiler.h" />
-    <ClInclude Include="Source\Graphics\Renderer\RenderItem.h" />
-    <ClInclude Include="Source\Graphics\Renderer\RenderQueue.h" />
-    <ClInclude Include="Source\Graphics\Renderer\ModelRenderSubmission.h" />
-    <ClInclude Include="Source\Graphics\Camera\CameraData.h" />
-    <ClInclude Include="Source\Graphics\Camera\CameraManager.h" />
-    <ClInclude Include="Source\Graphics\Camera\CameraRenderSubmission.h" />
-    <ClInclude Include="Source\Graphics\Camera\CameraTypes.h" />
-    <ClInclude Include="Source\Graphics\Camera\CameraUtils.h" />
-    <ClInclude Include="Source\Graphics\Debug\DebugPrimitive.h" />
-    <ClInclude Include="Source\Graphics\Material\MaterialGpuCache.h" />
-    <ClInclude Include="Source\Graphics\Material\MaterialGpuResource.h" />
-    <ClInclude Include="Source\Graphics\Material\MaterialParameterLayout.h" />
-    <ClInclude Include="Source\Graphics\Material\MaterialPropertyBlock.h" />
-    <ClInclude Include="Source\Graphics\Material\MaterialShaderVariant.h" />
-    <ClInclude Include="Source\Graphics\Model\ModelGpuCache.h" />
-    <ClInclude Include="Source\Graphics\DirectX12\Pipeline.h" />
-    <ClInclude Include="Source\Graphics\Shader\Shader.h" />
-    <ClInclude Include="Source\Core\Input\InputManager.h" />
-    <ClInclude Include="Source\Editor\ImGui\EditorUi.h" />
-    <ClInclude Include="Source\Core\System\Dialog.h" />
-    <ClInclude Include="Source\Editor\ImGui\ImGuiSystem.h" />
-    <ClInclude Include="Source\Editor\Scene\SceneDocument.h" />
-    <ClInclude Include="Source\Editor\Camera\FreeCameraController.h" />
-    <ClInclude Include="Library\ImGuizmo\ImGuizmo.h" />
-    <ClCompile Include="Source\Editor\ImGui\EditorUi.cpp" />
-    <ClCompile Include="Source\Core\System\Dialog.cpp" />
-    <ClCompile Include="Source\Editor\ImGui\ImGuiSystem.cpp" />
-    <ClCompile Include="Source\Editor\Scene\SceneDocument.cpp" />
-    <ClCompile Include="Source\Editor\Camera\FreeCameraController.cpp" />
-    <ClCompile Include="Library\imgui\imgui.cpp" />
-    <ClCompile Include="Library\imgui\imgui_draw.cpp" />
-    <ClCompile Include="Library\imgui\imgui_tables.cpp" />
-    <ClCompile Include="Library\imgui\imgui_widgets.cpp" />
-    <ClCompile Include="Library\imgui\backends\imgui_impl_dx12.cpp" />
-    <ClCompile Include="Library\imgui\backends\imgui_impl_win32.cpp" />
-    <ClCompile Include="Library\ImGuizmo\ImGuizmo.cpp" />
-    <ClInclude Include="Generated\FlatBuffers\Common_generated.h" />
-    <ClInclude Include="Generated\FlatBuffers\Material_generated.h" />
-    <ClInclude Include="Generated\FlatBuffers\Model_generated.h" />
-    <ClInclude Include="Generated\FlatBuffers\Prefab_generated.h" />
-    <ClInclude Include="Generated\FlatBuffers\Scene_generated.h" />
-    <ClInclude Include="Source\Assets\Model\Serialization\ModelSerializer.h" />
-    <ClInclude Include="Source\Assets\Model\ModelManager.h" />
-    <ClInclude Include="Source\Assets\Model\ModelTypes.h" />
-    <ClInclude Include="Source\Core\Serialization\FlatBufferReader.h" />
-    <ClInclude Include="Source\Core\Serialization\AssetReferencePaths.h" />
-    <ClInclude Include="Source\Core\Serialization\FlatBufferWriter.h" />
-    <ClInclude Include="Source\Core\Serialization\SerializationVersions.h" />
-    <ClInclude Include="Source\Graphics\Shader\ShaderTypes.h" />
-    <ClInclude Include="Source\Graphics\Shader\ShaderCompiler.h" />
-    <ClInclude Include="Source\Graphics\Shader\ShaderFileWatcher.h" />
-    <ClInclude Include="Source\Graphics\Shader\ShaderManager.h" />
-    <ClInclude Include="Source\Graphics\Texture\TextureTypes.h" />
-    <ClInclude Include="Source\Graphics\Texture\TextureImageUtils.h" />
-    <ClInclude Include="Source\Graphics\Texture\Texture.h" />
-    <ClInclude Include="Source\Graphics\Texture\TextureManager.h" />
-    <ClInclude Include="Source\Core\Object\ObjectGUID.h" />
-    <ClInclude Include="Source\Core\GameObject\Component.h" />
-    <ClInclude Include="Source\Core\GameObject\Component\CameraComponent.h" />
-    <ClInclude Include="Source\Core\GameObject\Component\TransformComponent.h" />
-    <ClInclude Include="Source\Core\GameObject\Component\ModelRendererComponent.h" />
-    <ClInclude Include="Source\Core\GameObject\ComponentRegistry.h" />
-    <ClInclude Include="Source\Core\GameObject\Behaviour.h" />
-    <ClInclude Include="Source\Core\Scene\Scene.h" />
-    <ClInclude Include="Source\Core\Scene\SceneManager.h" />
-    <ClInclude Include="Source\Core\Scene\TagManager.h" />
-    <ClInclude Include="Source\Core\Scene\LayerManager.h" />
-    <ClInclude Include="Source\Core\Scene\SceneSerializer.h" />
-    <ClInclude Include="Source\Core\Prefab\Prefab.h" />
-    <ClInclude Include="Source\Core\Prefab\PrefabInstance.h" />
-    <ClInclude Include="Source\Core\Prefab\PrefabSerializer.h" />
-    <ClInclude Include="Source\Core\GameObject\GameObject.h" />
-    <ClInclude Include="Source\Core\GameObject\GameObjectManager.h" />
-    <ClInclude Include="Source\Core\Containers\BitFlags.h" />
-    <ClInclude Include="Generated\FlatBuffers\ModelRendererComponent_generated.h" />
-    <ClInclude Include="Generated\FlatBuffers\PhysicsComponent_generated.h" />
-    <ClInclude Include="Source\Physics\PhysicsTypes.h" />
-    <ClInclude Include="Source\Physics\PhysicsDebug.h" />
-    <ClInclude Include="Source\Physics\PhysicsLayer.h" />
-    <ClInclude Include="Source\Physics\PhysicsMaterial.h" />
-    <ClInclude Include="Source\Physics\PhysicsMeshAsset.h" />
-    <ClInclude Include="Source\Physics\PhysicsQuery.h" />
-    <ClInclude Include="Source\Physics\PhysicsEventListener.h" />
-    <ClInclude Include="Source\Physics\PhysicsSystem.h" />
-    <ClInclude Include="Source\Physics\PhysicsWorld.h" />
-    <ClInclude Include="Source\Physics\Internal\PhysicsPayload.h" />
-    <ClInclude Include="Source\Physics\Character\CharacterControllerComponent.h" />
-    <ClInclude Include="Source\Physics\Character\CharacterControllerMovementComponent.h" />
-    <ClInclude Include="Source\Physics\Joint\JointComponent.h" />
-    <ClInclude Include="Source\Physics\Rigidbody\RigidbodyComponent.h" />
-    <ClInclude Include="Source\Physics\Collider\ColliderComponent.h" />
-    <ClInclude Include="Source\Physics\Collider\BoxColliderComponent.h" />
-    <ClInclude Include="Source\Physics\Collider\SphereColliderComponent.h" />
-    <ClInclude Include="Source\Physics\Collider\CapsuleColliderComponent.h" />
-    <ClInclude Include="Source\Physics\Collider\MeshColliderComponent.h" />
-    <ClInclude Include="Source\Physics\Collider\TerrainColliderComponent.h" />
-    <ClInclude Include="Source\Physics\Collider\ConvexColliderComponent.h" />
-    <ClInclude Include="Source\Physics\Internal\PhysXConversions.h" />
+    <ClCompile Include="Library\imgui\backends\imgui_impl_dx12.cpp">
+      <Filter>Library\imgui\backends</Filter>
+    </ClCompile>
+    <ClCompile Include="Library\imgui\backends\imgui_impl_win32.cpp">
+      <Filter>Library\imgui\backends</Filter>
+    </ClCompile>
+    <ClCompile Include="Library\imgui\imgui.cpp">
+      <Filter>Library\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Library\imgui\imgui_draw.cpp">
+      <Filter>Library\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Library\imgui\imgui_tables.cpp">
+      <Filter>Library\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Library\imgui\imgui_widgets.cpp">
+      <Filter>Library\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Library\ImGuizmo\ImGuizmo.cpp">
+      <Filter>Library\ImGuizmo</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Animation\Runtime\AnimatorInstance.cpp">
+      <Filter>Source\Animation\Runtime</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Animation\AnimationAssetBuilder.cpp">
+      <Filter>Source\Assets\Animation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Animation\AnimationAssetManager.cpp">
+      <Filter>Source\Assets\Animation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Animation\AnimatorControllerAsset.cpp">
+      <Filter>Source\Assets\Animation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Animation\Serialization\AnimationClipSerializer.cpp">
+      <Filter>Source\Assets\Animation\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Animation\Serialization\AnimatorControllerSerializer.cpp">
+      <Filter>Source\Assets\Animation\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Animation\Serialization\OzzArchiveUtils.cpp">
+      <Filter>Source\Assets\Animation\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Animation\Serialization\SkeletonSerializer.cpp">
+      <Filter>Source\Assets\Animation\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Material\MaterialInstance.cpp">
+      <Filter>Source\Assets\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Material\MaterialManager.cpp">
+      <Filter>Source\Assets\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Material\Serialization\MaterialSerializer.cpp">
+      <Filter>Source\Assets\Material\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Model\Import\FbxModelImporter.cpp">
+      <Filter>Source\Assets\Model\Import</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Model\ModelManager.cpp">
+      <Filter>Source\Assets\Model</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Model\Serialization\ModelSerializer.cpp">
+      <Filter>Source\Assets\Model\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\PostProcess\PostProcessEffectAssetManager.cpp">
+      <Filter>Source\Assets\PostProcess</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\PostProcess\PostProcessProfileManager.cpp">
+      <Filter>Source\Assets\PostProcess</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessEffectSerializer.cpp">
+      <Filter>Source\Assets\PostProcess\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessProfileSerializer.cpp">
+      <Filter>Source\Assets\PostProcess\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Audio\AudioSystem.cpp">
+      <Filter>Source\Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Animation\AnimatorComponent.cpp">
+      <Filter>Source\Components\Animation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Audio\AudioSourceComponent.cpp">
+      <Filter>Source\Components\Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Physics\Character\CharacterControllerComponent.cpp">
+      <Filter>Source\Components\Physics\Character</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Physics\Character\CharacterControllerMovementComponent.cpp">
+      <Filter>Source\Components\Physics\Character</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Physics\Collider\BoxColliderComponent.cpp">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Physics\Collider\CapsuleColliderComponent.cpp">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Physics\Collider\ColliderComponent.cpp">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Physics\Collider\ConvexColliderComponent.cpp">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Physics\Collider\MeshColliderComponent.cpp">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Physics\Collider\SphereColliderComponent.cpp">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Physics\Collider\TerrainColliderComponent.cpp">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Physics\Joint\JointComponent.cpp">
+      <Filter>Source\Components\Physics\Joint</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Physics\Rigidbody\RigidbodyComponent.cpp">
+      <Filter>Source\Components\Physics\Rigidbody</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Rendering\CameraComponent.cpp">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Rendering\LightComponent.cpp">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Rendering\ModelRendererComponent.cpp">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Rendering\PostProcessVolumeComponent.cpp">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Terrain\TerrainComponent.cpp">
+      <Filter>Source\Components\Terrain</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Transform\TransformComponent.cpp">
+      <Filter>Source\Components\Transform</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\UI\RuntimeUIComponents.cpp">
+      <Filter>Source\Components\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Containers\String.cpp">
+      <Filter>Source\Core\Containers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\GameObject\ComponentRegistry.cpp">
+      <Filter>Source\Core\GameObject</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\GameObject\GameObject.cpp">
+      <Filter>Source\Core\GameObject</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\GameObject\GameObjectManager.cpp">
+      <Filter>Source\Core\GameObject</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Input\InputManager.cpp">
+      <Filter>Source\Core\Input</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Logging\Assert.cpp">
+      <Filter>Source\Core\Logging</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Logging\Logger.cpp">
+      <Filter>Source\Core\Logging</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Math\Random.cpp">
+      <Filter>Source\Core\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Math\SimpleMath.cpp">
+      <Filter>Source\Core\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Math\Transform.cpp">
+      <Filter>Source\Core\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Object\ObjectGUID.cpp">
+      <Filter>Source\Core\Object</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Prefab\Prefab.cpp">
+      <Filter>Source\Core\Prefab</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Prefab\PrefabInstance.cpp">
+      <Filter>Source\Core\Prefab</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Prefab\PrefabSerializer.cpp">
+      <Filter>Source\Core\Prefab</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Profiling\FrameProfiler.cpp">
+      <Filter>Source\Core\Profiling</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Scene\LayerManager.cpp">
+      <Filter>Source\Core\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Scene\Scene.cpp">
+      <Filter>Source\Core\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Scene\SceneClone.cpp">
+      <Filter>Source\Core\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Scene\SceneManager.cpp">
+      <Filter>Source\Core\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Scene\SceneSerializer.cpp">
+      <Filter>Source\Core\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Scene\TagManager.cpp">
+      <Filter>Source\Core\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Serialization\ComponentSerialization.cpp">
+      <Filter>Source\Core\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Serialization\FlatBufferReader.cpp">
+      <Filter>Source\Core\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Serialization\FlatBufferWriter.cpp">
+      <Filter>Source\Core\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\System\Dialog.cpp">
+      <Filter>Source\Core\System</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\System\GameSession.cpp">
+      <Filter>Source\Core\System</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\System\StartupOptions.cpp">
+      <Filter>Source\Core\System</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\System\Window.cpp">
+      <Filter>Source\Core\System</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Threading\JobSystem.cpp">
+      <Filter>Source\Core\Threading</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Threading\MainThreadDispatcher.cpp">
+      <Filter>Source\Core\Threading</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Threading\ThreadDebugStats.cpp">
+      <Filter>Source\Core\Threading</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Threading\ThreadUtility.cpp">
+      <Filter>Source\Core\Threading</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Time\HighResolutionTimer.cpp">
+      <Filter>Source\Core\Time</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Time\TimeManager.cpp">
+      <Filter>Source\Core\Time</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\Components\Camera\FreeCameraController.cpp">
+      <Filter>Source\Editor\Components\Camera</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\ImGui\EditorUi.cpp">
+      <Filter>Source\Editor\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\ImGui\ImGuiSystem.cpp">
+      <Filter>Source\Editor\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\PostProcess\PostProcessInspector.cpp">
+      <Filter>Source\Editor\PostProcess</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\Scene\SceneDocument.cpp">
+      <Filter>Source\Editor\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Camera\CameraManager.cpp">
+      <Filter>Source\Graphics\Camera</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Camera\CameraRenderSubmission.cpp">
+      <Filter>Source\Graphics\Camera</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Camera\CameraUtils.cpp">
+      <Filter>Source\Graphics\Camera</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Debug\DebugPrimitive.cpp">
+      <Filter>Source\Graphics\Debug</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Command\Command.cpp">
+      <Filter>Source\Graphics\DirectX12\Command</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Command\Fence.cpp">
+      <Filter>Source\Graphics\DirectX12\Command</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Command\Queue.cpp">
+      <Filter>Source\Graphics\DirectX12\Command</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Culling\GpuOcclusionCulling.cpp">
+      <Filter>Source\Graphics\DirectX12\Culling</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Device\Device.cpp">
+      <Filter>Source\Graphics\DirectX12\Device</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Diagnostics\FrameCapture.cpp">
+      <Filter>Source\Graphics\DirectX12\Diagnostics</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Diagnostics\GpuProfiler.cpp">
+      <Filter>Source\Graphics\DirectX12\Diagnostics</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Pipeline\Pipeline.cpp">
+      <Filter>Source\Graphics\DirectX12\Pipeline</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Presentation\SwapChain.cpp">
+      <Filter>Source\Graphics\DirectX12\Presentation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Rendering\ModelCommandRecorder.cpp">
+      <Filter>Source\Graphics\DirectX12\Rendering</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Rendering\Renderer.cpp">
+      <Filter>Source\Graphics\DirectX12\Rendering</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Resource\Descriptor.cpp">
+      <Filter>Source\Graphics\DirectX12\Resource</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Resource\Resource.cpp">
+      <Filter>Source\Graphics\DirectX12\Resource</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Lighting\LightingFrame.cpp">
+      <Filter>Source\Graphics\Lighting</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Material\MaterialGpuCache.cpp">
+      <Filter>Source\Graphics\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Material\MaterialPropertyBlock.cpp">
+      <Filter>Source\Graphics\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Model\ModelGpuCache.cpp">
+      <Filter>Source\Graphics\Model</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\PostProcess\PostProcessPipeline.cpp">
+      <Filter>Source\Graphics\PostProcess</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\PostProcess\PostProcessSettings.cpp">
+      <Filter>Source\Graphics\PostProcess</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\PostProcess\PostProcessTargetPool.cpp">
+      <Filter>Source\Graphics\PostProcess</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\PostProcess\PostProcessVolumeResolver.cpp">
+      <Filter>Source\Graphics\PostProcess</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Renderer\ModelRenderSubmission.cpp">
+      <Filter>Source\Graphics\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Renderer\RenderQueue.cpp">
+      <Filter>Source\Graphics\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Renderer\SkinningBounds.cpp">
+      <Filter>Source\Graphics\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Shader\Shader.cpp">
+      <Filter>Source\Graphics\Shader</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Shader\ShaderCompiler.cpp">
+      <Filter>Source\Graphics\Shader</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Shader\ShaderFileWatcher.cpp">
+      <Filter>Source\Graphics\Shader</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Shader\ShaderManager.cpp">
+      <Filter>Source\Graphics\Shader</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Texture\Texture.cpp">
+      <Filter>Source\Graphics\Texture</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Texture\TextureManager.cpp">
+      <Filter>Source\Graphics\Texture</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\UI\RuntimeUIRenderer.cpp">
+      <Filter>Source\Graphics\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Main.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Pch.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Physics\Internal\PhysXConversions.cpp">
+      <Filter>Source\Physics\Internal</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Physics\PhysicsMaterial.cpp">
+      <Filter>Source\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Physics\PhysicsMeshAsset.cpp">
+      <Filter>Source\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Physics\PhysicsSystem.cpp">
+      <Filter>Source\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Physics\PhysicsWorld.cpp">
+      <Filter>Source\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Data\Heightmap.cpp">
+      <Filter>Source\Terrain\Data</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Generation\TerrainBuild.cpp">
+      <Filter>Source\Terrain\Generation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Generation\TerrainErosion.cpp">
+      <Filter>Source\Terrain\Generation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Generation\TerrainGeneration.cpp">
+      <Filter>Source\Terrain\Generation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Generation\TerrainGpuNoise.cpp">
+      <Filter>Source\Terrain\Generation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Generation\TerrainNoise.cpp">
+      <Filter>Source\Terrain\Generation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Geometry\TerrainChunks.cpp">
+      <Filter>Source\Terrain\Geometry</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Geometry\TerrainLod.cpp">
+      <Filter>Source\Terrain\Geometry</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Geometry\TerrainMeshBuilder.cpp">
+      <Filter>Source\Terrain\Geometry</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Geometry\TerrainSurface.cpp">
+      <Filter>Source\Terrain\Geometry</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Material\TerrainMaterial.cpp">
+      <Filter>Source\Terrain\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Serialization\TerrainMaterialSerialization.cpp">
+      <Filter>Source\Terrain\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Terrain\Vegetation\TerrainVegetation.cpp">
+      <Filter>Source\Terrain\Vegetation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\UI\RuntimeUI.cpp">
+      <Filter>Source\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Validation\Rendering\PostProcessAuthoringValidation.cpp">
+      <Filter>Source\Validation\Rendering</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Validation\Rendering\PostProcessCustomEffectValidation.cpp">
+      <Filter>Source\Validation\Rendering</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Validation\Rendering\PostProcessEffectsValidation.cpp">
+      <Filter>Source\Validation\Rendering</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Validation\Rendering\PostProcessVolumeValidation.cpp">
+      <Filter>Source\Validation\Rendering</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Validation\Rendering\RenderingValidation.cpp">
+      <Filter>Source\Validation\Rendering</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Validation\Terrain\TerrainBackgroundValidation.cpp">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Validation\Terrain\TerrainCollisionValidation.cpp">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Validation\Terrain\TerrainErosionValidation.cpp">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Validation\Terrain\TerrainGpuValidation.cpp">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Validation\Terrain\TerrainLodValidation.cpp">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Validation\Terrain\TerrainValidation.cpp">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Validation\Terrain\TerrainVegetationValidation.cpp">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="Assets\Shaders\Model.hlsl" />
-    <None Include="Assets\Shaders\Deferred.hlsl" />
-    <None Include="Assets\Shaders\PostProcess.hlsl" />
-    <None Include="Assets\Shaders\PostProcessEffects.hlsl" />
-    <None Include="Assets\Shaders\PostProcessExample.hlsl" />
-    <None Include="Schemas\FlatBuffers\PostProcessSettings.fbs" />
-    <None Include="Schemas\FlatBuffers\PostProcessProfile.fbs" />
-    <None Include="Schemas\FlatBuffers\PostProcessEffectAsset.fbs" />
-    <None Include="Assets\Shaders\PostProcess.hlsli" />
-    <None Include="Assets\Shaders\ColorOutput.hlsli" />
-    <None Include="Assets\Shaders\PostProcessValidation.hlsl" />
-    <None Include="Assets\Shaders\Occlusion.hlsl" />
-    <None Include="Assets\Shaders\HiZ.hlsl" />
-    <None Include="Assets\Shaders\TerrainNoise.hlsl" />
-    <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
-    <None Include="Schemas\FlatBuffers\AnimationClip.fbs" />
-    <None Include="Schemas\FlatBuffers\AnimatorController.fbs" />
-    <None Include="Schemas\FlatBuffers\AnimatorComponent.fbs" />
-    <None Include="Schemas\FlatBuffers\CameraComponent.fbs" />
-    <None Include="Schemas\FlatBuffers\Common.fbs" />
-    <None Include="Schemas\FlatBuffers\Material.fbs" />
-    <None Include="Schemas\FlatBuffers\Model.fbs" />
-    <None Include="Schemas\FlatBuffers\Prefab.fbs" />
-    <None Include="Schemas\FlatBuffers\Skeleton.fbs" />
-    <None Include="Tools\FlatBuffers\build_schema.bat" />
-    <None Include="Tools\FlatBuffers\build_schema.ps1" />
-    <None Include="Tools\Shaders\CompileShaders.bat" />
-    <None Include="Tools\Shaders\CompileShaders.ps1" />
-    <None Include="Tools\Shaders\CleanShaderCache.bat" />
-    <None Include="Schemas\FlatBuffers\Scene.fbs" />
-    <None Include="Schemas\FlatBuffers\ModelRendererComponent.fbs" />
-    <None Include="Schemas\FlatBuffers\PhysicsComponent.fbs" />
+    <ClInclude Include="Generated\FlatBuffers\AnimationClip_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\AnimatorComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\AnimatorController_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\AudioComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\CameraComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\Common_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\LightComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\Material_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\Model_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\ModelRendererComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\PhysicsComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\PostProcessEffectAsset_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\PostProcessProfile_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\PostProcessSettings_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\Prefab_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\RuntimeUI_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\Scene_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\Skeleton_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\TerrainComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Library\ImGuizmo\ImGuizmo.h">
+      <Filter>Library\ImGuizmo</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h">
+      <Filter>Source\Animation\Runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Animation\AnimationAssetBuilder.h">
+      <Filter>Source\Assets\Animation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Animation\AnimationAssetManager.h">
+      <Filter>Source\Assets\Animation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Animation\AnimationClipAsset.h">
+      <Filter>Source\Assets\Animation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Animation\AnimationTypes.h">
+      <Filter>Source\Assets\Animation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Animation\AnimatorControllerAsset.h">
+      <Filter>Source\Assets\Animation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Animation\Serialization\AnimationClipSerializer.h">
+      <Filter>Source\Assets\Animation\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Animation\Serialization\AnimatorControllerSerializer.h">
+      <Filter>Source\Assets\Animation\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Animation\Serialization\OzzArchiveUtils.h">
+      <Filter>Source\Assets\Animation\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Animation\Serialization\SkeletonSerializer.h">
+      <Filter>Source\Assets\Animation\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Animation\SkeletonAsset.h">
+      <Filter>Source\Assets\Animation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Material\MaterialAsset.h">
+      <Filter>Source\Assets\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Material\MaterialInstance.h">
+      <Filter>Source\Assets\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Material\MaterialManager.h">
+      <Filter>Source\Assets\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Material\MaterialTypes.h">
+      <Filter>Source\Assets\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Material\Serialization\MaterialSerializer.h">
+      <Filter>Source\Assets\Material\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Material\Serialization\TextureReferencePaths.h">
+      <Filter>Source\Assets\Material\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Model\Import\FbxModelImporter.h">
+      <Filter>Source\Assets\Model\Import</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Model\ModelManager.h">
+      <Filter>Source\Assets\Model</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Model\ModelTypes.h">
+      <Filter>Source\Assets\Model</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Model\Resource\AnimationResource.h">
+      <Filter>Source\Assets\Model\Resource</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Model\Resource\MaterialResource.h">
+      <Filter>Source\Assets\Model\Resource</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Model\Resource\MeshResource.h">
+      <Filter>Source\Assets\Model\Resource</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Model\Resource\ModelNode.h">
+      <Filter>Source\Assets\Model\Resource</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Model\Resource\ModelResource.h">
+      <Filter>Source\Assets\Model\Resource</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Model\Resource\SkeletonResource.h">
+      <Filter>Source\Assets\Model\Resource</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Model\Serialization\ModelSerializer.h">
+      <Filter>Source\Assets\Model\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessEffectAsset.h">
+      <Filter>Source\Assets\PostProcess</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessEffectAssetManager.h">
+      <Filter>Source\Assets\PostProcess</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessProfile.h">
+      <Filter>Source\Assets\PostProcess</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessProfileManager.h">
+      <Filter>Source\Assets\PostProcess</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\PostProcess\Serialization\PostProcessEffectSerializer.h">
+      <Filter>Source\Assets\PostProcess\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\PostProcess\Serialization\PostProcessProfileSerializer.h">
+      <Filter>Source\Assets\PostProcess\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Audio\AudioSystem.h">
+      <Filter>Source\Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Animation\AnimatorComponent.h">
+      <Filter>Source\Components\Animation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Audio\AudioSourceComponent.h">
+      <Filter>Source\Components\Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Physics\Character\CharacterControllerComponent.h">
+      <Filter>Source\Components\Physics\Character</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Physics\Character\CharacterControllerMovementComponent.h">
+      <Filter>Source\Components\Physics\Character</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Physics\Collider\BoxColliderComponent.h">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Physics\Collider\CapsuleColliderComponent.h">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Physics\Collider\ColliderComponent.h">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Physics\Collider\ConvexColliderComponent.h">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Physics\Collider\MeshColliderComponent.h">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Physics\Collider\SphereColliderComponent.h">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Physics\Collider\TerrainColliderComponent.h">
+      <Filter>Source\Components\Physics\Collider</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Physics\Joint\JointComponent.h">
+      <Filter>Source\Components\Physics\Joint</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Physics\Rigidbody\RigidbodyComponent.h">
+      <Filter>Source\Components\Physics\Rigidbody</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Rendering\CameraComponent.h">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Rendering\LightComponent.h">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Rendering\ModelRendererComponent.h">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Rendering\PostProcessVolumeComponent.h">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Terrain\TerrainComponent.h">
+      <Filter>Source\Components\Terrain</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Transform\TransformComponent.h">
+      <Filter>Source\Components\Transform</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\UI\RuntimeUIComponents.h">
+      <Filter>Source\Components\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Containers\BitFlags.h">
+      <Filter>Source\Core\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Containers\Containers.h">
+      <Filter>Source\Core\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Containers\Hash.h">
+      <Filter>Source\Core\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Containers\String.h">
+      <Filter>Source\Core\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Core.h">
+      <Filter>Source\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\CoreDefines.h">
+      <Filter>Source\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\GameObject\Behaviour.h">
+      <Filter>Source\Core\GameObject</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\GameObject\Component.h">
+      <Filter>Source\Core\GameObject</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\GameObject\ComponentRegistry.h">
+      <Filter>Source\Core\GameObject</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\GameObject\GameObject.h">
+      <Filter>Source\Core\GameObject</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\GameObject\GameObjectManager.h">
+      <Filter>Source\Core\GameObject</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Input\InputManager.h">
+      <Filter>Source\Core\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Logging\Assert.h">
+      <Filter>Source\Core\Logging</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Logging\Logger.h">
+      <Filter>Source\Core\Logging</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Logging\Logging.h">
+      <Filter>Source\Core\Logging</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Math\Easing.h">
+      <Filter>Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Math\Geometry.h">
+      <Filter>Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Math\Math.h">
+      <Filter>Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Math\MathFunction.h">
+      <Filter>Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Math\MathTypes.h">
+      <Filter>Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Math\Random.h">
+      <Filter>Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Math\SimpleMath.h">
+      <Filter>Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Math\simplemath.inl">
+      <Filter>Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Math\Transform.h">
+      <Filter>Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Object\ObjectGUID.h">
+      <Filter>Source\Core\Object</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Prefab\Prefab.h">
+      <Filter>Source\Core\Prefab</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Prefab\PrefabInstance.h">
+      <Filter>Source\Core\Prefab</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Prefab\PrefabSerializer.h">
+      <Filter>Source\Core\Prefab</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Profiling\FrameProfiler.h">
+      <Filter>Source\Core\Profiling</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Scene\LayerManager.h">
+      <Filter>Source\Core\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Scene\Scene.h">
+      <Filter>Source\Core\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Scene\SceneClone.h">
+      <Filter>Source\Core\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Scene\SceneManager.h">
+      <Filter>Source\Core\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Scene\SceneSerializer.h">
+      <Filter>Source\Core\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Scene\TagManager.h">
+      <Filter>Source\Core\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Serialization\AssetReferencePaths.h">
+      <Filter>Source\Core\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Serialization\ComponentSerialization.h">
+      <Filter>Source\Core\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Serialization\FlatBufferReader.h">
+      <Filter>Source\Core\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Serialization\FlatBufferWriter.h">
+      <Filter>Source\Core\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Serialization\SerializationVersions.h">
+      <Filter>Source\Core\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\System\Dialog.h">
+      <Filter>Source\Core\System</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\System\ExecutionMode.h">
+      <Filter>Source\Core\System</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\System\GameSession.h">
+      <Filter>Source\Core\System</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\System\StartupOptions.h">
+      <Filter>Source\Core\System</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\System\Window.h">
+      <Filter>Source\Core\System</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Threading\ConcurrentQueue.h">
+      <Filter>Source\Core\Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Threading\JobSystem.h">
+      <Filter>Source\Core\Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Threading\MainThreadDispatcher.h">
+      <Filter>Source\Core\Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Threading\SpinLock.h">
+      <Filter>Source\Core\Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Threading\ThreadDebugStats.h">
+      <Filter>Source\Core\Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Threading\Threading.h">
+      <Filter>Source\Core\Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Threading\ThreadUtility.h">
+      <Filter>Source\Core\Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Time\HighResolutionTimer.h">
+      <Filter>Source\Core\Time</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Time\TimeManager.h">
+      <Filter>Source\Core\Time</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Editor\Components\Camera\FreeCameraController.h">
+      <Filter>Source\Editor\Components\Camera</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Editor\ImGui\EditorUi.h">
+      <Filter>Source\Editor\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Editor\ImGui\ImGuiSystem.h">
+      <Filter>Source\Editor\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Editor\PostProcess\PostProcessInspector.h">
+      <Filter>Source\Editor\PostProcess</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Editor\Scene\SceneDocument.h">
+      <Filter>Source\Editor\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Camera\CameraData.h">
+      <Filter>Source\Graphics\Camera</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Camera\CameraManager.h">
+      <Filter>Source\Graphics\Camera</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Camera\CameraRenderSubmission.h">
+      <Filter>Source\Graphics\Camera</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Camera\CameraTypes.h">
+      <Filter>Source\Graphics\Camera</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Camera\CameraUtils.h">
+      <Filter>Source\Graphics\Camera</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Debug\DebugPrimitive.h">
+      <Filter>Source\Graphics\Debug</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Command\Command.h">
+      <Filter>Source\Graphics\DirectX12\Command</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Command\Fence.h">
+      <Filter>Source\Graphics\DirectX12\Command</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Command\Queue.h">
+      <Filter>Source\Graphics\DirectX12\Command</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Culling\GpuOcclusionCulling.h">
+      <Filter>Source\Graphics\DirectX12\Culling</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Device\Device.h">
+      <Filter>Source\Graphics\DirectX12\Device</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Diagnostics\FrameCapture.h">
+      <Filter>Source\Graphics\DirectX12\Diagnostics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Diagnostics\GpuProfiler.h">
+      <Filter>Source\Graphics\DirectX12\Diagnostics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Pipeline\Pipeline.h">
+      <Filter>Source\Graphics\DirectX12\Pipeline</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Presentation\SwapChain.h">
+      <Filter>Source\Graphics\DirectX12\Presentation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Rendering\ModelCommandRecorder.h">
+      <Filter>Source\Graphics\DirectX12\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Rendering\Renderer.h">
+      <Filter>Source\Graphics\DirectX12\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Resource\Descriptor.h">
+      <Filter>Source\Graphics\DirectX12\Resource</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Resource\Resource.h">
+      <Filter>Source\Graphics\DirectX12\Resource</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Lighting\LightingFrame.h">
+      <Filter>Source\Graphics\Lighting</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Material\MaterialGpuCache.h">
+      <Filter>Source\Graphics\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Material\MaterialGpuResource.h">
+      <Filter>Source\Graphics\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Material\MaterialParameterLayout.h">
+      <Filter>Source\Graphics\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Material\MaterialPropertyBlock.h">
+      <Filter>Source\Graphics\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Material\MaterialShaderVariant.h">
+      <Filter>Source\Graphics\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Model\ModelGpuCache.h">
+      <Filter>Source\Graphics\Model</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\PostProcess\PostProcessPipeline.h">
+      <Filter>Source\Graphics\PostProcess</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\PostProcess\PostProcessSettings.h">
+      <Filter>Source\Graphics\PostProcess</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\PostProcess\PostProcessTargetPool.h">
+      <Filter>Source\Graphics\PostProcess</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\PostProcess\PostProcessVolumeResolver.h">
+      <Filter>Source\Graphics\PostProcess</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Renderer\CommandRecordingRange.h">
+      <Filter>Source\Graphics\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Renderer\ModelRenderSubmission.h">
+      <Filter>Source\Graphics\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Renderer\RenderItem.h">
+      <Filter>Source\Graphics\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Renderer\RenderQueue.h">
+      <Filter>Source\Graphics\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Renderer\SkinningBounds.h">
+      <Filter>Source\Graphics\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Renderer\SkinningPaletteSnapshot.h">
+      <Filter>Source\Graphics\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Shader\Shader.h">
+      <Filter>Source\Graphics\Shader</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Shader\ShaderCompiler.h">
+      <Filter>Source\Graphics\Shader</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Shader\ShaderFileWatcher.h">
+      <Filter>Source\Graphics\Shader</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Shader\ShaderManager.h">
+      <Filter>Source\Graphics\Shader</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Shader\ShaderTypes.h">
+      <Filter>Source\Graphics\Shader</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Texture\Texture.h">
+      <Filter>Source\Graphics\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Texture\TextureImageUtils.h">
+      <Filter>Source\Graphics\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Texture\TextureManager.h">
+      <Filter>Source\Graphics\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Texture\TextureTypes.h">
+      <Filter>Source\Graphics\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\UI\RuntimeUIRenderer.h">
+      <Filter>Source\Graphics\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Pch.h">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Physics\Internal\PhysicsPayload.h">
+      <Filter>Source\Physics\Internal</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Physics\Internal\PhysXConversions.h">
+      <Filter>Source\Physics\Internal</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Physics\PhysicsDebug.h">
+      <Filter>Source\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Physics\PhysicsEventListener.h">
+      <Filter>Source\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Physics\PhysicsLayer.h">
+      <Filter>Source\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Physics\PhysicsMaterial.h">
+      <Filter>Source\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Physics\PhysicsMeshAsset.h">
+      <Filter>Source\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Physics\PhysicsQuery.h">
+      <Filter>Source\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Physics\PhysicsSystem.h">
+      <Filter>Source\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Physics\PhysicsTypes.h">
+      <Filter>Source\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Physics\PhysicsWorld.h">
+      <Filter>Source\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Data\Heightmap.h">
+      <Filter>Source\Terrain\Data</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Generation\TerrainBuild.h">
+      <Filter>Source\Terrain\Generation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Generation\TerrainErosion.h">
+      <Filter>Source\Terrain\Generation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Generation\TerrainGeneration.h">
+      <Filter>Source\Terrain\Generation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Generation\TerrainGpuNoise.h">
+      <Filter>Source\Terrain\Generation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Generation\TerrainNoise.h">
+      <Filter>Source\Terrain\Generation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Geometry\TerrainChunks.h">
+      <Filter>Source\Terrain\Geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Geometry\TerrainLod.h">
+      <Filter>Source\Terrain\Geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Geometry\TerrainMeshBuilder.h">
+      <Filter>Source\Terrain\Geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Geometry\TerrainSurface.h">
+      <Filter>Source\Terrain\Geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Material\TerrainMaterial.h">
+      <Filter>Source\Terrain\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Serialization\TerrainMaterialSerialization.h">
+      <Filter>Source\Terrain\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Terrain\Vegetation\TerrainVegetation.h">
+      <Filter>Source\Terrain\Vegetation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\UI\RuntimeUI.h">
+      <Filter>Source\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Validation\Rendering\PostProcessAuthoringValidation.h">
+      <Filter>Source\Validation\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Validation\Rendering\PostProcessCustomEffectValidation.h">
+      <Filter>Source\Validation\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Validation\Rendering\PostProcessEffectsValidation.h">
+      <Filter>Source\Validation\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Validation\Rendering\PostProcessVolumeValidation.h">
+      <Filter>Source\Validation\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Validation\Rendering\RenderingValidation.h">
+      <Filter>Source\Validation\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Validation\Terrain\TerrainBackgroundValidation.h">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Validation\Terrain\TerrainCollisionValidation.h">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Validation\Terrain\TerrainErosionValidation.h">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Validation\Terrain\TerrainGpuValidation.h">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Validation\Terrain\TerrainLodValidation.h">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Validation\Terrain\TerrainValidation.h">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Validation\Terrain\TerrainVegetationValidation.h">
+      <Filter>Source\Validation\Terrain</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Source\Core\GameObject\Component\LightComponent.h" />
-    <ClInclude Include="Source\Graphics\Lighting\LightingFrame.h" />
-    <ClInclude Include="Source\Audio\AudioSystem.h" />
-    <ClInclude Include="Source\Audio\AudioSourceComponent.h" />
-    <ClInclude Include="Source\UI\RuntimeUI.h" />
-    <ClInclude Include="Source\UI\RuntimeUIComponents.h" />
-    <ClInclude Include="Source\Graphics\UI\RuntimeUIRenderer.h" />
-    <ClInclude Include="Generated\FlatBuffers\LightComponent_generated.h" />
-    <ClInclude Include="Generated\FlatBuffers\AudioComponent_generated.h" />
-    <ClInclude Include="Generated\FlatBuffers\RuntimeUI_generated.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Schemas\FlatBuffers\LightComponent.fbs" />
-    <None Include="Schemas\FlatBuffers\TerrainComponent.fbs" />
-    <None Include="Schemas\FlatBuffers\TerrainMaterial.fbs" />
-    <None Include="Schemas\FlatBuffers\AudioComponent.fbs" />
-    <None Include="Schemas\FlatBuffers\RuntimeUI.fbs" />
+    <None Include="Assets\Shaders\ColorOutput.hlsli">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\DebugPrimitive.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\Deferred.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\HiZ.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\Model.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\Occlusion.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\PostProcess.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\PostProcess.hlsli">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\PostProcessEffects.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\PostProcessExample.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\PostProcessValidation.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\TerrainNoise.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\AnimationClip.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\AnimatorComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\AnimatorController.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\AudioComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\CameraComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\Common.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\LightComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\Material.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\Model.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\ModelRendererComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\PhysicsComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\PostProcessEffectAsset.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\PostProcessProfile.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\PostProcessSettings.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\Prefab.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\RuntimeUI.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\Scene.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\Skeleton.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\TerrainComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\TerrainMaterial.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Tools\FlatBuffers\build_schema.bat">
+      <Filter>Tools\FlatBuffers</Filter>
+    </None>
+    <None Include="Tools\FlatBuffers\build_schema.ps1">
+      <Filter>Tools\FlatBuffers</Filter>
+    </None>
+    <None Include="Tools\Shaders\CleanShaderCache.bat">
+      <Filter>Tools\Shaders</Filter>
+    </None>
+    <None Include="Tools\Shaders\CompileShaders.bat">
+      <Filter>Tools\Shaders</Filter>
+    </None>
+    <None Include="Tools\Shaders\CompileShaders.ps1">
+      <Filter>Tools\Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

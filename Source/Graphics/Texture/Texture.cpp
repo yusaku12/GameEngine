@@ -1,9 +1,9 @@
 ﻿#include "Pch.h"
 #include "Graphics\Texture\Texture.h"
 #include "Graphics\Texture\TextureImageUtils.h"
-#include "Graphics\DirectX12\Command.h"
-#include "Graphics\DirectX12\Fence.h"
-#include "Graphics\DirectX12\Queue.h"
+#include "Graphics\DirectX12\Command\Command.h"
+#include "Graphics\DirectX12\Command\Fence.h"
+#include "Graphics\DirectX12\Command\Queue.h"
 #include "Core\Logging\Logger.h"
 
 namespace Engine

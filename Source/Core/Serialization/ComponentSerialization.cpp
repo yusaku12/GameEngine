@@ -1,7 +1,7 @@
 ﻿#include "Pch.h"
 #include "Core\Logging\Logging.h"
 #include "Core\Serialization\ComponentSerialization.h"
-#include "Core\GameObject\Component\TransformComponent.h"
+#include "Components\Transform\TransformComponent.h"
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Core\GameObject\GameObject.h"
 

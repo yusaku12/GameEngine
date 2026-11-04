@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "Assets\Model\ModelManager.h"
-#include "Graphics\DirectX12\Resource.h"
+#include "Graphics\DirectX12\Resource\Resource.h"
 #include "Graphics\Renderer\SkinningBounds.h"
 
 namespace Engine

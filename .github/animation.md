@@ -45,7 +45,7 @@ Libraryのテストは無効であり、通常Buildからテスト実行を要�
  [FbxModelImporter](../../Source/Assets/Model/Import/FbxModelImporter.cpp)
 - [ModelManager](../../Source/Assets/Model/ModelManager.cpp)
 - [Model schema](../../Schemas/FlatBuffers/Model.fbs)
-- [ModelRendererComponent](../../Source/Core/GameObject/Component/ModelRendererComponent.cpp)
+- [ModelRendererComponent](../Source/Components/Rendering/ModelRendererComponent.cpp)
  FBX SDK由来の可読な中間データと、ozzの最適化済みRuntime Objectを区別する。Shipping RuntimeでRaw Key配列を保持し続けない。
 - [Model shader](../../Assets/Shaders/Model.hlsl)
  キー列をRuntimeで独自評価しない。FBX SDKで評価した入力キーをImport時に`ozz::animation::offline::RawAnimation`へ変換し、Validation後に`AnimationBuilder`でRuntime Animationへ変換する。

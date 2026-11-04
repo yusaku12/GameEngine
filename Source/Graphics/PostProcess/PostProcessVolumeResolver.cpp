@@ -1,7 +1,7 @@
 #include "Pch.h"
 #include "Graphics\PostProcess\PostProcessVolumeResolver.h"
 #include "Assets\PostProcess\PostProcessEffectAssetManager.h"
-#include "Core\GameObject\Component\PostProcessVolumeComponent.h"
+#include "Components\Rendering\PostProcessVolumeComponent.h"
 #include "Core\Scene\Scene.h"
 #include <tuple>
 #include <cmath>

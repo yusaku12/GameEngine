@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "Assets\Material\MaterialAsset.h"
-#include "Graphics\DirectX12\Resource.h"
+#include "Graphics\DirectX12\Resource\Resource.h"
 #include "Graphics\Material\MaterialParameterLayout.h"
 #include "Graphics\Material\MaterialShaderVariant.h"
 #include "Graphics\Texture\TextureTypes.h"

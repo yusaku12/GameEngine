@@ -1,6 +1,6 @@
 #include "Pch.h"
 #include "Audio\AudioSystem.h"
-#include "Audio\AudioSourceComponent.h"
+#include "Components\Audio\AudioSourceComponent.h"
 #include "Core\Scene\Scene.h"
 #include "Core\System\GameSession.h"
 #include <xaudio2.h>

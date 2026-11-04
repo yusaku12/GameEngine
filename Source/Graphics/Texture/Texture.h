@@ -2,8 +2,8 @@
 
 #include <DirectXTex.h>
 #include <memory>
-#include "Graphics\DirectX12\Device.h"
-#include "Graphics\DirectX12\Descriptor.h"
+#include "Graphics\DirectX12\Device\Device.h"
+#include "Graphics\DirectX12\Resource\Descriptor.h"
 #include "Graphics\Texture\TextureTypes.h"
 
 namespace Engine

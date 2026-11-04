@@ -1,7 +1,7 @@
 ﻿#include "Pch.h"
 #include "Graphics\Material\MaterialGpuCache.h"
-#include "Graphics\DirectX12\Device.h"
-#include "Graphics\DirectX12\Fence.h"
+#include "Graphics\DirectX12\Device\Device.h"
+#include "Graphics\DirectX12\Command\Fence.h"
 #include "Graphics\Texture\TextureManager.h"
 
 namespace Engine

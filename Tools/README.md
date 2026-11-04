@@ -44,6 +44,85 @@ that are not registered in the parent repository; ImGui and spdlog have local
 changes. They are deliberately preserved. A fresh clone is not self-contained
 until those dependency sources and changes are supplied separately.
 
+## Source organization
+
+```text
+Source\
+  Main.cpp, Pch.cpp, Pch.h       Process entry point and precompiled header
+  Core\                        Shared engine foundations
+    GameObject\                Component/Behaviour base APIs, registry and object ownership
+    Scene\, Prefab\            Scene and prefab lifetime/persistence
+    Serialization\             Shared serialization infrastructure
+    System\                    Window, dialogs, startup and Play/Runtime orchestration
+    ...                        Containers, input, logging, math, threading, time
+  Components\                  GameObject-attached implementations only
+    Animation\                 Animator
+    Audio\                     Audio source and listener
+    Rendering\                 Camera, light, model renderer and post-process volume
+    Physics\
+      Character\               Character controller and movement
+      Collider\                Collider base and concrete shapes
+      Joint\                   Joint
+      Rigidbody\               Rigidbody
+    Terrain\                   Terrain component
+    Transform\                 Transform component
+    UI\                        Canvas, rect transform, image, text and button
+  Animation\Runtime\           Animation evaluation, not components
+  Assets\                      Asset data, import, managers and asset serializers by feature
+  Audio\                       Audio runtime services
+  Editor\
+    Components\Camera\         Editor-only free-camera component
+    ImGui\, PostProcess\, Scene\  Editor UI, inspectors and scene documents
+  Graphics\                    Rendering services and GPU resources by feature
+    DirectX12\
+      Command\                 Command lists, queues and fences
+      Culling\                 GPU occlusion culling
+      Device\                  D3D12 device
+      Diagnostics\             GPU profiling and frame capture
+      Pipeline\                Graphics/compute pipelines
+      Presentation\            Swap chain
+      Rendering\               D3D12 renderer and model command recording
+      Resource\                Resources and descriptors
+  Physics\                     Physics world, system, queries and shared data
+    Internal\                  PhysX conversions and shared physics payload helpers
+  Terrain\
+    Data\                      Heightmap storage and image loading
+    Generation\                Build queue, build requests, noise, GPU noise and erosion
+    Geometry\                  Mesh building, chunks, LOD and surface sampling
+    Material\                  Terrain layer settings and weights
+    Serialization\             Terrain material serialization
+    Vegetation\                Vegetation recipes and placement
+  UI\                          Runtime UI layout and interaction services
+  Validation\
+    Rendering\                 Rendering and post-process regression fixtures
+    Terrain\                   Terrain CPU/GPU, collision and persistence fixtures
+```
+
+Keep concrete runtime components in `Source\Components\<Feature>`, with further
+subfolders when that feature has distinct families (as in Physics). Keep the
+`Component`/`Behaviour` base types and registration in `Core\GameObject`; they
+are infrastructure, not attachable feature implementations. Editor-only
+components belong in `Editor\Components\<Feature>`.
+
+Services, asset resources, rendering backends and validation fixtures do not
+belong in `Components`. Preserve the existing feature split under `Assets`,
+`Graphics` and `Editor` rather than collecting unrelated managers or utilities
+in a catch-all folder. Add a new feature folder when it has a distinct
+responsibility; do not create empty folders for hypothetical features.
+
+Use Source-root-relative include paths, for example
+`#include "Components\Physics\Collider\BoxColliderComponent.h"`.
+No compatibility headers or extra per-feature include search paths are needed.
+Changing placement does not change class names, component registration names,
+Scene/Prefab payloads, asset paths or generated FlatBuffers headers.
+
+When adding or moving a file, update `GameEngine.vcxproj` and
+`GameEngine.vcxproj.filters` together. Every source/header/inl file is explicitly
+listed, and each Visual Studio filter matches its physical directory, including
+the `Source` prefix. Keep paired headers and implementations together.
+Build Debug/Release and run the rendering and terrain validation commands below
+after a cross-feature reorganization.
+
 # Core scheduling and input boundaries
 
 `JobSystem` queues only ready dependencies for execution. A blocked dependent
@@ -855,8 +934,8 @@ create independent generated geometry. Unapplied Inspector fields are not saved.
 Transforms, parent transforms, layers, component enable/disable, frustum culling
 and existing render-path occlusion behavior use the standard engine mechanisms.
 
-The CPU API is in `Source\Terrain\Heightmap.h` and
-`Source\Terrain\TerrainMeshBuilder.h`; apply data with
+The CPU API is in `Source\Terrain\Data\Heightmap.h` and
+`Source\Terrain\Geometry\TerrainMeshBuilder.h`; apply data with
 `TerrainComponent::setTerrain`. Generation emits 32-bit indices, +Y-facing
 triangles, area-weighted smooth normals, orthonormal tangent frames, UVs and
 mesh/model bounds. Rebuilds retire the previous model handle; queued immutable
@@ -915,7 +994,7 @@ octave count. Maximum settings are bounds for safe arithmetic and allocation,
 not a recommendation to generate million-vertex terrain with twelve octaves
 on every frame. Background generation is provided by Phase 7 below.
 
-`generateTerrainNoise` in `Source\Terrain\TerrainNoise.h` generates CPU height
+`generateTerrainNoise` in `Source\Terrain\Generation\TerrainNoise.h` generates CPU height
 data without registering a model. `TerrainComponent::generateNoise` generates
 and applies both the heightmap and mesh settings transactionally.
 The same recipe reproduces the same samples in the same build, independently

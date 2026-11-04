@@ -1,8 +1,8 @@
 ﻿#pragma once
 
 #include "Core\CoreDefines.h"
-#include "Graphics\DirectX12\Pipeline.h"
-#include "Graphics\DirectX12\Resource.h"
+#include "Graphics\DirectX12\Pipeline\Pipeline.h"
+#include "Graphics\DirectX12\Resource\Resource.h"
 
 namespace Engine
 {

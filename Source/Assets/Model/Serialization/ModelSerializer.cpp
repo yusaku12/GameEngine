@@ -1,5 +1,5 @@
 ﻿#include "Pch.h"
-#include "Terrain\TerrainMaterialSerialization.h"
+#include "Terrain\Serialization\TerrainMaterialSerialization.h"
 #include <flatbuffers/flatbuffers.h>
 #include "Generated\FlatBuffers\Model_generated.h"
 #include "Assets\Model\Serialization\ModelSerializer.h"

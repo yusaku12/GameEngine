@@ -7,7 +7,7 @@
 #include "Core\Serialization\FlatBufferReader.h"
 #include "Core\Serialization\FlatBufferWriter.h"
 #include "Core\Serialization\SerializationVersions.h"
-#include "Terrain\TerrainMaterialSerialization.h"
+#include "Terrain\Serialization\TerrainMaterialSerialization.h"
 
 namespace Engine::Serialization
 {

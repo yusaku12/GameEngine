@@ -1,6 +1,6 @@
 #include "Pch.h"
 #include "Graphics\PostProcess\PostProcessTargetPool.h"
-#include "Graphics\DirectX12\Fence.h"
+#include "Graphics\DirectX12\Command\Fence.h"
 
 namespace Engine
 {

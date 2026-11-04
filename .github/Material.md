@@ -1,5 +1,5 @@
 ---
-applyTo: "Source/Assets/Material/**/*.cpp,Source/Assets/Material/**/*.h,Source/Graphics/Material/**/*.cpp,Source/Graphics/Material/**/*.h,Source/Core/GameObject/Component/*RendererComponent.cpp,Source/Core/GameObject/Component/*RendererComponent.h,Source/Graphics/Renderer/**/*.cpp,Source/Graphics/Renderer/**/*.h,Assets/Shaders/**/*,Schemas/FlatBuffers/Material.fbs,Schemas/FlatBuffers/Model.fbs"
+applyTo: "Source/Assets/Material/**/*.cpp,Source/Assets/Material/**/*.h,Source/Graphics/Material/**/*.cpp,Source/Graphics/Material/**/*.h,Source/Components/Rendering/*RendererComponent.cpp,Source/Components/Rendering/*RendererComponent.h,Source/Graphics/Renderer/**/*.cpp,Source/Graphics/Renderer/**/*.h,Assets/Shaders/**/*,Schemas/FlatBuffers/Material.fbs,Schemas/FlatBuffers/Model.fbs"
 ---
 
 # Material System 実装指示書

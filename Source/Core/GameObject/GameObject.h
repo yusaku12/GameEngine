@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "Core\GameObject\Component.h"
-#include "Core\GameObject\Component\TransformComponent.h"
+#include "Components\Transform\TransformComponent.h"
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Core\Math\Transform.h"
 #include "Core\Object\ObjectGUID.h"

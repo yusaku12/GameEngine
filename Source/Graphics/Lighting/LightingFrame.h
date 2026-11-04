@@ -1,6 +1,6 @@
 #pragma once
 #include <array>
-#include "Core\GameObject\Component\LightComponent.h"
+#include "Components\Rendering\LightComponent.h"
 
 namespace Engine
 {

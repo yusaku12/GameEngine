@@ -1,7 +1,7 @@
 #include "Pch.h"
 #include "Graphics\PostProcess\PostProcessPipeline.h"
-#include "Graphics\DirectX12\Command.h"
-#include "Graphics\DirectX12\Fence.h"
+#include "Graphics\DirectX12\Command\Command.h"
+#include "Graphics\DirectX12\Command\Fence.h"
 #include "Graphics\Texture\TextureManager.h"
 #include <bit>
 #include <cmath>

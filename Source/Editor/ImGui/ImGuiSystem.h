@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include "Graphics\DirectX12\Descriptor.h"
+#include "Graphics\DirectX12\Resource\Descriptor.h"
 #include <unordered_map>
 
 struct ImGuiContext;

@@ -3,7 +3,7 @@
 #include "Assets\Material\MaterialTypes.h"
 #include "Graphics\Texture\TextureTypes.h"
 #include "Graphics\Texture\Texture.h"
-#include "Graphics\DirectX12\Descriptor.h"
+#include "Graphics\DirectX12\Resource\Descriptor.h"
 
 namespace Engine
 {

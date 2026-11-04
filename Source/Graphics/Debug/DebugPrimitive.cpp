@@ -1,8 +1,8 @@
 ﻿#include "Pch.h"
 #include "Graphics\Debug\DebugPrimitive.h"
-#include "Graphics\DirectX12\Command.h"
-#include "Graphics\DirectX12\Device.h"
-#include "Graphics\DirectX12\Fence.h"
+#include "Graphics\DirectX12\Command\Command.h"
+#include "Graphics\DirectX12\Device\Device.h"
+#include "Graphics\DirectX12\Command\Fence.h"
 #include "Graphics\Shader\Shader.h"
 
 namespace Engine

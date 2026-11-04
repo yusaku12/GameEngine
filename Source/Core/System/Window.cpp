@@ -5,11 +5,11 @@
 #include "Core\Profiling\FrameProfiler.h"
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Threading\ThreadDebugStats.h"
-#include "Graphics\DirectX12\Renderer.h"
+#include "Graphics\DirectX12\Rendering\Renderer.h"
 #include "Physics\PhysicsSystem.h"
 #include "Core\System\GameSession.h"
 #include "UI\RuntimeUI.h"
-#include "Terrain\TerrainGeneration.h"
+#include "Terrain\Generation\TerrainGeneration.h"
 
 namespace Engine
 {

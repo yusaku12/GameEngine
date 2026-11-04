@@ -1,7 +1,7 @@
 ﻿#include "Pch.h"
 #include "Core\Logging\Logging.h"
 #include "Graphics\Camera\CameraManager.h"
-#include "Core\GameObject\Component\CameraComponent.h"
+#include "Components\Rendering\CameraComponent.h"
 #include "Core\GameObject\GameObject.h"
 #include "Graphics\Camera\CameraRenderSubmission.h"
 
