@@ -729,18 +729,6 @@ Animator payload v2 and Play clones retain the selected joint and enable flag;
 v1 payloads remain readable and default to First Root. Runtime motion deltas are
 transient and are never saved or replayed after loading.
 
-Run native runtime, GameObject and real PhysX collision regressions in both builds:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tools\Animation\TestRootMotion.ps1 -Configuration Debug
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tools\Animation\TestRootMotion.ps1 -Configuration Release
-```
-
-The runner builds the engine, then links the tests against its current project
-object files and resolved libraries from MSBuild's linker tracking log. It does
-not modify the engine binary or require a graphics device. Expected rejection cases print error
-logs; assertion failures or build/link warnings return a nonzero exit code.
-
 # Lights and directional shadows
 
 Create a GameObject and add **Light** in the Inspector. Choose Directional, Point
