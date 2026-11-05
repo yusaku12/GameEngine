@@ -20,6 +20,9 @@ namespace Engine
         /** @brief ワールド座標系での移動量を適用し、経路上の衝突を解決する。 */
         void move(const Vector3& displacement, float deltaTime) noexcept;
 
+        /** @brief 衝突付き移動の成功を返す。物理停止中・不正な入力ではfalse。 */
+        bool tryMove(const Vector3& displacement, float deltaTime) noexcept;
+
         /** @brief カプセルの半径を設定する。全高は半径の2倍より大きくする必要がある。 */
         void setRadius(float radius) noexcept;
         /** @brief カプセルの半径を取得する。 */

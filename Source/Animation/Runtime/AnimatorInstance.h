@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <string>
+#include <string_view>
 #include <ozz/animation/runtime/sampling_job.h>
 #include <ozz/base/maths/simd_math.h>
 #include <ozz/base/maths/soa_transform.h>
@@ -114,6 +116,16 @@ namespace Engine
         bool update(float deltaTime);
 
         /**
+         * @brief XYZ移動と回転の抽出を設定する。空の名前は先頭ルートを使用する。
+         * @return ボーンと姿勢が有効な場合はtrue。設定変更・seekは移動を発生させない。
+         * @thread_safety 評価と並行して呼び出してはならない。
+         */
+        bool configureRootMotion(bool enabled, std::string_view jointName);
+
+        /** @brief 最後の正常なupdateが生成したモデル空間の移動差分。スケールは含まない。 */
+        const Matrix& getRootMotionDelta() const noexcept { return m_rootMotionDelta; }
+
+        /**
          * @brief 再生速度を設定する。負値は逆再生として扱う。
          * @param speed 正規化時刻の進行速度。1.0fで実時間と同じ速度、2.0fで2倍速、-1.0fで逆再生。
          */
@@ -150,6 +162,18 @@ namespace Engine
 
     private:
 
+        struct RootMotionTrack
+        {
+            Matrix inverseStart = Matrix::Identity;
+            Matrix cycle = Matrix::Identity;
+        };
+
+        bool sampleRoot(const AnimationClipAsset& clip, float ratio, Matrix& root);
+        bool buildRootTrack(const AnimationClipAsset& clip, RootMotionTrack& track);
+        bool calculateRootDelta(const AnimationClipAsset& clip, const RootMotionTrack& track,
+            AnimationWrapMode wrapMode, float oldTime, float newTime, double step, Matrix& delta);
+        bool publishPose();
+
         /**
          * @brief 再生中のstateのozz runtime評価に必要な情報を保持する。
          */
@@ -171,6 +195,7 @@ namespace Engine
             std::shared_ptr<const AnimationClipAsset> clip;                //!< 再生中のClip。nullptrは未設定状態。
             std::unique_ptr<ozz::animation::SamplingJob::Context> context; //!< ozz runtimeのSamplingJob用Context。ozz runtimeが必要とする中間バッファを保持する。
             std::vector<ozz::math::SoaTransform> localTransforms;          //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
+            RootMotionTrack rootMotion;
             float speed = 1.0f;                                            //!< 再生速度。負値は逆再生として扱う。
             float time = 0.0f;                                             //!< 再生中のClipの経過時間(秒)。ClipのWrap Modeに応じてClampまたはWrapされる。
             std::int64_t loopCount = 0;                                    //!< 再生中のClipの符号付きLoop回数。ClipのWrap Modeに応じて増減する。
@@ -297,5 +322,13 @@ namespace Engine
         float m_speed = 1.0f;                                                    //!< 再生速度。1.0fで実時間と同じ速度、2.0fで2倍速、-1.0fで逆再生。
         std::int64_t m_loopCount = 0;                                            //!< 再生中のClipのLoop回数。ClipのWrap Modeに応じて符号付きで増減する。
         bool m_playing = false;                                                  //!< 再生中かどうか。trueで再生中、falseで停止中。
+        bool m_rootMotionEnabled = false;
+        std::string m_rootMotionJointName;
+        std::size_t m_rootMotionJoint = 0;
+        Matrix m_rootReference = Matrix::Identity;
+        Matrix m_inverseRootReference = Matrix::Identity;
+        Matrix m_rootMotionDelta = Matrix::Identity;
+        RootMotionTrack m_rootTrack;
+        std::unique_ptr<ozz::animation::SamplingJob::Context> m_rootSamplingContext;
     };
 }

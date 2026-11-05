@@ -1,6 +1,8 @@
 ﻿#pragma once
 
 #include <span>
+#include <string>
+#include <string_view>
 
 #include "Animation\Runtime\AnimatorInstance.h"
 #include "Assets\Animation\AnimationTypes.h"
@@ -9,7 +11,7 @@
 namespace Engine
 {
     /**
-     * @brief GameObjectごとの単一Animation Clip再生を管理するComponent。
+     * @brief GameObjectごとのClip/Controller再生とRoot Motionを管理するComponent。
      * @thread_safety Lifecycle準備はGame update threadで行い、Animation評価はJobSystem workerで行う。
      * 同一Componentへ評価中にアクセスしてはならない。Render threadにはimmutable Snapshotを渡す。
      */
@@ -168,7 +170,9 @@ namespace Engine
         std::shared_ptr<const SkinningPaletteSnapshot> getSkinningSnapshot() const noexcept { return m_instance.getSnapshot(); }
 
         /**
-         * @brief Root Motion適用設定を保持する。評価は将来のRoot Motion段階で行う。
+         * @brief XYZ移動と回転を姿勢から抽出し、Play中にGameObjectへ適用する。
+         * @details 有効なCharacterControllerがあれば衝突付き移動を行う。
+         * Dynamic Rigidbodyとの併用は不可。編集時は姿勢からの除去のみ行う。
          * @param apply Root Motionを適用するかどうか
          */
         void setApplyRootMotion(bool apply) noexcept { m_applyRootMotion = apply; }
@@ -179,10 +183,15 @@ namespace Engine
          */
         bool getApplyRootMotion() const noexcept { return m_applyRootMotion; }
 
+        /** @brief 抽出ボーンを指定する。空の名前は先頭ルート。既知のSkeletonに存在しない名前は拒否する。 */
+        bool setRootMotionJoint(std::string_view jointName);
+
+        /** @brief 保存対象の抽出ボーン名。空なら先頭ルートを使用する。 */
+        const std::string& getRootMotionJoint() const noexcept { return m_rootMotionJoint; }
+
     protected:
 
         void onAwake() override;
-        void onUpdate(float deltaTime) override;
         void onImGui() override;
 
     private:
@@ -223,6 +232,7 @@ namespace Engine
          * @details GameObjectManagerが全Componentの通常更新を終えた後に呼び出す。
          */
         void evaluatePendingUpdate(float deltaTime);
+        void applyPendingRootMotion(float deltaTime);
 
         AnimatorInstance m_instance;                                    //!< AnimatorInstanceはozz runtimeをラップし、Animation Clipの再生と評価を管理する。
         SkeletonHandle m_skeleton;                                      //!< Skeleton Handleは再生対象Skeleton Assetを識別するためのハンドル。
@@ -244,6 +254,9 @@ namespace Engine
         bool m_evaluationErrorLogged = false;                           //!< Animation Clipの評価に失敗した場合にエラーログを出力したかどうかを示すフラグ。
         bool m_evaluationPending = false;                               //!< 通常更新でAnimation評価の準備が完了したかどうかを示すフラグ。
         bool m_applyRootMotion = false;                                 //!< Root Motionを適用するかどうかを示すフラグ。
+        std::string m_rootMotionJoint;
+        bool m_rootMotionPending = false;
+        bool m_rootMotionErrorLogged = false;
         std::vector<AnimationClipHandle> m_availableClips;              //!< 再生可能なAnimation Clip Handleのリスト。Animator Controllerが設定されている場合に使用される。
     };
 }

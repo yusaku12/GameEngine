@@ -679,6 +679,68 @@ global asset edits, files written by gameplay, or static variables.
 Camera settings and Main Camera preference are persisted in versioned
 FlatBuffers payloads. Legacy empty Camera payloads retain default settings.
 
+## Animator root motion
+
+Enable **Apply Root Motion** on an Animator to extract model-space XYZ translation
+and full rotation. **Root Motion Joint** selects the source joint by exact name;
+**First Root** (the default) selects skeleton joint 0. FBX files often contain a
+static scene/group root: select the actual animated root/hips joint in that case.
+This is not humanoid retargeting. The component toggle controls extraction;
+the clip's existing `applyRootMotion` metadata is not an additional enable gate.
+
+The selected joint's rigid transform is measured relative to its skeleton rest
+pose. Motion is removed from the entire evaluated pose, including blended poses,
+so moving the GameObject does not apply the animation twice. Animated scale stays
+in the pose. Selected joint transforms must be finite, nonsingular TRS transforms;
+sheared joint transforms are rejected and logged rather than approximated.
+
+Looping extends the rigid trajectory across clip endpoints, including turning,
+multiple wraps per update and reverse playback. PingPong retraces the trajectory;
+Once clamps at its endpoint. Seek, state changes, rebind, pause and enabling root
+motion do not apply the clip's initial offset as a displacement. Crossfades blend
+per-state motion deltas with the frame-average transition weight (including a
+frame that extends past the end of the fade), not differences between unrelated
+absolute clip positions. Rotation uses shortest-path quaternion interpolation.
+Accuracy follows ozz's compressed keys and estimated sampling interpolation.
+
+During Play/Step, movement is applied on the game update thread after all Animator
+workers join and before physics/late update. Translation follows the current
+world rotation and scale, and is converted back through the parent transform;
+rotation is composed in the object's world frame and converted to local rotation
+using the engine's parent composition convention, without changing object scale.
+A singular object or parent transform is logged and rejected. Unavailable pose snapshots do not advance
+root-motion animation time or lose its displacement.
+
+An enabled CharacterController receives collision-resolved movement instead of a
+Transform teleport. Its GameObject origin represents its **foot position** from
+creation onward, and small motion is not discarded by a fixed one-millimeter
+cutoff. Explicit Transform/parent position changes synchronize the controller's
+foot before the next collision-resolved move. The capsule remains world-up while
+the GameObject receives animation rotation. Root motion does not add gravity;
+other movement scripts remain additive.
+Paused/unavailable physics rejects controller motion without teleport fallback.
+Dynamic Rigidbodies are explicitly unsupported; a kinematic Rigidbody follows
+the Transform through the existing physics synchronization. An enabled controller
+and Rigidbody cannot be used together. Without an enabled controller, movement
+uses the Transform; static colliders follow normal physics synchronization.
+
+Editing previews remove root motion from the pose but never move scene objects.
+Animator payload v2 and Play clones retain the selected joint and enable flag;
+v1 payloads remain readable and default to First Root. Runtime motion deltas are
+transient and are never saved or replayed after loading.
+
+Run native runtime, GameObject and real PhysX collision regressions in both builds:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tools\Animation\TestRootMotion.ps1 -Configuration Debug
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tools\Animation\TestRootMotion.ps1 -Configuration Release
+```
+
+The runner builds the engine, then links the tests against its current project
+object files and resolved libraries from MSBuild's linker tracking log. It does
+not modify the engine binary or require a graphics device. Expected rejection cases print error
+logs; assertion failures or build/link warnings return a nonzero exit code.
+
 # Lights and directional shadows
 
 Create a GameObject and add **Light** in the Inspector. Choose Directional, Point

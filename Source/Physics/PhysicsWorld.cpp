@@ -2859,6 +2859,12 @@ namespace Engine
         }
 
         auto* const controller = static_cast<PxCapsuleController*>(baseController);
+        if (!controller->setFootPosition(PxExtendedVec3(position.x, position.y, position.z)))
+        {
+            controller->release();
+            LOG_ERROR("[PhysicsWorld] Could not initialize the Character Controller foot position.");
+            return false;
+        }
         controller->setUserData(&component);
         PxRigidDynamic* const actor = controller->getActor();
         actor->userData = &component;
@@ -2981,13 +2987,45 @@ namespace Engine
         if (found == m_impl->controllers.end() || found->second.controller == nullptr)
             return false;
 
+        GameObject* const gameObject = component.getGameObject();
+        TransformComponent* const transformComponent =
+            gameObject != nullptr ? gameObject->getComponent<TransformComponent>() : nullptr;
+        if (transformComponent == nullptr)
+        {
+            LOG_ERROR("[PhysicsWorld] Character Controller GameObject has no TransformComponent.");
+            return false;
+        }
+        Matrix inverseParent = Matrix::Identity;
+        if (const GameObject* const parent = gameObject->getParent())
+        {
+            const Matrix parentWorld = parent->getWorldMatrix();
+            const float determinant = parentWorld.Determinant();
+            if (!std::isfinite(determinant) || determinant == 0.0f)
+            {
+                LOG_ERROR("[PhysicsWorld] Cannot move a Character Controller under a singular parent.");
+                return false;
+            }
+            inverseParent = parentWorld.Invert();
+        }
+        const Vector3 requestedFoot = gameObject->getWorldPosition();
+        if (!isFiniteVector(requestedFoot))
+            return false;
+        if (requestedFoot != component.m_position
+            && !found->second.controller->setFootPosition(PxExtendedVec3(
+                requestedFoot.x, requestedFoot.y, requestedFoot.z)))
+        {
+            LOG_ERROR("[PhysicsWorld] Could not synchronize the Character Controller with its Transform.");
+            return false;
+        }
+
         CharacterShapeFilterCallback shapeFilter(component.m_layer, component.m_collisionMask);
         CharacterControllerFilterCallback controllerFilter;
         PxFilterData filterData;
         const PxControllerFilters filters(&filterData, &shapeFilter, &controllerFilter);
+        // Do not discard sub-millimeter root motion at low playback speeds.
         const PxControllerCollisionFlags collisionFlags = found->second.controller->move(
             PhysicsConversions::toPx(displacement),
-            0.001f,
+            0.0f,
             deltaTime,
             filters);
 
@@ -3002,25 +3040,14 @@ namespace Engine
             return false;
         }
 
-        component.m_position = worldPosition;
-        component.m_isGrounded = collisionFlags.isSet(PxControllerCollisionFlag::eCOLLISION_DOWN);
-
-        GameObject* const gameObject = component.getGameObject();
-        TransformComponent* const transformComponent =
-            gameObject != nullptr ? gameObject->getComponent<TransformComponent>() : nullptr;
-        if (transformComponent == nullptr)
+        const Vector3 localPosition = Vector3::Transform(worldPosition, inverseParent);
+        if (!isFiniteVector(localPosition))
         {
-            LOG_ERROR("[PhysicsWorld] Character Controller GameObject has no TransformComponent.");
+            LOG_ERROR("[PhysicsWorld] Character Controller local position is not finite.");
             return false;
         }
-
-        Vector3 localPosition = worldPosition;
-        if (const GameObject* const parent = gameObject->getParent())
-        {
-            localPosition = Vector3::Transform(
-                worldPosition,
-                parent->getWorldTransform().toInverseMatrix());
-        }
+        component.m_position = worldPosition;
+        component.m_isGrounded = collisionFlags.isSet(PxControllerCollisionFlag::eCOLLISION_DOWN);
         transformComponent->localTransform().setPosition(localPosition);
         return true;
     }

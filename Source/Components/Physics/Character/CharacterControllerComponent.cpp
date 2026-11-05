@@ -27,16 +27,32 @@ namespace Engine
     {
         if (!PhysicsSystem::instance().canAdvancePhysics())
             return;
+        tryMove(displacement, deltaTime);
+    }
+
+    bool CharacterControllerComponent::tryMove(
+        const Vector3& displacement,
+        const float deltaTime) noexcept
+    {
+        if (!PhysicsSystem::instance().canAdvancePhysics())
+        {
+            LOG_ERROR("[CharacterControllerComponent] Cannot move while physics is paused.");
+            return false;
+        }
 
         if (!isFiniteVector(displacement) || !std::isfinite(deltaTime) || deltaTime <= 0.0f)
         {
             LOG_ERROR("[CharacterControllerComponent] Movement and delta time must be finite; delta time must be positive.");
-            return;
+            return false;
         }
 
         PhysicsWorld* const world = PhysicsSystem::instance().getWorld();
         if (world == nullptr || !world->moveController(*this, displacement, deltaTime))
+        {
             LOG_ERROR("[CharacterControllerComponent] Failed to move the Character Controller.");
+            return false;
+        }
+        return true;
     }
 
     void CharacterControllerComponent::setRadius(const float radius) noexcept

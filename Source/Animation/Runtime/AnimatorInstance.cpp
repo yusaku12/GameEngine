@@ -6,11 +6,70 @@
 #include <ozz/base/span.h>
 #include "Core\Logging\Logger.h"
 #include "Core\Math\MathTypes.h"
+#include "Core\Math\Transform.h"
 
 namespace Engine
 {
     namespace
     {
+        bool rigidTransform(const Matrix& matrix, Matrix& rigid)
+        {
+            Transform transform;
+            if (!Transform::tryFromMatrix(matrix, transform)
+                || transform.getScale().x == 0.0f || transform.getScale().y == 0.0f
+                || transform.getScale().z == 0.0f)
+            {
+                LOG_ERROR("[Animator] Root motion requires finite, nonsingular TRS joint transforms (no shear).");
+                return false;
+            }
+            Quaternion rotation = transform.getRotation();
+            rotation.Normalize();
+            rigid = Matrix::CreateFromQuaternion(rotation) * Matrix::CreateTranslation(transform.getPosition());
+            return true;
+        }
+
+        bool rigidPower(Matrix base, const double exponent, Matrix& result)
+        {
+            // Loop counts are computed in double; do not silently truncate an unrepresentable count.
+            if (!std::isfinite(exponent) || std::abs(exponent) > 9007199254740991.0)
+            {
+                LOG_ERROR("[Animator] Root motion loop count exceeds the exact supported range.");
+                return false;
+            }
+            if (exponent < 0.0)
+                base = base.Invert();
+            auto remaining = static_cast<std::uint64_t>(std::abs(exponent));
+            result = Matrix::Identity;
+            while (remaining != 0)
+            {
+                if ((remaining & 1u) != 0 && !rigidTransform(result * base, result))
+                    return false;
+                remaining >>= 1;
+                if (remaining != 0 && !rigidTransform(base * base, base))
+                    return false;
+            }
+            return true;
+        }
+
+        float sampleRatio(const float time, const float duration, const AnimationWrapMode wrapMode)
+        {
+            const double sample = wrapMode == AnimationWrapMode::PingPong && time > duration
+                ? 2.0 * static_cast<double>(duration) - time : time;
+            return static_cast<float>(std::clamp(sample / duration, 0.0, 1.0));
+        }
+
+        bool blendRootDeltas(const Matrix& source, const Matrix& destination, const float weight, Matrix& result)
+        {
+            Transform from;
+            Transform to;
+            if (!Transform::tryFromMatrix(source, from) || !Transform::tryFromMatrix(destination, to))
+            {
+                LOG_ERROR("[Animator] Cannot blend invalid root motion deltas.");
+                return false;
+            }
+            return rigidTransform(Transform::lerp(from, to, weight).toMatrix(), result);
+        }
+
         Matrix toEngineMatrix(const ozz::math::Float4x4& value) noexcept
         {
             alignas(16) float columns[4][4]{};
@@ -350,6 +409,10 @@ namespace Engine
 
     void AnimatorInstance::clear() noexcept
     {
+        m_rootMotionEnabled = false;
+        m_rootMotionJointName.clear();
+        m_rootSamplingContext.reset();
+        m_rootMotionDelta = Matrix::Identity;
         m_publishedSnapshot.reset();
         for (auto& snapshot : m_snapshotRing)
             snapshot.reset();
@@ -377,6 +440,7 @@ namespace Engine
 
     bool AnimatorInstance::play(const float normalizedTime) noexcept
     {
+        m_rootMotionDelta = Matrix::Identity;
         if (m_controller != nullptr)
             return play(getCurrentState(), normalizedTime);
         if (m_clip == nullptr || !std::isfinite(normalizedTime))
@@ -391,6 +455,7 @@ namespace Engine
 
     bool AnimatorInstance::play(const AnimatorStateID stateId, const float normalizedTime) noexcept
     {
+        m_rootMotionDelta = Matrix::Identity;
         if (m_controller == nullptr || !std::isfinite(normalizedTime))
             return false;
         const std::size_t stateIndex = findState(stateId);
@@ -412,7 +477,122 @@ namespace Engine
         if (m_controller == nullptr || !std::isfinite(duration) || duration < 0.0f)
             return false;
         const std::size_t destination = findState(stateId);
+        if (destination == m_currentStateIndex)
+            return destination != m_states.size();
         return destination != m_states.size() && beginTransition(destination, duration);
+    }
+
+    bool AnimatorInstance::configureRootMotion(const bool enabled, const std::string_view jointName)
+    {
+        m_rootMotionDelta = Matrix::Identity;
+        if (!enabled)
+        {
+            m_rootMotionEnabled = false;
+            return true;
+        }
+        if (m_rootMotionEnabled && m_rootMotionJointName == jointName)
+            return true;
+        m_rootMotionEnabled = false;
+        if (m_skeleton == nullptr)
+        {
+            LOG_ERROR("[Animator] Cannot configure root motion without a skeleton.");
+            return false;
+        }
+        m_rootMotionJoint = 0;
+        if (!jointName.empty())
+        {
+            const auto found = m_skeleton->jointLookup.find(std::string(jointName));
+            if (found == m_skeleton->jointLookup.end())
+            {
+                LOG_ERROR("[Animator] Root motion joint '{}' does not exist.", jointName);
+                return false;
+            }
+            m_rootMotionJoint = found->second;
+        }
+        if (m_rootMotionJoint >= m_modelMatrices.size())
+        {
+            LOG_ERROR("[Animator] Root motion joint index is outside the skeleton.");
+            return false;
+        }
+        m_rootSamplingContext = std::make_unique<ozz::animation::SamplingJob::Context>(
+            m_skeleton->skeleton.num_joints());
+        ozz::animation::LocalToModelJob restPose;
+        restPose.skeleton = &m_skeleton->skeleton;
+        restPose.input = m_skeleton->skeleton.joint_rest_poses();
+        restPose.output = ozz::make_span(m_modelMatrices);
+        if (!restPose.Run())
+        {
+            LOG_ERROR("[Animator] Root motion rest-pose hierarchy evaluation failed.");
+            return false;
+        }
+        if (!rigidTransform(toEngineMatrix(m_modelMatrices[m_rootMotionJoint]), m_rootReference))
+            return false;
+        m_inverseRootReference = m_rootReference.Invert();
+        if (m_controller != nullptr)
+        {
+            for (RuntimeState& state : m_states)
+                if (!buildRootTrack(*state.clip, state.rootMotion))
+                    return false;
+        }
+        else if (m_clip == nullptr || !buildRootTrack(*m_clip, m_rootTrack))
+            return false;
+        m_rootMotionJointName = jointName;
+        m_rootMotionEnabled = true;
+        return true;
+    }
+
+    bool AnimatorInstance::sampleRoot(const AnimationClipAsset& clip, const float ratio, Matrix& root)
+    {
+        const ozz::animation::SamplingJob sampling{
+            .ratio = ratio, .animation = &clip.animation, .context = m_rootSamplingContext.get(),
+            .output = ozz::make_span(m_localTransforms) };
+        ozz::animation::LocalToModelJob localToModel;
+        localToModel.skeleton = &m_skeleton->skeleton;
+        localToModel.input = ozz::make_span(m_localTransforms);
+        localToModel.output = ozz::make_span(m_modelMatrices);
+        Matrix rigid;
+        if (!sampling.Run() || !localToModel.Run())
+        {
+            LOG_ERROR("[Animator] Root motion sampling/hierarchy evaluation failed.");
+            return false;
+        }
+        if (!rigidTransform(toEngineMatrix(m_modelMatrices[m_rootMotionJoint]), rigid))
+            return false;
+        return rigidTransform(m_inverseRootReference * rigid, root);
+    }
+
+    bool AnimatorInstance::buildRootTrack(const AnimationClipAsset& clip, RootMotionTrack& track)
+    {
+        Matrix start;
+        Matrix end;
+        if (!sampleRoot(clip, 0.0f, start) || !sampleRoot(clip, 1.0f, end))
+            return false;
+        track.inverseStart = start.Invert();
+        return rigidTransform(end * track.inverseStart, track.cycle);
+    }
+
+    bool AnimatorInstance::calculateRootDelta(const AnimationClipAsset& clip, const RootMotionTrack& track,
+        const AnimationWrapMode wrapMode, const float oldTime, const float newTime,
+        const double step, Matrix& delta)
+    {
+        if (step == 0.0)
+        {
+            delta = Matrix::Identity;
+            return true;
+        }
+        Matrix previous;
+        Matrix current;
+        Matrix cycles = Matrix::Identity;
+        if (!sampleRoot(clip, sampleRatio(oldTime, clip.duration, wrapMode), previous)
+            || !sampleRoot(clip, sampleRatio(newTime, clip.duration, wrapMode), current))
+            return false;
+        if (wrapMode == AnimationWrapMode::Loop
+            && !rigidPower(track.cycle, std::floor((oldTime + step) / clip.duration), cycles))
+            return false;
+        // Extend the trajectory across wraps before differencing, including reverse/multiple loops.
+        const Matrix before = previous * track.inverseStart;
+        const Matrix after = current * track.inverseStart;
+        return rigidTransform(after * cycles * before.Invert(), delta);
     }
 
     bool AnimatorInstance::setFloat(const AnimatorParameterID parameterId, const float value) noexcept
@@ -516,18 +696,52 @@ namespace Engine
 
     bool AnimatorInstance::update(const float deltaTime)
     {
+        m_rootMotionDelta = Matrix::Identity;
         if (m_skeleton == nullptr || !std::isfinite(deltaTime))
             return false;
+        if (m_rootMotionEnabled && std::none_of(m_snapshotRing.begin(), m_snapshotRing.end(),
+            [](const auto& snapshot) { return snapshot != nullptr && snapshot.use_count() == 1; }))
+        {
+            LOG_ERROR("[Animator] No free pose snapshot; animation time was not advanced.");
+            return false;
+        }
+        Matrix rootDelta = Matrix::Identity;
 
         if (m_controller != nullptr)
         {
             if (m_states.empty()) return false;
-            if (m_playing)
+            if (m_playing && deltaTime != 0.0f)
             {
-                advanceState(m_states[m_currentStateIndex], deltaTime);
+                RuntimeState& source = m_states[m_currentStateIndex];
+                const float sourceTime = source.time;
+                advanceState(source, deltaTime);
+                if (m_rootMotionEnabled && !calculateRootDelta(*source.clip, source.rootMotion,
+                    source.wrapMode, sourceTime, source.time,
+                    static_cast<double>(deltaTime) * m_speed * source.speed, rootDelta))
+                    return false;
                 if (m_transitioning)
                 {
-                    advanceState(m_states[m_destinationStateIndex], deltaTime);
+                    RuntimeState& destination = m_states[m_destinationStateIndex];
+                    const float destinationTime = destination.time;
+                    advanceState(destination, deltaTime);
+                    if (m_rootMotionEnabled)
+                    {
+                        Matrix destinationDelta;
+                        if (!calculateRootDelta(*destination.clip, destination.rootMotion,
+                            destination.wrapMode, destinationTime, destination.time,
+                            static_cast<double>(deltaTime) * m_speed * destination.speed, destinationDelta))
+                            return false;
+                        const float elapsed = std::abs(deltaTime);
+                        const float remaining = std::max(0.0f, m_transitionDuration - m_transitionTime);
+                        const float blendedTime = std::min(elapsed, remaining);
+                        const float start = getTransitionProgress();
+                        const float end = m_transitionDuration > 0.0f
+                            ? std::min(1.0f, (m_transitionTime + blendedTime) / m_transitionDuration) : 1.0f;
+                        const float weight = elapsed > 0.0f
+                            ? 1.0f - (blendedTime / elapsed) * (1.0f - 0.5f * (start + end)) : start;
+                        if (!blendRootDeltas(rootDelta, destinationDelta, weight, rootDelta))
+                            return false;
+                    }
                     m_transitionTime += std::abs(deltaTime);
                     if (m_transitionDuration <= 0.0f || m_transitionTime >= m_transitionDuration)
                     {
@@ -554,27 +768,31 @@ namespace Engine
                     }
                     const RuntimeState& current = m_states[m_currentStateIndex];
                     if (!transitionStarted && current.wrapMode == AnimationWrapMode::Once
-                        && ((m_speed * current.speed >= 0.0f && current.time >= current.clip->duration)
-                            || (m_speed * current.speed < 0.0f && current.time <= 0.0f)))
+                        && ((deltaTime * m_speed * current.speed > 0.0f && current.time >= current.clip->duration)
+                            || (deltaTime * m_speed * current.speed < 0.0f && current.time <= 0.0f)))
                         m_playing = false;
                 }
             }
-            return evaluateCurrentPose();
+            if (!evaluateCurrentPose())
+                return false;
+            m_rootMotionDelta = rootDelta;
+            return true;
         }
 
         if (m_clip == nullptr)
             return false;
 
-        if (m_playing)
+        if (m_playing && deltaTime != 0.0f)
         {
+            const float previousTime = m_time;
             const double unwrappedTime = static_cast<double>(m_time)
                 + static_cast<double>(deltaTime) * static_cast<double>(m_speed);
             switch (m_clip->wrapMode)
             {
             case AnimationWrapMode::Once:
                 m_time = static_cast<float>(std::clamp(unwrappedTime, 0.0, static_cast<double>(m_clip->duration)));
-                if ((m_speed > 0.0f && unwrappedTime >= m_clip->duration)
-                    || (m_speed < 0.0f && unwrappedTime <= 0.0f))
+                if ((deltaTime * m_speed > 0.0f && unwrappedTime >= m_clip->duration)
+                    || (deltaTime * m_speed < 0.0f && unwrappedTime <= 0.0f))
                     m_playing = false;
                 break;
             case AnimationWrapMode::Loop:
@@ -591,8 +809,14 @@ namespace Engine
                 break;
             }
             }
+            if (m_rootMotionEnabled && !calculateRootDelta(*m_clip, m_rootTrack, m_clip->wrapMode,
+                previousTime, m_time, static_cast<double>(deltaTime) * m_speed, rootDelta))
+                return false;
         }
-        return evaluate(getNormalizedTime());
+        if (!evaluate(getNormalizedTime()))
+            return false;
+        m_rootMotionDelta = rootDelta;
+        return true;
     }
 
     void AnimatorInstance::advanceState(RuntimeState& state, const float deltaTime) noexcept
@@ -736,18 +960,7 @@ namespace Engine
         localToModel.output = ozz::make_span(m_modelMatrices);
         if (!localToModel.Run()) return false;
 
-        SkinningPaletteSnapshot* const snapshot = acquireSnapshot();
-        if (snapshot == nullptr) return false;
-        for (std::size_t index = 0; index < m_modelMatrices.size(); ++index)
-        {
-            const Matrix modelMatrix = toEngineMatrix(m_modelMatrices[index]);
-            const Matrix skinningMatrix = m_bindPoseCorrections[index]
-                * m_skeleton->inverseBindPoses[index] * modelMatrix;
-            snapshot->constants.boneMatrices[index] = skinningMatrix;
-            snapshot->constants.boneNormalMatrices[index] = skinningMatrix.Invert().Transpose();
-        }
-        m_publishedSnapshot = m_snapshotRing[(m_nextSnapshot + m_snapshotRing.size() - 1) % m_snapshotRing.size()];
-        return true;
+        return publishPose();
     }
 
     bool AnimatorInstance::evaluate(const float ratio)
@@ -771,12 +984,25 @@ namespace Engine
         if (!localToModel.Run())
             return false;
 
+        return publishPose();
+    }
+
+    bool AnimatorInstance::publishPose()
+    {
+        Matrix removeMotion = Matrix::Identity;
+        if (m_rootMotionEnabled)
+        {
+            Matrix root;
+            if (!rigidTransform(toEngineMatrix(m_modelMatrices[m_rootMotionJoint]), root))
+                return false;
+            removeMotion = root.Invert() * m_rootReference;
+        }
         SkinningPaletteSnapshot* const snapshot = acquireSnapshot();
         if (snapshot == nullptr)
             return false;
         for (std::size_t index = 0; index < m_modelMatrices.size(); ++index)
         {
-            const Matrix modelMatrix = toEngineMatrix(m_modelMatrices[index]);
+            const Matrix modelMatrix = toEngineMatrix(m_modelMatrices[index]) * removeMotion;
             const Matrix skinningMatrix = m_bindPoseCorrections[index]
                 * m_skeleton->inverseBindPoses[index] * modelMatrix;
             snapshot->constants.boneMatrices[index] = skinningMatrix;

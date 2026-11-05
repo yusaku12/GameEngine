@@ -356,7 +356,10 @@ namespace Engine
             AnimatorComponent* const animator = object->getComponent<AnimatorComponent>();
             if (animator != nullptr && animator->m_lifecycleEnabled
                 && animator->m_lifecycleActive && animator->m_started)
+            {
+                animator->preparePendingUpdate();
                 m_animatorsToUpdate.push_back(animator);
+            }
         }
 
         if (m_animatorsToUpdate.size() == 1)
@@ -371,6 +374,8 @@ namespace Engine
                     m_animatorsToUpdate[index]->evaluatePendingUpdate(deltaTime);
                 });
         }
+        for (AnimatorComponent* const animator : m_animatorsToUpdate)
+            animator->applyPendingRootMotion(deltaTime);
         m_animatorsToUpdate.clear();
     }
 

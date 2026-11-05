@@ -31,6 +31,7 @@ table AnimatorComponentPayload {
     clip_path:string;
     controller_path:string;
     controller_clips:[AnimatorClipReference];
+    root_motion_joint:string;
 }
 
 root_type AnimatorComponentPayload;

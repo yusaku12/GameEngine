@@ -5,6 +5,8 @@
 #include "Assets\Animation\AnimationAssetManager.h"
 #include "Assets\Model\ModelManager.h"
 #include "Components\Rendering\ModelRendererComponent.h"
+#include "Components\Physics\Character\CharacterControllerComponent.h"
+#include "Components\Physics\Rigidbody\RigidbodyComponent.h"
 #include "Core\GameObject\ComponentRegistry.h"
 #include "Core\GameObject\GameObject.h"
 #include "Core\Scene\SceneManager.h"
@@ -193,6 +195,21 @@ namespace Engine
         return m_instance.crossFade(stateId, duration);
     }
 
+    bool AnimatorComponent::setRootMotionJoint(const std::string_view jointName)
+    {
+        const auto skeleton = AnimationAssetManager::instance().getSkeleton(m_skeleton);
+        if (skeleton != nullptr && !jointName.empty()
+            && !skeleton->jointLookup.contains(std::string(jointName)))
+        {
+            LOG_ERROR("[Animator] Root motion joint '{}' does not exist.", jointName);
+            return false;
+        }
+        m_rootMotionJoint = jointName;
+        m_rootMotionPending = false;
+        m_rootMotionErrorLogged = false;
+        return true;
+    }
+
     std::uint32_t AnimatorComponent::getPayloadVersion() const noexcept
     {
         return Serialization::CURRENT_ANIMATOR_COMPONENT_VERSION;
@@ -297,7 +314,7 @@ namespace Engine
             &controllerGuid, getSpeed(), m_applyRootMotion, playing, currentState, normalizedTime,
             builder.CreateVector(parameters), builder.CreateString(skeletonPath.generic_string()),
             builder.CreateString(clipPath.generic_string()), builder.CreateString(controllerPath.generic_string()),
-            builder.CreateVector(controllerClips));
+            builder.CreateVector(controllerClips), builder.CreateString(m_rootMotionJoint));
         Serialization::FinishAnimatorComponentPayloadBuffer(builder, root);
         payload.assign(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
         return true;
@@ -353,6 +370,9 @@ namespace Engine
         }
         m_instance.setSpeed(source->speed());
         m_applyRootMotion = source->apply_root_motion();
+        m_rootMotionJoint = source->root_motion_joint() != nullptr ? source->root_motion_joint()->str() : "";
+        m_rootMotionPending = false;
+        m_rootMotionErrorLogged = false;
         m_pendingPlaying = source->playing();
         m_pendingState = source->current_state();
         m_pendingNormalizedTime = std::clamp(source->normalized_time(), 0.0f, 1.0f);
@@ -412,6 +432,7 @@ namespace Engine
         target->m_controllerClipReferences = m_controllerClipReferences;
         target->m_availableClips = m_availableClips;
         target->m_applyRootMotion = m_applyRootMotion;
+        target->m_rootMotionJoint = m_rootMotionJoint;
         target->m_instance.setSpeed(getSpeed());
         target->m_pendingPlaying = m_restorePending ? m_pendingPlaying : isPlaying();
         target->m_pendingState = m_restorePending ? m_pendingState : getCurrentState();
@@ -447,14 +468,10 @@ namespace Engine
             useModelDefaultAnimation();
     }
 
-    void AnimatorComponent::onUpdate([[maybe_unused]] const float deltaTime)
-    {
-        preparePendingUpdate();
-    }
-
     void AnimatorComponent::preparePendingUpdate()
     {
         m_evaluationPending = false;
+        m_rootMotionPending = false;
 
         if (!m_restorePending && !m_skeleton.isValid() && !m_clip.isValid() && !m_controller.isValid())
             useModelDefaultAnimation();
@@ -507,6 +524,8 @@ namespace Engine
         if (!m_skeleton.isValid() || (!m_clip.isValid() && !m_controller.isValid()))
             return;
 
+        if (!m_instance.configureRootMotion(m_applyRootMotion, m_rootMotionJoint))
+            return;
         m_evaluationPending = true;
     }
 
@@ -516,11 +535,90 @@ namespace Engine
             return;
 
         m_evaluationPending = false;
-        if (!m_instance.update(deltaTime) && !m_evaluationErrorLogged)
+        const bool succeeded = m_instance.update(deltaTime);
+        m_rootMotionPending = succeeded && m_applyRootMotion
+            && m_instance.getRootMotionDelta() != Matrix::Identity;
+        if (!succeeded && !m_evaluationErrorLogged)
         {
             LOG_ERROR("[Animator] Animation evaluation failed");
             m_evaluationErrorLogged = true;
         }
+    }
+
+    void AnimatorComponent::applyPendingRootMotion(const float deltaTime)
+    {
+        if (!std::exchange(m_rootMotionPending, false) || !m_applyRootMotion)
+            return;
+        GameObject* const object = getGameObject();
+        if (object == nullptr || object->isDestroyRequested() || !isEnabled()
+            || !object->isActiveInHierarchy())
+            return;
+        const auto fail = [this](const char* reason)
+            {
+                if (!m_rootMotionErrorLogged)
+                    LOG_ERROR("[Animator] Root motion could not be applied: {}", reason);
+                m_rootMotionErrorLogged = true;
+            };
+        const auto* body = object->getComponent<RigidbodyComponent>();
+        auto* controller = object->getComponent<CharacterControllerComponent>();
+        if (body != nullptr && body->isEnabled()
+            && (!body->isKinematic() || (controller != nullptr && controller->isEnabled())))
+        {
+            fail("requires no Dynamic Rigidbody and no Rigidbody/CharacterController combination.");
+            return;
+        }
+        Transform delta;
+        Transform* const local = object->getTransform();
+        Transform validatedLocal;
+        const Matrix world = object->getWorldMatrix();
+        const float determinant = world.Determinant();
+        if (local == nullptr || !Transform::tryFromMatrix(m_instance.getRootMotionDelta(), delta)
+            || !Transform::tryFromMatrix(local->toMatrix(), validatedLocal)
+            || !std::isfinite(determinant) || determinant == 0.0f)
+        {
+            fail("invalid or singular object transform.");
+            return;
+        }
+        const Vector3 displacement = Vector3::TransformNormal(delta.getPosition(), world);
+        Matrix rotationMatrix = Matrix::CreateFromQuaternion(delta.getRotation())
+            * Matrix::CreateFromQuaternion(object->getWorldRotation());
+        Vector3 position = object->getWorldPosition() + displacement;
+        if (const GameObject* const parent = object->getParent())
+        {
+            const Matrix parentWorld = parent->getWorldMatrix();
+            const float parentDeterminant = parentWorld.Determinant();
+            if (!std::isfinite(parentDeterminant) || parentDeterminant == 0.0f)
+            {
+                fail("invalid or singular parent transform.");
+                return;
+            }
+            position = Vector3::Transform(position, parentWorld.Invert());
+            // Transform::combine uses parent-before-local quaternion composition.
+            rotationMatrix = Matrix::CreateFromQuaternion(parent->getWorldRotation()).Transpose() * rotationMatrix;
+        }
+        Quaternion rotation = Quaternion::CreateFromRotationMatrix(rotationMatrix);
+        rotation.Normalize();
+        const auto finiteVector = [](const Vector3& value)
+            { return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z); };
+        if (!finiteVector(displacement) || !finiteVector(position)
+            || !std::isfinite(rotation.x) || !std::isfinite(rotation.y)
+            || !std::isfinite(rotation.z) || !std::isfinite(rotation.w))
+        {
+            fail("movement overflowed finite transform coordinates.");
+            return;
+        }
+        if (controller != nullptr && controller->isEnabled())
+        {
+            if (!controller->tryMove(displacement, std::abs(deltaTime)))
+            {
+                fail("CharacterController movement was rejected; physics must be running.");
+                return;
+            }
+        }
+        else
+            local->setPosition(position);
+        local->setRotation(rotation);
+        m_rootMotionErrorLogged = false;
     }
 
     void AnimatorComponent::onImGui()
@@ -688,6 +786,22 @@ namespace Engine
         if (ImGui::DragFloat("Speed", &speed, 0.05f))
             setSpeed(speed);
         ImGui::Checkbox("Apply Root Motion", &m_applyRootMotion);
+        if (m_applyRootMotion)
+        {
+            const auto skeleton = AnimationAssetManager::instance().getSkeleton(m_skeleton);
+            const char* const label = m_rootMotionJoint.empty() ? "<First Root>" : m_rootMotionJoint.c_str();
+            if (ImGui::BeginCombo("Root Motion Joint", label))
+            {
+                if (ImGui::Selectable("<First Root>", m_rootMotionJoint.empty()))
+                    setRootMotionJoint({});
+                if (skeleton != nullptr)
+                    for (const std::string& name : skeleton->jointNames)
+                        if (ImGui::Selectable(name.c_str(), m_rootMotionJoint == name))
+                            setRootMotionJoint(name);
+                ImGui::EndCombo();
+            }
+            ImGui::TextDisabled("XYZ + rotation. Editor preview stays in place.");
+        }
         if (isPlaying())
         {
             if (ImGui::Button("Pause"))
@@ -734,6 +848,9 @@ namespace Engine
                 if (!m_pendingPlaying) m_instance.pause();
                 m_restorePending = false;
             }
+            if (!m_instance.configureRootMotion(m_applyRootMotion, m_rootMotionJoint)
+                || !m_instance.update(0.0f))
+                return false;
             m_evaluationErrorLogged = false;
             return true;
         }
@@ -749,6 +866,9 @@ namespace Engine
             if (!m_pendingPlaying) m_instance.pause();
             m_restorePending = false;
         }
+        if (!m_instance.configureRootMotion(m_applyRootMotion, m_rootMotionJoint)
+            || !m_instance.update(0.0f))
+            return false;
         m_evaluationErrorLogged = false;
         return true;
     }
