@@ -178,7 +178,10 @@ namespace Engine
             AnimationAssetBuilder builder;
             SkeletonAsset skeleton;
             if (!builder.buildSkeleton(*model.skeleton, model.sourcePath, skeleton))
+            {
+                LOG_ERROR("[ModelManager] Skeleton build failed: {}", model.sourcePath.string());
                 return false;
+            }
             if (model.skeletonAssetGuid.isValid())
                 skeleton.guid = model.skeletonAssetGuid;
 
@@ -186,7 +189,10 @@ namespace Engine
             const SkeletonHandle skeletonHandle = manager.createSkeleton(std::move(skeleton));
             const auto skeletonSnapshot = manager.getSkeleton(skeletonHandle);
             if (skeletonSnapshot == nullptr)
+            {
+                LOG_ERROR("[ModelManager] Skeleton registration failed: {}", model.sourcePath.string());
                 return false;
+            }
             model.skeletonAssetGuid = skeletonSnapshot->guid;
 
             const std::vector<AssetGUID> previousGuids = model.animationClipGuids;
@@ -222,13 +228,21 @@ namespace Engine
 
                 AnimationClipAsset clip;
                 if (!builder.buildClip(model.animations[index], *skeletonSnapshot, model.sourcePath, clip))
+                {
+                    LOG_ERROR("[ModelManager] Animation Clip {} '{}' build failed: {}",
+                        index, model.animations[index].name, model.sourcePath.string());
                     return false;
+                }
                 if (savedGuid.isValid())
                     clip.guid = savedGuid;
                 const AnimationClipHandle clipHandle = manager.createClip(std::move(clip));
                 const auto clipSnapshot = manager.getClip(clipHandle);
                 if (clipSnapshot == nullptr)
+                {
+                    LOG_ERROR("[ModelManager] Animation Clip {} '{}' registration failed: {}",
+                        index, model.animations[index].name, model.sourcePath.string());
                     return false;
+                }
                 clipGuids.push_back(clipSnapshot->guid);
                 clipPaths.push_back(manager.getClipPath(clipHandle));
             }

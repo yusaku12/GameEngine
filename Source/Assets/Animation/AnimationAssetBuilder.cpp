@@ -6,11 +6,42 @@
 #include <ozz/animation/offline/skeleton_builder.h>
 #include "Core\Math\MathTypes.h"
 #include "Core\Math\Transform.h"
+#include "Core\Logging\Logger.h"
 
 namespace Engine
 {
     namespace
     {
+        template<typename Keys>
+        bool validateKeyTimes(const Keys& keys, const float duration, const std::string& clip,
+            const std::string& joint, const char* type)
+        {
+            float previous = -1.0f;
+            float previousRatio = -1.0f;
+            const float inverseDuration = 1.0f / duration;
+            for (std::size_t index = 0; index < keys.size(); ++index)
+            {
+                const float time = keys[index].time;
+                const float ratio = time * inverseDuration;
+                const bool implicitEndpointCollision = keys.size() > 1
+                    && ((index == 0 && time > 0.0f && ratio <= 0.0f)
+                        || (index + 1 == keys.size() && time < duration && ratio >= duration * inverseDuration));
+                if (!std::isfinite(time) || time < 0.0f || time > duration || time <= previous
+                    || !std::isfinite(ratio) || ratio <= previousRatio || implicitEndpointCollision)
+                {
+                    LOG_ERROR("[AnimationAssetBuilder] Clip '{}' joint '{}' {} key {} has invalid time {} "
+                        "(previous {}, duration {}, ozz ratio {}, previous ratio {}); "
+                        "times and ozz ratios must be finite and strictly increasing (including implicit endpoints), "
+                        "with times in range.",
+                        clip, joint, type, index, time, previous, duration, ratio, previousRatio);
+                    return false;
+                }
+                previous = time;
+                previousRatio = ratio;
+            }
+            return true;
+        }
+
         void hashBytes(std::uint64_t& hash, const void* data, const std::size_t size) noexcept
         {
             constexpr std::uint64_t prime = 1099511628211ull;
@@ -166,15 +197,23 @@ namespace Engine
 
     bool AnimationAssetBuilder::buildClip(const AnimationResource& source, const SkeletonAsset& skeleton, const std::filesystem::path& sourcePath, AnimationClipAsset& destination) const
     {
-        if (source.duration <= 0.0f || skeleton.skeleton.num_joints() == 0)
+        if (!std::isfinite(source.duration) || source.duration <= 0.0f || skeleton.skeleton.num_joints() == 0)
+        {
+            LOG_ERROR("[AnimationAssetBuilder] Cannot build clip '{}': invalid duration {} or empty skeleton.",
+                source.name, source.duration);
             return false;
+        }
 
         std::unordered_map<std::string_view, const AnimationChannel*> channels;
         channels.reserve(source.channels.size());
         for (const AnimationChannel& channel : source.channels)
         {
             if (!channels.emplace(channel.nodeName, &channel).second)
+            {
+                LOG_ERROR("[AnimationAssetBuilder] Clip '{}' contains duplicate channel '{}'.",
+                    source.name, channel.nodeName);
                 return false;
+            }
         }
 
         ozz::animation::offline::RawAnimation rawAnimation;
@@ -204,7 +243,11 @@ namespace Engine
                     if (sameJointName(channelName, skeleton.jointNames[index]))
                     {
                         if (channel != nullptr)
+                        {
+                            LOG_ERROR("[AnimationAssetBuilder] Clip '{}' has ambiguous channels for joint '{}'.",
+                                source.name, skeleton.jointNames[index]);
                             return false;
+                        }
                         channel = candidate;
                     }
             if (channel == nullptr || channel->positions.empty())
@@ -236,14 +279,24 @@ namespace Engine
                     track.scales.push_back({ key.time, { key.value.x, key.value.y, key.value.z } });
                 }
             }
+            if (!validateKeyTimes(track.translations, source.duration, source.name, skeleton.jointNames[index], "translation")
+                || !validateKeyTimes(track.rotations, source.duration, source.name, skeleton.jointNames[index], "rotation")
+                || !validateKeyTimes(track.scales, source.duration, source.name, skeleton.jointNames[index], "scale"))
+                return false;
         }
         if (!rawAnimation.Validate())
+        {
+            LOG_ERROR("[AnimationAssetBuilder] ozz rejected raw animation '{}'.", source.name);
             return false;
+        }
 
         ozz::animation::offline::AnimationBuilder builder;
         auto runtimeAnimation = builder(rawAnimation);
         if (runtimeAnimation == nullptr)
+        {
+            LOG_ERROR("[AnimationAssetBuilder] ozz runtime animation build failed for '{}'.", source.name);
             return false;
+        }
 
         AnimationClipAsset result;
         result.guid = makeAssetGuid(sourcePath, std::string("clip/") + source.name);

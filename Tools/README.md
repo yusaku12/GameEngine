@@ -679,6 +679,17 @@ global asset edits, files written by gameplay, or static variables.
 Camera settings and Main Camera preference are persisted in versioned
 FlatBuffers payloads. Legacy empty Camera payloads retain default settings.
 
+## FBX animation import
+
+FBX animation stacks are sampled in seconds at 60-120 Hz. Each stack shares one
+sampling schedule across its channels. Key times remain strictly increasing
+after conversion to float and to ozz's `time * inverseDuration` ratios; the final
+key samples the exact FBX endpoint once, even when the preceding grid sample
+rounds to the same float timestamp or normalized ratio.
+Animation conversion failures report the clip and, for invalid key times, the
+joint, track type, key index, previous time, duration and normalized ratios.
+Invalid clips are rejected rather than silently omitted from the model.
+
 ## Animator root motion
 
 Enable **Apply Root Motion** on an Animator to extract model-space XYZ translation

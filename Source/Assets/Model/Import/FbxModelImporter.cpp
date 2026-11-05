@@ -721,18 +721,34 @@ namespace Engine
                 animation.duration = static_cast<float>(duration);
                 animation.ticksPerSecond = 1.0f;
                 animation.channels.reserve(nodes.size());
+                std::vector<double> sampleTimes;
+                sampleTimes.reserve(frameCount);
+                const float inverseDuration = 1.0f / animation.duration;
+                const float endRatio = animation.duration * inverseDuration;
+                for (std::size_t frame = 0; frame + 1 < frameCount; ++frame)
+                {
+                    const double seconds = static_cast<double>(frame) / frameRate;
+                    const float keyTime = static_cast<float>(seconds);
+                    const float ratio = keyTime * inverseDuration;
+                    // ozz stores float time * inverse duration; reserve its final ratio for the exact endpoint.
+                    if (keyTime >= animation.duration || ratio >= endRatio)
+                        break;
+                    if (sampleTimes.empty() || (keyTime > static_cast<float>(sampleTimes.back())
+                        && ratio > static_cast<float>(sampleTimes.back()) * inverseDuration))
+                        sampleTimes.push_back(seconds);
+                }
+                sampleTimes.push_back(duration);
                 for (FbxNode* node : nodes)
                 {
                     if (!hasAnimationCurves(node, layers))
                         continue;
                     AnimationChannel channel;
                     channel.nodeName = nodePath(node);
-                    channel.positions.reserve(frameCount);
-                    channel.rotations.reserve(frameCount);
-                    channel.scales.reserve(frameCount);
-                    for (std::size_t frame = 0; frame < frameCount; ++frame)
+                    channel.positions.reserve(sampleTimes.size());
+                    channel.rotations.reserve(sampleTimes.size());
+                    channel.scales.reserve(sampleTimes.size());
+                    for (const double seconds : sampleTimes)
                     {
-                        const double seconds = std::min(duration, static_cast<double>(frame) / frameRate);
                         FbxTime currentTime;
                         currentTime.SetSecondDouble(startSeconds + seconds);
                         const FbxAMatrix transform = reflectX(node->EvaluateLocalTransform(currentTime));
