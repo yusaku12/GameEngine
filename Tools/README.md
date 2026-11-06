@@ -689,6 +689,18 @@ rounds to the same float timestamp or normalized ratio.
 Animation conversion failures report the clip and, for invalid key times, the
 joint, track type, key index, previous time, duration and normalized ratios.
 Invalid clips are rejected rather than silently omitted from the model.
+For translation, rotation and scale curves on every animation layer, cubic
+intervals with nonfinite incoming/outgoing derivatives are changed to linear
+interpolation in the imported scene only. Each repaired curve produces a warning
+identifying the clip, node, component, interval count and first affected time.
+Finite cubic intervals and constant/linear interpolation remain unchanged; the
+source FBX is never rewritten. Nonfinite key values or sampled transforms still
+fail import rather than being replaced by identity transforms.
+Clip conversion also rejects nonfinite/invalid rotations and translation/scale
+values outside ozz's finite half-precision range. Runtime evaluation never
+publishes nonfinite or singular skinning palettes, retaining the last valid pose
+and logging an error instead. Reimport the FBX after updating the engine to repair
+previously imported animation data; already saved clips are not auto-repaired.
 
 ## Animator root motion
 

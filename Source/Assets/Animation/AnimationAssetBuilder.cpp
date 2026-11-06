@@ -13,6 +13,37 @@ namespace Engine
     namespace
     {
         template<typename Keys>
+        bool validateKeyValues(const Keys& keys, const std::string& clip, const std::string& joint,
+            const char* type)
+        {
+            for (std::size_t index = 0; index < keys.size(); ++index)
+            {
+                const auto& value = keys[index].value;
+                bool valid = std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+                if constexpr (requires { value.w; })
+                {
+                    const float lengthSquared = value.x * value.x + value.y * value.y
+                        + value.z * value.z + value.w * value.w;
+                    valid = valid && std::isfinite(value.w) && std::isfinite(lengthSquared) && lengthSquared > 0.0f;
+                }
+                else
+                {
+                    // ozz compresses translation and scale components to half precision.
+                    valid = valid && std::abs(value.x) <= 65504.0f
+                        && std::abs(value.y) <= 65504.0f && std::abs(value.z) <= 65504.0f;
+                }
+                if (!valid)
+                {
+                    LOG_ERROR("[AnimationAssetBuilder] Clip '{}' joint '{}' {} key {} at {} seconds "
+                        "has an invalid value or exceeds ozz compression range.",
+                        clip, joint, type, index, keys[index].time);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        template<typename Keys>
         bool validateKeyTimes(const Keys& keys, const float duration, const std::string& clip,
             const std::string& joint, const char* type)
         {
@@ -281,7 +312,10 @@ namespace Engine
             }
             if (!validateKeyTimes(track.translations, source.duration, source.name, skeleton.jointNames[index], "translation")
                 || !validateKeyTimes(track.rotations, source.duration, source.name, skeleton.jointNames[index], "rotation")
-                || !validateKeyTimes(track.scales, source.duration, source.name, skeleton.jointNames[index], "scale"))
+                || !validateKeyTimes(track.scales, source.duration, source.name, skeleton.jointNames[index], "scale")
+                || !validateKeyValues(track.translations, source.name, skeleton.jointNames[index], "translation")
+                || !validateKeyValues(track.rotations, source.name, skeleton.jointNames[index], "rotation")
+                || !validateKeyValues(track.scales, source.name, skeleton.jointNames[index], "scale"))
                 return false;
         }
         if (!rawAnimation.Validate())

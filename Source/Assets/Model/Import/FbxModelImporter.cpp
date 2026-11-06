@@ -661,9 +661,42 @@ namespace Engine
             return layers.empty();
         }
 
-        std::vector<AnimationResource> loadAnimations(FbxScene* scene)
+        bool repairAnimationCurve(FbxAnimCurve* curve, const char* clip, const std::string& node,
+            const char* property, const char* axis)
         {
-            std::vector<AnimationResource> animations;
+            if (curve == nullptr)
+                return true;
+            std::vector<int> invalidIntervals;
+            for (int key = 0; key < curve->KeyGetCount(); ++key)
+            {
+                if (!std::isfinite(curve->KeyGetValue(key)))
+                {
+                    LOG_ERROR_CAT("FbxModelImporter", "Clip '{}' node '{}' {}.{} key {} has a nonfinite value.",
+                        clip, node, property, axis, key);
+                    return false;
+                }
+                if (key + 1 < curve->KeyGetCount()
+                    && curve->KeyGetInterpolation(key) == FbxAnimCurveDef::eInterpolationCubic
+                    && (!std::isfinite(curve->KeyGetRightDerivative(key))
+                        || !std::isfinite(curve->KeyGetLeftDerivative(key + 1))))
+                    invalidIntervals.push_back(key);
+            }
+            if (invalidIntervals.empty())
+                return true;
+            // Inspect all derivatives before edits, which can affect neighboring auto tangents.
+            curve->KeyModifyBegin();
+            for (const int key : invalidIntervals)
+                curve->KeySetInterpolation(key, FbxAnimCurveDef::eInterpolationLinear);
+            curve->KeyModifyEnd();
+            LOG_WARNING_CAT("FbxModelImporter", "Clip '{}' node '{}' {}.{}: replaced {} cubic intervals "
+                "with nonfinite tangents by linear interpolation (first interval starts at {} seconds).",
+                clip, node, property, axis, invalidIntervals.size(),
+                curve->KeyGetTime(invalidIntervals.front()).GetSecondDouble());
+            return true;
+        }
+
+        bool loadAnimations(FbxScene* scene, std::vector<AnimationResource>& animations)
+        {
             FbxArray<FbxString*> stackNames;
             scene->FillAnimStackNameArray(stackNames);
             std::unordered_map<std::string, std::uint32_t> nameCounts;
@@ -701,6 +734,21 @@ namespace Engine
                     if (source != nullptr && std::strcmp(source->GetClassId().GetName(), "FbxAnimLayer") == 0)
                         layers.push_back(static_cast<FbxAnimLayer*>(source));
                 }
+                for (FbxNode* node : nodes)
+                {
+                    const std::string path = nodePath(node);
+                    for (FbxAnimLayer* layer : layers)
+                        for (const char* axis : { FBXSDK_CURVENODE_COMPONENT_X,
+                            FBXSDK_CURVENODE_COMPONENT_Y, FBXSDK_CURVENODE_COMPONENT_Z })
+                            if (!repairAnimationCurve(node->LclTranslation.GetCurve(layer, axis),
+                                stackName->Buffer(), path, "translation", axis)
+                                || !repairAnimationCurve(node->LclRotation.GetCurve(layer, axis),
+                                    stackName->Buffer(), path, "rotation", axis)
+                                || !repairAnimationCurve(node->LclScaling.GetCurve(layer, axis),
+                                    stackName->Buffer(), path, "scale", axis))
+                                return false;
+                }
+                scene->GetAnimationEvaluator()->Reset();
                 const FbxTimeSpan span = stack->GetLocalTimeSpan();
                 const double startSeconds = span.GetStart().GetSecondDouble();
                 const double duration = span.GetDuration().GetSecondDouble();
@@ -752,6 +800,15 @@ namespace Engine
                         FbxTime currentTime;
                         currentTime.SetSecondDouble(startSeconds + seconds);
                         const FbxAMatrix transform = reflectX(node->EvaluateLocalTransform(currentTime));
+                        for (int row = 0; row < 4; ++row)
+                            for (int column = 0; column < 4; ++column)
+                                if (!std::isfinite(transform[row][column]))
+                                {
+                                    LOG_ERROR_CAT("FbxModelImporter", "Clip '{}' node '{}' has a nonfinite "
+                                        "transform at {} seconds; animation import failed.",
+                                        animation.name, channel.nodeName, seconds);
+                                    return false;
+                                }
                         channel.positions.push_back({ toVector3(transform.GetT()), static_cast<float>(seconds) });
                         channel.rotations.push_back({ toVector4(transform.GetQ()), static_cast<float>(seconds) });
                         channel.scales.push_back({ toVector3(transform.GetS()), static_cast<float>(seconds) });
@@ -760,7 +817,7 @@ namespace Engine
                 }
                 animations.push_back(std::move(animation));
             }
-            return animations;
+            return true;
         }
     }
 
@@ -781,7 +838,8 @@ namespace Engine
             LOG_ERROR_CAT("FbxModelImporter", "Could not convert FBX scene: {}", path.string());
             return nullptr;
         }
-        model->animations = loadAnimations(imported->scene);
+        if (!loadAnimations(imported->scene, model->animations))
+            return nullptr;
         calculateBounds(*model);
         if (model->meshes.empty())
         {
@@ -799,7 +857,9 @@ namespace Engine
         std::unique_ptr<ImportedScene> imported = loadScene(path);
         if (imported == nullptr || imported->scene->GetRootNode() == nullptr)
             return {};
-        std::vector<AnimationResource> animations = loadAnimations(imported->scene);
+        std::vector<AnimationResource> animations;
+        if (!loadAnimations(imported->scene, animations))
+            return {};
         LOG_INFO_CAT("FbxModelImporter", "Animation import succeeded: {} animations from {}",
             animations.size(), path.string());
         return animations;

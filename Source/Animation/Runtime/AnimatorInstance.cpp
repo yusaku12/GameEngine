@@ -12,6 +12,15 @@ namespace Engine
 {
     namespace
     {
+        bool isFinite(const Matrix& matrix) noexcept
+        {
+            for (const auto& row : matrix.m)
+                for (const float value : row)
+                    if (!std::isfinite(value))
+                        return false;
+            return true;
+        }
+
         bool rigidTransform(const Matrix& matrix, Matrix& rigid)
         {
             Transform transform;
@@ -1005,8 +1014,15 @@ namespace Engine
             const Matrix modelMatrix = toEngineMatrix(m_modelMatrices[index]) * removeMotion;
             const Matrix skinningMatrix = m_bindPoseCorrections[index]
                 * m_skeleton->inverseBindPoses[index] * modelMatrix;
+            const Matrix normalMatrix = skinningMatrix.Invert().Transpose();
+            if (!isFinite(skinningMatrix) || !isFinite(normalMatrix))
+            {
+                LOG_ERROR("[Animator] Joint {} '{}' produced a nonfinite or singular skinning transform; "
+                    "keeping the last valid palette.", index, m_skeleton->jointNames[index]);
+                return false;
+            }
             snapshot->constants.boneMatrices[index] = skinningMatrix;
-            snapshot->constants.boneNormalMatrices[index] = skinningMatrix.Invert().Transpose();
+            snapshot->constants.boneNormalMatrices[index] = normalMatrix;
         }
         m_publishedSnapshot = m_snapshotRing[(m_nextSnapshot + m_snapshotRing.size() - 1) % m_snapshotRing.size()];
         return true;
