@@ -407,7 +407,7 @@ namespace Engine
         if (m_clip.isValid())
             m_availableClips.push_back(m_clip);
         m_bindingDirty = false;
-        m_restorePending = m_skeletonGuid.isValid() || m_clipGuid.isValid() || m_controllerGuid.isValid();
+        m_restorePending = m_clipGuid.isValid() || m_controllerGuid.isValid();
         m_evaluationErrorLogged = false;
         return true;
     }
@@ -457,9 +457,26 @@ namespace Engine
                 }
             }
         }
-        target->m_restorePending = m_skeletonGuid.isValid() || m_clipGuid.isValid() || m_controllerGuid.isValid();
+        target->m_restorePending = m_clipGuid.isValid() || m_controllerGuid.isValid();
         target->m_bindingDirty = false;
         return true;
+    }
+
+    void AnimatorComponent::clearAnimationClip() noexcept
+    {
+        m_instance.clear();
+        m_clip = AnimationClipHandle::Invalid();
+        m_clipGuid = {};
+        m_clipPath.clear();
+        m_pendingState = 0;
+        m_pendingNormalizedTime = 0.0f;
+        m_pendingPlaying = true;
+        m_restorePending = false;
+        m_bindingDirty = false;
+        m_evaluationErrorLogged = false;
+        m_evaluationPending = false;
+        m_rootMotionPending = false;
+        m_rootMotionErrorLogged = false;
     }
 
     void AnimatorComponent::onAwake()
@@ -737,6 +754,15 @@ namespace Engine
                 const bool selected = clip == m_clip;
                 if (ImGui::Selectable(asset->name.c_str(), selected) && !selected)
                     setAnimation(m_skeleton, clip);
+            }
+            if (m_clip.isValid() && !m_controller.isValid()
+                && ImGui::Button("Remove Selected Animation"))
+            {
+                const AnimationClipHandle selectedClip = m_clip;
+                clearAnimationClip();
+                m_availableClips.erase(
+                    std::remove(m_availableClips.begin(), m_availableClips.end(), selectedClip),
+                    m_availableClips.end());
             }
             ImGui::TreePop();
         }
