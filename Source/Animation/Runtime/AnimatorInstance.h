@@ -117,7 +117,7 @@ namespace Engine
 
         /**
          * @brief XYZ移動と回転の抽出を設定する。空の名前は先頭ルートを使用する。
-         * @return ボーンと姿勢が有効な場合はtrue。設定変更・seekは移動を発生させない。
+         * @return ボーンと姿勢が有効な場合はtrue。有効化時の姿勢を基準とし、設定変更・seekは移動を発生させない。
          * @thread_safety 評価と並行して呼び出してはならない。
          */
         bool configureRootMotion(bool enabled, std::string_view jointName);
@@ -229,15 +229,15 @@ namespace Engine
         };
 
         /**
-         * @brief 現在の正規化時刻でozz runtimeを評価し、Palette Snapshotを生成する。
+         * @brief 指定正規化時刻でozz runtimeのモデル行列を評価する。Snapshotは公開しない。
          * @param ratio 正規化時刻。0.0fでClip開始、1.0fでClip終了。
          */
-        bool evaluate(float ratio);
+        bool samplePose(float ratio);
 
         /**
-         * @brief 現在の正規化時刻でozz runtimeを評価し、Palette Snapshotを生成する。
+         * @brief 現在のController姿勢のモデル行列を評価する。Snapshotは公開しない。
          */
-        bool evaluateCurrentPose();
+        bool sampleControllerPose();
 
         /**
          * @brief 現在のstateをozz runtimeで評価し、Blended Transformを生成する。

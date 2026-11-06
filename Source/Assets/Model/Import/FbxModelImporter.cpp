@@ -695,6 +695,60 @@ namespace Engine
             return true;
         }
 
+        bool unrollRotation(FbxNode* node, FbxAnimLayer* layer, const char* clip, const std::string& path)
+        {
+            FbxAnimCurveNode* rotation = node->LclRotation.GetCurveNode(layer);
+            if (rotation == nullptr || node->GetQuaternionInterpolation(FbxNode::eSourcePivot) != eQuatInterpOff)
+                return true;
+            // The SDK filter requires all three axes, even when only one axis is animated.
+            const FbxDouble3 defaults = node->LclRotation.Get();
+            const std::array axes{ FBXSDK_CURVENODE_COMPONENT_X,
+                FBXSDK_CURVENODE_COMPONENT_Y, FBXSDK_CURVENODE_COMPONENT_Z };
+            for (std::size_t axis = 0; axis < axes.size(); ++axis)
+            {
+                FbxAnimCurve* curve = node->LclRotation.GetCurve(layer, axes[axis], true);
+                if (curve == nullptr)
+                {
+                    LOG_ERROR_CAT("FbxModelImporter", "Clip '{}' node '{}': could not complete rotation curves.", clip, path);
+                    return false;
+                }
+                if (curve->KeyGetCount() == 0)
+                {
+                    const float value = static_cast<float>(
+                        rotation->GetChannelValue<double>(axes[axis], defaults[static_cast<int>(axis)]));
+                    if (!std::isfinite(value))
+                    {
+                        LOG_ERROR_CAT("FbxModelImporter", "Clip '{}' node '{}' rotation.{} has a nonfinite default.",
+                            clip, path, axes[axis]);
+                        return false;
+                    }
+                    curve->KeyModifyBegin();
+                    const int key = curve->KeyAdd(FBXSDK_TIME_ZERO);
+                    curve->KeySetValue(key, value);
+                    curve->KeySetInterpolation(key, FbxAnimCurveDef::eInterpolationConstant);
+                    curve->KeyModifyEnd();
+                }
+            }
+            FbxAnimCurveFilterUnroll unroll;
+            EFbxRotationOrder order;
+            node->GetRotationOrder(FbxNode::eSourcePivot, order);
+            unroll.SetRotationOrder(static_cast<FbxEuler::EOrder>(order));
+            unroll.SetForceAutoTangents(true);
+            if (unroll.NeedApply(*rotation))
+            {
+                FbxStatus status;
+                if (!unroll.Apply(*rotation, &status))
+                {
+                    LOG_ERROR_CAT("FbxModelImporter", "Clip '{}' node '{}' Euler unroll failed: {}",
+                        clip, path, status.GetErrorString());
+                    return false;
+                }
+                LOG_WARNING_CAT("FbxModelImporter", "Clip '{}' node '{}': unrolled discontinuous "
+                    "Euler rotations before sampling.", clip, path);
+            }
+            return true;
+        }
+
         bool loadAnimations(FbxScene* scene, std::vector<AnimationResource>& animations)
         {
             FbxArray<FbxString*> stackNames;
@@ -738,6 +792,7 @@ namespace Engine
                 {
                     const std::string path = nodePath(node);
                     for (FbxAnimLayer* layer : layers)
+                    {
                         for (const char* axis : { FBXSDK_CURVENODE_COMPONENT_X,
                             FBXSDK_CURVENODE_COMPONENT_Y, FBXSDK_CURVENODE_COMPONENT_Z })
                             if (!repairAnimationCurve(node->LclTranslation.GetCurve(layer, axis),
@@ -747,6 +802,9 @@ namespace Engine
                                 || !repairAnimationCurve(node->LclScaling.GetCurve(layer, axis),
                                     stackName->Buffer(), path, "scale", axis))
                                 return false;
+                        if (!unrollRotation(node, layer, stackName->Buffer(), path))
+                            return false;
+                    }
                 }
                 scene->GetAnimationEvaluator()->Reset();
                 const FbxTimeSpan span = stack->GetLocalTimeSpan();

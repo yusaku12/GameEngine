@@ -37,6 +37,15 @@ namespace Engine
             return true;
         }
 
+        Matrix inverseRigidTransform(const Matrix& matrix) noexcept
+        {
+            Matrix inverse = matrix.Transpose();
+            inverse._14 = inverse._24 = inverse._34 = 0.0f;
+            inverse._44 = 1.0f;
+            inverse.Translation(Vector3::TransformNormal(-matrix.Translation(), inverse));
+            return inverse;
+        }
+
         bool rigidPower(Matrix base, const double exponent, Matrix& result)
         {
             // Loop counts are computed in double; do not silently truncate an unrepresentable count.
@@ -46,7 +55,7 @@ namespace Engine
                 return false;
             }
             if (exponent < 0.0)
-                base = base.Invert();
+                base = inverseRigidTransform(base);
             auto remaining = static_cast<std::uint64_t>(std::abs(exponent));
             result = Matrix::Identity;
             while (remaining != 0)
@@ -257,7 +266,7 @@ namespace Engine
         m_loopCount = 0;
         m_nextSnapshot = 0;
         m_playing = true;
-        return evaluate(0.0f);
+        return samplePose(0.0f) && publishPose();
     }
 
     bool AnimatorInstance::setController(std::shared_ptr<const SkeletonAsset> skeleton,
@@ -413,7 +422,7 @@ namespace Engine
         }
         m_nextSnapshot = 0;
         m_playing = true;
-        return evaluateCurrentPose();
+        return sampleControllerPose() && publishPose();
     }
 
     void AnimatorInstance::clear() noexcept
@@ -501,6 +510,9 @@ namespace Engine
         }
         if (m_rootMotionEnabled && m_rootMotionJointName == jointName)
             return true;
+        const bool previouslyEnabled = m_rootMotionEnabled;
+        const std::size_t previousJoint = m_rootMotionJoint;
+        const Matrix previousReference = m_rootReference;
         m_rootMotionEnabled = false;
         if (m_skeleton == nullptr)
         {
@@ -525,18 +537,22 @@ namespace Engine
         }
         m_rootSamplingContext = std::make_unique<ozz::animation::SamplingJob::Context>(
             m_skeleton->skeleton.num_joints());
-        ozz::animation::LocalToModelJob restPose;
-        restPose.skeleton = &m_skeleton->skeleton;
-        restPose.input = m_skeleton->skeleton.joint_rest_poses();
-        restPose.output = ozz::make_span(m_modelMatrices);
-        if (!restPose.Run())
+        if (!(m_controller != nullptr ? sampleControllerPose() : samplePose(getNormalizedTime())))
         {
-            LOG_ERROR("[Animator] Root motion rest-pose hierarchy evaluation failed.");
+            LOG_ERROR("[Animator] Root motion reference-pose evaluation failed.");
             return false;
         }
-        if (!rigidTransform(toEngineMatrix(m_modelMatrices[m_rootMotionJoint]), m_rootReference))
+        Matrix previousRemoval = Matrix::Identity;
+        if (previouslyEnabled)
+        {
+            Matrix previousRoot;
+            if (!rigidTransform(toEngineMatrix(m_modelMatrices[previousJoint]), previousRoot))
+                return false;
+            previousRemoval = inverseRigidTransform(previousRoot) * previousReference;
+        }
+        if (!rigidTransform(toEngineMatrix(m_modelMatrices[m_rootMotionJoint]) * previousRemoval, m_rootReference))
             return false;
-        m_inverseRootReference = m_rootReference.Invert();
+        m_inverseRootReference = inverseRigidTransform(m_rootReference);
         if (m_controller != nullptr)
         {
             for (RuntimeState& state : m_states)
@@ -576,7 +592,7 @@ namespace Engine
         Matrix end;
         if (!sampleRoot(clip, 0.0f, start) || !sampleRoot(clip, 1.0f, end))
             return false;
-        track.inverseStart = start.Invert();
+        track.inverseStart = inverseRigidTransform(start);
         return rigidTransform(end * track.inverseStart, track.cycle);
     }
 
@@ -601,7 +617,7 @@ namespace Engine
         // Extend the trajectory across wraps before differencing, including reverse/multiple loops.
         const Matrix before = previous * track.inverseStart;
         const Matrix after = current * track.inverseStart;
-        return rigidTransform(after * cycles * before.Invert(), delta);
+        return rigidTransform(after * cycles * inverseRigidTransform(before), delta);
     }
 
     bool AnimatorInstance::setFloat(const AnimatorParameterID parameterId, const float value) noexcept
@@ -782,7 +798,7 @@ namespace Engine
                         m_playing = false;
                 }
             }
-            if (!evaluateCurrentPose())
+            if (!sampleControllerPose() || !publishPose())
                 return false;
             m_rootMotionDelta = rootDelta;
             return true;
@@ -822,7 +838,7 @@ namespace Engine
                 previousTime, m_time, static_cast<double>(deltaTime) * m_speed, rootDelta))
                 return false;
         }
-        if (!evaluate(getNormalizedTime()))
+        if (!samplePose(getNormalizedTime()) || !publishPose())
             return false;
         m_rootMotionDelta = rootDelta;
         return true;
@@ -941,7 +957,7 @@ namespace Engine
         return sampling.Run();
     }
 
-    bool AnimatorInstance::evaluateCurrentPose()
+    bool AnimatorInstance::sampleControllerPose()
     {
         RuntimeState& current = m_states[m_currentStateIndex];
         if (!sampleState(current)) return false;
@@ -969,10 +985,10 @@ namespace Engine
         localToModel.output = ozz::make_span(m_modelMatrices);
         if (!localToModel.Run()) return false;
 
-        return publishPose();
+        return true;
     }
 
-    bool AnimatorInstance::evaluate(const float ratio)
+    bool AnimatorInstance::samplePose(const float ratio)
     {
         if (m_samplingContext == nullptr || m_skeleton == nullptr || m_clip == nullptr)
             return false;
@@ -993,7 +1009,7 @@ namespace Engine
         if (!localToModel.Run())
             return false;
 
-        return publishPose();
+        return true;
     }
 
     bool AnimatorInstance::publishPose()
@@ -1004,7 +1020,7 @@ namespace Engine
             Matrix root;
             if (!rigidTransform(toEngineMatrix(m_modelMatrices[m_rootMotionJoint]), root))
                 return false;
-            removeMotion = root.Invert() * m_rootReference;
+            removeMotion = inverseRigidTransform(root) * m_rootReference;
         }
         SkinningPaletteSnapshot* const snapshot = acquireSnapshot();
         if (snapshot == nullptr)

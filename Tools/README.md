@@ -702,6 +702,16 @@ publishes nonfinite or singular skinning palettes, retaining the last valid pose
 and logging an error instead. Reimport the FBX after updating the engine to repair
 previously imported animation data; already saved clips are not auto-repaired.
 
+Euler rotation curves are unrolled with the FBX SDK filter, respecting each
+node's rotation order, before resampling. This prevents a 359-to-0-degree wrap
+from interpolating through an unintended full turn. Missing axes retain their
+channel defaults; quaternion-interpolated nodes are not Euler-filtered. The SDK
+recalculates user/break tangents as auto tangents when unrolling is needed, and
+the importer logs each affected node. This uses the shortest continuous Euler
+path: intentional turns greater than 180 degrees between adjacent keys must
+have intermediate rotation keys. As with tangent repairs, reimport previously
+saved animation data to apply this correction.
+
 ## Animator root motion
 
 Enable **Apply Root Motion** on an Animator to extract model-space XYZ translation
@@ -711,11 +721,16 @@ static scene/group root: select the actual animated root/hips joint in that case
 This is not humanoid retargeting. The component toggle controls extraction;
 the clip's existing `applyRootMotion` metadata is not an additional enable gate.
 
-The selected joint's rigid transform is measured relative to its skeleton rest
-pose. Motion is removed from the entire evaluated pose, including blended poses,
-so moving the GameObject does not apply the animation twice. Animated scale stays
-in the pose. Selected joint transforms must be finite, nonsingular TRS transforms;
-sheared joint transforms are rejected and logged rather than approximated.
+The selected joint's rigid transform is measured relative to the evaluated pose
+when extraction is enabled, including a restored/seeked time or a blended pose.
+Enabling extraction preserves the authored initial orientation and position,
+even when the clip differs from the skeleton rest pose. Changing the extraction
+joint also preserves the currently displayed pose. Motion is removed from the
+entire evaluated pose, so moving the GameObject does not apply the animation
+twice. Animated scale stays in the pose. Selected joint transforms must be finite,
+nonsingular TRS transforms; sheared joint transforms are rejected and logged
+rather than approximated. Rigid inverses preserve the exact affine last column,
+without relaxing animated-bounds validation.
 
 Looping extends the rigid trajectory across clip endpoints, including turning,
 multiple wraps per update and reverse playback. PingPong retraces the trajectory;
@@ -748,6 +763,35 @@ and Rigidbody cannot be used together. Without an enabled controller, movement
 uses the Transform; static colliders follow normal physics synchronization.
 
 Editing previews remove root motion from the pose but never move scene objects.
+
+### Root-motion regression tests
+
+The focused CPU-only suite builds the production importer/Animator code and ozz
+without requiring a graphics device. Run from a Visual Studio Developer shell:
+
+```powershell
+cmake -S Tools\Animation\Tests -B Build\RootMotionTests -G "Visual Studio 18 2026" -A x64
+cmake --build Build\RootMotionTests --config Debug --target RootMotionTests --parallel
+ctest --test-dir Build\RootMotionTests -C Debug --output-on-failure
+```
+
+Use `Release` for both build/test configuration arguments to test optimized code.
+Pass `-DFBXSDK_ROOT="C:\path\to\FBX SDK"` during configuration for a non-default SDK.
+Tests compare extracted motion against independent matrix trajectories across
+Once/Loop/PingPong, reverse/multiple loops, nonidentity start/rest transforms,
+scaled hierarchies, reconfiguration, restored controllers, crossfades and
+snapshot backpressure. Generated FBX fixtures cover all six Euler orders,
+three axes and sparse/dense curves. Fixtures are removed after the test.
+For an affected idle FBX, additionally run:
+
+```powershell
+.\Build\RootMotionTests\Debug\RootMotionTests.exe --idle-model "C:\path\to\idle.fbx"
+```
+
+This checks every skinned vertex, root-motion world-pose reconstruction
+(maximum error 0.2 mm), exact-affine palettes, valid animated bounds and
+120-Hz vertex continuity (maximum step 5 cm), using the first root and named
+`root`/`pelvis` joints when present.
 Animator payload v2 and Play clones retain the selected joint and enable flag;
 v1 payloads remain readable and default to First Root. Runtime motion deltas are
 transient and are never saved or replayed after loading.
