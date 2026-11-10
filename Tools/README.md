@@ -715,7 +715,7 @@ saved animation data to apply this correction.
 ## Per-animation component settings
 
 Select a row in the Animator's **Animation Clips** list to edit **Animation Name**,
-**Speed**, and **Apply Root Motion** for that clip. Each clip remembers independent
+**Speed**, **Playback Mode**, and **Apply Root Motion** for that clip. Each clip remembers independent
 values when switching clips; new clips default to speed 1 and root motion disabled.
 Speed 0 holds time, negative speed plays backwards, and nonfinite speeds are rejected.
 Blank names are rejected. Names are component-local display names, not file or
@@ -727,11 +727,36 @@ without sharing mutable configuration. Different objects using the same Model ca
 have different names, speeds and root-motion enable flags. **Root Motion Joint**
 remains a component-wide skeleton setting.
 
+**Playback Mode** selects **Once** (clamp and stop at either endpoint), **Loop**,
+or **Ping Pong** (repeated forward/backward travel). Modes are component-local;
+shared Clip assets and Controller states are unchanged. Changing modes preserves
+the current visible pose and playing/paused state, resetting the cycle count and
+using the outward leg of Ping Pong. Older payloads inherit each Clip asset's mode.
+
+The **Seek** slider immediately previews a normalized position and pauses playback.
+The `seek()` API preserves playing/paused state; the Inspector explicitly pauses
+after a successful scrub. **Stop** returns to the first animation pose and pauses
+(not the skeleton's bind pose); **Rewind** returns to that pose while keeping the
+playing/paused state. These operations never apply Root Motion displacement or
+rotation to the GameObject. **Play** resumes from the current position and preserves
+Ping Pong's travel direction. Once playback that has finished restarts from the
+appropriate endpoint for the speed's sign. Speed zero does not advance time.
+
+**Initial Animation** chooses the clip used when game Play starts; **Selected
+Animation** uses the saved/editor selection, or the Model's first clip on a newly
+configured Animator. **Play Automatically** controls whether it starts playing or
+displays its first pose paused. Startup always begins at normalized time zero,
+independently of editor scrubbing and preview Pause/Play. Changing these settings
+does not disturb the current editor preview. Deleting the explicit initial clip
+resets the choice to **Selected Animation**. Scene/Prefab payload v4 and Play clones
+retain these settings. A missing/incompatible initial clip is logged rather than
+silently replaced by another clip.
+
 AnimatorComponent handles clip playback only: Controller binding, state playback,
 crossfades, parameters/triggers and their Inspector/serialization code have been
 removed from this component. State/event runtime and asset infrastructure remain
 available for separate components; AnimatorComponent does not dispatch events.
-Payload v3 reads v1/v2 settings by migrating their speed/root-motion flag to the
+Payload v4 reads v1/v2 settings by migrating their speed/root-motion flag to the
 selected clip. Legacy Controller bindings are not restored and produce a warning;
 select a clip and save the Scene/Prefab to migrate. Deprecated FlatBuffers slots
 are reserved for binary compatibility, not active Controller functionality.
@@ -831,7 +856,7 @@ This checks every skinned vertex, root-motion world-pose reconstruction
 (maximum error 0.2 mm), exact-affine palettes, valid animated bounds and
 120-Hz vertex continuity (maximum step 5 cm), using the first root and named
 `root`/`pelvis` joints when present.
-Animator payload v3 and Play clones retain per-clip settings and the selected joint;
+Animator payload v4 and Play clones retain per-clip settings and the selected joint;
 v1 payloads remain readable and default to First Root. Runtime motion deltas are
 transient and are never saved or replayed after loading.
 

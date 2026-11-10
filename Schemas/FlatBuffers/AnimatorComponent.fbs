@@ -1,4 +1,5 @@
 include "Common.fbs";
+include "AnimationClip.fbs";
 
 namespace Engine.Serialization;
 
@@ -24,6 +25,7 @@ table AnimatorClipConfiguration {
     name:string;
     speed:float = 1.0;
     apply_root_motion:bool;
+    wrap_mode:AnimationWrapMode = null;
 }
 
 table AnimatorComponentPayload {
@@ -42,6 +44,8 @@ table AnimatorComponentPayload {
     controller_clips:[AnimatorClipReference] (deprecated);
     root_motion_joint:string;
     clips:[AnimatorClipConfiguration];
+    initial_clip_guid:AssetGuid;
+    auto_play:bool = true;
 }
 
 root_type AnimatorComponentPayload;

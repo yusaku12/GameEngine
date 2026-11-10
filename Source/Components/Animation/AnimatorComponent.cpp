@@ -71,7 +71,10 @@ namespace Engine
         m_bindingDirty = true;
         m_evaluationErrorLogged = false;
         if (bindAssets())
+        {
+            m_startupPending = false;
             return true;
+        }
 
         m_skeleton = previousSkeleton;
         m_clip = previousClip;
@@ -117,13 +120,15 @@ namespace Engine
         {
             if (configuration->name.empty())
                 configuration->name = asset->name.empty() ? "Animation" : asset->name;
+            if (!configuration->wrapMode.has_value())
+                configuration->wrapMode = asset->wrapMode;
             const auto path = assets.getClipPath(clip);
             if (!path.empty())
                 configuration->path = path;
         }
         else
             m_clipConfigurations.push_back({ asset->guid, assets.getClipPath(clip),
-                asset->name.empty() ? "Animation" : asset->name, 1.0f, false });
+                asset->name.empty() ? "Animation" : asset->name, 1.0f, false, asset->wrapMode });
     }
 
     void AnimatorComponent::refreshModelClips()
@@ -239,9 +244,114 @@ namespace Engine
         return true;
     }
 
-    bool AnimatorComponent::play(const float normalizedTime) noexcept
+    bool AnimatorComponent::play(const float normalizedTime)
     {
+        if (!seek(normalizedTime))
+            return false;
         return m_instance.play(normalizedTime);
+    }
+
+    bool AnimatorComponent::seek(const float normalizedTime)
+    {
+        if (!std::isfinite(normalizedTime) || !m_clipGuid.isValid())
+        {
+            LOG_ERROR("[Animator] Select an animation and provide a finite seek time.");
+            return false;
+        }
+        if (m_restorePending)
+        {
+            AnimationAssetManager& assets = AnimationAssetManager::instance();
+            if (!m_skeleton.isValid()) m_skeleton = assets.findSkeletonByGuid(m_skeletonGuid);
+            if (!m_clip.isValid()) m_clip = assets.findClipByGuid(m_clipGuid);
+        }
+        if ((m_restorePending || m_bindingDirty) && !bindAssets())
+            return false;
+        if (!m_instance.configureRootMotion(m_applyRootMotion, m_rootMotionJoint)
+            || !m_instance.seek(normalizedTime))
+            return false;
+        m_rootMotionPending = false;
+        m_startupPending = false;
+        m_evaluationErrorLogged = false;
+        return true;
+    }
+
+    bool AnimatorComponent::resume()
+    {
+        if (!m_clipGuid.isValid())
+        {
+            LOG_ERROR("[Animator] Select an animation before resuming.");
+            return false;
+        }
+        if (m_restorePending || m_bindingDirty)
+        {
+            AnimationAssetManager& assets = AnimationAssetManager::instance();
+            if (!m_skeleton.isValid()) m_skeleton = assets.findSkeletonByGuid(m_skeletonGuid);
+            if (!m_clip.isValid()) m_clip = assets.findClipByGuid(m_clipGuid);
+            if (!bindAssets())
+                return false;
+        }
+        const float time = getNormalizedTime();
+        if (getWrapMode() == AnimationWrapMode::Once
+            && ((getSpeed() > 0.0f && time >= 1.0f) || (getSpeed() < 0.0f && time <= 0.0f)))
+            return play(getSpeed() < 0.0f ? 1.0f : 0.0f);
+        if (!m_instance.resume())
+        {
+            LOG_ERROR("[Animator] Cannot resume without bound animation assets.");
+            return false;
+        }
+        m_startupPending = false;
+        return true;
+    }
+
+    bool AnimatorComponent::stop()
+    {
+        if (!seek(0.0f))
+            return false;
+        pause();
+        return true;
+    }
+
+    bool AnimatorComponent::setWrapMode(const AnimationWrapMode mode)
+    {
+        ClipConfiguration* const configuration = findClipConfiguration(m_clipGuid);
+        if (configuration == nullptr || mode > AnimationWrapMode::PingPong)
+        {
+            LOG_ERROR("[Animator] Select an animation and provide a valid Wrap Mode.");
+            return false;
+        }
+        if (!m_restorePending && m_clip.isValid() && !m_instance.setWrapMode(mode))
+            return false;
+        configuration->wrapMode = mode;
+        m_rootMotionPending = false;
+        return true;
+    }
+
+    AnimationWrapMode AnimatorComponent::getWrapMode() const noexcept
+    {
+        const ClipConfiguration* const configuration = findClipConfiguration(m_clipGuid);
+        return configuration != nullptr && configuration->wrapMode.has_value()
+            ? *configuration->wrapMode : m_instance.getWrapMode();
+    }
+
+    bool AnimatorComponent::setInitialAnimation(const AnimationClipHandle clip)
+    {
+        if (!clip.isValid())
+        {
+            m_initialClipGuid = {};
+            return true;
+        }
+        const auto asset = AnimationAssetManager::instance().getClip(clip);
+        const auto skeleton = AnimationAssetManager::instance().getSkeleton(m_skeleton);
+        if (asset == nullptr || asset->skeletonGuid != m_skeletonGuid
+            || (skeleton != nullptr && (asset->skeletonSignature != skeleton->signature
+                || asset->animation.num_tracks() != skeleton->skeleton.num_joints())))
+        {
+            LOG_ERROR("[Animator] Initial animation must belong to this component's Skeleton.");
+            return false;
+        }
+        registerClip(clip);
+        m_initialClipGuid = asset->guid;
+        return true;
     }
 
     bool AnimatorComponent::setRootMotionJoint(const std::string_view jointName)
@@ -306,6 +416,7 @@ namespace Engine
             const auto path = assets.getClipPath(assets.findClipByGuid(configuration.guid));
             const auto& storedPath = path.empty() ? configuration.path : path;
             if (!configuration.guid.isValid() || !std::isfinite(configuration.speed)
+                || (configuration.wrapMode.has_value() && *configuration.wrapMode > AnimationWrapMode::PingPong)
                 || configuration.name.find_first_not_of(" \t\r\n") == std::string::npos
                 || configuration.name.find('\0') != std::string::npos
                 || (storedPath.empty() && !clipInModel(configuration.guid)))
@@ -316,18 +427,28 @@ namespace Engine
             const Serialization::AssetGuid guid(configuration.guid.high, configuration.guid.low);
             clips.push_back(Serialization::CreateAnimatorClipConfiguration(builder, &guid,
                 builder.CreateString(storedPath.generic_string()), builder.CreateString(configuration.name),
-                configuration.speed, configuration.applyRootMotion));
+                configuration.speed, configuration.applyRootMotion,
+                configuration.wrapMode.has_value()
+                    ? flatbuffers::Optional<Serialization::AnimationWrapMode>(
+                        static_cast<Serialization::AnimationWrapMode>(*configuration.wrapMode))
+                    : flatbuffers::nullopt));
+        }
+        if (m_initialClipGuid.isValid() && findClipConfiguration(m_initialClipGuid) == nullptr)
+        {
+            LOG_ERROR("[Animator] Initial animation has no Clip configuration.");
+            return false;
         }
 
         const Serialization::AssetGuid skeletonGuid(m_skeletonGuid.high, m_skeletonGuid.low);
         const Serialization::AssetGuid clipGuid(m_clipGuid.high, m_clipGuid.low);
+        const Serialization::AssetGuid initialGuid(m_initialClipGuid.high, m_initialClipGuid.low);
         const bool playing = m_restorePending ? m_pendingPlaying : isPlaying();
         const float normalizedTime = m_restorePending ? m_pendingNormalizedTime : getNormalizedTime();
         const auto root = Serialization::CreateAnimatorComponentPayload(builder, &skeletonGuid, &clipGuid,
             nullptr, getSpeed(), m_applyRootMotion, playing, normalizedTime,
             builder.CreateString(skeletonPath.generic_string()),
             builder.CreateString(clipPath.generic_string()), builder.CreateString(m_rootMotionJoint),
-            builder.CreateVector(clips));
+            builder.CreateVector(clips), &initialGuid, m_autoPlay);
         Serialization::FinishAnimatorComponentPayloadBuffer(builder, root);
         payload.assign(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
         return true;
@@ -387,6 +508,15 @@ namespace Engine
                 value.name = configuration->name()->str();
                 value.speed = configuration->speed();
                 value.applyRootMotion = configuration->apply_root_motion();
+                if (const auto mode = configuration->wrap_mode())
+                {
+                    if (*mode > Serialization::AnimationWrapMode_PingPong)
+                    {
+                        LOG_ERROR("[Animator] Invalid serialized Wrap Mode.");
+                        return false;
+                    }
+                    value.wrapMode = static_cast<AnimationWrapMode>(*mode);
+                }
                 if (!value.guid.isValid() || value.name.find_first_not_of(" \t\r\n") == std::string::npos
                     || value.name.find('\0') != std::string::npos
                     || std::any_of(configurations.begin(), configurations.end(),
@@ -400,6 +530,15 @@ namespace Engine
         }
         m_instance.clear();
         m_clipConfigurations = std::move(configurations);
+        m_initialClipGuid = source->initial_clip_guid() != nullptr
+            ? AssetGUID{ source->initial_clip_guid()->high(), source->initial_clip_guid()->low() } : AssetGUID{};
+        if (m_initialClipGuid.isValid() && findClipConfiguration(m_initialClipGuid) == nullptr)
+        {
+            LOG_ERROR("[Animator] Serialized initial animation has no Clip configuration.");
+            return false;
+        }
+        m_autoPlay = source->auto_play();
+        m_startupPending = false;
         m_rootMotionJoint = source->root_motion_joint() != nullptr ? source->root_motion_joint()->str() : "";
         m_rootMotionPending = false;
         m_rootMotionErrorLogged = false;
@@ -414,7 +553,7 @@ namespace Engine
         if (version < 3 && m_clipGuid.isValid() && findClipConfiguration(m_clipGuid) == nullptr)
             m_clipConfigurations.push_back({ m_clipGuid, m_clipPath,
                 clip != nullptr ? clip->name : "",
-                source->speed(), source->apply_root_motion() });
+                source->speed(), source->apply_root_motion(), std::nullopt });
         if (m_clipGuid.isValid() && findClipConfiguration(m_clipGuid) == nullptr)
         {
             LOG_ERROR("[Animator] Selected Clip has no serialized settings.");
@@ -463,6 +602,8 @@ namespace Engine
         target->m_skeletonPath = m_skeletonPath;
         target->m_clipPath = m_clipPath;
         target->m_clipConfigurations = m_clipConfigurations;
+        target->m_initialClipGuid = m_initialClipGuid;
+        target->m_autoPlay = m_autoPlay;
         target->m_availableClips = m_availableClips;
         target->m_applyRootMotion = m_applyRootMotion;
         target->m_rootMotionJoint = m_rootMotionJoint;
@@ -493,8 +634,42 @@ namespace Engine
 
     void AnimatorComponent::onAwake()
     {
-        if (!m_restorePending && !m_skeletonGuid.isValid() && !m_skeleton.isValid() && !m_clip.isValid())
+        m_startupPending = true;
+        pause();
+        preparePendingUpdate();
+        m_evaluationPending = false;
+    }
+
+    bool AnimatorComponent::prepareStartup()
+    {
+        AnimationAssetManager& assets = AnimationAssetManager::instance();
+        if (!m_skeletonGuid.isValid() && !m_skeleton.isValid() && !m_clipGuid.isValid())
             useModelDefaultAnimation();
+        if (!m_skeleton.isValid())
+            m_skeleton = assets.findSkeletonByGuid(m_skeletonGuid);
+        const AssetGUID& initialGuid = m_initialClipGuid.isValid() ? m_initialClipGuid : m_clipGuid;
+        const AnimationClipHandle clip = assets.findClipByGuid(initialGuid);
+        const auto asset = assets.getClip(clip);
+        const auto skeleton = assets.getSkeleton(m_skeleton);
+        if (skeleton == nullptr || asset == nullptr || asset->skeletonGuid != m_skeletonGuid
+            || asset->skeletonSignature != skeleton->signature
+            || asset->animation.num_tracks() != skeleton->skeleton.num_joints())
+        {
+            if (initialGuid.isValid() && !m_evaluationErrorLogged)
+                LOG_ERROR("[Animator] Startup animation or Skeleton is missing or incompatible; playback is waiting.");
+            m_evaluationErrorLogged = initialGuid.isValid();
+            return false;
+        }
+        m_clip = clip;
+        m_clipGuid = asset->guid;
+        m_clipPath = assets.getClipPath(clip);
+        registerClip(clip);
+        m_pendingNormalizedTime = 0.0f;
+        m_pendingPlaying = m_autoPlay;
+        m_restorePending = true;
+        m_bindingDirty = true;
+        m_startupPending = false;
+        return true;
     }
 
     void AnimatorComponent::preparePendingUpdate()
@@ -502,6 +677,8 @@ namespace Engine
         m_evaluationPending = false;
         m_rootMotionPending = false;
 
+        if (m_startupPending && !prepareStartup())
+            return;
         if (!m_restorePending && !m_skeletonGuid.isValid() && !m_skeleton.isValid() && !m_clip.isValid())
             useModelDefaultAnimation();
         if (m_restorePending)
@@ -770,8 +947,12 @@ namespace Engine
                 if (!storedInModel || ModelManager::instance().removeAnimationClip(renderer->getModel(), asset->guid))
                 {
                     if (asset != nullptr)
+                    {
+                        if (m_initialClipGuid == asset->guid)
+                            m_initialClipGuid = {};
                         std::erase_if(m_clipConfigurations,
                             [&asset](const ClipConfiguration& configuration) { return configuration.guid == asset->guid; });
+                    }
                     clearAnimationClip();
                     m_availableClips.erase(
                         std::remove(m_availableClips.begin(), m_availableClips.end(), clipToRemove),
@@ -780,6 +961,31 @@ namespace Engine
             }
             ImGui::TreePop();
         }
+        const ClipConfiguration* const initialConfiguration = findClipConfiguration(m_initialClipGuid);
+        const char* const initialLabel = initialConfiguration != nullptr
+            ? initialConfiguration->name.c_str() : "<Selected Animation>";
+        if (ImGui::BeginCombo("Initial Animation", initialLabel))
+        {
+            if (ImGui::Selectable("<Selected Animation>", !m_initialClipGuid.isValid()))
+                setInitialAnimation(AnimationClipHandle::Invalid());
+            for (const AnimationClipHandle clip : m_availableClips)
+            {
+                const auto asset = AnimationAssetManager::instance().getClip(clip);
+                if (asset == nullptr)
+                    continue;
+                const ClipConfiguration* const configuration = findClipConfiguration(asset->guid);
+                ImGui::PushID(static_cast<int>(clip.index));
+                const ImVec2 textPosition = ImGui::GetCursorScreenPos();
+                if (ImGui::Selectable("##InitialClip", m_initialClipGuid == asset->guid))
+                    setInitialAnimation(clip);
+                ImGui::GetWindowDrawList()->AddText(textPosition, ImGui::GetColorU32(ImGuiCol_Text),
+                    configuration != nullptr ? configuration->name.c_str() : asset->name.c_str());
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::Checkbox("Play Automatically", &m_autoPlay);
+        ImGui::TextDisabled("Startup settings apply when game Play starts, not to the editor preview.");
         ImGui::BeginDisabled(!m_clip.isValid());
         if (m_clip.isValid())
         {
@@ -802,6 +1008,17 @@ namespace Engine
         float speed = getSpeed();
         if (ImGui::DragFloat("Speed", &speed, 0.05f))
             setSpeed(speed);
+        static constexpr std::array wrapLabels{ "Once", "Loop", "Ping Pong" };
+        int wrapMode = static_cast<int>(getWrapMode());
+        if (ImGui::Combo("Playback Mode", &wrapMode, wrapLabels.data(), static_cast<int>(wrapLabels.size())))
+            setWrapMode(static_cast<AnimationWrapMode>(wrapMode));
+        float normalizedTime = getNormalizedTime();
+        if (ImGui::SliderFloat("Seek", &normalizedTime, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp))
+        {
+            if (seek(normalizedTime))
+                pause();
+        }
+        ImGui::TextDisabled("Scrubbing pauses playback; seeking never moves the GameObject.");
         bool applyRootMotion = getApplyRootMotion();
         if (ImGui::Checkbox("Apply Root Motion", &applyRootMotion))
             setApplyRootMotion(applyRootMotion);
@@ -828,8 +1045,14 @@ namespace Engine
         }
         else if (ImGui::Button("Play"))
         {
-            play(getNormalizedTime());
+            resume();
         }
+        ImGui::SameLine();
+        if (ImGui::Button("Stop"))
+            stop();
+        ImGui::SameLine();
+        if (ImGui::Button("Rewind"))
+            rewind();
         ImGui::EndDisabled();
     }
 
@@ -846,6 +1069,8 @@ namespace Engine
             LOG_ERROR("[Animator] Skeleton and Animation Clip are missing or incompatible");
             return false;
         }
+        if (!m_instance.setWrapMode(getWrapMode()))
+            return false;
         if (m_restorePending)
         {
             m_instance.play(m_pendingNormalizedTime);

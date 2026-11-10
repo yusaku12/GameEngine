@@ -52,6 +52,25 @@ namespace Engine
         bool play(float normalizedTime = 0.0f) noexcept;
 
         /**
+         * @brief 単一Clipの時刻と姿勢を即時更新する。再生/一時停止状態を維持し、Root Motion移動は発生させない。
+         * @param normalizedTime 0から1へ制限する正規化時刻。非有限値は拒否する。
+         * @return 評価・Snapshot発行に成功した場合はtrue。失敗時は時刻と公開姿勢を維持する。
+         * @thread_safety 評価と並行して呼び出してはならない。
+         */
+        bool seek(float normalizedTime);
+
+        /**
+         * @brief 単一ClipのInstance固有Wrap Modeを変更する。共有AssetとControllerは変更しない。
+         * @param mode Once / Loop / PingPong。
+         * @return Clipが設定されModeが有効ならtrue。現在姿勢と再生状態は維持する。
+         * @thread_safety 評価と並行して呼び出してはならない。
+         */
+        bool setWrapMode(AnimationWrapMode mode) noexcept;
+
+        /** @brief 単一ClipのInstance固有Wrap Modeを取得する。 */
+        AnimationWrapMode getWrapMode() const noexcept { return m_wrapMode; }
+
+        /**
          * @brief 指定stateを即時再生する。
          * @param stateId 再生するstateのID。
          * @param normalizedTime 正規化時刻。0.0未満は0.0、1.0超過は1.0として扱う。
@@ -106,6 +125,15 @@ namespace Engine
          * @brief 現在姿勢を維持して時間更新を停止する。
          */
         void pause() noexcept { m_playing = false; }
+
+        /** @brief 時刻・PingPongの方向を変更せず再開する。Asset未設定時はfalse。 */
+        bool resume() noexcept
+        {
+            if (m_skeleton == nullptr || (m_clip == nullptr && m_controller == nullptr))
+                return false;
+            m_playing = true;
+            return true;
+        }
 
         /**
          * @brief 時間を進め、ozz runtimeで新しいPalette Snapshotを生成する。
@@ -320,6 +348,7 @@ namespace Engine
         std::size_t m_nextSnapshot = 0;                                          //!< Ring Bufferの次に使用するSnapshotのインデックス。Game threadが評価中のSnapshotを指す。
         float m_time = 0.0f;                                                     //!< 再生中のClip内の現在時刻(秒)。ClipのWrap Modeに応じてClampまたはWrapされる。
         float m_speed = 1.0f;                                                    //!< 再生速度。1.0fで実時間と同じ速度、2.0fで2倍速、-1.0fで逆再生。
+        AnimationWrapMode m_wrapMode = AnimationWrapMode::Loop;
         std::int64_t m_loopCount = 0;                                            //!< 再生中のClipのLoop回数。ClipのWrap Modeに応じて符号付きで増減する。
         bool m_playing = false;                                                  //!< 再生中かどうか。trueで再生中、falseで停止中。
         bool m_rootMotionEnabled = false;

@@ -230,6 +230,7 @@ namespace Engine
         const int jointCount = skeleton->skeleton.num_joints();
         m_skeleton = std::move(skeleton);
         m_clip = std::move(clip);
+        m_wrapMode = m_clip->wrapMode;
         m_samplingContext = std::make_unique<ozz::animation::SamplingJob::Context>(jointCount);
         m_localTransforms.resize(static_cast<std::size_t>(m_skeleton->skeleton.num_soa_joints()));
         m_modelMatrices.resize(static_cast<std::size_t>(jointCount));
@@ -454,6 +455,7 @@ namespace Engine
         m_transitionDuration = 0.0f;
         m_transitioning = false;
         m_playing = false;
+        m_wrapMode = AnimationWrapMode::Loop;
     }
 
     bool AnimatorInstance::play(const float normalizedTime) noexcept
@@ -487,6 +489,54 @@ namespace Engine
         state.loopCount = 0;
         state.context->Invalidate();
         m_playing = true;
+        return true;
+    }
+
+    bool AnimatorInstance::seek(const float normalizedTime)
+    {
+        if (m_clip == nullptr || m_controller != nullptr || !std::isfinite(normalizedTime))
+        {
+            LOG_ERROR("[Animator] Seeking requires a single Clip and a finite time.");
+            return false;
+        }
+        if (std::none_of(m_snapshotRing.begin(), m_snapshotRing.end(),
+            [](const auto& snapshot) { return snapshot != nullptr && snapshot.use_count() == 1; }))
+        {
+            LOG_ERROR("[Animator] No free pose snapshot; seek was not applied.");
+            return false;
+        }
+        const float previousTime = m_time;
+        const auto previousLoops = m_loopCount;
+        m_time = std::clamp(normalizedTime, 0.0f, 1.0f) * m_clip->duration;
+        m_loopCount = 0;
+        m_samplingContext->Invalidate();
+        if (!samplePose(getNormalizedTime()) || !publishPose())
+        {
+            m_time = previousTime;
+            m_loopCount = previousLoops;
+            m_samplingContext->Invalidate();
+            LOG_ERROR("[Animator] Seek evaluation failed; keeping the previous time and published pose.");
+            return false;
+        }
+        m_rootMotionDelta = Matrix::Identity;
+        return true;
+    }
+
+    bool AnimatorInstance::setWrapMode(const AnimationWrapMode mode) noexcept
+    {
+        if (m_clip == nullptr || m_controller != nullptr || mode > AnimationWrapMode::PingPong)
+        {
+            LOG_ERROR("[Animator] Wrap Mode requires a single Clip and a valid mode.");
+            return false;
+        }
+        if (mode != m_wrapMode)
+        {
+            const float ratio = getNormalizedTime();
+            m_wrapMode = mode;
+            m_time = ratio * m_clip->duration;
+            m_loopCount = 0;
+            m_rootMotionDelta = Matrix::Identity;
+        }
         return true;
     }
 
@@ -710,7 +760,7 @@ namespace Engine
             return m_currentStateIndex < m_states.size() ? normalizedTime(m_states[m_currentStateIndex]) : 0.0f;
         if (m_clip == nullptr || m_clip->duration <= 0.0f)
             return 0.0f;
-        if (m_clip->wrapMode == AnimationWrapMode::PingPong)
+        if (m_wrapMode == AnimationWrapMode::PingPong)
         {
             const float period = m_clip->duration * 2.0f;
             const float sampleTime = m_time <= m_clip->duration ? m_time : period - m_time;
@@ -812,7 +862,7 @@ namespace Engine
             const float previousTime = m_time;
             const double unwrappedTime = static_cast<double>(m_time)
                 + static_cast<double>(deltaTime) * static_cast<double>(m_speed);
-            switch (m_clip->wrapMode)
+            switch (m_wrapMode)
             {
             case AnimationWrapMode::Once:
                 m_time = static_cast<float>(std::clamp(unwrappedTime, 0.0, static_cast<double>(m_clip->duration)));
@@ -834,7 +884,7 @@ namespace Engine
                 break;
             }
             }
-            if (m_rootMotionEnabled && !calculateRootDelta(*m_clip, m_rootTrack, m_clip->wrapMode,
+            if (m_rootMotionEnabled && !calculateRootDelta(*m_clip, m_rootTrack, m_wrapMode,
                 previousTime, m_time, static_cast<double>(deltaTime) * m_speed, rootDelta))
                 return false;
         }
