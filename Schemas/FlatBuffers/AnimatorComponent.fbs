@@ -26,6 +26,10 @@ table AnimatorClipConfiguration {
     speed:float = 1.0;
     apply_root_motion:bool;
     wrap_mode:AnimationWrapMode = null;
+    root_translation_x:bool = true;
+    root_translation_y:bool = true;
+    root_translation_z:bool = true;
+    root_rotation:bool = true;
 }
 
 table AnimatorComponentPayload {

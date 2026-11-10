@@ -46,6 +46,14 @@ namespace Engine
             return inverse;
         }
 
+        Matrix filterRootMotion(const Matrix& motion, const RootMotionAxes axes) noexcept
+        {
+            Matrix filtered = axes.rotation ? motion : Matrix::Identity;
+            filtered.Translation(Vector3(axes.translationX ? motion._41 : 0.0f,
+                axes.translationY ? motion._42 : 0.0f, axes.translationZ ? motion._43 : 0.0f));
+            return filtered;
+        }
+
         bool rigidPower(Matrix base, const double exponent, Matrix& result)
         {
             // Loop counts are computed in double; do not silently truncate an unrepresentable count.
@@ -429,6 +437,7 @@ namespace Engine
     void AnimatorInstance::clear() noexcept
     {
         m_rootMotionEnabled = false;
+        m_rootMotionAxes = {};
         m_rootMotionJointName.clear();
         m_rootSamplingContext.reset();
         m_rootMotionDelta = Matrix::Identity;
@@ -550,7 +559,8 @@ namespace Engine
         return destination != m_states.size() && beginTransition(destination, duration);
     }
 
-    bool AnimatorInstance::configureRootMotion(const bool enabled, const std::string_view jointName)
+    bool AnimatorInstance::configureRootMotion(const bool enabled, const std::string_view jointName,
+        const RootMotionAxes axes)
     {
         m_rootMotionDelta = Matrix::Identity;
         if (!enabled)
@@ -558,7 +568,7 @@ namespace Engine
             m_rootMotionEnabled = false;
             return true;
         }
-        if (m_rootMotionEnabled && m_rootMotionJointName == jointName)
+        if (m_rootMotionEnabled && m_rootMotionJointName == jointName && m_rootMotionAxes == axes)
             return true;
         const bool previouslyEnabled = m_rootMotionEnabled;
         const std::size_t previousJoint = m_rootMotionJoint;
@@ -598,11 +608,13 @@ namespace Engine
             Matrix previousRoot;
             if (!rigidTransform(toEngineMatrix(m_modelMatrices[previousJoint]), previousRoot))
                 return false;
-            previousRemoval = inverseRigidTransform(previousRoot) * previousReference;
+            previousRemoval = inverseRigidTransform(filterRootMotion(
+                inverseRigidTransform(previousReference) * previousRoot, m_rootMotionAxes));
         }
         if (!rigidTransform(toEngineMatrix(m_modelMatrices[m_rootMotionJoint]) * previousRemoval, m_rootReference))
             return false;
         m_inverseRootReference = inverseRigidTransform(m_rootReference);
+        m_rootMotionAxes = axes;
         if (m_controller != nullptr)
         {
             for (RuntimeState& state : m_states)
@@ -633,7 +645,10 @@ namespace Engine
         }
         if (!rigidTransform(toEngineMatrix(m_modelMatrices[m_rootMotionJoint]), rigid))
             return false;
-        return rigidTransform(m_inverseRootReference * rigid, root);
+        if (!rigidTransform(m_inverseRootReference * rigid, root))
+            return false;
+        root = filterRootMotion(root, m_rootMotionAxes);
+        return true;
     }
 
     bool AnimatorInstance::buildRootTrack(const AnimationClipAsset& clip, RootMotionTrack& track)
@@ -1070,7 +1085,8 @@ namespace Engine
             Matrix root;
             if (!rigidTransform(toEngineMatrix(m_modelMatrices[m_rootMotionJoint]), root))
                 return false;
-            removeMotion = inverseRigidTransform(root) * m_rootReference;
+            // Filter the trajectory, not its frame delta, so pose and extracted motion stay complementary.
+            removeMotion = inverseRigidTransform(filterRootMotion(m_inverseRootReference * root, m_rootMotionAxes));
         }
         SkinningPaletteSnapshot* const snapshot = acquireSnapshot();
         if (snapshot == nullptr)

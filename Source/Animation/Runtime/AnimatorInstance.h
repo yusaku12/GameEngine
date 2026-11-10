@@ -145,10 +145,11 @@ namespace Engine
 
         /**
          * @brief XYZ移動と回転の抽出を設定する。空の名前は先頭ルートを使用する。
+         * @param axes 抽出対象成分。無効な成分はGameObjectへ移さず姿勢に残す。
          * @return ボーンと姿勢が有効な場合はtrue。有効化時の姿勢を基準とし、設定変更・seekは移動を発生させない。
          * @thread_safety 評価と並行して呼び出してはならない。
          */
-        bool configureRootMotion(bool enabled, std::string_view jointName);
+        bool configureRootMotion(bool enabled, std::string_view jointName, RootMotionAxes axes = {});
 
         /** @brief 最後の正常なupdateが生成したモデル空間の移動差分。スケールは含まない。 */
         const Matrix& getRootMotionDelta() const noexcept { return m_rootMotionDelta; }
@@ -352,6 +353,7 @@ namespace Engine
         std::int64_t m_loopCount = 0;                                            //!< 再生中のClipのLoop回数。ClipのWrap Modeに応じて符号付きで増減する。
         bool m_playing = false;                                                  //!< 再生中かどうか。trueで再生中、falseで停止中。
         bool m_rootMotionEnabled = false;
+        RootMotionAxes m_rootMotionAxes;
         std::string m_rootMotionJointName;
         std::size_t m_rootMotionJoint = 0;
         Matrix m_rootReference = Matrix::Identity;

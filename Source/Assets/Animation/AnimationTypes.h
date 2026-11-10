@@ -84,6 +84,17 @@ namespace Engine
         friend bool operator==(const AnimatorControllerHandle&, const AnimatorControllerHandle&) = default;
     };
 
+    /** @brief Root Motionとして抽出するモデルローカル移動軸と回転。OFFの成分は姿勢に残す。 */
+    struct RootMotionAxes
+    {
+        bool translationX = true;
+        bool translationY = true;
+        bool translationZ = true;
+        bool rotation = true;
+
+        friend bool operator==(const RootMotionAxes&, const RootMotionAxes&) = default;
+    };
+
     /**
      * @brief AnimationWrapMode はアニメーションの再生方法を指定する列挙型。
      */

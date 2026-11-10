@@ -193,6 +193,26 @@ namespace Engine
         m_rootMotionPending = false;
     }
 
+    bool AnimatorComponent::setRootMotionAxes(const RootMotionAxes axes)
+    {
+        ClipConfiguration* const configuration = findClipConfiguration(m_clipGuid);
+        if (configuration == nullptr)
+        {
+            LOG_ERROR("[Animator] Select an animation before setting root motion axes.");
+            return false;
+        }
+        configuration->rootMotionAxes = axes;
+        m_rootMotionPending = false;
+        m_rootMotionErrorLogged = false;
+        return true;
+    }
+
+    RootMotionAxes AnimatorComponent::getRootMotionAxes() const noexcept
+    {
+        const ClipConfiguration* const configuration = findClipConfiguration(m_clipGuid);
+        return configuration != nullptr ? configuration->rootMotionAxes : RootMotionAxes{};
+    }
+
     bool AnimatorComponent::useModelDefaultAnimation()
     {
         const GameObject* const gameObject = getGameObject();
@@ -266,12 +286,48 @@ namespace Engine
         }
         if ((m_restorePending || m_bindingDirty) && !bindAssets())
             return false;
-        if (!m_instance.configureRootMotion(m_applyRootMotion, m_rootMotionJoint)
+        if (!m_instance.configureRootMotion(m_applyRootMotion, m_rootMotionJoint, getRootMotionAxes())
             || !m_instance.seek(normalizedTime))
             return false;
         m_rootMotionPending = false;
         m_startupPending = false;
         m_evaluationErrorLogged = false;
+        return true;
+    }
+
+    bool AnimatorComponent::stepFrame(const bool forward)
+    {
+        AnimationAssetManager& assets = AnimationAssetManager::instance();
+        const auto clip = assets.getClip(m_restorePending ? assets.findClipByGuid(m_clipGuid) : m_clip);
+        if (clip == nullptr || !std::isfinite(clip->duration) || clip->duration <= 0.0f)
+        {
+            LOG_ERROR("[Animator] Frame stepping requires a loaded animation with a valid duration.");
+            return false;
+        }
+        double interval = 1.0 / (30.0 * clip->duration);
+        const auto samples = clip->animation.timepoints();
+        if (samples.size() > 2 && samples[0] == 0.0f && samples[1] > 0.0f)
+        {
+            const double candidate = samples[1];
+            constexpr double sampleTolerance = 8.0 * std::numeric_limits<float>::epsilon();
+            const double lastInterval = static_cast<double>(samples[samples.size() - 1])
+                - samples[samples.size() - 2];
+            bool uniform = lastInterval > 0.0 && lastInterval <= candidate + sampleTolerance;
+            // The final sample can be a shorter interval at the exact Clip endpoint.
+            for (std::size_t index = 2; index + 1 < samples.size(); ++index)
+                if (std::abs(static_cast<double>(samples[index]) - candidate * static_cast<double>(index))
+                    > sampleTolerance)
+                {
+                    uniform = false;
+                    break;
+                }
+            if (uniform)
+                interval = candidate;
+        }
+        const double target = static_cast<double>(getNormalizedTime()) + (forward ? interval : -interval);
+        if (!seek(static_cast<float>(std::clamp(target, 0.0, 1.0))))
+            return false;
+        pause();
         return true;
     }
 
@@ -431,7 +487,9 @@ namespace Engine
                 configuration.wrapMode.has_value()
                     ? flatbuffers::Optional<Serialization::AnimationWrapMode>(
                         static_cast<Serialization::AnimationWrapMode>(*configuration.wrapMode))
-                    : flatbuffers::nullopt));
+                    : flatbuffers::nullopt,
+                configuration.rootMotionAxes.translationX, configuration.rootMotionAxes.translationY,
+                configuration.rootMotionAxes.translationZ, configuration.rootMotionAxes.rotation));
         }
         if (m_initialClipGuid.isValid() && findClipConfiguration(m_initialClipGuid) == nullptr)
         {
@@ -508,6 +566,8 @@ namespace Engine
                 value.name = configuration->name()->str();
                 value.speed = configuration->speed();
                 value.applyRootMotion = configuration->apply_root_motion();
+                value.rootMotionAxes = { configuration->root_translation_x(), configuration->root_translation_y(),
+                    configuration->root_translation_z(), configuration->root_rotation() };
                 if (const auto mode = configuration->wrap_mode())
                 {
                     if (*mode > Serialization::AnimationWrapMode_PingPong)
@@ -700,7 +760,7 @@ namespace Engine
         if (!m_skeleton.isValid() || !m_clip.isValid())
             return;
 
-        if (!m_instance.configureRootMotion(m_applyRootMotion, m_rootMotionJoint))
+        if (!m_instance.configureRootMotion(m_applyRootMotion, m_rootMotionJoint, getRootMotionAxes()))
             return;
         m_evaluationPending = true;
     }
@@ -1018,12 +1078,28 @@ namespace Engine
             if (seek(normalizedTime))
                 pause();
         }
+        if (ImGui::Button("Previous Frame"))
+            stepFrame(false);
+        ImGui::SameLine();
+        if (ImGui::Button("Next Frame"))
+            stepFrame(true);
+        ImGui::TextDisabled("One source sample (1/30s if unknown). Frame stepping pauses playback.");
         ImGui::TextDisabled("Scrubbing pauses playback; seeking never moves the GameObject.");
         bool applyRootMotion = getApplyRootMotion();
         if (ImGui::Checkbox("Apply Root Motion", &applyRootMotion))
             setApplyRootMotion(applyRootMotion);
         if (m_applyRootMotion)
         {
+            RootMotionAxes axes = getRootMotionAxes();
+            bool axesChanged = ImGui::Checkbox("Root Translation X", &axes.translationX);
+            ImGui::SameLine();
+            axesChanged |= ImGui::Checkbox("Y", &axes.translationY);
+            ImGui::SameLine();
+            axesChanged |= ImGui::Checkbox("Z", &axes.translationZ);
+            axesChanged |= ImGui::Checkbox("Root Rotation", &axes.rotation);
+            if (axesChanged)
+                setRootMotionAxes(axes);
+            ImGui::TextDisabled("Model-local axes. Disabled components remain in the pose.");
             const auto skeleton = AnimationAssetManager::instance().getSkeleton(m_skeleton);
             const char* const label = m_rootMotionJoint.empty() ? "<First Root>" : m_rootMotionJoint.c_str();
             if (ImGui::BeginCombo("Root Motion Joint", label))
@@ -1036,7 +1112,7 @@ namespace Engine
                             setRootMotionJoint(name);
                 ImGui::EndCombo();
             }
-            ImGui::TextDisabled("XYZ + rotation. Editor preview stays in place.");
+            ImGui::TextDisabled("Editor preview stays in place.");
         }
         if (isPlaying())
         {
@@ -1077,7 +1153,7 @@ namespace Engine
             if (!m_pendingPlaying) m_instance.pause();
             m_restorePending = false;
         }
-        if (!m_instance.configureRootMotion(m_applyRootMotion, m_rootMotionJoint)
+        if (!m_instance.configureRootMotion(m_applyRootMotion, m_rootMotionJoint, getRootMotionAxes())
             || !m_instance.update(0.0f))
             return false;
         m_evaluationErrorLogged = false;

@@ -67,6 +67,14 @@ namespace Engine
          */
         bool seek(float normalizedTime);
 
+        /**
+         * @brief 元Clipの等間隔サンプル1つ分を進める/戻す。間隔不明時は1/30秒を使用する。
+         * @param forward trueで進める、falseで戻す。速度とWrap Modeに依存せず端で止まる。
+         * @return 姿勢更新成功時はtrue。一時停止し、Root Motion移動は発生させない。
+         * @thread_safety 評価と並行して呼び出してはならない。
+         */
+        bool stepFrame(bool forward);
+
         /** @brief 先頭姿勢へ戻して停止する。失敗時はfalse。評価との並行呼び出しは不可。 */
         bool stop();
 
@@ -201,6 +209,17 @@ namespace Engine
         /** @brief 保存対象の抽出ボーン名。空なら先頭ルートを使用する。 */
         const std::string& getRootMotionJoint() const noexcept { return m_rootMotionJoint; }
 
+        /**
+         * @brief 選択中Clipの抽出軸を設定する。OFFの成分は姿勢に残し、共有Assetは変更しない。
+         * @param axes モデルローカル移動X/Y/Zと回転のON/OFF。
+         * @return Clip選択済みならtrue。
+         * @thread_safety 評価と並行して呼び出してはならない。
+         */
+        bool setRootMotionAxes(RootMotionAxes axes);
+
+        /** @brief 選択中Clipの抽出軸を取得する。未選択時は全成分ON。 */
+        RootMotionAxes getRootMotionAxes() const noexcept;
+
     protected:
 
         void onAwake() override;
@@ -221,6 +240,7 @@ namespace Engine
             float speed = 1.0f;
             bool applyRootMotion = false;
             std::optional<AnimationWrapMode> wrapMode;
+            RootMotionAxes rootMotionAxes;
         };
 
         ClipConfiguration* findClipConfiguration(const AssetGUID& guid) noexcept;

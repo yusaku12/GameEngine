@@ -742,13 +742,33 @@ rotation to the GameObject. **Play** resumes from the current position and prese
 Ping Pong's travel direction. Once playback that has finished restarts from the
 appropriate endpoint for the speed's sign. Speed zero does not advance time.
 
+**Previous Frame** / **Next Frame** move by one original stored sampling interval,
+then pause and publish the pose immediately. The interval is recovered from the
+Clip's uniform ozz time points, allowing a shortened final interval. If the stored
+keys do not establish a uniform sample rate (including endpoint-only clips), the
+step is 1/30 second. No source file is loaded. Steps ignore playback speed and
+Ping Pong travel direction, clamp at both endpoints without wrapping, and do not
+move the GameObject through Root Motion.
+
+Each clip also retains **Root Translation X / Y / Z** and **Root Rotation** flags.
+For horizontal motion, enable X/Z and disable Y; for rotation only, disable all
+three translation axes. These are model-local axes, before the GameObject's world
+transform, not world-space movement constraints. Disabled components remain in
+the animated pose rather than being discarded. Filtering is applied to the root
+trajectory before calculating both extraction and pose removal, including loop
+and reverse playback. Changing the flags does not move the GameObject; the pose
+is reevaluated with the new extraction selection. The main **Apply Root Motion**
+switch still enables/disables extraction as a whole; the flags are component-local per-clip
+settings saved in Scene/Prefab payload v5 and copied into Play clones. v1-v4 data
+defaults to all four flags enabled, preserving existing behavior.
+
 **Initial Animation** chooses the clip used when game Play starts; **Selected
 Animation** uses the saved/editor selection, or the Model's first clip on a newly
 configured Animator. **Play Automatically** controls whether it starts playing or
 displays its first pose paused. Startup always begins at normalized time zero,
 independently of editor scrubbing and preview Pause/Play. Changing these settings
 does not disturb the current editor preview. Deleting the explicit initial clip
-resets the choice to **Selected Animation**. Scene/Prefab payload v4 and Play clones
+resets the choice to **Selected Animation**. Scene/Prefab payload v5 and Play clones
 retain these settings. A missing/incompatible initial clip is logged rather than
 silently replaced by another clip.
 
@@ -756,7 +776,7 @@ AnimatorComponent handles clip playback only: Controller binding, state playback
 crossfades, parameters/triggers and their Inspector/serialization code have been
 removed from this component. State/event runtime and asset infrastructure remain
 available for separate components; AnimatorComponent does not dispatch events.
-Payload v4 reads v1/v2 settings by migrating their speed/root-motion flag to the
+Payload v5 reads v1/v2 settings by migrating their speed/root-motion flag to the
 selected clip. Legacy Controller bindings are not restored and produce a warning;
 select a clip and save the Scene/Prefab to migrate. Deprecated FlatBuffers slots
 are reserved for binary compatibility, not active Controller functionality.
@@ -856,7 +876,7 @@ This checks every skinned vertex, root-motion world-pose reconstruction
 (maximum error 0.2 mm), exact-affine palettes, valid animated bounds and
 120-Hz vertex continuity (maximum step 5 cm), using the first root and named
 `root`/`pelvis` joints when present.
-Animator payload v4 and Play clones retain per-clip settings and the selected joint;
+Animator payload v5 and Play clones retain per-clip settings and the selected joint;
 v1 payloads remain readable and default to First Root. Runtime motion deltas are
 transient and are never saved or replayed after loading.
 
