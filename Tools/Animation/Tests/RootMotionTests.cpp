@@ -6,6 +6,7 @@
 #include "Animation\Runtime\AnimatorInstance.h"
 #include "Assets\Animation\AnimationAssetBuilder.h"
 #include "Assets\Model\Import\FbxModelImporter.h"
+#include "Assets\Model\Serialization\ModelSerializer.h"
 #include "Core\Logging\Logger.h"
 #include "Core\Math\Transform.h"
 #include "Graphics\Renderer\SkinningBounds.h"
@@ -292,6 +293,83 @@ namespace
         }
     };
 
+    void testModelAnimationRemoval()
+    {
+        Fixture fixture;
+        fixture.path = fixture.directory / "Animations.model";
+        const AssetGUID first{ 1, 1 };
+        const AssetGUID middle{ 1, 2 };
+        const AssetGUID last{ 1, 3 };
+        const AssetGUID external{ 1, 4 };
+        ModelResource original;
+        original.animationClipGuids = { first, middle, last, external };
+        original.animationClipPaths = { {}, {}, {}, "external.anim" };
+        for (const std::string_view name : { "first", "middle", "last" })
+        {
+            AnimationResource animation;
+            animation.name = name;
+            animation.duration = 1.0f;
+            animation.ticksPerSecond = 1.0f;
+            original.animations.push_back(std::move(animation));
+        }
+        const Serialization::ModelSerializer serializer;
+        for (const AssetGUID& removed : { first, middle, last, external })
+        {
+            ModelResource model = original;
+            require(model.removeAnimationClip(removed), "Clip removal failed.");
+            std::vector<AssetGUID> expected;
+            for (const AssetGUID& guid : original.animationClipGuids)
+                if (guid != removed)
+                    expected.push_back(guid);
+            require(model.animationClipGuids == expected && model.animationClipPaths.size() == expected.size(),
+                "Removal changed the wrong clip reference.");
+            require(model.animations.size() == (removed == external ? 3u : 2u),
+                "Removal changed the wrong embedded animation count.");
+            for (std::size_t index = 0; index < model.animations.size(); ++index)
+            {
+                const std::string_view expectedName = expected[index] == first ? "first"
+                    : expected[index] == middle ? "middle" : "last";
+                require(model.animations[index].name == expectedName,
+                    "Remaining embedded animations no longer match their GUIDs.");
+                require(model.animationClipPaths[index].empty(), "Embedded animation acquired an external path.");
+            }
+            require(serializer.save(fixture.path, model), "Deleted Model save failed.");
+            ModelResource restored;
+            require(serializer.load(fixture.path, restored), "Deleted Model reload failed.");
+            require(restored.animationClipGuids == model.animationClipGuids,
+                "Removed clip reference returned after reload.");
+            require(restored.animations.size() == model.animations.size(), "Embedded animation returned after reload.");
+            for (std::size_t index = 0; index < model.animations.size(); ++index)
+                require(restored.animations[index].name == model.animations[index].name,
+                    "Embedded animation indices shifted incorrectly.");
+            require(restored.animationClipPaths.size() == model.animationClipPaths.size(),
+                "Clip path count changed after reload.");
+            require(restored.animationClipPaths.back().filename() == "external.anim"
+                || removed == external, "External clip path shifted incorrectly.");
+            require(!model.removeAnimationClip(removed), "Duplicate removal succeeded.");
+        }
+        ModelResource invalid = original;
+        invalid.animationClipPaths.pop_back();
+        require(!invalid.removeAnimationClip(first) && invalid.animationClipGuids == original.animationClipGuids
+            && invalid.animations.size() == original.animations.size(), "Invalid arrays were partially mutated.");
+        invalid = original;
+        invalid.animationClipGuids.resize(2);
+        invalid.animationClipPaths.resize(2);
+        require(!invalid.removeAnimationClip(first) && invalid.animations.size() == 3,
+            "Missing embedded references were accepted.");
+        require(!original.removeAnimationClip({}), "Invalid clip GUID was accepted.");
+        require(!original.removeAnimationClip({ 2, 1 }) && original.animationClipGuids.size() == 4,
+            "Unknown clip removal changed the Model.");
+        for (const AssetGUID& guid : { first, middle, last, external })
+            require(original.removeAnimationClip(guid), "Removing all animations failed.");
+        require(serializer.save(fixture.path, original), "Empty animation Model save failed.");
+        ModelResource empty;
+        require(serializer.load(fixture.path, empty) && empty.animations.empty()
+            && empty.animationClipGuids.empty() && empty.animationClipPaths.empty(),
+            "Animations returned after removing the last clip.");
+        std::cout << "PASS Model animation deletion and save/reload (embedded, external, last and invalid arrays).\n";
+    }
+
     void testEulerImport()
     {
         const Fixture fixture;
@@ -467,6 +545,7 @@ int main(const int argc, char** argv)
         require(Engine::Logger::instance().initialize(config), "Logger initialization failed.");
         testMotion();
         testReconfigurationAndController();
+        testModelAnimationRemoval();
         testEulerImport();
         if (argc == 3 && std::string_view(argv[1]) == "--idle-model")
             testIdleModel(argv[2]);

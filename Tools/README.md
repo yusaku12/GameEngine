@@ -712,6 +712,21 @@ path: intentional turns greater than 180 degrees between adjacent keys must
 have intermediate rotation keys. As with tangent repairs, reimport previously
 saved animation data to apply this correction.
 
+## Deleting animations
+
+In the Animator's **Animation Clips** list, select an animation, right-click its
+row and choose **Delete Animation**. Choose **Cancel** (or dismiss the menu) to
+keep it. The former removal button is no longer used.
+
+Deletion removes both the Model's clip reference and its embedded animation
+tracks, and atomically saves the `.model`/`.mdl` asset before clearing playback.
+Failed saves keep the animation and playback unchanged and report an error.
+For imported FBX or unsaved Models, first use the Model Renderer's **Save Model As...**
+to save a `.model`/`.mdl`; source import files are never rewritten.
+The Model asset is shared, so its updated clip list also applies to future loads
+and other users of that Model. Separate `.anim` files are not deleted.
+Save the Scene/Prefab after editing to persist the Animator's cleared selection.
+
 ## Animator root motion
 
 Enable **Apply Root Motion** on an Animator to extract model-space XYZ translation
@@ -767,7 +782,9 @@ Editing previews remove root motion from the pose but never move scene objects.
 ### Root-motion regression tests
 
 The focused CPU-only suite builds the production importer/Animator code and ozz
-without requiring a graphics device. Run from a Visual Studio Developer shell:
+without requiring a graphics device. Model serialization cases also link its
+terrain/texture-reference dependencies and DirectXTex, without initializing the GPU.
+Run from a Visual Studio Developer shell:
 
 ```powershell
 cmake -S Tools\Animation\Tests -B Build\RootMotionTests -G "Visual Studio 18 2026" -A x64
@@ -776,6 +793,8 @@ ctest --test-dir Build\RootMotionTests -C Debug --output-on-failure
 ```
 
 Use `Release` for both build/test configuration arguments to test optimized code.
+The suite also checks animation removal (first/middle/last embedded clips,
+external references and all clips) through Model serialization round trips.
 Pass `-DFBXSDK_ROOT="C:\path\to\FBX SDK"` during configuration for a non-default SDK.
 Tests compare extracted motion against independent matrix trajectories across
 Once/Loop/PingPong, reverse/multiple loops, nonidentity start/rest transforms,

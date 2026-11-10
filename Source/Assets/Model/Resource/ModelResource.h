@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <algorithm>
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <vector>
@@ -43,5 +45,27 @@ namespace Engine
         AABB boundingBox{};                                    //!< バウンディングボックス。
         BoundingSphere boundingSphere{};                       //!< バウンディングスフィア。
         std::filesystem::path sourcePath;                      //!< モデルのソースファイルパス。
+
+        /**
+         * @brief Remove a clip reference and its embedded tracks, preserving their index correspondence.
+         * @param guid Clip to remove.
+         * @return False without changes if the clip is missing or the arrays are inconsistent.
+         * @thread_safety Not thread-safe. Access must be synchronized externally.
+         */
+        bool removeAnimationClip(const AssetGUID& guid)
+        {
+            if (!guid.isValid() || animationClipGuids.size() != animationClipPaths.size()
+                || animations.size() > animationClipGuids.size())
+                return false;
+            const auto found = std::find(animationClipGuids.begin(), animationClipGuids.end(), guid);
+            if (found == animationClipGuids.end())
+                return false;
+            const auto index = found - animationClipGuids.begin();
+            if (static_cast<std::size_t>(index) < animations.size())
+                animations.erase(animations.begin() + index);
+            animationClipPaths.erase(animationClipPaths.begin() + index);
+            animationClipGuids.erase(found);
+            return true;
+        }
     };
 } // namespace Engine

@@ -677,6 +677,16 @@ namespace Engine
             ? gameObject->getComponent<ModelRendererComponent>() : nullptr;
         const std::shared_ptr<const ModelResource> assignedModel = renderer != nullptr
             ? ModelManager::instance().get(renderer->getModel()) : nullptr;
+        if (assignedModel != nullptr)
+        {
+            AnimationAssetManager& assets = AnimationAssetManager::instance();
+            for (const AssetGUID& guid : assignedModel->animationClipGuids)
+            {
+                const AnimationClipHandle clip = assets.findClipByGuid(guid);
+                if (clip.isValid() && std::find(m_availableClips.begin(), m_availableClips.end(), clip) == m_availableClips.end())
+                    m_availableClips.push_back(clip);
+            }
+        }
         const std::shared_ptr<const AnimationClipAsset> assignedClip =
             AnimationAssetManager::instance().getClip(m_clip);
         bool clipStoredInModel = false;
@@ -746,23 +756,46 @@ namespace Engine
         if (!m_availableClips.empty() && ImGui::TreeNode("Animation Clips"))
         {
             AnimationAssetManager& assets = AnimationAssetManager::instance();
+            AnimationClipHandle clipToRemove = AnimationClipHandle::Invalid();
             for (const AnimationClipHandle clip : m_availableClips)
             {
                 const auto asset = assets.getClip(clip);
                 if (asset == nullptr)
                     continue;
+                ImGui::PushID(static_cast<int>(clip.index));
                 const bool selected = clip == m_clip;
                 if (ImGui::Selectable(asset->name.c_str(), selected) && !selected)
                     setAnimation(m_skeleton, clip);
+                if (ImGui::BeginPopupContextItem("AnimationClipMenu"))
+                {
+                    if (clip == m_clip && !m_controller.isValid())
+                    {
+                        ImGui::TextDisabled("Deletes from the shared Model and saves it.");
+                        ImGui::TextDisabled("FBX / unsaved Model: use Save Model As... first.");
+                        if (ImGui::MenuItem("Delete Animation"))
+                            clipToRemove = clip;
+                    }
+                    else
+                        ImGui::TextDisabled("Select this animation first.");
+                    if (ImGui::MenuItem("Cancel"))
+                        ImGui::CloseCurrentPopup();
+                    ImGui::EndPopup();
+                }
+                ImGui::PopID();
             }
-            if (m_clip.isValid() && !m_controller.isValid()
-                && ImGui::Button("Remove Selected Animation"))
+            if (clipToRemove.isValid())
             {
-                const AnimationClipHandle selectedClip = m_clip;
-                clearAnimationClip();
-                m_availableClips.erase(
-                    std::remove(m_availableClips.begin(), m_availableClips.end(), selectedClip),
-                    m_availableClips.end());
+                const auto asset = assets.getClip(clipToRemove);
+                const bool storedInModel = assignedModel != nullptr && asset != nullptr
+                    && std::find(assignedModel->animationClipGuids.begin(),
+                        assignedModel->animationClipGuids.end(), asset->guid) != assignedModel->animationClipGuids.end();
+                if (!storedInModel || ModelManager::instance().removeAnimationClip(renderer->getModel(), asset->guid))
+                {
+                    clearAnimationClip();
+                    m_availableClips.erase(
+                        std::remove(m_availableClips.begin(), m_availableClips.end(), clipToRemove),
+                        m_availableClips.end());
+                }
             }
             ImGui::TreePop();
         }

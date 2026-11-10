@@ -573,6 +573,42 @@ namespace Engine
         return true;
     }
 
+    bool ModelManager::removeAnimationClip(const ModelHandle model, const AssetGUID& clipGuid)
+    {
+        const std::scoped_lock lock(m_mutex);
+        if (!model.isValid() || model.index >= m_entries.size()
+            || m_entries[model.index].generation != model.generation
+            || m_entries[model.index].resource == nullptr)
+        {
+            LOG_ERROR("[ModelManager] Cannot remove animation from an invalid Model.");
+            return false;
+        }
+        Entry& entry = m_entries[model.index];
+        std::string extension = entry.path.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+            [](const unsigned char character) { return static_cast<char>(std::tolower(character)); });
+        if (extension != ".model" && extension != ".mdl")
+        {
+            LOG_ERROR("[ModelManager] Save the Model as .model/.mdl before deleting animations.");
+            return false;
+        }
+
+        ModelResource updated = *entry.resource;
+        if (!updated.removeAnimationClip(clipGuid))
+        {
+            LOG_ERROR("[ModelManager] Animation is missing or Model animation arrays are inconsistent.");
+            return false;
+        }
+        const auto snapshot = std::make_shared<const ModelResource>(std::move(updated));
+        if (!Serialization::ModelSerializer{}.save(entry.path, *snapshot))
+        {
+            LOG_ERROR("[ModelManager] Failed to save animation deletion: {}", entry.path.string());
+            return false;
+        }
+        entry.resource = snapshot;
+        return true;
+    }
+
     MaterialHandle ModelManager::setMaterialSlotMaterial(const ModelHandle model, const std::size_t slotIndex, MaterialAsset material)
     {
         if (!Serialization::resolveTextureReferences(material.textures, {}))

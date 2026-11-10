@@ -53,6 +53,15 @@ namespace Engine
         bool associateAnimationClip(ModelHandle model, AnimationClipHandle clip);
 
         /**
+         * @brief Remove an animation from a saved Model and atomically persist the updated snapshot.
+         * @param model Target Model Handle (.model/.mdl).
+         * @param clipGuid Clip to remove. Standalone Clip assets are not deleted.
+         * @return True on success. Failure leaves the current snapshot unchanged.
+         * @thread_safety Thread-safe.
+         */
+        bool removeAnimationClip(ModelHandle model, const AssetGUID& clipGuid);
+
+        /**
          * @brief MaterialをModel Slotのローカル既定値として設定する。
          * @param model 対象Model Handle
          * @param slotIndex 対象Material Slot
