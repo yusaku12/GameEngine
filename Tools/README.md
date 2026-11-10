@@ -782,9 +782,7 @@ Editing previews remove root motion from the pose but never move scene objects.
 ### Root-motion regression tests
 
 The focused CPU-only suite builds the production importer/Animator code and ozz
-without requiring a graphics device. Model serialization cases also link its
-terrain/texture-reference dependencies and DirectXTex, without initializing the GPU.
-Run from a Visual Studio Developer shell:
+without requiring a graphics device. Run from a Visual Studio Developer shell:
 
 ```powershell
 cmake -S Tools\Animation\Tests -B Build\RootMotionTests -G "Visual Studio 18 2026" -A x64
@@ -793,8 +791,6 @@ ctest --test-dir Build\RootMotionTests -C Debug --output-on-failure
 ```
 
 Use `Release` for both build/test configuration arguments to test optimized code.
-The suite also checks animation removal (first/middle/last embedded clips,
-external references and all clips) through Model serialization round trips.
 Pass `-DFBXSDK_ROOT="C:\path\to\FBX SDK"` during configuration for a non-default SDK.
 Tests compare extracted motion against independent matrix trajectories across
 Once/Loop/PingPong, reverse/multiple loops, nonidentity start/rest transforms,
