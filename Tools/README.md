@@ -712,6 +712,30 @@ path: intentional turns greater than 180 degrees between adjacent keys must
 have intermediate rotation keys. As with tangent repairs, reimport previously
 saved animation data to apply this correction.
 
+## Per-animation component settings
+
+Select a row in the Animator's **Animation Clips** list to edit **Animation Name**,
+**Speed**, and **Apply Root Motion** for that clip. Each clip remembers independent
+values when switching clips; new clips default to speed 1 and root motion disabled.
+Speed 0 holds time, negative speed plays backwards, and nonfinite speeds are rejected.
+Blank names are rejected. Names are component-local display names, not file or
+shared asset renames. Clip GUIDs, not names, identify settings, so duplicate display
+names are allowed.
+
+Save the **Scene/Prefab** to retain all clip settings. Play clones copy the settings
+without sharing mutable configuration. Different objects using the same Model can
+have different names, speeds and root-motion enable flags. **Root Motion Joint**
+remains a component-wide skeleton setting.
+
+AnimatorComponent handles clip playback only: Controller binding, state playback,
+crossfades, parameters/triggers and their Inspector/serialization code have been
+removed from this component. State/event runtime and asset infrastructure remain
+available for separate components; AnimatorComponent does not dispatch events.
+Payload v3 reads v1/v2 settings by migrating their speed/root-motion flag to the
+selected clip. Legacy Controller bindings are not restored and produce a warning;
+select a clip and save the Scene/Prefab to migrate. Deprecated FlatBuffers slots
+are reserved for binary compatibility, not active Controller functionality.
+
 ## Deleting animations
 
 In the Animator's **Animation Clips** list, select an animation, right-click its
@@ -729,11 +753,11 @@ Save the Scene/Prefab after editing to persist the Animator's cleared selection.
 
 ## Animator root motion
 
-Enable **Apply Root Motion** on an Animator to extract model-space XYZ translation
+Enable **Apply Root Motion** for the selected animation to extract model-space XYZ translation
 and full rotation. **Root Motion Joint** selects the source joint by exact name;
 **First Root** (the default) selects skeleton joint 0. FBX files often contain a
 static scene/group root: select the actual animated root/hips joint in that case.
-This is not humanoid retargeting. The component toggle controls extraction;
+This is not humanoid retargeting. The selected clip's component-local toggle controls extraction;
 the clip's existing `applyRootMotion` metadata is not an additional enable gate.
 
 The selected joint's rigid transform is measured relative to the evaluated pose
@@ -807,7 +831,7 @@ This checks every skinned vertex, root-motion world-pose reconstruction
 (maximum error 0.2 mm), exact-affine palettes, valid animated bounds and
 120-Hz vertex continuity (maximum step 5 cm), using the first root and named
 `root`/`pelvis` joints when present.
-Animator payload v2 and Play clones retain the selected joint and enable flag;
+Animator payload v3 and Play clones retain per-clip settings and the selected joint;
 v1 payloads remain readable and default to First Root. Runtime motion deltas are
 transient and are never saved or replayed after loading.
 

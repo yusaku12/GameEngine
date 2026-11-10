@@ -2,6 +2,7 @@ include "Common.fbs";
 
 namespace Engine.Serialization;
 
+// Legacy Controller types/slots are reserved for reading v1/v2 payloads.
 enum AnimatorParameterValueType:ubyte { Float, Int, Bool, Trigger }
 
 table AnimatorParameterValueData {
@@ -17,21 +18,30 @@ table AnimatorClipReference {
     path:string;
 }
 
+table AnimatorClipConfiguration {
+    guid:AssetGuid;
+    path:string;
+    name:string;
+    speed:float = 1.0;
+    apply_root_motion:bool;
+}
+
 table AnimatorComponentPayload {
     skeleton_guid:AssetGuid;
     clip_guid:AssetGuid;
-    controller_guid:AssetGuid;
+    legacy_controller_guid:AssetGuid;
     speed:float = 1.0;
     apply_root_motion:bool;
     playing:bool = true;
-    current_state:uint;
+    current_state:uint (deprecated);
     normalized_time:float;
-    parameters:[AnimatorParameterValueData];
+    parameters:[AnimatorParameterValueData] (deprecated);
     skeleton_path:string;
     clip_path:string;
-    controller_path:string;
-    controller_clips:[AnimatorClipReference];
+    controller_path:string (deprecated);
+    controller_clips:[AnimatorClipReference] (deprecated);
     root_motion_joint:string;
+    clips:[AnimatorClipConfiguration];
 }
 
 root_type AnimatorComponentPayload;
