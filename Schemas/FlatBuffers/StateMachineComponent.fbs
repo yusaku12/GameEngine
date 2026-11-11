@@ -1,0 +1,12 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+table StateMachineComponentPayload {
+    asset_guid:AssetGuid;
+    asset_path:string;
+    starting_state:uint;
+}
+
+root_type StateMachineComponentPayload;
+file_identifier "SMCP";

@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "Editor\Scene\SceneDocument.h"
+#include "Editor\StateMachine\StateMachineGraphEditor.h"
 #include "Core\Object\ObjectGUID.h"
 
 struct ImVec2;
@@ -182,6 +183,8 @@ namespace Engine
         bool m_showThreadDebug = false;                                           //!< スレッドデバッグパネルの表示フラグ
         bool m_showPerformanceProfiler = true;                                    //!< CPU/GPUプロファイラーパネルの表示フラグ
         bool m_showPhysicsDebug = false;                                          //!< 物理デバッグパネルの表示フラグ
+        bool m_showStateMachineGraph = false;
+        StateMachineGraphEditor m_stateMachineGraphEditor;
         ObjectGUID m_observedSceneGuid{};                                        //!< Editor状態を紐付けたSceneのGUID
         ObjectGUID m_selectedObjectGuid{};                                       //!< Inspectorで選択中のGameObject GUID
         ObjectGUID m_hierarchyCreateParentGuid{};                                //!< 作成するGameObjectの親GUID

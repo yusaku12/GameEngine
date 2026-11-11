@@ -159,6 +159,7 @@ namespace Engine
                 ImGui::MenuItem("Thread Debug", nullptr, &m_showThreadDebug);
                 ImGui::MenuItem("Performance Profiler", nullptr, &m_showPerformanceProfiler);
                 ImGui::MenuItem("Physics Debug", nullptr, &m_showPhysicsDebug);
+                ImGui::MenuItem("State Machine", nullptr, &m_showStateMachineGraph);
                 ImGui::EndMenu();
             }
             if (ImGui::Button(playing ? "Stop" : "Play"))
@@ -201,6 +202,9 @@ namespace Engine
         drawThreadDebug();
         drawPerformanceProfiler();
         drawPhysicsDebug();
+        ImGui::BeginDisabled(GameSession::instance().isPlaying());
+        m_stateMachineGraphEditor.draw(m_showStateMachineGraph);
+        ImGui::EndDisabled();
     }
 
     void EditorUi::drawGameView(const std::uint64_t textureId, std::uint32_t& width, std::uint32_t& height)

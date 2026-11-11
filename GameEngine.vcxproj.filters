@@ -49,6 +49,12 @@
     <Filter Include="Source\Assets\Animation\Serialization">
       <UniqueIdentifier>{D1C3167B-7716-463F-A7A6-2D56E5ECA43C}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source\Assets\StateMachine">
+      <UniqueIdentifier>{F0EEFFCF-2EFF-450C-AC56-DA41BD560E0E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Assets\StateMachine\Serialization">
+      <UniqueIdentifier>{B1353019-40D3-4E19-8D14-4DF5676741DD}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source\Assets\Material">
       <UniqueIdentifier>{FC3F7A64-813F-487A-AE46-DEF0B7A5DB29}</UniqueIdentifier>
     </Filter>
@@ -81,6 +87,9 @@
     </Filter>
     <Filter Include="Source\Components\Animation">
       <UniqueIdentifier>{36CF4011-77A1-46E5-ACD8-3383F4DB8692}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Components\StateMachine">
+      <UniqueIdentifier>{0DB8E13A-228F-4C5C-B35B-1CC1FFD07E37}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source\Components\Audio">
       <UniqueIdentifier>{B8CBAE9D-4CD5-4BE3-A71C-A9F9F5C9D870}</UniqueIdentifier>
@@ -171,6 +180,12 @@
     </Filter>
     <Filter Include="Source\Editor\Scene">
       <UniqueIdentifier>{ECE6232A-4EA0-4699-953E-6E186179C4BE}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Editor\StateMachine">
+      <UniqueIdentifier>{7287F181-9163-4794-B446-C7BD57F67BD9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\StateMachine">
+      <UniqueIdentifier>{9F3CC6C1-F780-42D3-90EF-A2427ECEC0AB}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source\Graphics">
       <UniqueIdentifier>{FAEF165D-7019-45B1-9E17-617D5A0796DF}</UniqueIdentifier>
@@ -309,6 +324,18 @@
     <ClCompile Include="Source\Assets\Animation\AnimatorControllerAsset.cpp">
       <Filter>Source\Assets\Animation</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Assets\StateMachine\StateMachineAsset.cpp">
+      <Filter>Source\Assets\StateMachine</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\StateMachine\StateMachineAssetManager.cpp">
+      <Filter>Source\Assets\StateMachine</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\StateMachine\Serialization\StateMachineAssetSerializer.cpp">
+      <Filter>Source\Assets\StateMachine\Serialization</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\StateMachine\StateMachineActionRegistry.cpp">
+      <Filter>Source\StateMachine</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Assets\Animation\Serialization\AnimationClipSerializer.cpp">
       <Filter>Source\Assets\Animation\Serialization</Filter>
     </ClCompile>
@@ -356,6 +383,9 @@
     </ClCompile>
     <ClCompile Include="Source\Components\Animation\AnimatorComponent.cpp">
       <Filter>Source\Components\Animation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\StateMachine\StateMachineComponent.cpp">
+      <Filter>Source\Components\StateMachine</Filter>
     </ClCompile>
     <ClCompile Include="Source\Components\Audio\AudioSourceComponent.cpp">
       <Filter>Source\Components\Audio</Filter>
@@ -521,6 +551,9 @@
     </ClCompile>
     <ClCompile Include="Source\Editor\ImGui\EditorUi.cpp">
       <Filter>Source\Editor\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\StateMachine\StateMachineGraphEditor.cpp">
+      <Filter>Source\Editor\StateMachine</Filter>
     </ClCompile>
     <ClCompile Include="Source\Editor\ImGui\ImGuiSystem.cpp">
       <Filter>Source\Editor\ImGui</Filter>
@@ -710,6 +743,12 @@
     <ClInclude Include="Generated\FlatBuffers\AnimatorController_generated.h">
       <Filter>Generated\FlatBuffers</Filter>
     </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\StateMachineAsset_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\StateMachineComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
     <ClInclude Include="Generated\FlatBuffers\AudioComponent_generated.h">
       <Filter>Generated\FlatBuffers</Filter>
     </ClInclude>
@@ -794,6 +833,18 @@
     <ClInclude Include="Source\Assets\Animation\SkeletonAsset.h">
       <Filter>Source\Assets\Animation</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Assets\StateMachine\StateMachineAsset.h">
+      <Filter>Source\Assets\StateMachine</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\StateMachine\StateMachineAssetManager.h">
+      <Filter>Source\Assets\StateMachine</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\StateMachine\Serialization\StateMachineAssetSerializer.h">
+      <Filter>Source\Assets\StateMachine\Serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\StateMachine\StateMachineActionRegistry.h">
+      <Filter>Source\StateMachine</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Assets\Material\MaterialAsset.h">
       <Filter>Source\Assets\Material</Filter>
     </ClInclude>
@@ -865,6 +916,9 @@
     </ClInclude>
     <ClInclude Include="Source\Components\Animation\AnimatorComponent.h">
       <Filter>Source\Components\Animation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\StateMachine\StateMachineComponent.h">
+      <Filter>Source\Components\StateMachine</Filter>
     </ClInclude>
     <ClInclude Include="Source\Components\Audio\AudioSourceComponent.h">
       <Filter>Source\Components\Audio</Filter>
@@ -1090,6 +1144,9 @@
     </ClInclude>
     <ClInclude Include="Source\Editor\ImGui\EditorUi.h">
       <Filter>Source\Editor\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Editor\StateMachine\StateMachineGraphEditor.h">
+      <Filter>Source\Editor\StateMachine</Filter>
     </ClInclude>
     <ClInclude Include="Source\Editor\ImGui\ImGuiSystem.h">
       <Filter>Source\Editor\ImGui</Filter>
@@ -1358,6 +1415,12 @@
       <Filter>Schemas\FlatBuffers</Filter>
     </None>
     <None Include="Schemas\FlatBuffers\AnimatorController.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\StateMachineAsset.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\StateMachineComponent.fbs">
       <Filter>Schemas\FlatBuffers</Filter>
     </None>
     <None Include="Schemas\FlatBuffers\AudioComponent.fbs">

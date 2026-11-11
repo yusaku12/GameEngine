@@ -781,6 +781,42 @@ selected clip. Legacy Controller bindings are not restored and produce a warning
 select a clip and save the Scene/Prefab to migrate. Deprecated FlatBuffers slots
 are reserved for binary compatibility, not active Controller functionality.
 
+## Generic State Machine
+
+Open **Window > State Machine**, then choose **New** or **Open**. Save the graph as
+a `.statemachine` asset before assigning it to a GameObject's **State Machine**
+component. The graph asset is shared and immutable at runtime; each component
+instance owns its current state, parameter values, and event queues. The component
+payload stores the asset GUID/path and an optional start-state override, not the
+graph or transient runtime state.
+
+Use **Add State** from the canvas context menu, drag nodes to arrange the graph,
+and pan with the middle mouse button or zoom with the wheel. Select a state and
+choose **Link from this state**, then click a destination node to create a
+transition. Set a default state, add Float/Int/Bool/Trigger parameters, and
+configure transition events and conditions in the Inspector. Conditions on one
+transition are ANDed; the matching outgoing transition with the lowest numeric
+priority is taken (asset order breaks ties), with at most one transition per
+update. A transition with no event or conditions is unconditional.
+Input events remain queued until a matching transition is taken, and Trigger
+parameters reset only when the selected transition consumes them.
+
+States support **On Enter** and **On Exit** actions. **Emit Event** queues a
+named output that gameplay components can consume with
+`StateMachineComponent::consumeEvent`. External code can queue transition input
+events with `sendEvent` or update typed parameters by ID. **Play Animation Clip**
+loads the saved `.anim` reference and asks the same GameObject's Animator to play
+it; the Animator must have a compatible Skeleton. This action switches clips
+without cross-fading. Custom C++ actions can be registered through
+`StateMachineActionRegistry::registerType`; assets persist the stable type name
+and payload bytes, never executable pointers. Register a payload validator and
+an editor callback when those are needed. Unknown custom types are retained by
+the asset loader and reported if execution is attempted.
+
+The editor validates IDs, state/parameter references, condition types, action
+data, and the default state before saving. Save the graph after edits; unsaved
+graphs cannot be referenced from a Scene or Prefab.
+
 ## Deleting animations
 
 In the Animator's **Animation Clips** list, select an animation, right-click its

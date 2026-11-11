@@ -60,6 +60,8 @@
     <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimationClip_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimatorController_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\StateMachineAsset_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\StateMachineComponent_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimatorComponent_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\ModelRendererComponent_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\PhysicsComponent_generated.h" />
@@ -80,6 +82,10 @@
     <ClInclude Include="Source\Assets\Animation\Serialization\SkeletonSerializer.h" />
     <ClInclude Include="Source\Core\Serialization\ComponentSerialization.h" />
     <ClInclude Include="Source\Assets\Animation\SkeletonAsset.h" />
+    <ClInclude Include="Source\Assets\StateMachine\StateMachineAsset.h" />
+    <ClInclude Include="Source\Assets\StateMachine\StateMachineAssetManager.h" />
+    <ClInclude Include="Source\Assets\StateMachine\Serialization\StateMachineAssetSerializer.h" />
+    <ClInclude Include="Source\StateMachine\StateMachineActionRegistry.h" />
     <ClInclude Include="Source\Assets\Material\MaterialAsset.h" />
     <ClInclude Include="Source\Assets\Material\MaterialInstance.h" />
     <ClInclude Include="Source\Assets\Material\MaterialManager.h" />
@@ -146,6 +152,7 @@
     <ClInclude Include="Source\Core\Object\ObjectGUID.h" />
     <ClInclude Include="Source\Core\GameObject\Component.h" />
     <ClInclude Include="Source\Components\Animation\AnimatorComponent.h" />
+    <ClInclude Include="Source\Components\StateMachine\StateMachineComponent.h" />
     <ClInclude Include="Source\Components\Rendering\CameraComponent.h" />
     <ClInclude Include="Source\Components\Transform\TransformComponent.h" />
     <ClInclude Include="Source\Physics\PhysicsTypes.h" />
@@ -212,6 +219,7 @@
     <ClInclude Include="Source\Core\System\Window.h" />
     <ClInclude Include="Source\Core\System\Dialog.h" />
     <ClInclude Include="Source\Editor\ImGui\EditorUi.h" />
+    <ClInclude Include="Source\Editor\StateMachine\StateMachineGraphEditor.h" />
     <ClInclude Include="Source\Editor\ImGui\ImGuiSystem.h" />
     <ClInclude Include="Source\Editor\Components\Camera\FreeCameraController.h" />
     <ClInclude Include="Source\Editor\Scene\SceneDocument.h" />
@@ -247,6 +255,10 @@
     <ClCompile Include="Source\Graphics\PostProcess\PostProcessTargetPool.cpp" />
     <ClCompile Include="Source\Core\Scene\SceneClone.cpp" />
     <ClCompile Include="Source\Assets\Animation\AnimatorControllerAsset.cpp" />
+    <ClCompile Include="Source\Assets\StateMachine\StateMachineAsset.cpp" />
+    <ClCompile Include="Source\Assets\StateMachine\StateMachineAssetManager.cpp" />
+    <ClCompile Include="Source\Assets\StateMachine\Serialization\StateMachineAssetSerializer.cpp" />
+    <ClCompile Include="Source\StateMachine\StateMachineActionRegistry.cpp" />
     <ClCompile Include="Source\Assets\Animation\AnimationAssetBuilder.cpp" />
     <ClCompile Include="Source\Assets\Animation\AnimationAssetManager.cpp" />
     <ClCompile Include="Source\Assets\Animation\Serialization\AnimationClipSerializer.cpp" />
@@ -301,6 +313,7 @@
     <ClCompile Include="Source\Core\Object\ObjectGUID.cpp" />
     <ClCompile Include="Source\Core\GameObject\GameObject.cpp" />
     <ClCompile Include="Source\Components\Animation\AnimatorComponent.cpp" />
+    <ClCompile Include="Source\Components\StateMachine\StateMachineComponent.cpp" />
     <ClCompile Include="Source\Components\Rendering\CameraComponent.cpp" />
     <ClCompile Include="Source\Components\Transform\TransformComponent.cpp" />
     <ClCompile Include="Source\Physics\PhysicsSystem.cpp" />
@@ -352,6 +365,7 @@
     <ClCompile Include="Source\Core\System\Window.cpp" />
     <ClCompile Include="Source\Core\System\Dialog.cpp" />
     <ClCompile Include="Source\Editor\ImGui\EditorUi.cpp" />
+    <ClCompile Include="Source\Editor\StateMachine\StateMachineGraphEditor.cpp" />
     <ClCompile Include="Source\Editor\ImGui\ImGuiSystem.cpp" />
     <ClCompile Include="Source\Editor\Components\Camera\FreeCameraController.cpp" />
     <ClCompile Include="Source\Editor\Scene\SceneDocument.cpp" />
@@ -408,6 +422,8 @@
     <None Include="Schemas\FlatBuffers\Skeleton.fbs" />
     <None Include="Schemas\FlatBuffers\AnimationClip.fbs" />
     <None Include="Schemas\FlatBuffers\AnimatorController.fbs" />
+    <None Include="Schemas\FlatBuffers\StateMachineAsset.fbs" />
+    <None Include="Schemas\FlatBuffers\StateMachineComponent.fbs" />
     <None Include="Schemas\FlatBuffers\AnimatorComponent.fbs" />
     <None Include="Schemas\FlatBuffers\ModelRendererComponent.fbs" />
     <None Include="Schemas\FlatBuffers\PhysicsComponent.fbs" />

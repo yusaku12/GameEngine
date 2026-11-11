@@ -1,0 +1,67 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+enum StateMachineParameterType:ubyte { Float, Int, Bool, Trigger }
+enum StateMachineConditionMode:ubyte { Greater, Less, Equals, NotEqual, If, IfNot, Triggered }
+enum StateMachineActionType:ubyte { EmitEvent, PlayAnimationClip, Custom }
+
+table StateMachineParameterData {
+    id:uint;
+    name:string;
+    type:StateMachineParameterType;
+    default_float:float;
+    default_int:int;
+    default_bool:bool;
+}
+
+table StateMachineActionData {
+    type:StateMachineActionType;
+    event_name:string;
+    clip_guid:AssetGuid;
+    animation_clip_path:string;
+    custom_type:string;
+    payload:[ubyte];
+}
+
+table StateMachineStateData {
+    id:uint;
+    name:string;
+    position_x:float;
+    position_y:float;
+    on_enter:[StateMachineActionData];
+    on_exit:[StateMachineActionData];
+}
+
+table StateMachineConditionData {
+    parameter_id:uint;
+    mode:StateMachineConditionMode;
+    float_threshold:float;
+    int_threshold:int;
+}
+
+table StateMachineTransitionData {
+    id:uint;
+    source_state:uint;
+    destination_state:uint;
+    priority:int;
+    event_name:string;
+    conditions:[StateMachineConditionData];
+}
+
+table StateMachineAssetData {
+    guid:AssetGuid;
+    name:string;
+    default_state:uint;
+    parameters:[StateMachineParameterData];
+    states:[StateMachineStateData];
+    transitions:[StateMachineTransitionData];
+}
+
+table StateMachineAssetFile {
+    header:FileHeader;
+    asset:StateMachineAssetData;
+}
+
+root_type StateMachineAssetFile;
+file_identifier "SMAS";

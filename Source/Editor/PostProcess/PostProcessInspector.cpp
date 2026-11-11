@@ -13,6 +13,7 @@
 #include <imgui.h>
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -24,7 +25,70 @@ namespace Engine
 {
     namespace
     {
-        bool drawSettings(PostProcessSettings& settings)
+        void applyLutToProfile(const PostProcessProfileHandle handle, const AssetGUID guid)
+        {
+            auto& manager = PostProcessProfileManager::instance();
+            const auto profile = manager.get(handle);
+            if (!profile)
+            {
+                LOG_ERROR("[PostProcessInspector] Profile was unloaded before LUT selection completed.");
+                return;
+            }
+            auto edited = *profile;
+            auto& lut = edited.settings.colorGradingLutAsset;
+            lut.value = { guid.high, guid.low };
+            lut.overrideState = true;
+            if (!manager.update(handle, std::move(edited)))
+                LOG_ERROR("[PostProcessInspector] Could not assign the selected LUT to the Profile.");
+        }
+
+        void applyLutToCamera(const ObjectGUID objectGuid, const AssetGUID guid)
+        {
+            SceneManager& scenes = SceneManager::instance();
+            GameObject* object = scenes.getActiveScene() != nullptr
+                ? scenes.getActiveScene()->find(objectGuid) : nullptr;
+            if (object == nullptr)
+                object = scenes.getPersistentScene()->find(objectGuid);
+            auto* camera = object != nullptr ? object->getComponent<CameraComponent>() : nullptr;
+            if (camera == nullptr)
+            {
+                LOG_ERROR("[PostProcessInspector] Camera was unavailable before LUT selection completed.");
+                return;
+            }
+            PostProcessSettings settings = camera->getPostProcessOverrides();
+            auto& lut = settings.colorGradingLutAsset;
+            lut.value = { guid.high, guid.low };
+            lut.overrideState = true;
+            if (!camera->setPostProcessOverrides(settings))
+                LOG_ERROR("[PostProcessInspector] Could not assign the selected LUT to Camera overrides.");
+        }
+
+        void requestColorGradingLut(const HWND owner, std::function<void(AssetGUID)> onSelected)
+        {
+            MainThreadDispatcher::instance().post([owner, onSelected = std::move(onSelected)]
+            {
+                static constexpr std::array filters{ FileDialogFilter{ L"Linear LUT Texture", L"*.dds;*.png;*.tga" } };
+                std::vector<std::filesystem::path> paths;
+                const auto result = Dialog::openFile(paths, L"Select Color Grading LUT",
+                    L"Assets", filters, false, owner);
+                if (result == DialogResult::Cancel)
+                    return;
+                if (result != DialogResult::Ok || paths.empty())
+                {
+                    LOG_ERROR("[PostProcessInspector] LUT asset dialog failed.");
+                    return;
+                }
+                const AssetGUID guid = TextureManager::instance().registerAssetPath(paths.front());
+                if (!guid.isValid())
+                {
+                    LOG_ERROR("[PostProcessInspector] Failed to register the selected LUT texture.");
+                    return;
+                }
+                onSelected(guid);
+            });
+        }
+
+        bool drawSettings(PostProcessSettings& settings, const std::function<void(AssetGUID)>& onLutSelected)
         {
             bool changed = false;
             const auto drawSwitch = [&changed, &settings](const std::size_t index)
@@ -150,24 +214,8 @@ namespace Engine
                 ImGui::TextWrapped("%s", path.empty() ? "No LUT asset assigned." : pathText.c_str());
                 if (ImGui::Button("Select LUT Asset..."))
                 {
-                    constexpr std::array filters{ FileDialogFilter{ L"Linear LUT Texture", L"*.dds;*.png;*.tga" } };
-                    std::vector<std::filesystem::path> paths;
                     const auto owner = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
-                    const auto result = Dialog::openFile(paths, L"Select Color Grading LUT", L"Assets", filters, false, owner);
-                    if (result == DialogResult::Ok && !paths.empty())
-                    {
-                        const AssetGUID guid = TextureManager::instance().registerAssetPath(paths.front());
-                        if (guid.isValid())
-                        {
-                            lut.value = { guid.high, guid.low };
-                            lut.overrideState = true;
-                            changed = true;
-                        }
-                        else
-                            LOG_ERROR("[PostProcessInspector] Failed to register the selected LUT texture.");
-                    }
-                    else if (result != DialogResult::Cancel)
-                        LOG_ERROR("[PostProcessInspector] LUT asset dialog failed.");
+                    requestColorGradingLut(owner, onLutSelected);
                 }
                 ImGui::EndDisabled();
                 ImGui::TextDisabled("Use a linear 16-64 size strip: width = height squared.");
@@ -900,7 +948,10 @@ namespace Engine
             bool changed = ImGui::InputText("Name", name.data(), name.size());
             if (changed)
                 edited.name = name.data();
-            changed |= drawSettings(edited.settings);
+            changed |= drawSettings(edited.settings, [handle](const AssetGUID guid)
+            {
+                applyLutToProfile(handle, guid);
+            });
             changed |= drawCustomEffects(edited.customEffects, handle);
             if (changed)
             {
@@ -958,7 +1009,12 @@ namespace Engine
         {
             ImGui::TextDisabled("Overrides affect this camera only; they are saved in its Scene/Prefab.");
             auto settings = camera.getPostProcessOverrides();
-            if (drawSettings(settings))
+            const GameObject* const object = camera.getGameObject();
+            const ObjectGUID objectGuid = object != nullptr ? object->getGUID() : ObjectGUID{};
+            if (drawSettings(settings, [objectGuid](const AssetGUID guid)
+                {
+                    applyLutToCamera(objectGuid, guid);
+                }))
                 camera.setPostProcessOverrides(settings);
             ImGui::TreePop();
         }
