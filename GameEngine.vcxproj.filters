@@ -429,6 +429,9 @@
     <ClCompile Include="Source\Components\Rendering\LightComponent.cpp">
       <Filter>Source\Components\Rendering</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Components\Rendering\SkyAtmosphereComponent.cpp">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Components\Rendering\ModelRendererComponent.cpp">
       <Filter>Source\Components\Rendering</Filter>
     </ClCompile>
@@ -761,6 +764,9 @@
     <ClInclude Include="Generated\FlatBuffers\LightComponent_generated.h">
       <Filter>Generated\FlatBuffers</Filter>
     </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\SkyAtmosphereComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
     <ClInclude Include="Generated\FlatBuffers\Material_generated.h">
       <Filter>Generated\FlatBuffers</Filter>
     </ClInclude>
@@ -960,6 +966,9 @@
       <Filter>Source\Components\Rendering</Filter>
     </ClInclude>
     <ClInclude Include="Source\Components\Rendering\LightComponent.h">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Rendering\SkyAtmosphereComponent.h">
       <Filter>Source\Components\Rendering</Filter>
     </ClInclude>
     <ClInclude Include="Source\Components\Rendering\ModelRendererComponent.h">
@@ -1433,6 +1442,9 @@
       <Filter>Schemas\FlatBuffers</Filter>
     </None>
     <None Include="Schemas\FlatBuffers\LightComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\SkyAtmosphereComponent.fbs">
       <Filter>Schemas\FlatBuffers</Filter>
     </None>
     <None Include="Schemas\FlatBuffers\Material.fbs">

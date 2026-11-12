@@ -734,7 +734,8 @@ namespace Engine
         m_deferredConstants = {
             .inverseViewProjection = m_inverseViewProjection,
             .viewport = Vector4(pixelViewport.x, pixelViewport.y, pixelViewport.width, pixelViewport.height),
-            .renderSize = Vector4(static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight), 0, 0),
+            .renderSize = Vector4(static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight),
+                m_cameraClearMode == CameraClearMode::Skybox ? 1.0f : 0.0f, 0.0f),
             .backgroundColor = Vector4(m_cameraClearColor.x, m_cameraClearColor.y,
                 m_cameraClearColor.z, m_cameraClearColor.w),
             .clipExposureDebug = Vector4(m_cameraNearClip, m_cameraFarClip, m_exposure,

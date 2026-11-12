@@ -1,0 +1,22 @@
+include "Common.fbs";
+namespace Engine.Serialization;
+table SkyAtmosphereComponentPayload {
+    enabled:bool = true;
+    ground_radius_km:float = 6360;
+    atmosphere_height_km:float = 100;
+    world_units_per_kilometer:float = 1000;
+    rayleigh_scattering:Vec3;
+    rayleigh_scale_height_km:float = 8;
+    mie_scattering:float = 0.003996;
+    mie_absorption:float = 0.0044;
+    mie_scale_height_km:float = 1.2;
+    mie_anisotropy:float = 0.8;
+    ozone_absorption:Vec3;
+    absorption_scale:float = 1;
+    aerial_perspective_view_distance_scale:float = 1;
+    sun_disk_intensity:float = 20;
+    sun_angular_radius_degrees:float = 0.27;
+    sun_light_intensity_scale:float = 20;
+}
+root_type SkyAtmosphereComponentPayload;
+file_identifier "SKYA";

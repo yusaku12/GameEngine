@@ -17,21 +17,62 @@ namespace Engine
     {
         m_constants = {};
         m_shadowIndex = -1;
+        m_atmosphere = {};
+        m_atmosphereCenter = Vector3::Zero;
+        m_atmosphereSuns = {};
+        m_hasAtmosphere = false;
+        std::array<bool, 2> sunIndices{};
+        bool duplicateAtmosphere = false;
+        bool duplicateSun = false;
         std::size_t count = 0;
         bool overflow = false;
         const auto collect = [&](const Scene& scene)
         {
             for (const auto& object : scene.getGameObjects())
             {
-                const auto* light = object->getComponent<LightComponent>();
-                if (!light || !light->isEnabled() || !object->isActiveInHierarchy())
+                if (!object->isActiveInHierarchy() || object->isDestroyRequested())
                     continue;
+                if (const auto* atmosphere = object->getComponent<SkyAtmosphereComponent>();
+                    atmosphere && atmosphere->isEnabled() && atmosphere->settings().enabled)
+                {
+                    if (!m_hasAtmosphere)
+                    {
+                        m_atmosphere = atmosphere->settings();
+                        m_atmosphereCenter = object->getWorldPosition();
+                        m_hasAtmosphere = true;
+                    }
+                    else
+                    {
+                        duplicateAtmosphere = true;
+                    }
+                }
+                const auto* light = object->getComponent<LightComponent>();
+                if (!light || !light->isEnabled())
+                    continue;
+                const auto& settings = light->settings();
+                if (settings.atmosphereSunLight && settings.kind == LightKind::Directional)
+                {
+                    const std::size_t sunIndex = settings.atmosphereSunIndex;
+                    if (sunIndices[sunIndex])
+                    {
+                        duplicateSun = true;
+                    }
+                    else
+                    {
+                        Vector3 direction = Vector3::Transform(Vector3::UnitZ, object->getWorldRotation());
+                        direction.Normalize();
+                        m_atmosphereSuns[sunIndex] = {
+                            Vector4(-direction.x, -direction.y, -direction.z, 1.0f),
+                            Vector4(settings.color.x * settings.intensity, settings.color.y * settings.intensity,
+                                settings.color.z * settings.intensity, 1.0f) };
+                        sunIndices[sunIndex] = true;
+                    }
+                }
                 if (count == m_constants.lights.size())
                 {
                     overflow = true;
                     continue;
                 }
-                const auto& settings = light->settings();
                 Vector3 direction = Vector3::Transform(Vector3::UnitZ, object->getWorldRotation());
                 direction.Normalize();
                 m_constants.lights[count] = {
@@ -58,12 +99,40 @@ namespace Engine
         m_constants.environment.w = static_cast<float>(count);
         if (overflow)
             LOG_ERROR("[Light] More than 32 active lights; excess lights are not rendered.");
+        if (duplicateAtmosphere && !m_duplicateAtmosphereReported)
+            LOG_ERROR("[Sky Atmosphere] Multiple active components were found; only the first is rendered.");
+        if (duplicateSun && !m_duplicateSunReported)
+            LOG_ERROR("[Sky Atmosphere] Multiple directional lights use the same atmosphere sun index; only the first is used.");
+        m_duplicateAtmosphereReported = duplicateAtmosphere;
+        m_duplicateSunReported = duplicateSun;
     }
 
     LightingConstants LightingFrame::forCamera(const Vector3& position, const Vector3& forward) const noexcept
     {
         LightingConstants result = m_constants;
         result.cameraPosition = Vector4(position.x, position.y, position.z, 1);
+        if (m_hasAtmosphere)
+        {
+            const float unitsPerKilometer = m_atmosphere.worldUnitsPerKilometer;
+            result.atmosphere.options = Vector4(
+                (m_atmosphereSuns[0].directionEnabled.w > 0.0f
+                    || m_atmosphereSuns[1].directionEnabled.w > 0.0f) ? 1.0f : 0.0f,
+                m_atmosphere.groundRadiusKm, m_atmosphere.atmosphereHeightKm, unitsPerKilometer);
+            result.atmosphere.rayleigh = Vector4(m_atmosphere.rayleighScattering.x,
+                m_atmosphere.rayleighScattering.y, m_atmosphere.rayleighScattering.z,
+                m_atmosphere.rayleighScaleHeightKm);
+            result.atmosphere.mie = Vector4(m_atmosphere.mieScattering, m_atmosphere.mieAbsorption,
+                m_atmosphere.mieAnisotropy, m_atmosphere.mieScaleHeightKm);
+            result.atmosphere.absorption = Vector4(m_atmosphere.ozoneAbsorption.x,
+                m_atmosphere.ozoneAbsorption.y, m_atmosphere.ozoneAbsorption.z, m_atmosphere.absorptionScale);
+            result.atmosphere.artistic = Vector4(m_atmosphere.aerialPerspectiveViewDistanceScale,
+                m_atmosphere.sunDiskIntensity, m_atmosphere.sunAngularRadiusDegrees,
+                m_atmosphere.sunLightIntensityScale);
+            const Vector3 centerFromCamera = (m_atmosphereCenter - position) / unitsPerKilometer;
+            result.atmosphere.planetCenterFromCamera = Vector4(centerFromCamera.x, centerFromCamera.y,
+                centerFromCamera.z, 0);
+            result.atmosphere.suns = m_atmosphereSuns;
+        }
         if (m_shadowIndex < 0)
             return result;
         const auto& light = result.lights[static_cast<std::size_t>(m_shadowIndex)];

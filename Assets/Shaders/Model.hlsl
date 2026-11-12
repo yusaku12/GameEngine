@@ -96,6 +96,13 @@ cbuffer LightingConstants : register(b4)
     float4 shadowOptions;
     float4 environment;
     SceneLight lights[32];
+    float4 atmosphereOptions;
+    float4 atmosphereRayleigh;
+    float4 atmosphereMie;
+    float4 atmosphereAbsorption;
+    float4 atmosphereArtistic;
+    float4 atmospherePlanetCenterFromCamera;
+    float4 atmosphereSuns[4];
 };
 
 struct VertexInput

@@ -15,7 +15,7 @@ namespace Engine
 
     /**
      * @brief CameraのClear方式。
-     * @details Skybox描画は未実装のため、Skyboxは背景色によるClearとして扱う。
+     * @details SkyboxはDeferred時にSky Atmosphereがあれば描画し、なければ背景色を使う。
      */
     enum class CameraClearMode
     {

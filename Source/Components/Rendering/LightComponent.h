@@ -21,6 +21,8 @@ namespace Engine
         float shadowDistance = 50.0f;
         float shadowBias = 0.001f;
         float normalBias = 0.02f;
+        bool atmosphereSunLight = false;
+        std::uint8_t atmosphereSunIndex = 0;
     };
 
     /**
@@ -35,7 +37,7 @@ namespace Engine
         /** @brief Validates and replaces configuration; invalid values are logged and rejected. */
         bool setSettings(const LightSettings& settings) noexcept;
         /** @brief Returns the persisted configuration version. */
-        std::uint32_t getPayloadVersion() const noexcept override { return 1; }
+        std::uint32_t getPayloadVersion() const noexcept override { return 2; }
         /** @brief Serializes light settings, excluding runtime state. */
         bool serializePayload(std::vector<std::uint8_t>& payload) const override;
         /** @brief Validates and restores a versioned light payload. */

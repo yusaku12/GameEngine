@@ -8,6 +8,12 @@ struct SceneLight
     float4 parameters;
 };
 
+struct AtmosphereSun
+{
+    float4 directionEnabled;
+    float4 radiance;
+};
+
 cbuffer LightingConstants : register(b4)
 {
     row_major float4x4 shadowViewProjection;
@@ -15,6 +21,13 @@ cbuffer LightingConstants : register(b4)
     float4 shadowOptions;
     float4 environment;
     SceneLight lights[32];
+    float4 atmosphereOptions;
+    float4 atmosphereRayleigh;
+    float4 atmosphereMie;
+    float4 atmosphereAbsorption;
+    float4 atmosphereArtistic;
+    float4 atmospherePlanetCenterFromCamera;
+    AtmosphereSun atmosphereSuns[2];
 };
 
 cbuffer DeferredPassConstants : register(b5)
@@ -59,6 +72,170 @@ bool reconstructWorldPosition(float2 pixelPosition, float depth, out float3 posi
     }
     position = worldPosition.xyz / worldPosition.w;
     return all(isfinite(position));
+}
+
+bool intersectSphere(float3 origin, float3 direction, float radius, out float nearDistance, out float farDistance)
+{
+    const float projection = dot(origin, direction);
+    const float discriminant = projection * projection - (dot(origin, origin) - radius * radius);
+    if (!isfinite(discriminant) || discriminant < 0.0f)
+    {
+        nearDistance = 0.0f;
+        farDistance = 0.0f;
+        return false;
+    }
+    const float root = sqrt(discriminant);
+    nearDistance = -projection - root;
+    farDistance = -projection + root;
+    return farDistance >= 0.0f;
+}
+
+void atmosphereDensity(float3 position, out float rayleighDensity, out float mieDensity, out float ozoneDensity)
+{
+    const float altitude = max(length(position) - atmosphereOptions.y, 0.0f);
+    rayleighDensity = exp(-min(altitude / atmosphereRayleigh.w, 80.0f));
+    mieDensity = exp(-min(altitude / atmosphereMie.w, 80.0f));
+    ozoneDensity = saturate(1.0f - abs(altitude - 25.0f) / 15.0f);
+}
+
+float3 atmosphereTransmittance(float3 origin, float3 direction)
+{
+    const float groundRadius = atmosphereOptions.y;
+    const float radius = length(origin);
+    if (!isfinite(radius) || radius < groundRadius)
+        return 0.0f;
+    const float3 up = origin / radius;
+    const float cosineZenith = dot(up, direction);
+    const float horizonCosine = -sqrt(max(1.0f - groundRadius * groundRadius / (radius * radius), 0.0f));
+    if (cosineZenith <= horizonCosine)
+        return 0.0f;
+    const float altitude = max(radius - groundRadius, 0.0f);
+    const float rayleighDensity = exp(-min(altitude / atmosphereRayleigh.w, 80.0f));
+    const float mieDensity = exp(-min(altitude / atmosphereMie.w, 80.0f));
+    const float ozoneDensity = saturate(1.0f - abs(altitude - 25.0f) / 15.0f);
+    const float rayleighPath = min(atmosphereRayleigh.w / max(cosineZenith, 0.02f),
+        sqrt(6.2831853f * groundRadius * atmosphereRayleigh.w));
+    const float miePath = min(atmosphereMie.w / max(cosineZenith, 0.02f),
+        sqrt(6.2831853f * groundRadius * atmosphereMie.w));
+    const float ozonePath = min(15.0f / max(cosineZenith, 0.02f),
+        sqrt(6.2831853f * groundRadius * 15.0f));
+    const float3 opticalDepth = atmosphereRayleigh.rgb * (rayleighDensity * rayleighPath)
+        + (atmosphereMie.x + atmosphereMie.y).xxx * (mieDensity * miePath)
+        + atmosphereAbsorption.rgb * atmosphereAbsorption.w * (ozoneDensity * ozonePath);
+    return exp(-min(max(opticalDepth, 0.0f), 80.0f));
+}
+
+float3 integrateAtmosphere(float3 origin, float3 viewDirection, float maximumDistance,
+    out float3 transmittance)
+{
+    const float groundRadius = atmosphereOptions.y;
+    const float outerRadius = groundRadius + atmosphereOptions.z;
+    const float cameraRadius = length(origin);
+    if (!isfinite(cameraRadius) || cameraRadius < groundRadius)
+    {
+        transmittance = 1.0f;
+        return 0.0f;
+    }
+    float outerNear;
+    float outerFar;
+    if (!intersectSphere(origin, viewDirection, outerRadius, outerNear, outerFar))
+    {
+        transmittance = 1.0f;
+        return 0.0f;
+    }
+
+    const float start = max(outerNear, 0.0f);
+    float end = min(outerFar, maximumDistance);
+    float groundNear;
+    float groundFar;
+    if (intersectSphere(origin, viewDirection, groundRadius, groundNear, groundFar))
+    {
+        if (groundNear <= start + 0.0001f && groundFar > start)
+            end = start;
+        else if (groundNear > start && groundNear < end)
+            end = groundNear;
+    }
+    const float segmentLength = max(end - start, 0.0f);
+    if (segmentLength <= 0.0f)
+    {
+        transmittance = 1.0f;
+        return 0.0f;
+    }
+
+    float3 accumulatedRayleigh = 0.0f;
+    float3 accumulatedMie = 0.0f;
+    float opticalRayleigh = 0.0f;
+    float opticalMie = 0.0f;
+    float opticalOzone = 0.0f;
+    const float stepLength = segmentLength / 12.0f;
+    const float anisotropy = atmosphereMie.z;
+    [loop]
+    for (uint index = 0; index < 12; ++index)
+    {
+        const float3 samplePosition = origin + viewDirection * (start + (index + 0.5f) * stepLength);
+        float densityRayleigh;
+        float densityMie;
+        float densityOzone;
+        atmosphereDensity(samplePosition, densityRayleigh, densityMie, densityOzone);
+        opticalRayleigh += densityRayleigh * stepLength;
+        opticalMie += densityMie * stepLength;
+        opticalOzone += densityOzone * stepLength;
+
+        const float3 viewOpticalDepth = atmosphereRayleigh.rgb * opticalRayleigh
+            + (atmosphereMie.x + atmosphereMie.y).xxx * opticalMie
+            + atmosphereAbsorption.rgb * atmosphereAbsorption.w * opticalOzone;
+        const float3 viewTransmittance = exp(-min(max(viewOpticalDepth, 0.0f), 80.0f));
+        [unroll]
+        for (uint sunIndex = 0; sunIndex < 2; ++sunIndex)
+        {
+            const AtmosphereSun sun = atmosphereSuns[sunIndex];
+            if (sun.directionEnabled.w <= 0.0f)
+                continue;
+            const float3 sunDirection = normalize(sun.directionEnabled.xyz);
+            const float cosineSunAngle = dot(viewDirection, sunDirection);
+            const float rayleighPhase = 3.0f / (16.0f * 3.14159265f)
+                * (1.0f + cosineSunAngle * cosineSunAngle);
+            const float mieDenominator = max(1.0f + anisotropy * anisotropy
+                - 2.0f * anisotropy * cosineSunAngle, 0.0001f);
+            const float miePhase = (1.0f - anisotropy * anisotropy)
+                / (4.0f * 3.14159265f * mieDenominator * sqrt(mieDenominator));
+            const float3 sunTransmittance = atmosphereTransmittance(samplePosition, sunDirection);
+            const float3 incidentRadiance = sun.radiance.rgb * atmosphereArtistic.w * sunTransmittance;
+            accumulatedRayleigh += viewTransmittance * incidentRadiance * atmosphereRayleigh.rgb
+                * (densityRayleigh * rayleighPhase * stepLength);
+            accumulatedMie += viewTransmittance * incidentRadiance * atmosphereMie.x
+                * (densityMie * miePhase * stepLength);
+        }
+    }
+    const float3 opticalDepth = atmosphereRayleigh.rgb * opticalRayleigh
+        + (atmosphereMie.x + atmosphereMie.y).xxx * opticalMie
+        + atmosphereAbsorption.rgb * atmosphereAbsorption.w * opticalOzone;
+    transmittance = exp(-min(max(opticalDepth, 0.0f), 80.0f));
+    return min(max(accumulatedRayleigh + accumulatedMie, 0.0f), 65504.0f);
+}
+
+float3 evaluateAtmosphereSky(float2 pixelPosition)
+{
+    float3 pointOnRay;
+    if (!reconstructWorldPosition(pixelPosition, 0.5f, pointOnRay))
+        return backgroundColor.rgb;
+    const float3 viewDirection = normalize(pointOnRay - cameraPosition.xyz);
+    const float3 planetCenterFromCamera = atmospherePlanetCenterFromCamera.xyz;
+    const float3 cameraFromPlanetCenter = -planetCenterFromCamera;
+    float3 transmittance;
+    float3 radiance = integrateAtmosphere(cameraFromPlanetCenter, viewDirection, 1.0e20f, transmittance);
+    const float cosineSunRadius = cos(radians(atmosphereArtistic.z));
+    [unroll]
+    for (uint sunIndex = 0; sunIndex < 2; ++sunIndex)
+    {
+        const AtmosphereSun sun = atmosphereSuns[sunIndex];
+        if (sun.directionEnabled.w <= 0.0f)
+            continue;
+        const float cosine = dot(viewDirection, normalize(sun.directionEnabled.xyz));
+        const float disk = smoothstep(cosineSunRadius, cos(radians(atmosphereArtistic.z * 0.9f)), cosine);
+        radiance += sun.radiance.rgb * atmosphereArtistic.w * atmosphereArtistic.y * disk * transmittance;
+    }
+    return min(max(radiance, 0.0f), 65504.0f);
 }
 
 float shadowVisibility(float3 position, float3 normal)
@@ -143,7 +320,11 @@ float4 psLighting(VertexOutput input) : SV_Target0
     const int2 pixel = int2(input.position.xy);
     const float depth = depthTexture.Load(int3(pixel, 0));
     if (!isfinite(depth) || depth < 0.0f || depth >= 1.0f)
+    {
+        if (atmosphereOptions.x > 0.0f && renderSize.z > 0.0f)
+            return float4(evaluateAtmosphereSky(input.position.xy), backgroundColor.a);
         return backgroundColor;
+    }
 
     float3 position;
     if (!reconstructWorldPosition(input.position.xy, depth, position))
@@ -156,7 +337,19 @@ float4 psLighting(VertexOutput input) : SV_Target0
     const float4 albedo = albedoTexture.Load(int3(pixel, 0));
     const float4 material = materialTexture.Load(int3(pixel, 0));
     const float3 emission = emissionTexture.Load(int3(pixel, 0)).rgb;
-    const float3 result = evaluateLighting(position, albedo.rgb, normal, material.rgb, emission);
+    float3 result = evaluateLighting(position, albedo.rgb, normal, material.rgb, emission);
+    if (atmosphereOptions.x > 0.0f)
+    {
+        const float3 worldOffset = position - cameraPosition.xyz;
+        const float distanceKm = length(worldOffset) / max(atmosphereOptions.w, 0.0001f)
+            * atmosphereArtistic.x;
+        const float3 viewDirection = normalize(worldOffset);
+        const float3 cameraFromPlanetCenter = -atmospherePlanetCenterFromCamera.xyz;
+        const float3 rayOrigin = cameraFromPlanetCenter;
+        float3 transmittance;
+        const float3 inScattering = integrateAtmosphere(rayOrigin, viewDirection, distanceKm, transmittance);
+        result = result * transmittance + inScattering;
+    }
     return float4(clamp(result, 0.0f, 65504.0f), albedo.a);
 }
 

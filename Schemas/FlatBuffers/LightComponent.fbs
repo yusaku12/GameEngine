@@ -11,6 +11,8 @@ table LightComponentPayload {
     shadow_distance:float = 50;
     shadow_bias:float = 0.001;
     normal_bias:float = 0.02;
+    atmosphere_sun_light:bool = false;
+    atmosphere_sun_index:ubyte = 0;
 }
 root_type LightComponentPayload;
 file_identifier "LGHT";

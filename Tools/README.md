@@ -295,6 +295,28 @@ The existing `removeComponent<T>()` API still removes all instances of that type
 
 # Runtime and Play
 
+## Sky Atmosphere
+
+Add **Sky Atmosphere** to a GameObject; its world position is the planet center.
+Add one or two **Directional Light** components and enable **Atmosphere Sun
+Light**, assigning distinct indices 0 and 1. Set the camera clear mode to
+**Skybox** to render atmospheric sky and sun disks. The component provides
+Rayleigh/Mie scattering, Mie anisotropy and absorption, ozone absorption,
+altitude scale heights, planetary curvature, and distance-scaled aerial
+perspective. Its kilometer-based radii are converted using **World Units per
+km** (1000 for a meter-based world). With the default Earth radius, a ground
+plane at world Y=0 should have the atmosphere center at Y=-6,360,000 and the
+camera just above Y=0.
+
+Atmosphere is evaluated in the Deferred HDR lighting pass, before tone mapping.
+It affects the sky and opaque deferred geometry; it does not affect the Forward
+renderer or transparent materials. Only the first active Sky Atmosphere
+component is used, and each sun index uses the first active matching light.
+Both components are persisted with scenes and prefabs; version 1 Light payloads
+remain loadable after the atmosphere sun-light fields were added. The renderer
+uses fixed-step single scattering rather than Unreal's precomputed lookup
+textures, so results and cost are not identical.
+
 Launch from the project root:
 
 ```powershell
