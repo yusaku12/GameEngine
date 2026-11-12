@@ -1,323 +1,315 @@
-# Build and repository layout
+# ビルドとリポジトリ構成
 
-The engine supports **Debug x64** and **Release x64** only. Use Visual Studio
-2026 C++ tools (v145), the Windows SDK, and Autodesk FBX SDK 2020.3.9.
-The vendored DirectXTex project is built with the engine's selected toolset,
-without editing its upstream project file.
-`FBXSDKRoot` may be passed as an MSBuild property to select another SDK location.
+エンジンが対応する構成は **Debug x64** と **Release x64** のみです。Visual Studio
+2026 C++ ツール (v145)、Windows SDK、Autodesk FBX SDK 2020.3.9 を使用してください。
+同梱された DirectXTex プロジェクトは、上流のプロジェクトファイルを編集せず、
+エンジンで選択したツールセットを使ってビルドされます。
+別の SDK の場所を選ぶには、`FBXSDKRoot` を MSBuild プロパティとして渡します。
 
-Build from a Visual Studio Developer PowerShell:
+Visual Studio Developer PowerShell からビルドします。
 
 ```powershell
 MSBuild .\GameEngine.sln /m /p:Configuration=Debug /p:Platform=x64
 MSBuild .\GameEngine.sln /m /p:Configuration=Release /p:Platform=x64
 ```
 
-The project builds PhysX, ozz-animation and DirectXTex and generates FlatBuffers
-headers and compiled shaders before compiling the engine. No existing dependency
-libraries or generated headers are required. DXC and flatc are supplied in
-`Tools`. Compilation errors are not bypassed; engine warnings remain errors.
-PhysX and ozz-animation use content-tracked incremental builds. Before compiling
-the engine, MSBuild hashes dependency source/build inputs and checks the required
-libraries and generated CMake projects. Unchanged dependencies do not launch
-PowerShell or CMake. DirectXTex retains its own MSBuild incremental checks.
+エンジンのコンパイル前に、プロジェクトは PhysX、ozz-animation、DirectXTex をビルドし、
+FlatBuffers ヘッダーとコンパイル済みシェーダーを生成します。既存の依存ライブラリや
+生成済みヘッダーは不要です。DXC と flatc は `Tools` に用意されています。
+コンパイルエラーを回避することはなく、エンジンの警告は引き続きエラーとして扱われます。
+PhysX と ozz-animation は内容を追跡するインクリメンタルビルドを使用します。
+エンジンのコンパイル前に MSBuild が依存関係のソース／ビルド入力をハッシュし、
+必要なライブラリと生成済み CMake プロジェクトを確認します。変更のない依存関係では
+PowerShell や CMake を起動しません。DirectXTex は従来どおり MSBuild 独自の
+インクリメンタルチェックを使用します。
 
-## Incremental native dependencies
+## ネイティブ依存関係のインクリメンタルビルド
 
-`Tools\Build\NativeDependencies.targets` maintains separate Debug/Release
-records under `Build\GameEngine\x64\<Configuration>\NativeDependencies`.
-The records are regenerable build state, not checked-in libraries or a way to
-ignore compilation failures.
+`Tools\Build\NativeDependencies.targets` は、
+`Build\GameEngine\x64\<Configuration>\NativeDependencies` 以下に Debug/Release
+それぞれの記録を保持します。これらの記録は再生成可能なビルド状態であり、
+コミット済みライブラリではありません。また、コンパイル失敗を無視する仕組みでもありません。
 
-- SHA-256 fingerprints cover PhysX's `physx` tree and ozz's `src`, `include`,
-  `extern`, `build-utils` and top-level CMake configuration, plus the engine's
-  dependency scripts/targets. File addition, deletion and content changes are
-  detected, even when timestamps are restored. Engine-only C++ edits do not
-  invalidate dependency records.
-- ozz Git HEAD/refs are included so changing the pinned submodule revision still
-  reaches the existing revision check. Test/sample/media directories are not
-  inputs to the disabled ozz test/tool/sample builds.
-- Configuration, toolset/SDK selection, compiler/linker flags, CMake and native
-  tool binaries are tracked. MSBuild passes its selected Visual Studio instance,
-  CMake executable, VC toolset version and Windows SDK selection to both scripts.
-  `DependencyCMakeExecutable` can select an alternate CMake explicitly.
-- A changed fingerprint or CMake cache causes a clean build of that dependency's
-  selected configuration. This is deliberately conservative: CMake/MSBuild's
-  inner timestamp checks alone cannot detect backdated source or tool changes.
-  Other dependencies and the other configuration are not marked successful by it.
-- Every required linked library, CMake cache, generation stamp and recorded
-  generated project must exist before skipping. Deleting an output or cleaning
-  a build tree triggers recovery instead of trusting an old success record.
-- Linked libraries are also hashed against the last successful build. Replacing
-  or corrupting an archive, including a manual build with different flags, cannot
-  silently reuse the previous configuration's success record.
-- A success record is written only after configure/build and output checks
-  succeed. A failed build removes that configuration's record, so the next
-  invocation retries. Shared CMake cache changes are detected independently by
-  both configurations. Use one build at a time for the shared dependency trees.
+- SHA-256 フィンガープリントは、PhysX の `physx` ツリー、ozz の `src`、`include`、
+  `extern`、`build-utils`、最上位の CMake 設定、およびエンジンの依存関係スクリプト／
+  ターゲットを対象とします。タイムスタンプを戻した場合でも、ファイルの追加・削除・
+  内容の変更を検出します。エンジンのみの C++ 編集では依存関係の記録は無効になりません。
+- 固定されたサブモジュールのリビジョン変更も既存のリビジョンチェックに反映されるよう、
+  ozz の Git HEAD/refs も含めます。無効化されている ozz のテスト／ツール／サンプルの
+  ビルドでは、テスト／サンプル／メディアのディレクトリは入力ではありません。
+- 構成、ツールセット／SDK の選択、コンパイラ／リンカーのフラグ、CMake、ネイティブ
+  ツールのバイナリを追跡します。MSBuild は選択した Visual Studio インスタンス、
+  CMake 実行ファイル、VC ツールセットのバージョン、Windows SDK の選択を両スクリプトに
+  渡します。`DependencyCMakeExecutable` で別の CMake を明示的に選択できます。
+- フィンガープリントまたは CMake キャッシュが変わると、その依存関係の選択中の構成を
+  クリーンビルドします。CMake/MSBuild 内部のタイムスタンプチェックだけでは、過去に
+  戻されたソースやツールの変更を検出できないため、意図的に保守的な動作としています。
+  これによって他の依存関係や別の構成が成功扱いになることはありません。
+- スキップする前に、必要なリンク済みライブラリ、CMake キャッシュ、生成スタンプ、
+  記録された生成済みプロジェクトがすべて存在することを確認します。出力の削除や
+  ビルドツリーのクリーンを検出した場合、古い成功記録を信頼せず復旧します。
+- リンク済みライブラリも最後に成功したビルドのものと照合するためハッシュ化します。
+  手動で異なるフラグを使ったビルドを含め、アーカイブの置換や破損によって以前の構成の
+  成功記録が誤って再利用されることはありません。
+- 構成／ビルドと出力確認が成功した後にのみ成功記録を書き込みます。ビルドに失敗すると
+  その構成の記録を削除し、次回実行時に再試行します。共有 CMake キャッシュの変更は
+  両構成で個別に検出されます。依存関係の共有ツリーでは同時に1つだけビルドしてください。
 
-The first build after enabling/changing these rules rebuilds the dependencies;
-subsequent unchanged builds only perform the fingerprint/output checks.
-`Clean` clears the current configuration's records, and `Rebuild` establishes
-them again. To rebuild an individual dependency manually, the existing
-`Tools\Animation\build_ozz.ps1` and `Tools\Physics\build_physx.ps1` still work;
-pass `-CleanFirst` when a clean dependency compilation is required. Do not
-disable these checks merely because a `.lib` already exists.
+これらのルールを有効化または変更した後の初回ビルドでは依存関係を再ビルドします。
+以降、変更のないビルドではフィンガープリントと出力の確認のみを行います。
+`Clean` は現在の構成の記録を消去し、`Rebuild` は記録を再作成します。
+依存関係を個別に手動ビルドする場合も、既存の
+`Tools\Animation\build_ozz.ps1` と `Tools\Physics\build_physx.ps1` を使用できます。
+依存関係をクリーンコンパイルするには `-CleanFirst` を渡します。
+`.lib` が既に存在するという理由だけで、これらの確認を無効にしないでください。
 
-## Incremental shaders
+## シェーダーのインクリメンタルビルド
 
-`Tools\Build\Shaders.targets` is the single build entry point for all 32 built-in
-shader entry points, including Terrain and every post-process pass. The job list
-and compiler options live in `Tools\Shaders\CompileShaders.ps1`; Debug and Release
-share the same bytecode and records because their shader options are identical.
-The existing optimization/debug options are preserved, including Terrain's
-warnings-as-errors option.
+`Tools\Build\Shaders.targets` は、Terrain とすべてのポストプロセスパスを含む
+32個の組み込みシェーダーエントリーポイントの唯一のビルド入口です。ジョブ一覧と
+コンパイラオプションは `Tools\Shaders\CompileShaders.ps1` にあります。Debug と Release
+ではシェーダーオプションが同一のため、同じバイトコードと記録を共有します。
+Terrain の警告をエラーとして扱うオプションを含め、既存の最適化／デバッグ設定は維持します。
 
-- Unchanged solution builds hash shader inputs, DXC binaries and recorded
-  outputs without starting PowerShell or DXC.
-- When inputs change, the script checks each entry point separately using
-  SHA-256 records and the actual transitive includes emitted by DXC's `-MD`.
-  Editing a source rebuilds only its entry points; editing an include rebuilds
-  only its consumers. Restoring timestamps does not hide content changes.
-- Missing or modified bytecode rebuilds only that output. Missing per-entry
-  records are regenerated. File additions/deletions conservatively invalidate
-  all entries because they can change include resolution. DXC/script changes
-  also invalidate all entries.
-- Bytecode is compiled to a temporary file before publication. A compiler error
-  fails the build, removes that entry's success record, and preserves its last
-  bytecode only as an old artifact, never as a successful build fallback.
-- Records live under `Assets\Shaders\Compiled\.build`. Use
-  `Tools\Shaders\CompileShaders.bat` for the same incremental behavior manually,
-  or add `-Force` to compile every entry. `CleanShaderCache.bat` removes bytecode
-  and records, so the next build recompiles all shaders. Normal C++ Clean/Rebuild
-  does not discard unchanged, configuration-independent shader artifacts.
+- ソリューションに変更がない場合、PowerShell や DXC を起動せず、シェーダー入力、
+  DXC バイナリ、記録済み出力をハッシュします。
+- 入力が変わると、スクリプトは SHA-256 記録と DXC の `-MD` が出力する実際の推移的
+  インクルードを使って、各エントリーポイントを個別に確認します。ソース編集では該当する
+  エントリーポイントのみ、インクルード編集ではその利用側のみを再ビルドします。
+  タイムスタンプを戻しても内容の変更は隠せません。
+- バイトコードの欠落や変更があった場合は、その出力だけを再ビルドします。
+  エントリーごとの記録が欠落している場合は再生成します。ファイルの追加／削除は
+  インクルード解決に影響する可能性があるため、保守的に全エントリーを無効化します。
+  DXC やスクリプトの変更も全エントリーを無効化します。
+- 公開前にバイトコードを一時ファイルへコンパイルします。コンパイラエラーが発生した
+  場合はビルドを失敗させ、そのエントリーの成功記録を削除します。以前のバイトコードは
+  古い生成物として残しますが、成功したビルドの代替としては扱いません。
+- 記録は `Assets\Shaders\Compiled\.build` に保存されます。同じインクリメンタル動作を
+  手動で行うには `Tools\Shaders\CompileShaders.bat` を使用し、全エントリーをコンパイル
+  するには `-Force` を追加します。`CleanShaderCache.bat` はバイトコードと記録を削除する
+  ため、次回ビルドですべてのシェーダーを再コンパイルします。通常の C++ の
+  Clean/Rebuild では、変更のない構成共通のシェーダー生成物は破棄されません。
 
-Run one shader build at a time; the outputs are shared. Runtime hot reload and
-custom post-process shader compilation are unchanged. Invalid state-file JSON
-is reported as an error; use `-Force`, remove the affected record or clean the
-shader cache to regenerate it.
+出力を共有するため、シェーダーのビルドは同時に1つだけ実行してください。
+ランタイムのホットリロードとカスタムポストプロセスシェーダーのコンパイル方法は
+変更されていません。状態ファイルの JSON が無効な場合はエラーとして報告します。
+再生成するには `-Force` を使うか、該当する記録を削除するか、シェーダーキャッシュを
+クリーンしてください。
 
-## Precompiled headers and engine dependencies
+## プリコンパイル済みヘッダーとエンジン依存関係
 
-`Source\Pch.h` contains stable STL, Windows/DirectX SDK and vendored spdlog
-headers only. It must not include engine feature headers, even indirectly.
-In particular, keep `Core\Core.h`, GameObject/Component, Scene, Prefab, input,
-time and job-system headers out of the PCH; changing them should rebuild their
-consumers, not every engine translation unit.
+`Source\Pch.h` に含めるのは、安定した STL、Windows/DirectX SDK、同梱 spdlog の
+ヘッダーのみです。間接的なものも含め、エンジン機能のヘッダーを含めてはいけません。
+特に `Core\Core.h`、GameObject/Component、Scene、Prefab、input、time、job-system の
+ヘッダーを PCH から除外してください。これらを変更した際は、エンジンの全翻訳単位ではなく
+利用側のみを再ビルドするようにします。
 
-- Keep `#include "Pch.h"` first in engine `.cpp` files, followed by the
-  implementation's header and explicit dependencies for the APIs used.
-- Engine headers include their own declaration, inline implementation and macro
-  dependencies. Prefer forward declarations for non-owning incomplete types
-  where an implementation does not require the definition. Do not rely on an
-  unrelated `.cpp` include or the former Core umbrella to supply engine types.
-- `Core\Core.h` remains an opt-in convenience header for clients that want the
-  whole foundation API. Engine implementation files use individual headers;
-  adding a future API to the umbrella must not invalidate the PCH.
-- Compiler settings, ABI, runtime behavior and Debug/Release configuration
-  choices are unchanged. PCH/STL/SDK changes still legitimately rebuild all PCH
-  consumers; this change reduces feature-header edit fanout, not a guarantee of
-  faster clean builds.
+- エンジンの `.cpp` ファイルでは `#include "Pch.h"` を先頭に置き、その後に実装対象の
+  ヘッダーと、使用する API の依存関係を明示的に含めます。
+- エンジンのヘッダーは宣言、インライン実装、マクロの各依存関係を自らインクルードします。
+  実装で定義が不要な非所有の不完全型には、前方宣言を優先してください。無関係な `.cpp`
+  のインクルードや、以前の Core 一括ヘッダーからエンジン型が提供されることを前提にしないでください。
+- `Core\Core.h` は、基盤 API 全体を必要とするクライアント向けの任意利用の便利ヘッダーです。
+  エンジン実装ファイルでは個別のヘッダーを使用してください。将来 API を一括ヘッダーに
+  追加しても、PCH が無効にならないようにします。
+- コンパイラ設定、ABI、ランタイム動作、Debug/Release の構成選択に変更はありません。
+  PCH/STL/SDK の変更では引き続き PCH 利用側全体を再ビルドします。この変更は機能ヘッダー
+  編集時の再ビルド範囲を縮小するもので、クリーンビルドの高速化を保証するものではありません。
 
-## Repository directories
+## リポジトリのディレクトリ
 
-- `Source`: engine and editor C++ source, including public extension APIs.
-- `Assets`: authoring assets and HLSL source; preserve scenes, prefabs and models.
-- `Schemas`: authoritative FlatBuffers schemas.
-- `Library`: third-party source and licenses. Do not treat upstream build scripts,
-  tests, documentation or sample data as engine-generated waste.
-- `Tools`: dependency builds and offline asset generation.
-- `Build`: regenerable dependency output and engine intermediate files.
-  Engine intermediates live in `Build\GameEngine\x64\<Configuration>`.
-- `Generated\FlatBuffers`: regenerable headers; never edit by hand.
-- `x64\<Configuration>`: executable, runtime DLL and debugging symbols.
-- `Config`, `Log`, `.vs`: local editor preferences, logs and IDE caches.
-  Preserve preferences; do not remove IDE caches while the IDE is using them.
+- `Source`: 公開拡張 API を含む、エンジンとエディターの C++ ソース。
+- `Assets`: 制作用アセットと HLSL ソース。Scene、Prefab、Model を保持します。
+- `Schemas`: 正式な FlatBuffers スキーマ。
+- `Library`: サードパーティのソースとライセンス。上流のビルドスクリプト、テスト、
+  ドキュメント、サンプルデータをエンジン生成の不要物として扱わないでください。
+- `Tools`: 依存関係のビルドとオフラインのアセット生成。
+- `Build`: 再生成可能な依存関係の出力とエンジンの中間ファイル。
+  エンジン中間ファイルは `Build\GameEngine\x64\<Configuration>` にあります。
+- `Generated\FlatBuffers`: 再生成可能なヘッダー。手動で編集しないでください。
+- `x64\<Configuration>`: 実行ファイル、ランタイム DLL、デバッグシンボル。
+- `Config`、`Log`、`.vs`: ローカルのエディター設定、ログ、IDE キャッシュ。
+  設定は保持してください。IDE が使用中のキャッシュを削除しないでください。
 
-### Generated-output cleanup boundaries
+### 生成物のクリーンアップ範囲
 
-The active build directories under `Build` are `GameEngine`, `PhysX` and
-`ozz-animation`. Preserve these for incremental builds, along with
-`Generated\FlatBuffers`, `Assets\Shaders\Compiled` and the executable directories.
-Keep `GameEngine.exe`, its `.pdb`, and `libfbxsdk.dll` in `x64\<Configuration>`.
+`Build` 以下で有効なビルドディレクトリは `GameEngine`、`PhysX`、`ozz-animation` です。
+インクリメンタルビルド用にこれらを保持し、`Generated\FlatBuffers`、
+`Assets\Shaders\Compiled`、実行ファイルの各ディレクトリも残します。
+`x64\<Configuration>` には `GameEngine.exe`、その `.pdb`、`libfbxsdk.dll` を保持してください。
 
-The retired engine validation suites left local-only output, not maintained
-source or runtime assets: `Build\RenderingBaseline-*`,
-`Build\Terrain*Validation-*`, `Build\source-layout-before-*`,
-`Build\source-layout-after-*` and `Build\Tests`. These historical directories
-and their root-level build/probe logs have been removed. The deleted suites'
-orphaned `*Validation.obj` files were also removed from engine intermediates;
-do not remove objects that still correspond to project compilation items.
+廃止されたエンジン検証スイートが残したのは、保守対象のソースやランタイムアセットではなく、
+ローカル限定の出力です。該当するのは `Build\RenderingBaseline-*`、
+`Build\Terrain*Validation-*`、`Build\source-layout-before-*`、
+`Build\source-layout-after-*`、`Build\Tests` です。これらの過去のディレクトリと
+ルート直下のビルド／プローブログは削除済みです。削除したスイートに由来する孤立した
+`*Validation.obj` ファイルもエンジン中間ディレクトリから削除済みですが、プロジェクトの
+コンパイル項目に対応するオブジェクトファイルは削除しないでください。
 
-The obsolete built-in outputs `Deferred_psComposite_ps.cso`,
-`Occlusion_vsMain_vs.cso`, `PostProcessValidation_psCustomGain_ps.cso` and
-`PostProcessValidation_psScale_ps.cso` are no longer produced or consumed and
-have been removed. The 32 current built-in outputs and custom shader directories
-are retained. Do not infer that a custom shader or asset is unused merely because
-its filename is not a literal in the source.
+古い組み込み出力 `Deferred_psComposite_ps.cso`、
+`Occlusion_vsMain_vs.cso`、`PostProcessValidation_psCustomGain_ps.cso`、
+`PostProcessValidation_psScale_ps.cso` は生成も使用もされなくなったため、削除済みです。
+現在の32個の組み込み出力とカスタムシェーダーのディレクトリは保持されています。
+ファイル名がソース中にリテラルとして存在しないという理由だけで、カスタムシェーダーや
+アセットが未使用と判断しないでください。
 
-Engine source files, opt-in public APIs such as `Core\Core.h`, authoring assets,
-compatibility readers, preferences, third-party source/licenses and vendor
-samples/tests are not generated waste. A currently uncalled public API may be
-used by clients or future components. Verify references and intended ownership
-before deleting it. Ignored or untracked status alone never authorizes deletion;
-resolve and inspect specific targets, avoid junctions, and never broadly clean
-the repository or an active IDE cache.
+エンジンソース、`Core\Core.h` のような任意利用の公開 API、制作アセット、互換性用 reader、
+設定、サードパーティのソース／ライセンス、ベンダーのサンプル／テストは生成物の不要物では
+ありません。現在呼び出されていない公開 API も、クライアントや将来のコンポーネントが
+利用する可能性があります。削除前に参照先と本来の所有者を確認してください。
+Ignored または untracked であることだけを削除の根拠にしてはいけません。対象を特定して
+調査し、junction を避け、リポジトリ全体や使用中の IDE キャッシュを一括クリーンしないでください。
 
-Initialize registered submodules with `git submodule update --init --recursive`.
-The current local PhysX, ImGui and spdlog checkouts also contain required files
-that are not registered in the parent repository; ImGui and spdlog have local
-changes. They are deliberately preserved. A fresh clone is not self-contained
-until those dependency sources and changes are supplied separately.
+登録済みサブモジュールは `git submodule update --init --recursive` で初期化します。
+現在のローカル PhysX、ImGui、spdlog のチェックアウトには、親リポジトリに登録されていない
+必須ファイルも含まれています。また ImGui と spdlog にはローカル変更があります。
+これらは意図的に保持されています。依存ソースと変更を別途用意するまでは、新規 clone だけで
+ビルド可能な状態にはなりません。
 
-## Source organization
+## Source の構成
 
 ```text
 Source\
-  Main.cpp, Pch.cpp, Pch.h       Process entry point and precompiled header
-  Core\                        Shared engine foundations
-    GameObject\                Component/Behaviour base APIs, registry and object ownership
-    Scene\, Prefab\            Scene and prefab lifetime/persistence
-    Serialization\             Shared serialization infrastructure
-    System\                    Window, dialogs, startup and Play/Runtime orchestration
-    ...                        Containers, input, logging, math, threading, time
-  Components\                  GameObject-attached implementations only
+  Main.cpp, Pch.cpp, Pch.h       プロセスのエントリーポイントとプリコンパイル済みヘッダー
+  Core\                        エンジン共通の基盤
+    GameObject\                Component/Behaviour の基底 API、レジストリ、オブジェクト所有権
+    Scene\, Prefab\            Scene と Prefab のライフタイム／永続化
+    Serialization\             共通シリアライズ基盤
+    System\                    Window、ダイアログ、起動、Play/Runtime の統括
+    ...                        コンテナー、入力、ログ、数学、スレッド、時間
+  Components\                  GameObject にアタッチする実装のみ
     Animation\                 Animator
-    Audio\                     Audio source and listener
-    Rendering\                 Camera, light, model renderer and post-process volume
+    Audio\                     Audio source と listener
+    Rendering\                 Camera、light、model renderer、post-process volume
     Physics\
-      Character\               Character controller and movement
-      Collider\                Collider base and concrete shapes
+      Character\               キャラクターコントローラーと移動
+      Collider\                Collider の基底型と具体的な形状
       Joint\                   Joint
       Rigidbody\               Rigidbody
-    Terrain\                   Terrain component
-    Transform\                 Transform component
-    UI\                        Canvas, rect transform, image, text and button
-  Animation\Runtime\           Animation evaluation, not components
-  Assets\                      Asset data, import, managers and asset serializers by feature
-  Audio\                       Audio runtime services
+    Terrain\                   Terrain コンポーネント
+    Transform\                 Transform コンポーネント
+    UI\                        Canvas、rect transform、image、text、button
+  Animation\Runtime\           コンポーネントではないアニメーション評価処理
+  Assets\                      機能別のアセットデータ、インポート、マネージャー、シリアライザー
+  Audio\                       オーディオのランタイムサービス
   Editor\
-    Components\Camera\         Editor-only free-camera component
-    ImGui\, PostProcess\, Scene\  Editor UI, inspectors and scene documents
-  Graphics\                    Rendering services and GPU resources by feature
+    Components\Camera\         エディター専用のフリーカメラコンポーネント
+    ImGui\, PostProcess\, Scene\  エディター UI、インスペクター、シーンドキュメント
+  Graphics\                    機能別のレンダリングサービスと GPU リソース
     DirectX12\
-      Command\                 Command lists, queues and fences
-      Culling\                 GPU occlusion culling
-      Device\                  D3D12 device
-      Diagnostics\             GPU profiling and frame capture
-      Pipeline\                Graphics/compute pipelines
-      Presentation\            Swap chain
-      Rendering\               D3D12 renderer and model command recording
-      Resource\                Resources and descriptors
-  Physics\                     Physics world, system, queries and shared data
-    Internal\                  PhysX conversions and shared physics payload helpers
+      Command\                 コマンドリスト、キュー、フェンス
+      Culling\                 GPU オクルージョンカリング
+      Device\                  D3D12 デバイス
+      Diagnostics\             GPU プロファイリングとフレームキャプチャ
+      Pipeline\                グラフィックス／コンピュートパイプライン
+      Presentation\            スワップチェーン
+      Rendering\               D3D12 レンダラーとモデルコマンド記録
+      Resource\                リソースとディスクリプター
+  Physics\                     Physics ワールド、システム、クエリ、共有データ
+    Internal\                  PhysX 変換と共有 physics payload のヘルパー
   Terrain\
-    Data\                      Heightmap storage and image loading
-    Generation\                Build queue, build requests, noise, GPU noise and erosion
-    Geometry\                  Mesh building, chunks, LOD and surface sampling
-    Material\                  Terrain layer settings and weights
-    Serialization\             Terrain material serialization
-    Vegetation\                Vegetation recipes and placement
-  UI\                          Runtime UI layout and interaction services
+    Data\                      Heightmap の保存と画像読み込み
+    Generation\                ビルドキュー、ビルド要求、ノイズ、GPU ノイズ、侵食
+    Geometry\                  メッシュ生成、チャンク、LOD、サーフェスサンプリング
+    Material\                  Terrain レイヤー設定とウェイト
+    Serialization\             Terrain マテリアルのシリアライズ
+    Vegetation\                植生レシピと配置
+  UI\                          ランタイム UI のレイアウトと操作サービス
 ```
 
-Keep concrete runtime components in `Source\Components\<Feature>`, with further
-subfolders when that feature has distinct families (as in Physics). Keep the
-`Component`/`Behaviour` base types and registration in `Core\GameObject`; they
-are infrastructure, not attachable feature implementations. Editor-only
-components belong in `Editor\Components\<Feature>`.
+具体的なランタイムコンポーネントは `Source\Components\<Feature>` に配置し、
+Physics のように機能内に明確な分類がある場合はサブフォルダーを設けます。
+`Component`/`Behaviour` の基底型と登録処理は `Core\GameObject` に置きます。
+これらはインフラであり、アタッチ可能な機能実装ではありません。
+エディター専用コンポーネントは `Editor\Components\<Feature>` に配置します。
 
-Services, asset resources and rendering backends do not
-belong in `Components`. Preserve the existing feature split under `Assets`,
-`Graphics` and `Editor` rather than collecting unrelated managers or utilities
-in a catch-all folder. Add a new feature folder when it has a distinct
-responsibility; do not create empty folders for hypothetical features.
+サービス、アセットリソース、レンダリングバックエンドは `Components` に置きません。
+無関係なマネージャーやユーティリティを汎用フォルダーにまとめず、`Assets`、`Graphics`、
+`Editor` 配下の既存の機能分割を維持してください。明確な責務がある場合に新しい機能
+フォルダーを追加し、想定上の機能のために空のフォルダーを作らないでください。
 
-Use Source-root-relative include paths, for example
+次の例のように、Source ルートからの相対パスでインクルードします。
 `#include "Components\Physics\Collider\BoxColliderComponent.h"`.
-No compatibility headers or extra per-feature include search paths are needed.
-Changing placement does not change class names, component registration names,
-Scene/Prefab payloads, asset paths or generated FlatBuffers headers.
+互換性用ヘッダーや機能別の追加インクルード検索パスは不要です。
+配置を変更しても、クラス名、コンポーネント登録名、Scene/Prefab payload、
+アセットパス、生成済み FlatBuffers ヘッダーは変わりません。
 
-When adding or moving a file, update `GameEngine.vcxproj` and
-`GameEngine.vcxproj.filters` together. Every source/header/inl file is explicitly
-listed, and each Visual Studio filter matches its physical directory, including
-the `Source` prefix. Keep paired headers and implementations together.
-Build Debug/Release after a cross-feature reorganization.
+ファイルの追加／移動時は `GameEngine.vcxproj` と `GameEngine.vcxproj.filters` を
+同時に更新します。すべての source/header/inl ファイルは明示的に列挙され、
+各 Visual Studio フィルターは `Source` を含む実際のディレクトリ構成と一致します。
+対応するヘッダーと実装はまとめて配置してください。複数機能にまたがる再編成後は
+Debug/Release の両方をビルドします。
 
-# Core scheduling and input boundaries
+# Core のスケジューリングと入力の境界
 
-`JobSystem` queues only ready dependencies for execution. A blocked dependent
-does not recursively take ownership of another blocked job, so producers queued
-after dependents can unblock a valid dependency chain. External dependency
-completion and cancellation are checked periodically by workers. Dependency
-cycles are still invalid; a job must not wait for a counter containing itself
-or call `waitForAll`, `initialize` or `finalize` on its own system.
+`JobSystem` は、依存関係が解決済みのジョブのみを実行キューに入れます。
+依存待ちのジョブが、別の依存待ちジョブを再帰的に引き受けることはありません。
+そのため、依存側より後にキューへ入れた producer が、有効な依存チェーンを進行させられます。
+外部依存の完了とキャンセルはワーカーが定期的に確認します。依存関係の循環は引き続き無効です。
+ジョブは自身を含むカウンターを待機したり、自身のシステムに対して `waitForAll`、
+`initialize`、`finalize` を呼び出したりしてはいけません。
 
-Scheduling/counters/waits are thread-safe; the published worker count is atomic.
-Counter and captured callback state must outlive all submitted jobs. Scheduling
-allocation failures propagate; `parallelFor` joins any jobs already submitted
-before unwinding. Job callback failures are logged and still complete accounting.
-Continuations retain the existing behavior of running after a failed body.
+スケジューリング／カウンター／待機処理はスレッドセーフで、公開されるワーカー数は atomic です。
+カウンターとキャプチャしたコールバック状態は、投入済みジョブすべてより長く存続させる必要が
+あります。スケジューリング時の割り当て失敗は伝播します。`parallelFor` は巻き戻す前に、
+投入済みのジョブをすべて join します。ジョブコールバックの失敗はログに記録され、
+アカウンティングは完了します。継続処理は従来どおり本体の失敗後も実行されます。
 
-`TaskGroup` rejects mutation and overlapping execution while jobs are pending.
-Group operations require external synchronization. Its `wait` helps execute
-ready jobs, including inside a worker; destruction cancels queued work and joins
-running work before releasing group storage. The supplied system must outlive
-the group, and tasks must not destroy or wait on their own group. Cancellation
-between tasks in a parallel chunk is observed without waiting for the whole chunk.
+ジョブが保留中の間、`TaskGroup` は変更と重複実行を拒否します。グループ操作には外部同期が
+必要です。`wait` はワーカー内を含め、実行可能なジョブの処理を手伝います。破棄時には
+キュー済み作業をキャンセルし、実行中の作業を join してからグループの領域を解放します。
+渡されたシステムはグループより長く存続する必要があり、タスク自身が所属グループを破棄または
+待機してはいけません。並列チャンク内のタスク間でキャンセルが確認された場合、チャンク全体の
+完了を待たずに反映されます。
 
-`MainThreadDispatcher` retains task-buffer capacity across frames. Tasks posted
-during dispatch run on the next dispatch; recursively calling `dispatchPending`
-is rejected and logged. Callback exceptions are logged without dropping later
-callbacks or leaving dispatch permanently active.
+`MainThreadDispatcher` はフレームをまたいでタスクバッファの容量を保持します。
+dispatch 中に投稿されたタスクは次回の dispatch で実行されます。`dispatchPending` の
+再帰呼び出しは拒否され、ログに記録されます。コールバックの例外は記録されますが、
+後続コールバックは破棄されず、dispatch 状態が永続的に有効のままになることもありません。
 
-`String` rejects nonempty null sources and ranges into its unused capacity,
-preserving the previous value and logging the error. Appending a string literal
-has an unambiguous overload. Capacity/encoding failures are logged in Release
-as well as Debug. UTF-16 conversion rejects malformed surrogate sequences and
-does not write to a result buffer after an allocation failure.
+`String` は、空でない null ソースと未使用容量への範囲指定を拒否し、以前の値を保持して
+エラーをログに記録します。文字列リテラルの追加には曖昧さのないオーバーロードがあります。
+容量／エンコードの失敗は Debug だけでなく Release でもログに記録されます。
+UTF-16 変換は不正なサロゲート列を拒否し、割り当てに失敗した後で結果バッファへ書き込みません。
 
-Smoothed frame time averages only recorded samples during startup; after ten
-samples it retains the existing ten-frame rolling average.
+平滑化フレーム時間は起動時、記録済みサンプルのみを平均します。10サンプル取得後は、
+従来どおり直近10フレームの移動平均を維持します。
 
-# Component removal
+# コンポーネントの削除
 
-In the Inspector, click the **X** on an optional component header, or right-click
-the header and choose **Remove Component**. This removes only that instance.
-Required components (including Transform) cannot be removed. Removal completes
-after component enumeration, invoking the existing disable/destroy lifecycle.
-Saving the scene or prefab afterwards persists its updated component list.
+Inspector で任意コンポーネントのヘッダーにある **X** をクリックするか、ヘッダーを右クリックして
+**Remove Component** を選択します。削除されるのはそのインスタンスのみです。
+Transform を含む必須コンポーネントは削除できません。削除はコンポーネント列挙の完了後に行われ、
+既存の disable/destroy ライフサイクルが呼び出されます。その後 Scene または Prefab を保存すると、
+更新後のコンポーネント一覧が保存されます。
 
-`GameObject::removeComponent(Component&)` removes one instance, including a
-queued addition. Do not use its reference after a successful removal request.
-The existing `removeComponent<T>()` API still removes all instances of that type.
+`GameObject::removeComponent(Component&)` は、追加待ちのものを含め、1つのインスタンスを削除します。
+削除要求が成功した後は、その参照を使用しないでください。既存の `removeComponent<T>()` API は
+引き続き、その型の全インスタンスを削除します。
 
-# Runtime and Play
+# Runtime と Play
 
 ## Sky Atmosphere
 
-Add **Sky Atmosphere** to a GameObject; its world position is the planet center.
-Add one or two **Directional Light** components and enable **Atmosphere Sun
-Light**, assigning distinct indices 0 and 1. Set the camera clear mode to
-**Skybox** to render atmospheric sky and sun disks. The component provides
-Rayleigh/Mie scattering, Mie anisotropy and absorption, ozone absorption,
-altitude scale heights, planetary curvature, and distance-scaled aerial
-perspective. Its kilometer-based radii are converted using **World Units per
-km** (1000 for a meter-based world). With the default Earth radius, a ground
-plane at world Y=0 should have the atmosphere center at Y=-6,360,000 and the
-camera just above Y=0.
+GameObject に **Sky Atmosphere** を追加します。そのワールド位置が惑星の中心になります。
+**Directional Light** コンポーネントを1つまたは2つ追加し、**Atmosphere Sun
+Light** を有効にして、それぞれ異なるインデックス 0 と 1 を割り当てます。
+大気の空と太陽円盤を描画するには、カメラの clear mode を **Skybox** に設定します。
+このコンポーネントは Rayleigh/Mie 散乱、Mie の異方性と吸収、オゾン吸収、高度別の
+スケールハイト、惑星曲率、距離に応じた大気遠近を提供します。キロメートル単位の半径は
+**World Units per km** を使って変換されます (メートル基準のワールドでは 1000)。
+既定の地球半径を使う場合、ワールド Y=0 の地面に対し、大気の中心を Y=-6,360,000、
+カメラを Y=0 のすぐ上に配置します。
 
-Atmosphere is evaluated in the Deferred HDR lighting pass, before tone mapping.
-It affects the sky and opaque deferred geometry; it does not affect the Forward
-renderer or transparent materials. Only the first active Sky Atmosphere
-component is used, and each sun index uses the first active matching light.
-Both components are persisted with scenes and prefabs; version 1 Light payloads
-remain loadable after the atmosphere sun-light fields were added. The renderer
-uses fixed-step single scattering rather than Unreal's precomputed lookup
-textures, so results and cost are not identical.
+大気はトーンマッピング前の Deferred HDR ライティングパスで評価されます。
+空と不透明な Deferred ジオメトリに作用しますが、Forward レンダラーや透明マテリアルには
+作用しません。有効な Sky Atmosphere コンポーネントのうち最初のものだけを使用し、
+各太陽インデックスには一致する有効なライトのうち最初のものを使用します。
+両コンポーネントは Scene と Prefab に保存されます。Atmosphere sun-light フィールド追加後も、
+version 1 の Light payload を読み込めます。レンダラーは Unreal の事前計算ルックアップ
+テクスチャではなく、固定ステップの単一散乱を使用するため、結果やコストは同一ではありません。
 
-Launch from the project root:
+プロジェクトのルートから起動します。
 
 ```powershell
 .\x64\Debug\GameEngine.exe
@@ -325,199 +317,182 @@ Launch from the project root:
 .\x64\Debug\GameEngine.exe --help
 ```
 
-## PostEffect Phase 1 execution contract
+## PostEffect Phase 1 の実行仕様
 
-`DX12Renderer::setPostProcessPasses` copies an ordered list of
-`PostProcessPassDescription` snapshots between frames on the render thread.
-Each definition owns an immutable compiled pixel-shader snapshot and 16 float
-parameters. Invalid configurations log and return false without replacing the
-current list. Successful replacement waits for the last GPU use and releases
-obsolete temporary targets. Shared shaders are nonmutable for their entire
-snapshot lifetime; replacing bytecode requires submitting a new snapshot/list.
+`DX12Renderer::setPostProcessPasses` は、フレーム間にレンダースレッド上で
+`PostProcessPassDescription` snapshot の順序付きリストをコピーします。
+各定義は不変のコンパイル済みピクセルシェーダー snapshot と16個の float パラメーターを所有します。
+設定が無効な場合はログを記録して false を返し、現在のリストを置き換えません。
+置き換えが成功すると、最後の GPU 使用完了を待って不要になった一時ターゲットを解放します。 共有シェーダーは snapshot の存続中に変更されません。バイトコードを置き換える場合は、
+新しい snapshot／リストを送信してください。
 
-The current Deferred color path is:
+現在の Deferred カラーパスは次のとおりです。
 
 ```text
-G-Buffer -> HDR lighting -> transparent geometry
-         -> BeforeToneMapping color passes
-         -> Bloom -> White Balance / Global + tonal-range Color Grading
-         -> fixed/automatic exposure + ACES fitted Tone Mapping (linear HDR -> linear LDR)
-         -> AfterToneMapping color passes
-         -> Color Grading LUT -> Vignette -> Chromatic Aberration -> FXAA -> Film Grain
-         -> sRGB encoding -> debug grid / Runtime UI / editor UI -> presentation
+G-Buffer -> HDR ライティング -> 透明ジオメトリ
+         -> トーンマッピング前のカラー処理
+         -> Bloom -> ホワイトバランス／全体・階調別カラーグレーディング
+         -> 固定／自動露出 + ACES トーンマッピング (線形 HDR -> 線形 LDR)
+         -> トーンマッピング後のカラー処理
+         -> カラーグレーディング LUT -> ビネット -> 色収差 -> FXAA -> フィルムグレイン
+         -> sRGB エンコード -> デバッググリッド／Runtime UI／エディター UI -> 表示
 ```
 
-Both stages preserve registration order **within** their stage, regardless of
-where their definitions appeared in the list. All optional targets are linear
-RGBA16F. `resolutionDivisor` (1-16) uses ceil-divided full-target dimensions;
-reduced camera bounds cover complete temporary texels, and sampling is clamped
-to the source viewport. Full-size passes retain the exact original camera bounds.
-A target is never used simultaneously as input and output.
-Returned textures may be reused later in the same command list, but cross-frame
-reuse and destruction wait for the associated scene-submission fence. Forward,
-`Nothing` camera clear mode, and G-Buffer debug views bypass the list.
+どちらの段階も、定義がリスト内のどこにあったかにかかわらず、段階内の登録順を維持します。
+任意ターゲットはすべて linear RGBA16F です。`resolutionDivisor` (1-16) は、全ターゲット寸法を
+切り上げ除算して使います。縮小時のカメラ境界は一時テクセル全体を覆い、サンプリング範囲は
+ソースの viewport 内に制限されます。フルサイズのパスでは元のカメラ境界を厳密に維持します。
+ターゲットが同時に入力と出力として使われることはありません。
+返却されたテクスチャは同じコマンドリスト内で後から再利用できますが、フレームをまたぐ再利用と
+破棄は、対応する scene-submission fence の完了を待ちます。Forward、カメラの clear mode が
+`Nothing` の場合、G-Buffer デバッグビューではリストを迂回します。
 
-Without enabled LDR passes or built-in LDR effects, tone mapping and sRGB encoding
-are fused into the final output pass. Therefore an empty or entirely disabled list adds no scratch
-texture and preserves the Phase 0 images bit-for-bit. Exposure is applied once.
-With LDR effects enabled, the tone-mapped intermediate is linear half-float, not
-sRGB. Display alpha is 1. `captureFrame` retains scene HDR **before** optional
-effects and captures final display after UI; Forward captures have no HDR image.
+有効な LDR パスや組み込み LDR エフェクトがない場合、トーンマッピングと sRGB エンコードは
+最終出力パスに統合されます。そのため、空またはすべて無効なリストではスクラッチテクスチャを
+追加せず、Phase 0 の画像をビット単位で維持します。露出は1回だけ適用されます。
+LDR エフェクトが有効な場合、トーンマッピング後の中間画像は sRGB ではなく linear half-float です。
+表示時のアルファは 1 です。`captureFrame` は任意エフェクト適用**前**のシーン HDR を保持し、
+UI 描画後に最終表示をキャプチャします。Forward のキャプチャには HDR 画像がありません。
 
-Pixel shaders include `Assets/Shaders/PostProcess.hlsli`, use `PostProcessVertex`,
-and call `loadInputColor(input.position.xy)`. Root bindings are `t0` (input color),
-`s0` (linear clamp), `b0` (source/target viewport, exposure, conversion flag), and
-`b1` (four `float4` parameter vectors). Built-ins additionally use `t1` (secondary
-color input) and `b2` (its viewport); old single-input shader bindings are unchanged.
-Full-resolution identical viewports use
-integer texture loads to preserve exact copies. `ColorOutput.hlsli` shares the
-ACES fitted tone-mapping curve and sRGB implementation with Deferred debug display.
+ピクセルシェーダーは `Assets/Shaders/PostProcess.hlsli` をインクルードし、
+`PostProcessVertex` を使って `loadInputColor(input.position.xy)` を呼び出します。
+ルートバインディングは `t0` (入力色)、`s0` (linear clamp)、`b0` (ソース／ターゲット viewport、
+露出、変換フラグ)、`b1` (4つの `float4` パラメーターベクトル) です。組み込みシェーダーは
+さらに `t1` (副入力色) と `b2` (その viewport) を使います。従来の単一入力シェーダーの
+バインディングは変更されていません。フル解像度で viewport が同じ場合は、正確なコピーを
+維持するため整数テクスチャ読み込みを使います。`ColorOutput.hlsli` は Deferred デバッグ表示と
+ACES の近似トーンマッピング曲線および sRGB 実装を共有します。
 
-This is deliberately a small color-only graphics-pass foundation, not a full
-render graph. Depth/normal inputs, compute passes, history,
-and custom shader asset/hot-reload tracking are later phases. Profile authoring
-is implemented separately in Phase 2 below.
-Common output shaders participate in the existing ShaderManager reload flow;
-user-supplied snapshots are replaced explicitly.
+これは意図的に、フル機能のレンダーグラフではなく、色のみを扱う小規模なグラフィックスパス基盤です。
+深度／法線入力、コンピュートパス、履歴、カスタムシェーダーアセット／ホットリロードの追跡は
+後続フェーズで扱います。Profile の編集機能は以下の Phase 2 で別途実装されています。
+共通出力シェーダーは既存の ShaderManager リロード処理に参加し、ユーザー提供の snapshot は
+明示的に置き換えます。
 
-## PostEffect Phase 2 Profiles and Camera authoring
+## PostEffect Phase 2 Profile と Camera の編集
 
-Select a **Camera** in the Inspector and expand **Post Effects**. Post Effects
-settings are shared through Profiles and local Camera overrides, and execute in
-Deferred rendering. Existing renderer exposure and the diagnostic/custom pass
-API remain available.
+Inspector で **Camera** を選択して **Post Effects** を展開します。Post Effects の設定は
+Profile と Camera のローカルオーバーライドで共有され、Deferred レンダリングで実行されます。
+既存のレンダラー露出設定と診断／カスタムパス API も引き続き利用できます。
 
-- **Enable Post Effects** opts this camera into Profile rendering (default off).
-  **Weight** is a finite contribution in `[0,1]`; Phase 3 blends parameters from
-  neutral values, except FXAA, which blends original/filtered linear LDR images.
-- **New Profile**, **Open Profile...**, and **Shared Profile** create/load/select
-  a shared asset. **Edit Shared Profile** changes its immutable published
-  snapshot, affecting all referencing cameras. **Make Unique** creates a new,
-  unsaved GUID and assigns it to this camera without modifying the source.
-- **Save Profile** atomically writes the existing file. **Save Profile As...**
-  writes `.postprofile` and updates that asset's registered path. **Reload
-  (discard edits)** explicitly replaces authored values from disk, only on
-  successful verification. The Inspector marks unsaved edits.
-- A checkbox to the left of each parameter means **override**. Unchecked
-  parameters retain their authored values but inherit the preceding layer's
-  value. The effect's Enabled switch is also overridable, so a camera can
-  explicitly disable an enabled Profile effect.
-- **Camera Overrides** are independent, serialized values, not shared asset
-  edits. **Reset Overrides** restores neutral defaults and clears override flags.
-  Resolution order is engine defaults -> enabled Profile overrides -> enabled
-  local parameter overrides. Phase 4 blends Volumes before these Camera layers.
+- **Enable Post Effects** は、このカメラで Profile レンダリングを有効にします (既定では無効)。
+  **Weight** は `[0,1]` の有限な寄与率です。Phase 3 では中立値から各パラメーターをブレンドします。
+  FXAA のみ例外で、元の linear LDR 画像とフィルター後の画像をブレンドします。
+- **New Profile**、**Open Profile...**、**Shared Profile** で共有アセットを作成／読み込み／選択します。
+  **Edit Shared Profile** は公開済みの不変 snapshot を更新し、参照するすべてのカメラに影響します。
+  **Make Unique** は元アセットを変更せず、新しい未保存 GUID を作成してこのカメラに割り当てます。
+- **Save Profile** は既存ファイルへアトミックに書き込みます。**Save Profile As...** は
+  `.postprofile` を書き込み、そのアセットの登録パスを更新します。**Reload
+  (discard edits)** は、検証が成功した場合に限り、ディスク上の値で編集内容を明示的に置き換えます。
+  Inspector は未保存の編集があることを表示します。
+- 各パラメーター左側のチェックボックスは **override** を意味します。未チェックの値は定義値を
+  保持しつつ、直前のレイヤーの値を継承します。エフェクトの Enabled スイッチもオーバーライド
+  できるため、Profile で有効なエフェクトをカメラ側から明示的に無効にできます。
+- **Camera Overrides** は共有アセットの編集ではなく、独立してシリアライズされる値です。
+  **Reset Overrides** は中立の既定値に戻し、オーバーライドフラグを解除します。
+  解決順序は engine defaults -> enabled Profile overrides -> enabled local parameter overrides です。
+  Phase 4 ではこれら Camera レイヤーの前に Volume をブレンドします。
 
-`PostProcessProfileManager` uses generation-checked handles and owns immutable
-`shared_ptr<const PostProcessProfile>` snapshots. Updating a Profile does not
-mutate old snapshots. The CPU-only `RenderView::postProcess` contains resolved
-values, camera enable and weight, with no manager handles or GPU resources.
-Subsequent edits cannot change a queued render view. Fixed exposure is expressed
-in EV stops, contrast/saturation in percent, and colors in **linear RGB**;
-scalar/color ranges are shared between the Inspector and settings validation.
+`PostProcessProfileManager` は世代確認付きハンドルを使い、不変の
+`shared_ptr<const PostProcessProfile>` snapshot を所有します。Profile 更新で古い snapshot は
+変更されません。CPU 専用の `RenderView::postProcess` には解決済みの値、カメラの有効状態と
+weight が入り、マネージャーハンドルや GPU リソースは含まれません。後続の編集でキュー済み
+render view が変化することはありません。固定露出は EV 段、contrast/saturation は百分率、
+色は **linear RGB** で表します。スカラー／色の範囲は Inspector と設定検証で共通です。
 
-Scene/Prefab Camera payload v7 stores enable, weight, local values/flags, Volume
-layer mask, and
-Profile GUID plus a normalized absolute path encoded as UTF-8. Existing v1
-Cameras and legacy empty payloads remain compatible with neutral PostEffect
-defaults. Launching the project does not require any new Profile assets.
-GUID mismatches, stale references, unsupported versions, nonfinite/out-of-range
-values, and truncated files are diagnosed rather than silently accepted.
-The manager rejects a second registered path with the same GUID; copy assets
-using **Make Unique**, not a filesystem copy, to create independent identities.
-Moving files outside the editor requires reassigning the Profile; this phase
-does not introduce an asset database/automatic relocation.
+Scene/Prefab の Camera payload v7 は、enable、weight、ローカル値／フラグ、Volume layer mask、
+Profile GUID と UTF-8 でエンコードした正規化済み絶対パスを保存します。既存の v1 Camera と
+従来の空 payload は、中立の PostEffect 既定値で引き続き互換性があります。プロジェクトの起動に
+新しい Profile アセットは不要です。GUID 不一致、古い参照、未対応バージョン、非有限／範囲外の値、
+ファイルの切り詰めは黙認せず、診断情報を出します。同じ GUID の別パス登録はマネージャーが
+拒否します。独立した ID を作るにはファイルをコピーせず **Make Unique** を使ってください。
+エディター外でファイルを移動した場合は Profile の再割り当てが必要です。このフェーズでは
+アセットデータベースや自動再配置は導入しません。
 
-**Save a new Profile before saving its referencing Scene/Prefab.** Scene files
-save references, not shared asset edits; save the Profile separately to persist
-those edits. In-memory Play cloning works even before the first Profile save:
-only immutable assets are shared and local overrides remain independent.
-Inspector editing remains disabled during Play as in the existing editor.
+参照先 Scene/Prefab を保存する前に、新規 Profile を保存してください。Scene ファイルに保存されるのは
+参照であり、共有アセットの編集内容ではありません。編集内容を永続化するには Profile を別途保存します。
+初回 Profile 保存前でもメモリ内の Play 複製は動作します。不変アセットのみを共有し、ローカル
+オーバーライドは独立して保持されます。既存エディターと同様、Play 中は Inspector 編集が無効です。
 
-## PostEffect Phase 3 built-in effects
+## PostEffect Phase 3 の組み込みエフェクト
 
-Camera Weight 0, disabled cameras and neutral effect settings retain the one-draw,
-zero-allocation baseline path. Exposure and color adjustments fuse into display
-conversion when no LDR pass is needed. Settings changes do not rebuild PSOs or
-wait for GPU fences; the existing fence-aware pool handles temporary resources.
-Forward, `Nothing` clear mode and G-Buffer debug views bypass camera effects.
-UI and the editor grid remain after post-processing. Removing the active Camera
-clears its PostEffect snapshot.
+Camera Weight が 0、カメラが無効、またはエフェクト設定が中立の場合は、描画1回・割り当て0回の
+基本経路を維持します。LDR パスが不要な場合、露出と色調整は表示変換に統合されます。
+設定変更によって PSO の再構築や GPU fence 待ちは発生しません。一時リソースは既存の
+fence 対応プールで管理します。Forward、`Nothing` clear mode、G-Buffer デバッグビューでは
+カメラエフェクトを迂回します。後処理後も UI とエディターグリッドを描画します。
+アクティブ Camera を削除すると、その PostEffect snapshot はクリアされます。
 
-- **Bloom** follows the Standard multi-scale pyramid (not convolution Bloom):
-  Karis-weighted first downsampling suppresses isolated HDR fireflies, followed by
-  up to five ceil-half levels from 1/2 through 1/32 and normalized nine-tap tent
-  reconstruction. A one-luminance-unit soft threshold is scene-referred and
-  evaluated before exposure; `-1` includes all pixels. Size Scale adjusts blur
-  radius, Scatter blends local and low-frequency energy, and Intensity scales the
-  additive HDR result. Constant fields remain normalized across pyramid depth.
-- **Fixed exposure** multiplies renderer exposure by `exp2(EV * Weight)` once.
-  No automatic exposure/history is introduced. Tone-map inputs are clamped to
-  RGBA16F's finite maximum to avoid overflow at extreme EV.
-- **ACES Tone Mapping** uses the fitted ACES filmic curve before the final
-  linear-to-sRGB encoding. Fixed exposure and temporally adapted automatic
-  exposure are applied once before this curve.
-- **Color Grading** applies Kelvin White Balance and Tint, a linear RGB filter,
-  global contrast around middle gray (0.18), Rec.709 saturation and Gamma, then
-  independently weighted Shadows/Midtones/Highlights saturation, contrast,
-  Gamma, Gain and linear color-wheel offsets. Negative colors are clamped to zero.
-  Camera/Volume weights blend from neutral values; color grading remains in HDR
-  before exposure and tone mapping.
-- **Vignette** blends its linear RGB color after tone mapping. Intensity blends
-  from zero; smoothness controls radial falloff, and roundness blends between
-  viewport-normalized and aspect-correct distance.
-- **Chromatic Aberration** separates red and blue channels radially from the
-  viewport center after Vignette. Start Offset controls the onset radius; sampling
-  is clamped to the active camera viewport.
-- **FXAA** detects directional edges using perceptual luminance and bounded
-  endpoint searches, combines edge and subpixel reconstruction, and blends the
-  filtered **linear LDR** result by Weight. Luminance comparisons use 12-bit
-  fractional precision to stabilize nearly equal edges across floating-point
-  contraction differences. sRGB encoding remains final-only.
-- **Film Grain** adds a frame-varying hash-noise grain in linear LDR after FXAA.
-  Intensity controls amplitude and Response weights the grain toward shadows.
-  The seed advances only on frames where the effect is active and is transported
-  exactly through the shader constants.
+- **Bloom** は畳み込み型ではなく標準的なマルチスケールピラミッド方式です。最初の
+  ダウンサンプリングでは Karis weight を使い、孤立した HDR の火花状ノイズを抑えます。
+  続いて 1/2 から 1/32 まで最大5段階の切り上げ半分縮小を行い、正規化した9タップ tent で
+  再構成します。輝度1単位のソフト閾値は scene-referred で、露出前に評価されます。
+  `-1` は全ピクセルを含めます。Size Scale はぼかし半径、Scatter は局所成分と低周波成分の
+  混合、Intensity は HDR 加算結果のスケールを制御します。ピラミッド段数によらず定数場は
+  正規化されます。
+- **Fixed exposure** はレンダラー露出に `exp2(EV * Weight)` を一度だけ乗算します。
+  自動露出／履歴は導入しません。極端な EV でのオーバーフローを防ぐため、トーンマッピング入力は
+  RGBA16F の有限最大値に制限されます。
+- **ACES Tone Mapping** は最終 linear-to-sRGB エンコードの前に近似 ACES filmic 曲線を使います。
+  固定露出と時間適応型自動露出は、この曲線の前に一度だけ適用されます。
+- **Color Grading** は Kelvin White Balance と Tint、linear RGB フィルター、中間グレー (0.18)
+  基準の全体 contrast、Rec.709 saturation と Gamma を適用します。次に Shadows/Midtones/
+  Highlights ごとに saturation、contrast、Gamma、Gain、linear color-wheel offset を個別に
+  weight 付きで適用します。負の色はゼロに制限されます。Camera/Volume weight は中立値から
+  ブレンドし、カラーグレーディングは露出／トーンマッピング前の HDR で行います。
+- **Vignette** はトーンマッピング後に linear RGB 色をブレンドします。Intensity はゼロから
+  ブレンドし、smoothness は放射状減衰を制御します。roundness は viewport 正規化距離と
+  アスペクト補正距離を混合します。
+- **Chromatic Aberration** は Vignette 後に viewport 中心から放射状に赤／青チャンネルを
+  分離します。Start Offset は効果開始半径を制御し、サンプリングはアクティブ Camera の
+  viewport 内に制限されます。
+- **FXAA** は知覚輝度で方向性エッジを検出し、端点検索範囲を制限します。エッジ再構成と
+  サブピクセル再構成を組み合わせ、フィルター済み **linear LDR** 結果を Weight でブレンドします。
+  浮動小数点演算の contraction 差があっても近いエッジを安定させるため、輝度比較には12ビットの
+  小数精度を使用します。
+  sRGB エンコードは最終段階のみです。
+- **Film Grain** は FXAA 後の linear LDR に、フレームごとに変化する hash noise 粒子を加えます。
+  Intensity は振幅を、Response は暗部へ適用する重みを制御します。
+  Seed はエフェクトが有効なフレームでのみ進み、shader 定数を通じて正確に渡されます。
 
-All built-in shaders participate in ShaderManager dependency/hot-reload tracking.
-Rebuild constructs all candidate PSOs before replacing the previous pipelines.
-Bloom's multi-input passes never alias their output with either source.
-Sampling honors Direct3D's implicit viewport scissor (floor right/bottom), so
-fractional viewports never sample the undrawn bottom/right rows of temporary
-targets.
+すべての組み込みシェーダーは ShaderManager の依存関係／ホットリロード追跡に参加します。
+再ビルドでは候補 PSO をすべて構築してから、既存パイプラインを置き換えます。
+Bloom の複数入力パスで出力をいずれかのソースとエイリアスさせることはありません。
+サンプリングは Direct3D の暗黙の viewport scissor (右端／下端を floor) に従うため、
+小数 viewport でも一時ターゲットの未描画領域である右端／下端の行をサンプリングしません。
 
-## PostEffect Phase 4 Volumes
+## PostEffect Phase 4 の Volume
 
-Add a **PostProcessVolume** component to a GameObject and assign/create a shared
-`.postprofile` in its Inspector. It uses the same Profile open/edit/save/reload/
-Make Unique controls as Camera. No physics collider or physics update is required.
-One Volume component is permitted per object. Camera **Enable Post Effects** is
-the overall gate; **Volume Layer Mask** is an independent hexadecimal 32-bit mask
-over Volume GameObject Layers. Mask `00000000` excludes Volumes without disabling
-Camera Profile/Overrides.
+GameObject に **PostProcessVolume** コンポーネントを追加し、Inspector で共有
+`.postprofile` を割り当てるか作成します。Camera と同じ Profile の open/edit/save/reload/
+Make Unique 操作を使えます。physics collider や physics update は不要です。
+1つのオブジェクトに追加できる Volume コンポーネントは1つです。Camera の
+**Enable Post Effects** が全体の有効／無効を制御し、**Volume Layer Mask** は Volume
+GameObject Layer に対する独立した16進数32ビットマスクです。マスク `00000000` は Camera
+Profile/Overrides を無効にせず Volume のみを除外します。
 
-Only the active Scene and persistent Scene participate, matching the engine's
-rendered scenes. Disabled components, inactive hierarchies and objects/ancestors
-queued for destruction are excluded. Unassigned Profiles contribute nothing.
-Stale Profile handles are diagnosed once and skipped, without stale component
-registrations after removal or Play scene swaps.
+エンジンが描画する Scene と同様に、アクティブ Scene と persistent Scene のみが対象です。
+無効なコンポーネント、非アクティブな階層、破棄待ちのオブジェクト／祖先は除外されます。
+Profile が未割り当ての場合は寄与しません。古い Profile ハンドルは一度だけ診断を出して
+スキップし、削除や Play 中の Scene 切り替え後にコンポーネント登録が残ることはありません。
 
-### Shapes and ordering
+### 形状と適用順
 
-- **Global** applies its Weight everywhere and ignores its Transform.
-- **Box** uses a local center and positive local full size. It follows the
-  engine's world TRS, including hierarchy, rotation, nonuniform and mirrored scale.
-  Falloff uses the world-space distance to the oriented Box, including corners.
-- **Sphere** uses a local center and positive local radius; world radius is
-  local radius times the largest absolute world scale axis.
-- **Blend Distance** is a shell **outside** the shape measured in world units.
-  Inside/on the shape the influence is full Volume Weight. Outside,
-  `Weight * smoothstep(0,1,1-distance/BlendDistance)` falls smoothly to zero.
-  Distance zero is a deliberately hard boundary. Invalid/degenerate local world
-  transforms are diagnosed and skipped until recovered.
+- **Global** はどこでも Weight を適用し、Transform は無視します。
+- **Box** はローカル中心と正のローカル全サイズを使います。階層、回転、非一様／反転スケールを
+  含むエンジンのワールド TRS に従います。減衰には角を含む向き付き Box までの
+  ワールド空間距離を使います。
+- **Sphere** はローカル中心と正のローカル半径を使います。ワールド半径はローカル半径に
+  ワールドスケール軸の絶対値の最大値を乗じた値です。
+- **Blend Distance** は形状の**外側**に設けるワールド単位の境界帯です。形状の内側／境界上では
+  Volume Weight 全体が影響します。外側では
+  `Weight * smoothstep(0,1,1-distance/BlendDistance)` により滑らかにゼロへ減衰します。
+  Distance が 0 の場合は意図的に明確な境界になります。無効／退化したローカルワールド変換は
+  診断を出して、復旧するまでスキップします。
 
-Lower **Priority** is applied first. Equal priorities are ordered by persistent
-GameObject GUID, then Scene GUID as a cross-scene tie-breaker, not enumeration
-order or memory addresses. The complete order is:
+小さい **Priority** から適用します。同じ優先度は persistent GameObject GUID 順、
+Scene をまたぐ場合は Scene GUID 順で決まります。列挙順やメモリアドレスには依存しません。
+適用順は次のとおりです。
 
 ```text
 neutral defaults -> spatial Volumes (Priority/GUID)
@@ -525,56 +500,52 @@ neutral defaults -> spatial Volumes (Priority/GUID)
                  -> global Camera Weight -> built-in GPU effects
 ```
 
-Only parameters with their override checkbox enabled participate. Numeric/color
-values interpolate by the Volume influence; Enabled switches interpolate a
-separate continuous contribution from 0 to 1. An unchecked switch preserves the
-previous contribution. A higher-priority explicit disabled switch fades the
-preceding effect out rather than abruptly replacing it.
+オーバーライドのチェックが有効なパラメーターのみが対象です。数値／色の値は Volume の影響度で
+補間され、Enabled スイッチは 0 から 1 までの別個の連続寄与率で補間されます。
+未チェックのスイッチは直前の寄与率を保持します。優先度の高いレイヤーで明示的に無効にすると、
+直前のエフェクトは突然置き換わらずにフェードアウトします。
 
-Numeric and Enabled interpolation are **independent**, and Camera Weight is
-applied once afterwards. For example, from neutral settings an exposure Profile
-with Enabled=true and EV=4 at Volume influence 0.5 resolves EV=2 and an Enabled
-contribution of 0.5, producing EV=1 at Camera Weight=1. If Enabled is inherited
-at full contribution, only the numeric interpolation applies. Bloom/Vignette
-intensity, exposure EV and color adjustments use their own continuous contribution;
-FXAA blends its original/filtered result. This avoids Boolean boundary popping
-without adding temporal history or camera-dependent GPU configuration.
+数値と Enabled の補間は**独立**しており、その後に Camera Weight を一度だけ適用します。
+たとえば中立設定から、Enabled=true、EV=4 の露出 Profile を Volume の影響度 0.5 で適用すると、
+EV=2、Enabled の寄与率は 0.5 になります。さらに Camera Weight=1 を適用した露出は EV=1 です。
+Enabled が寄与率 1 で継承されている場合は、数値だけが補間されます。Bloom/Vignette の強度、
+露出 EV、色調整にはそれぞれ連続した寄与率を使い、FXAA は未処理画像とフィルター済み画像を
+ブレンドします。時間履歴やカメラ依存の GPU 設定を追加せず、Boolean の境界で生じる急な変化を
+避けます。
 
-### Persistence and validation
+### 永続化と検証
 
-Volume payload v1 stores all geometry, priority, weight and saved Profile GUID/
-UTF-8 path. Camera v3 adds the Volume mask; v0/v1/v2 restore an all-layers mask.
-Scene/Prefab save requires the referenced Profile to be saved first, and never
-saves shared Profile edits implicitly. Invalid payloads, GUID/path mismatches and
-failed saves retain the previous configuration/output. In-memory Play cloning
-supports unsaved Profiles, shares immutable assets, and independently copies
-Camera and Volume configuration. No new asset is needed by existing scenes.
+Volume payload v1 は形状情報、priority、weight、保存済み Profile GUID／UTF-8 パスを保存します。
+Camera v3 では Volume mask が追加され、v0/v1/v2 は全レイヤー対象のマスクに復元されます。
+Scene/Prefab の保存前に参照先 Profile を保存してください。共有 Profile の編集内容が暗黙に
+保存されることはありません。無効な payload、GUID／パス不一致、保存失敗の場合は以前の
+設定／出力を維持します。メモリ内の Play 複製では未保存 Profile を使え、不変アセットを共有しつつ
+Camera と Volume の設定は独立して複製されます。既存 Scene に新しいアセットは不要です。
 
-Each Camera reuses a CPU-only collection workspace; no component/asset pointers
-escape into RenderView, and subsequent Profile/Transform edits cannot change a
-queued snapshot. Disabled/zero-weight Cameras skip Volume collection. Allocation
-failure is explicitly diagnosed and disables that Camera's effects for the frame.
-No Volume change rebuilds PSOs or forces GPU waits.
+各 Camera は CPU 専用の収集用ワークスペースを再利用します。コンポーネント／アセットへの
+ポインターが RenderView に渡ることはなく、後続の Profile／Transform 編集でキュー済み snapshot
+が変更されることもありません。無効または weight がゼロの Camera は Volume の収集を省略します。
+割り当て失敗は明示的に診断され、そのフレームの Camera エフェクトを無効にします。
+Volume の変更で PSO を再構築したり GPU 待ちを強制したりすることはありません。
 
-## PostEffect Phase 5 custom HLSL Effect assets
+## PostEffect Phase 5 のカスタム HLSL Effect アセット
 
-Create a **Custom Effect** from the shared Profile Inspector for either a Camera
-or a Volume. Choose an HLSL source file, set an entry point and the linear color
-stage, then **Apply & Compile**. A saved `.posteffect` stores the asset GUID,
-source path, entry point, stage, resolution divisor and parameter metadata.
-Profiles store ordered references to these assets plus their enabled state and
-parameter values. Save the Effect asset before saving any Profile that refers to
-it. Profile format v2 adds custom Effects; version 1 Profiles still load with an
-empty Effect list.
+Camera または Volume の共有 Profile Inspector から **Custom Effect** を作成します。
+HLSL ソースファイルを選び、エントリーポイントと linear color stage を設定して
+**Apply & Compile** を実行します。保存した `.posteffect` にはアセット GUID、ソースパス、
+エントリーポイント、stage、resolution divisor、パラメーターメタデータが格納されます。
+Profile はこれらのアセットへの順序付き参照と、有効状態、パラメーター値を保存します。
+参照する Profile を保存する前に Effect アセットを保存してください。Profile format v2 で
+カスタム Effect が追加されました。version 1 の Profile は空の Effect リストで引き続き読み込めます。
 
-Custom Effects use the existing fullscreen Root Signature and
-`Assets/Shaders/PostProcess.hlsli` contract; they do not declare their own root
-signature, resources, or samplers. A Pixel Shader accepts `PostProcessVertex`,
-returns `float4 : SV_Target0`, samples the input with `loadInputColor`, and
-reads up to 16 scalar constants from `parameters[0..3]`. The Inspector exposes
-only the asset-declared parameters with their authored bounds. The source must
-include `PostProcess.hlsli` (or otherwise match its exact b0/b1/t0/t1/b2/s0
-bindings), for example:
+Custom Effect は既存のフルスクリーン Root Signature と
+`Assets/Shaders/PostProcess.hlsli` の契約を使います。独自の root signature、リソース、
+サンプラーは宣言しません。Pixel Shader は `PostProcessVertex` を受け取り、
+`float4 : SV_Target0` を返し、`loadInputColor` で入力をサンプリングします。
+また `parameters[0..3]` から最大16個のスカラー定数を読み取ります。Inspector には、
+アセットで宣言されたパラメーターのみが設定範囲とともに表示されます。ソースでは
+`PostProcess.hlsli` をインクルードするか、次の例のように b0/b1/t0/t1/b2/s0 の
+バインディングに正確に合わせます。
 
 ```hlsl
 #include "PostProcess.hlsli"
@@ -586,330 +557,299 @@ float4 psTint(PostProcessVertex input) : SV_Target0
 }
 ```
 
-`Assets/Shaders/PostProcessExample.hlsl` is the corresponding project sample.
-The source color domain follows the asset stage: **Before Tone Mapping** is
-linear HDR; **After Tone Mapping** is linear LDR, before final sRGB encoding.
-The resolution divisor is bounded to 1-16. Custom shader output is blended over
-the preceding image using the combined Volume influence and Camera Weight, which
-keeps shape boundaries continuous and preserves source alpha. Profile effect
-lists are applied in their authored order; Volume lists follow the existing
-Priority/GUID ordering, then the Camera Profile list follows them. Camera local
-overrides remain limited to built-in settings.
+対応するプロジェクトサンプルは `Assets/Shaders/PostProcessExample.hlsl` です。
+入力色の領域はアセットの stage に従います。**Before Tone Mapping** は線形 HDR、
+**After Tone Mapping** は最終 sRGB エンコード前の線形 LDR です。
+解像度の除数は 1-16 に制限されます。カスタムシェーダーの出力は Volume の影響度と
+Camera Weight を合成した値で直前の画像にブレンドされるため、形状境界が連続し、
+入力アルファも保持されます。Profile のエフェクトリストは定義順に適用されます。
+Volume のリストは既存の Priority/GUID 順に適用し、その後に Camera Profile のリストを適用します。
+Camera のローカルオーバーライドは組み込み設定のみを対象とします。
 
-DXC compiles during Effect creation or **Apply & Compile**. Successful bytecode
-is loaded into a new immutable Shader snapshot before the asset is updated;
-compile failure preserves the previous working snapshot. Runtime loading uses
-the generated `.cso` referenced by the asset and does not invoke DXC. Keep the
-generated `Assets/Shaders/Compiled/PostProcessCustom` bytecode alongside the
-project assets when packaging or moving a project. Recompiles use unique cache
-files so a failed descriptor save cannot replace bytecode referenced by the last
-saved asset.
+Effect の作成時または **Apply & Compile** の実行時に DXC でコンパイルします。
+成功したバイトコードを新しい不変 Shader snapshot として読み込んでからアセットを更新します。
+コンパイルに失敗した場合は、以前の有効な snapshot を保持します。Runtime の読み込みでは
+アセットが参照する生成済み `.cso` を使い、DXC は起動しません。プロジェクトをパッケージ化／
+移動する際は、生成された `Assets/Shaders/Compiled/PostProcessCustom` のバイトコードも
+アセットと一緒に保持してください。再コンパイルには一意なキャッシュファイルを使うため、
+descriptor 保存に失敗しても、最後に保存したアセットが参照するバイトコードは置き換わりません。
 
-Effects run through the same linear RGBA16F temporary targets and fixed b0/b1/t0/
-t1/b2 bindings as built-in passes. A custom shader cannot access scene depth,
-motion vectors, arbitrary textures, UAVs, or temporal history; those belong to
-later effect phases. Compiled PSOs are cached per immutable Shader snapshot and
-rebuilt transactionally when the shared fullscreen vertex shader changes.
+エフェクトは組み込みパスと同じ線形 RGBA16F の一時ターゲット、および固定の
+b0/b1/t0/t1/b2 バインディングを使用します。カスタムシェーダーからシーン深度、
+モーションベクトル、任意のテクスチャ、UAV、時間履歴にはアクセスできません。
+これらは後続のエフェクト段階で扱います。コンパイル済み PSO は不変 Shader snapshot ごとに
+キャッシュされ、共有フルスクリーン頂点シェーダーの変更時にはトランザクション方式で再構築します。
 
-## PostEffect Phase 6 depth, temporal effects, color grading and automatic exposure
+## PostEffect Phase 6 の深度、時間的エフェクト、カラーグレーディング、自動露出
 
-Depth-of-field uses the active Camera's linearized deferred depth buffer, with
-depth-weighted disk sampling to reduce color bleeding across focus boundaries.
-Temporal anti-aliasing jitters the deferred projection, reprojects a per-Camera
-HDR history with G-Buffer motion vectors, rejects disocclusions by depth, and
-clamps history to the current 3x3 color neighborhood. Motion blur gathers along
-the same velocity buffer and rejects samples across depth discontinuities.
-Both temporal effects require deferred rendering. Camera cuts can invalidate
-history with `CameraComponent::resetTemporalHistory`; resizing, switching
-cameras, or disabling TAA also resets it. Camera near/far planes and projection
-type are captured in the immutable PostEffect snapshot.
+被写界深度はアクティブ Camera の線形化済み Deferred 深度バッファを使います。焦点境界を
+またぐ色のにじみを抑えるため、深度 weight 付きの円盤サンプリングを行います。
+時間的アンチエイリアスは Deferred projection を jitter させ、G-Buffer の motion vector を使って
+Camera ごとの HDR 履歴を再投影し、深度で disocclusion を排除したうえで、現在の 3x3 色近傍に
+履歴を clamp します。Motion blur は同じ velocity buffer に沿ってサンプリングし、深度の不連続を
+またぐサンプルを除外します。どちらの時間的エフェクトも Deferred レンダリングが必要です。
+`CameraComponent::resetTemporalHistory` で Camera cut による履歴を無効化できます。
+リサイズ、カメラ切り替え、TAA 無効化でもリセットされます。Camera の near/far plane と
+projection type は不変の PostEffect snapshot に保存されます。
 
-Color grading accepts a **linear 2D strip LUT** with dimensions `N*N` by `N`,
-where `N` is 16-64. Blue selects adjacent horizontal slices; red and green
-address each slice. Runtime supports uncompressed `R8G8B8A8_UNORM` and
-`R16G16B16A16_FLOAT` texture data and interpolates between blue slices. The LUT
-is applied after tone mapping and custom After Tone Mapping effects, before
-vignette and FXAA. The Inspector registers the selected texture asset and stores
-its GUID/path reference in the Profile or Camera payload.
+カラーグレーディングでは、寸法が `N*N` × `N`、`N` が 16-64 の **linear 2D strip LUT** を
+使用できます。Blue が隣接する水平スライスを選択し、red と green が各スライス内を指定します。
+Runtime は非圧縮の `R8G8B8A8_UNORM` と `R16G16B16A16_FLOAT` のテクスチャデータに対応し、
+blue スライス間を補間します。LUT はトーンマッピングとカスタム After Tone Mapping エフェクト後、
+vignette と FXAA の前に適用されます。Inspector は選択したテクスチャアセットを登録し、
+Profile または Camera payload に GUID／パス参照を保存します。
 
-Automatic exposure computes the current frame's log-average HDR luminance using
-a bounded half-resolution reduction chain, then derives EV from key,
-compensation and minimum/maximum limits. Phase 7 adds per-Camera temporal
-adaptation using separate brighten/darken rates. The result is applied during
-tone mapping, after the HDR reduction and bloom stage.
+自動露出は、半解像度の縮小チェーンを上限付きで使って現在フレームの HDR 対数平均輝度を計算し、
+key、compensation、最小／最大値から EV を算出します。Phase 7 では明るくする速度と暗くする速度を
+分けた、Camera ごとの時間適応が追加されます。算出値は HDR 縮小と Bloom の後、トーンマッピング時に
+適用されます。
 
-Fog was removed from runtime settings and rendering. Its FlatBuffers fields are
-retained as reserved wire slots so older profiles remain readable without
-changing subsequent field IDs; saving a profile writes neutral values to those
-legacy slots.
+Fog はランタイム設定と描画処理から削除されました。後続フィールド ID を変更せずに古い Profile を
+読み込めるよう、FlatBuffers のフィールドは予約 wire slot として保持します。Profile 保存時には
+これらの旧 slot に中立値を書き込みます。
 
-## PostEffect Phase 7 temporal exposure history
+## PostEffect Phase 7 の時間的露出履歴
 
-Automatic exposure keeps the GPU-resident adapted EV in a ping-pong 1x1 history
-texture. Each frame approaches the current log-average target with
-`1 - exp(-speed * deltaTime)`, selecting the brighten rate when EV rises and
-the darken rate when EV falls. A zero delta freezes a valid history; the first
-sample initializes immediately so startup does not fade from an arbitrary
-exposure. History is associated with the active Camera GameObject GUID and is
-invalidated when the Camera changes, automatic exposure is inactive, or render
-targets are released/resized. This avoids readback stalls and stale exposure
-leaking across Cameras.
+自動露出は GPU 上の適応済み EV を ping-pong 1x1 履歴テクスチャに保持します。各フレームで
+現在の対数平均 target に向けて、次の式で近づけます。
+`1 - exp(-speed * deltaTime)` で目標に近づけます。EV が上昇する場合は明るくする速度を、
+EV が低下する場合は暗くする速度を選びます。delta が 0 の場合、有効な履歴は固定されます。
+初回サンプルは直ちに初期化されるため、起動時に任意の露出からフェードすることはありません。
+履歴はアクティブ Camera の GameObject GUID に関連付けられ、Camera の切り替え、自動露出の停止、
+render target の解放／リサイズ時に無効化されます。これにより readback の停滞や、別 Camera への
+古い露出の漏れを防ぎます。
 
-The two rates are authorable Profile/Volume/Camera settings and default to
-3.0 inverse seconds for increasing exposure and 1.0 inverse second for
-decreasing exposure. Older Camera v4 and Profile v3 payloads missing these
-Phase 7 fields load with those defaults. The Phase 7 Camera v5 and Profile v4
-payloads also load with the default Bloom Size Scale when that additive Phase 8
-setting is absent. Delta time comes from the active Camera's
-simulation update, so paused simulation holds the exposure history.
+2つの速度は Profile/Volume/Camera で編集可能な設定で、露出上昇は毎秒 3.0、露出低下は毎秒 1.0
+が既定値です。Phase 7 のフィールドを持たない古い Camera v4 と Profile v3 payload は、
+これらの既定値で読み込みます。Phase 8 で追加された Bloom Size Scale がない Phase 7 の
+Camera v5 と Profile v4 payload も、その既定値で読み込みます。delta time はアクティブ Camera の
+simulation update から取得するため、simulation を一時停止すると露出履歴も停止します。
 
-## Runtime and Play behavior
+## Runtime と Play の動作
 
-Runtime requires an existing saved scene. Invalid arguments or unreadable scenes
-are logged and exit with a nonzero code. Runtime loads compiled shaders and draws
-directly to the window without ImGui, editor panels, or the editor grid.
-This is not a distribution build/packaging system.
+Runtime の起動には保存済み Scene が必要です。引数が無効、または Scene を読み込めない場合は
+ログを出力し、0 以外のコードで終了します。Runtime はコンパイル済みシェーダーを読み込み、
+ImGui、エディターパネル、エディターグリッドを使わずウィンドウへ直接描画します。
+これは配布用ビルド／パッケージングシステムではありません。
 
-In the editor menu bar, **Play** clones all managed scenes and persistent objects
-in memory. Gameplay callbacks, physics and animation run only during Play.
-**Pause** freezes gameplay and simulation time while rendering continues.
-**Step** advances one Update, one fixed-duration physics/FixedUpdate step, and one
-LateUpdate, then remains paused. **Stop** destroys runtime objects and restores
-the original editor scenes, persistent objects, camera and selection.
-Closing the editor during Play also disposes the isolated session.
+エディターのメニューバーで **Play** を押すと、管理対象の全 Scene と persistent object を
+メモリ内に複製します。ゲームプレイのコールバック、physics、アニメーションは Play 中のみ
+実行されます。**Pause** は描画を継続したままゲームプレイとシミュレーション時間を停止します。
+**Step** は Update を1回、固定時間の physics/FixedUpdate を1回、LateUpdate を1回進めた後、
+一時停止状態に戻ります。**Stop** はランタイムオブジェクトを破棄し、元のエディター Scene、
+persistent object、カメラ、選択状態を復元します。Play 中にエディターを閉じた場合も、
+分離セッションを破棄します。
 
-While editing, enabled Animators on active objects preview their animation using
-unscaled frame time without starting game Play. Animator Inspector Play/Pause,
-clip selection and speed control the preview. Both the active scene and persistent
-objects are previewed. Game Play/Pause/Step retains its existing simulation timing;
-pausing game Play does not advance the editor preview.
+編集中は、アクティブオブジェクト上で有効な Animator が、ゲーム Play を開始せずに
+スケールされていないフレーム時間でアニメーションをプレビューします。Animator Inspector の
+Play/Pause、クリップ選択、速度設定でプレビューを制御します。アクティブ Scene と persistent
+object の両方をプレビューします。ゲームの Play/Pause/Step は従来のシミュレーション時間を
+維持し、ゲーム Play を一時停止してもエディターのプレビューは進行しません。
 
-Scene editing/saving and transform gizmos are disabled during Play. Click the
-**Game** view to give gameplay keyboard/mouse/gamepad input; selecting another
-panel or losing window focus clears transient input and stops vibration.
-Editor camera navigation runs only while editing. Animation preview does not execute
-gameplay Awake/Start/Update/FixedUpdate/LateUpdate callbacks or enable physics actors.
+Play 中は Scene の編集／保存と Transform gizmo が無効になります。ゲームプレイで
+keyboard/mouse/gamepad 入力を受け取るには **Game** view をクリックします。別パネルを選択するか
+ウィンドウのフォーカスを失うと、一時入力をクリアして振動を停止します。
+エディターカメラの移動は編集中のみ動作します。アニメーションプレビューはゲームプレイの
+Awake/Start/Update/FixedUpdate/LateUpdate コールバックを実行せず、physics actor も有効化しません。
 
-Components copy configuration through `Component::copyConfigurationTo`.
-The default uses versioned payload serialization; override it for configuration
-that references unsaved in-memory assets. Copies must not share mutable runtime
-state. GameObject GUID references are resolved across all cloned scenes after
-construction, before lifecycle callbacks start. Immutable model, material,
-animation and physics assets remain shared; Play is not an undo transaction for
-global asset edits, files written by gameplay, or static variables.
+コンポーネントは `Component::copyConfigurationTo` を通じて設定を複製します。
+既定ではバージョン付き payload のシリアライズを使います。未保存のメモリアセットを参照する
+設定では、この関数をオーバーライドしてください。複製間で可変ランタイム状態を共有してはいけません。
+GameObject GUID 参照は、ライフサイクルコールバック開始前に、構築後の全複製 Scene を横断して
+解決されます。不変の model、material、animation、physics アセットは共有されます。
+Play はグローバルアセットの編集、ゲームプレイが書き込んだファイル、static 変数を元に戻す
+undo トランザクションではありません。
 
-Camera settings and Main Camera preference are persisted in versioned
-FlatBuffers payloads. Legacy empty Camera payloads retain default settings.
+Camera 設定と Main Camera の優先設定は、バージョン付き FlatBuffers payload に保存されます。
+従来の空 Camera payload は既定設定を維持します。
 
-## FBX animation import
+## FBX アニメーションのインポート
 
-FBX animation stacks are sampled in seconds at 60-120 Hz. Each stack shares one
-sampling schedule across its channels. Key times remain strictly increasing
-after conversion to float and to ozz's `time * inverseDuration` ratios; the final
-key samples the exact FBX endpoint once, even when the preceding grid sample
-rounds to the same float timestamp or normalized ratio.
-Animation conversion failures report the clip and, for invalid key times, the
-joint, track type, key index, previous time, duration and normalized ratios.
-Invalid clips are rejected rather than silently omitted from the model.
-For translation, rotation and scale curves on every animation layer, cubic
-intervals with nonfinite incoming/outgoing derivatives are changed to linear
-interpolation in the imported scene only. Each repaired curve produces a warning
-identifying the clip, node, component, interval count and first affected time.
-Finite cubic intervals and constant/linear interpolation remain unchanged; the
-source FBX is never rewritten. Nonfinite key values or sampled transforms still
-fail import rather than being replaced by identity transforms.
-Clip conversion also rejects nonfinite/invalid rotations and translation/scale
-values outside ozz's finite half-precision range. Runtime evaluation never
-publishes nonfinite or singular skinning palettes, retaining the last valid pose
-and logging an error instead. Reimport the FBX after updating the engine to repair
-previously imported animation data; already saved clips are not auto-repaired.
+FBX animation stack は秒単位で 60-120 Hz にサンプリングされます。各 stack 内の全チャンネルは
+同じサンプリングスケジュールを共有します。float と ozz の `time * inverseDuration` 比率へ
+変換した後もキー時刻は厳密に増加します。直前のグリッドサンプルが同じ float 時刻または正規化比率に
+丸められる場合でも、最後のキーは FBX の正確な終端を一度だけサンプリングします。
+アニメーション変換失敗時はクリップを報告し、キー時刻が無効な場合は joint、track type、
+key index、直前の時刻、duration、正規化比率も報告します。無効なクリップはモデルから黙って
+除外せず、拒否します。
+すべてのアニメーションレイヤーにある平行移動、回転、スケールのカーブでは、入出力微分値が
+有限でない三次補間区間を、インポート後の Scene 内に限って線形補間へ変更します。
+修復した各カーブについて、クリップ、ノード、コンポーネント、区間数、最初に影響する時刻を
+示す警告を出力します。有限値の三次補間区間と定数／線形補間は変更しません。
+元の FBX ファイルも書き換えません。キー値またはサンプリング後の変換値が有限でない場合は、
+単位変換に置き換えずインポートを失敗させます。
+クリップ変換では、有限でない／無効な回転、および ozz が扱える有限な半精度範囲を超える
+平行移動／スケール値も拒否します。Runtime 評価で有限でない、または特異な skinning palette を
+公開することはありません。代わりに最後に有効だったポーズを保持してエラーを記録します。
+以前にインポートしたアニメーションデータを修復するには、エンジン更新後に FBX を再インポート
+してください。保存済みクリップは自動修復されません。
 
-Euler rotation curves are unrolled with the FBX SDK filter, respecting each
-node's rotation order, before resampling. This prevents a 359-to-0-degree wrap
-from interpolating through an unintended full turn. Missing axes retain their
-channel defaults; quaternion-interpolated nodes are not Euler-filtered. The SDK
-recalculates user/break tangents as auto tangents when unrolling is needed, and
-the importer logs each affected node. This uses the shortest continuous Euler
-path: intentional turns greater than 180 degrees between adjacent keys must
-have intermediate rotation keys. As with tangent repairs, reimport previously
-saved animation data to apply this correction.
+再サンプリングの前に、FBX SDK のフィルターを使って Euler 回転カーブをアンラップし、
+各ノードの回転順序を考慮します。これにより、359度から0度への折り返しが意図しない一周として
+補間されることを防ぎます。欠落した軸にはチャンネルの既定値を使い、Quaternion 補間のノードには
+Euler フィルターを適用しません。アンラップが必要な場合、SDK は user/break tangent を
+auto tangent として再計算し、インポーターは影響を受けたノードを記録します。
+これは連続する最短の Euler 経路を使うため、隣接キー間で180度を超える意図的な回転には
+中間キーが必要です。接線の修復と同様、この修正を反映するには保存済みアニメーションデータを
+再インポートしてください。
 
-## Per-animation component settings
+## アニメーションごとのコンポーネント設定
 
-Select a row in the Animator's **Animation Clips** list to edit **Animation Name**,
-**Speed**, **Playback Mode**, and **Apply Root Motion** for that clip. Each clip remembers independent
-values when switching clips; new clips default to speed 1 and root motion disabled.
-Speed 0 holds time, negative speed plays backwards, and nonfinite speeds are rejected.
-Blank names are rejected. Names are component-local display names, not file or
-shared asset renames. Clip GUIDs, not names, identify settings, so duplicate display
-names are allowed.
+Animator の **Animation Clips** リストから行を選択し、そのクリップの **Animation Name**、
+**Speed**、**Playback Mode**、**Apply Root Motion** を編集します。クリップを切り替えても
+個別の設定が保持されます。新規クリップの速度は1、Root Motion は無効です。
+速度0では時刻が停止し、負の速度では逆再生します。有限でない速度と空の名前は拒否されます。
+名前はコンポーネント内だけで使う表示名であり、ファイル名や共有アセット名は変更しません。
+設定は名前ではなく Clip GUID で識別するため、表示名の重複は許可されます。
 
-Save the **Scene/Prefab** to retain all clip settings. Play clones copy the settings
-without sharing mutable configuration. Different objects using the same Model can
-have different names, speeds and root-motion enable flags. **Root Motion Joint**
-remains a component-wide skeleton setting.
+クリップ設定を保持するには **Scene/Prefab** を保存してください。Play 用の複製は設定をコピーしますが、
+可変設定を共有しません。同じ Model を使う別々のオブジェクトに、異なる名前、速度、
+Root Motion の有効状態を設定できます。**Root Motion Joint** はコンポーネント全体で共通の
+Skeleton 設定です。
 
-**Playback Mode** selects **Once** (clamp and stop at either endpoint), **Loop**,
-or **Ping Pong** (repeated forward/backward travel). Modes are component-local;
-shared Clip assets and Controller states are unchanged. Changing modes preserves
-the current visible pose and playing/paused state, resetting the cycle count and
-using the outward leg of Ping Pong. Older payloads inherit each Clip asset's mode.
+**Playback Mode** では、端点で停止する **Once**、繰り返す **Loop**、
+前後に往復する **Ping Pong** を選択します。モードはコンポーネントごとに設定され、
+共有 Clip アセットや Controller の状態は変更されません。モード変更時は現在の表示ポーズと
+再生／一時停止状態を維持し、サイクル数をリセットして Ping Pong の外向き区間を使います。
+古い payload は各 Clip アセットのモードを引き継ぎます。
 
-The **Seek** slider immediately previews a normalized position and pauses playback.
-The `seek()` API preserves playing/paused state; the Inspector explicitly pauses
-after a successful scrub. **Stop** returns to the first animation pose and pauses
-(not the skeleton's bind pose); **Rewind** returns to that pose while keeping the
-playing/paused state. These operations never apply Root Motion displacement or
-rotation to the GameObject. **Play** resumes from the current position and preserves
-Ping Pong's travel direction. Once playback that has finished restarts from the
-appropriate endpoint for the speed's sign. Speed zero does not advance time.
+**Seek** スライダーは正規化位置をただちにプレビューし、再生を一時停止します。
+`seek()` API は再生／一時停止状態を維持しますが、Inspector はスクラブ成功後に明示的に停止します。
+**Stop** は最初のアニメーションポーズに戻って一時停止し (Skeleton の bind pose には戻りません)、
+**Rewind** は再生／一時停止状態を維持したまま同じポーズに戻ります。これらの操作で
+GameObject に Root Motion の移動や回転を適用することはありません。**Play** は現在位置から再開し、
+Ping Pong の移動方向も維持します。再生が終了した Once は、速度の符号に応じた端点から再開します。
+速度が0の場合は時刻を進めません。
 
-**Previous Frame** / **Next Frame** move by one original stored sampling interval,
-then pause and publish the pose immediately. The interval is recovered from the
-Clip's uniform ozz time points, allowing a shortened final interval. If the stored
-keys do not establish a uniform sample rate (including endpoint-only clips), the
-step is 1/30 second. No source file is loaded. Steps ignore playback speed and
-Ping Pong travel direction, clamp at both endpoints without wrapping, and do not
-move the GameObject through Root Motion.
+**Previous Frame**／**Next Frame** は元データに保存されたサンプリング間隔を1つ進み、
+一時停止してポーズをただちに反映します。間隔は Clip 内の等間隔な ozz 時刻から復元され、
+末尾だけ短い間隔も考慮されます。端点のみのクリップなど、保存キーから一定のサンプルレートを
+判断できない場合は 1/30 秒を使います。ソースファイルは読み込みません。フレーム移動は再生速度と
+Ping Pong の方向を無視し、折り返さず両端で停止します。また Root Motion で GameObject を動かしません。
 
-Each clip also retains **Root Translation X / Y / Z** and **Root Rotation** flags.
-For horizontal motion, enable X/Z and disable Y; for rotation only, disable all
-three translation axes. These are model-local axes, before the GameObject's world
-transform, not world-space movement constraints. Disabled components remain in
-the animated pose rather than being discarded. Filtering is applied to the root
-trajectory before calculating both extraction and pose removal, including loop
-and reverse playback. Changing the flags does not move the GameObject; the pose
-is reevaluated with the new extraction selection. The main **Apply Root Motion**
-switch still enables/disables extraction as a whole; the flags are component-local per-clip
-settings saved in Scene/Prefab payload v5 and copied into Play clones. v1-v4 data
-defaults to all four flags enabled, preserving existing behavior.
+各クリップには **Root Translation X / Y / Z** と **Root Rotation** のフラグも保存されます。
+水平移動では X/Z を有効、Y を無効にします。回転だけを使う場合は3軸の平行移動をすべて無効にします。
+これらは GameObject のワールド変換前の Model ローカル軸であり、ワールド空間の移動制約ではありません。
+無効にした成分も破棄せず、アニメーションポーズに残します。Loop や逆再生を含め、Root Motion の
+抽出とポーズからの除去を計算する前に軌跡をフィルターします。フラグを変更しても GameObject は
+移動せず、新しい抽出設定でポーズを再評価します。**Apply Root Motion** は抽出全体の
+有効／無効を切り替えます。各フラグはクリップごとの設定で、Scene/Prefab payload v5 に保存され、
+Play 用複製にもコピーされます。v1-v4 データでは既存動作を維持するため4つのフラグをすべて有効にします。
 
-**Initial Animation** chooses the clip used when game Play starts; **Selected
-Animation** uses the saved/editor selection, or the Model's first clip on a newly
-configured Animator. **Play Automatically** controls whether it starts playing or
-displays its first pose paused. Startup always begins at normalized time zero,
-independently of editor scrubbing and preview Pause/Play. Changing these settings
-does not disturb the current editor preview. Deleting the explicit initial clip
-resets the choice to **Selected Animation**. Scene/Prefab payload v5 and Play clones
-retain these settings. A missing/incompatible initial clip is logged rather than
-silently replaced by another clip.
+**Initial Animation** はゲームの Play 開始時に使うクリップを選びます。**Selected Animation** は
+保存済み／エディター上の選択を使い、新しく設定した Animator では Model の先頭クリップを使います。
+**Play Automatically** は再生を開始するか、最初のポーズで一時停止するかを制御します。
+起動時は、エディターのスクラブやプレビューの Pause/Play にかかわらず、常に正規化時刻0から始まります。
+これらの設定を変えても現在のエディタープレビューには影響しません。明示的に指定した初期クリップを
+削除すると **Selected Animation** に戻ります。Scene/Prefab payload v5 と Play 用複製はこれらの設定を
+保持します。初期クリップがない、または互換性がない場合はログに記録し、別のクリップへ黙って置き換えません。
 
-AnimatorComponent handles clip playback only: Controller binding, state playback,
-crossfades, parameters/triggers and their Inspector/serialization code have been
-removed from this component. State/event runtime and asset infrastructure remain
-available for separate components; AnimatorComponent does not dispatch events.
-Payload v5 reads v1/v2 settings by migrating their speed/root-motion flag to the
-selected clip. Legacy Controller bindings are not restored and produce a warning;
-select a clip and save the Scene/Prefab to migrate. Deprecated FlatBuffers slots
-are reserved for binary compatibility, not active Controller functionality.
+AnimatorComponent が扱うのはクリップ再生のみです。Controller の割り当て、状態再生、
+クロスフェード、パラメーター／トリガー、およびそれらの Inspector／シリアライズ処理は
+このコンポーネントから削除されています。State/event の Runtime とアセット基盤は別の
+コンポーネント向けに残っていますが、AnimatorComponent はイベントを dispatch しません。
+Payload v5 は v1/v2 の速度／Root Motion フラグを選択クリップへ移行して読み込みます。
+旧 Controller の割り当ては復元せず警告を出します。移行するにはクリップを選択し、
+Scene/Prefab を保存してください。廃止された FlatBuffers slot はバイナリ互換性のために予約されており、
+Controller 機能としては使用されません。
 
-## Generic State Machine
+## 汎用 State Machine
 
-Open **Window > State Machine**, then choose **New** or **Open**. Save the graph as
-a `.statemachine` asset before assigning it to a GameObject's **State Machine**
-component. The graph asset is shared and immutable at runtime; each component
-instance owns its current state, parameter values, and event queues. The component
-payload stores the asset GUID/path and an optional start-state override, not the
-graph or transient runtime state.
+**Window > State Machine** を開き、**New** または **Open** を選択します。
+GameObject の **State Machine** コンポーネントに割り当てる前に、グラフを `.statemachine`
+アセットとして保存してください。Runtime ではグラフアセットを共有し、不変に保ちます。
+各コンポーネントのインスタンスは現在の状態、パラメーター値、イベントキューを個別に所有します。
+コンポーネント payload が保存するのはアセット GUID／パスと任意の開始状態上書きであり、
+グラフ本体や一時的な Runtime 状態ではありません。
 
-Use **Add State** from the canvas context menu, drag nodes to arrange the graph,
-and pan with the middle mouse button or zoom with the wheel. Select a state and
-choose **Link from this state**, then click a destination node to create a
-transition. Set a default state, add Float/Int/Bool/Trigger parameters, and
-configure transition events and conditions in the Inspector. Conditions on one
-transition are ANDed; the matching outgoing transition with the lowest numeric
-priority is taken (asset order breaks ties), with at most one transition per
-update. A transition with no event or conditions is unconditional.
-Input events remain queued until a matching transition is taken, and Trigger
-parameters reset only when the selected transition consumes them.
+キャンバスのコンテキストメニューから **Add State** を選び、ノードをドラッグして配置します。
+中ボタンでパン、ホイールでズームできます。状態を選び **Link from this state** を選択してから
+遷移先ノードをクリックすると遷移を作成できます。既定状態を設定し、Float/Int/Bool/Trigger
+パラメーターを追加したうえで、Inspector から遷移イベントと条件を設定します。
+1つの遷移にある条件は AND で評価します。条件に一致した outgoing 遷移のうち、
+数値 priority が最も小さいものを選びます。同値ならアセット内の順序で決まり、1回の update で
+実行する遷移は最大1つです。イベントも条件もない遷移は無条件です。
+入力イベントは一致する遷移が実行されるまでキューに残り、Trigger パラメーターは選択された遷移が
+消費した場合にのみリセットされます。
 
-States support **On Enter** and **On Exit** actions. **Emit Event** queues a
-named output that gameplay components can consume with
-`StateMachineComponent::consumeEvent`. External code can queue transition input
-events with `sendEvent` or update typed parameters by ID. **Play Animation Clip**
-loads the saved `.anim` reference and asks the same GameObject's Animator to play
-it; the Animator must have a compatible Skeleton. This action switches clips
-without cross-fading. Custom C++ actions can be registered through
-`StateMachineActionRegistry::registerType`; assets persist the stable type name
-and payload bytes, never executable pointers. Register a payload validator and
-an editor callback when those are needed. Unknown custom types are retained by
-the asset loader and reported if execution is attempted.
+状態には **On Enter** と **On Exit** アクションを設定できます。**Emit Event** は名前付きの出力を
+キューに入れ、ゲームプレイコンポーネントは `StateMachineComponent::consumeEvent` で取得できます。
+外部コードは `sendEvent` で遷移入力イベントをキューに入れるか、ID を指定して型付きパラメーターを
+更新できます。**Play Animation Clip** は保存済み `.anim` 参照を読み込み、同じ GameObject の
+Animator に再生を依頼します。Animator には互換性のある Skeleton が必要です。このアクションでは
+クロスフェードせずクリップを切り替えます。独自の C++ アクションは
+`StateMachineActionRegistry::registerType` で登録できます。アセットには安定した型名と payload bytes
+のみを保存し、実行可能ポインターは保存しません。必要に応じて payload validator と
+エディター callback を登録してください。未知の独自型はアセット読み込み時に保持され、
+実行しようとした際に報告されます。
 
-The editor validates IDs, state/parameter references, condition types, action
-data, and the default state before saving. Save the graph after edits; unsaved
-graphs cannot be referenced from a Scene or Prefab.
+保存前にエディターが ID、状態／パラメーター参照、条件型、アクションデータ、既定状態を検証します。
+編集後はグラフを保存してください。未保存グラフは Scene や Prefab から参照できません。
 
-## Deleting animations
+## アニメーションの削除
 
-In the Animator's **Animation Clips** list, select an animation, right-click its
-row and choose **Delete Animation**. Choose **Cancel** (or dismiss the menu) to
-keep it. The former removal button is no longer used.
+Animator の **Animation Clips** リストでアニメーションを選択し、行を右クリックして
+**Delete Animation** を選択します。残す場合は **Cancel** を選ぶかメニューを閉じます。
+従来の削除ボタンは使用しません。
 
-Deletion removes both the Model's clip reference and its embedded animation
-tracks, and atomically saves the `.model`/`.mdl` asset before clearing playback.
-Failed saves keep the animation and playback unchanged and report an error.
-For imported FBX or unsaved Models, first use the Model Renderer's **Save Model As...**
-to save a `.model`/`.mdl`; source import files are never rewritten.
-The Model asset is shared, so its updated clip list also applies to future loads
-and other users of that Model. Separate `.anim` files are not deleted.
-Save the Scene/Prefab after editing to persist the Animator's cleared selection.
+削除時には Model のクリップ参照と埋め込みアニメーショントラックの両方を取り除き、
+再生状態をクリアする前に `.model`／`.mdl` アセットをアトミックに保存します。
+保存に失敗した場合はアニメーションと再生状態を変更せず、エラーを報告します。
+インポート直後または未保存の Model の場合は、先に Model Renderer の **Save Model As...** で
+`.model`／`.mdl` を保存してください。元のインポートファイルは書き換えません。
+Model アセットは共有されるため、更新したクリップ一覧は今後の読み込みや、同じ Model を使う
+他のオブジェクトにも適用されます。別ファイルの `.anim` は削除しません。
+Animator の選択解除状態を保持するには、編集後に Scene/Prefab を保存してください。
 
-## Animator root motion
+## Animator の root motion
 
-Enable **Apply Root Motion** for the selected animation to extract model-space XYZ translation
-and full rotation. **Root Motion Joint** selects the source joint by exact name;
-**First Root** (the default) selects skeleton joint 0. FBX files often contain a
-static scene/group root: select the actual animated root/hips joint in that case.
-This is not humanoid retargeting. The selected clip's component-local toggle controls extraction;
-the clip's existing `applyRootMotion` metadata is not an additional enable gate.
+選択したアニメーションで **Apply Root Motion** を有効にすると、Model 空間の XYZ 平行移動と
+完全な回転を抽出します。**Root Motion Joint** は名前が完全一致する joint を選択します。
+既定の **First Root** は Skeleton の joint 0 を選びます。FBX には静的な Scene/group root が
+含まれることが多いため、その場合は実際にアニメーションする root／hips joint を選んでください。
+これは humanoid retargeting ではありません。抽出の有効／無効は選択クリップの
+コンポーネント内設定で制御し、クリップ既存の `applyRootMotion` metadata は追加の有効条件ではありません。
 
-The selected joint's rigid transform is measured relative to the evaluated pose
-when extraction is enabled, including a restored/seeked time or a blended pose.
-Enabling extraction preserves the authored initial orientation and position,
-even when the clip differs from the skeleton rest pose. Changing the extraction
-joint also preserves the currently displayed pose. Motion is removed from the
-entire evaluated pose, so moving the GameObject does not apply the animation
-twice. Animated scale stays in the pose. Selected joint transforms must be finite,
-nonsingular TRS transforms; sheared joint transforms are rejected and logged
-rather than approximated. Rigid inverses preserve the exact affine last column,
-without relaxing animated-bounds validation.
+抽出を有効にした時点の評価済みポーズを基準に、選択 joint の剛体変換を測定します。
+復元／シーク後の時刻やブレンド済みポーズも対象です。クリップと Skeleton の rest pose が異なる場合も、
+有効化時には作成者が設定した初期位置と向きを維持します。抽出 joint を変更した場合も、
+現在表示中のポーズを維持します。移動を評価済みポーズ全体から取り除くため、GameObject を
+移動してもアニメーションが二重に適用されません。アニメーションによるスケールはポーズに残ります。
+選択 joint の変換は有限かつ非特異な TRS でなければなりません。shear を含む変換は近似せず拒否し、
+ログに記録します。剛体逆行列では affine 行列の最終列を厳密に保持し、animated-bounds 検証は
+緩和しません。
 
-Looping extends the rigid trajectory across clip endpoints, including turning,
-multiple wraps per update and reverse playback. PingPong retraces the trajectory;
-Once clamps at its endpoint. Seek, state changes, rebind, pause and enabling root
-motion do not apply the clip's initial offset as a displacement. Crossfades blend
-per-state motion deltas with the frame-average transition weight (including a
-frame that extends past the end of the fade), not differences between unrelated
-absolute clip positions. Rotation uses shortest-path quaternion interpolation.
-Accuracy follows ozz's compressed keys and estimated sampling interpolation.
+Loop ではクリップ端点をまたぐ剛体軌跡を延長し、向きの変化、1回の update 中の複数周回、
+逆再生にも対応します。PingPong は軌跡を逆にたどり、Once は端点で停止します。
+Seek、状態変更、rebind、一時停止、Root Motion 有効化では、クリップの初期オフセットを
+移動量として適用しません。クロスフェードでは無関係な絶対クリップ位置の差ではなく、
+状態ごとの移動量をフレーム平均の遷移 weight でブレンドします (fade 終了をまたぐフレームも含みます)。
+回転には最短経路の quaternion 補間を使います。精度は ozz の圧縮キーと推定サンプリング補間に依存します。
 
-During Play/Step, movement is applied on the game update thread after all Animator
-workers join and before physics/late update. Translation follows the current
-world rotation and scale, and is converted back through the parent transform;
-rotation is composed in the object's world frame and converted to local rotation
-using the engine's parent composition convention, without changing object scale.
-A singular object or parent transform is logged and rejected. Unavailable pose snapshots do not advance
-root-motion animation time or lose its displacement.
+Play/Step 中の移動は、すべての Animator worker の join 後、physics／late update より前に、
+ゲーム更新スレッドで適用されます。平行移動は現在のワールド回転とスケールに従い、
+親変換を通じてローカル空間へ戻します。回転はオブジェクトのワールド座標系で合成し、
+オブジェクトのスケールを変えずにエンジンの親合成規約でローカル回転へ変換します。
+オブジェクトまたは親の変換が特異な場合はログに記録して拒否します。
+ポーズ snapshot を利用できない場合、Root Motion のアニメーション時刻を進めず、
+移動量も失いません。
 
-An enabled CharacterController receives collision-resolved movement instead of a
-Transform teleport. Its GameObject origin represents its **foot position** from
-creation onward, and small motion is not discarded by a fixed one-millimeter
-cutoff. Explicit Transform/parent position changes synchronize the controller's
-foot before the next collision-resolved move. The capsule remains world-up while
-the GameObject receives animation rotation. Root motion does not add gravity;
-other movement scripts remain additive.
-Paused/unavailable physics rejects controller motion without teleport fallback.
-Dynamic Rigidbodies are explicitly unsupported; a kinematic Rigidbody follows
-the Transform through the existing physics synchronization. An enabled controller
-and Rigidbody cannot be used together. Without an enabled controller, movement
-uses the Transform; static colliders follow normal physics synchronization.
+有効な CharacterController がある場合、Transform を瞬間移動させる代わりに衝突解決済みの移動を
+適用します。作成時から GameObject 原点は**足元**を表し、1 mm 固定しきい値未満の移動も
+切り捨てません。Transform／親の位置が明示的に変更された場合、次の衝突解決移動の前に
+controller の足元を同期します。GameObject にはアニメーション回転を適用しますが、カプセルは
+ワールド上方向を維持します。Root Motion は重力を加えず、他の移動スクリプトの移動量は加算されます。
+Physics が一時停止中または利用できない場合、controller の移動は拒否され、Transform への
+フォールバック移動は行いません。Dynamic Rigidbody は明示的に非対応です。Kinematic Rigidbody は
+既存の physics 同期に従って Transform に追従します。有効な controller と Rigidbody は併用できません。
+有効な controller がない場合は Transform を使い、static collider は通常の physics 同期に従います。
 
-Editing previews remove root motion from the pose but never move scene objects.
+編集時のプレビューでは、ポーズから Root Motion を取り除きますが、Scene オブジェクトは移動しません。
 
-### Root-motion regression tests
+### Root motion の回帰テスト
 
-The focused CPU-only suite builds the production importer/Animator code and ozz
-without requiring a graphics device. Run from a Visual Studio Developer shell:
+対象を絞った CPU 専用テストスイートは、グラフィックスデバイスなしで製品版の
+インポーター／Animator コードと ozz をビルドします。Visual Studio Developer shell から実行します。
 
 ```powershell
 cmake -S Tools\Animation\Tests -B Build\RootMotionTests -G "Visual Studio 18 2026" -A x64
@@ -917,84 +857,77 @@ cmake --build Build\RootMotionTests --config Debug --target RootMotionTests --pa
 ctest --test-dir Build\RootMotionTests -C Debug --output-on-failure
 ```
 
-Use `Release` for both build/test configuration arguments to test optimized code.
-Pass `-DFBXSDK_ROOT="C:\path\to\FBX SDK"` during configuration for a non-default SDK.
-Tests compare extracted motion against independent matrix trajectories across
-Once/Loop/PingPong, reverse/multiple loops, nonidentity start/rest transforms,
-scaled hierarchies, reconfiguration, restored controllers, crossfades and
-snapshot backpressure. Generated FBX fixtures cover all six Euler orders,
-three axes and sparse/dense curves. Fixtures are removed after the test.
-For an affected idle FBX, additionally run:
+最適化コードをテストするには、ビルドとテストの両方の構成引数に `Release` を指定します。
+既定以外の SDK を使う場合は、構成時に `-DFBXSDK_ROOT="C:\path\to\FBX SDK"` を渡します。
+テストでは Once/Loop/PingPong、逆再生／複数周回、単位以外の開始／rest 変換、
+スケールされた階層、再構成、復元済み Controller、クロスフェード、snapshot の backpressure にわたって、
+抽出した移動を独立した行列軌跡と比較します。生成される FBX fixture は6つの Euler 順序、
+3軸、疎／密なカーブを網羅し、テスト後に削除されます。影響のある idle FBX に対しては、
+次のコマンドも実行します。
 
 ```powershell
 .\Build\RootMotionTests\Debug\RootMotionTests.exe --idle-model "C:\path\to\idle.fbx"
 ```
 
-This checks every skinned vertex, root-motion world-pose reconstruction
-(maximum error 0.2 mm), exact-affine palettes, valid animated bounds and
-120-Hz vertex continuity (maximum step 5 cm), using the first root and named
-`root`/`pelvis` joints when present.
-Animator payload v5 and Play clones retain per-clip settings and the selected joint;
-v1 payloads remain readable and default to First Root. Runtime motion deltas are
-transient and are never saved or replayed after loading.
+このテストはすべての skinned vertex、Root Motion のワールドポーズ再構成 (最大誤差0.2 mm)、
+affine 行列を厳密に保つ palette、有効なアニメーション境界、120 Hz での頂点連続性
+(最大移動5 cm) を確認します。First Root を使い、存在する場合は `root`／`pelvis` という名前の
+joint も確認します。Animator payload v5 と Play 用複製はクリップごとの設定と選択 joint を保持します。
+v1 payload も読み込め、既定値は First Root です。Runtime の移動量は一時データであり、
+保存も読み込み後の再生もされません。
 
-# Lights and directional shadows
+# Light と Directional Shadow
 
-Create a GameObject and add **Light** in the Inspector. Choose Directional, Point
-or Spot, then set color and intensity. Point and Spot use the object's world
-position and Range; Directional and Spot emit along local **+Z**, so rotate the
-Transform to aim them. Spot angles specify the full inner/outer cone angle.
-Enabled lights in the active and persistent scenes are also rendered while
-editing or paused. Up to 32 lights are supported; excess lights are logged.
+GameObject を作成し、Inspector で **Light** を追加します。Directional、Point、Spot のいずれかを
+選択して、色と強度を設定します。Point と Spot はオブジェクトのワールド位置と Range を使います。
+Directional と Spot はローカル **+Z** 方向へ光を放つため、照射方向は Transform の回転で調整します。
+Spot angle は内側／外側の円錐角全体を指定します。アクティブ Scene と persistent Scene の有効な
+ライトは、編集中や一時停止中も描画されます。最大32灯まで対応し、超過分はログに記録されます。
 
-The first active Directional light with **Cast Shadow** enabled owns a 2048x2048
-dynamic shadow map. Set Shadow Distance, Shadow Bias and Normal Bias to suit the
-scene's scale. Its camera-relative projection is texel-stabilized and sampled
-with 3x3 PCF. Model Renderer's **Cast Shadows** controls individual casters;
-Opaque and AlphaTest materials cast shadows, Transparent materials do not.
-Point/Spot shadows, cascades and baked lighting are not provided.
+**Cast Shadow** が有効な最初の Directional light が、2048x2048 の動的 shadow map を所有します。
+シーンのスケールに合わせて Shadow Distance、Shadow Bias、Normal Bias を設定してください。
+カメラ相対 projection は texel 単位で安定化され、3x3 PCF でサンプリングされます。
+個々の shadow caster は Model Renderer の **Cast Shadows** で制御します。Opaque と AlphaTest
+マテリアルは影を落としますが、Transparent マテリアルは落としません。Point/Spot の影、
+cascade、baked lighting には対応していません。
 
-Scene lights replace the former hard-coded light direction. A scene with no
-enabled lights receives only the base ambient contribution (0.15) and emissive
-materials. Add a Directional light to existing scenes when direct lighting is
-desired. Light settings persist in scenes/prefabs and copy into isolated Play.
+Scene のライトが従来のハードコードされた照射方向に置き換わります。有効なライトがない Scene は、
+基本 ambient 寄与 (0.15) と emissive マテリアルのみで照らされます。既存 Scene で直接光が必要な
+場合は Directional light を追加してください。Light 設定は Scene/Prefab に保存され、
+分離された Play にも複製されます。
 
-# Screen-space Runtime UI
+# スクリーン空間 Runtime UI
 
-1. Add **Canvas** to a root GameObject and set Reference Size and Sort Order.
-2. Create child GameObjects with **Rect Transform**. Anchor Min/Max interpolate
-   the parent's rectangle; Offset Min/Max specify its edges in Canvas units.
-   The Y axis points down. Equal anchors make a fixed-size rectangle; anchors
-   `(0,0)` and `(1,1)` with zero offsets stretch to fill the parent.
-3. Add **UI Image**, **UI Text** or **UI Button** after Rect Transform.
-   In **UI Image**, click **Browse...** to select a WIC-readable image with the
-   Windows file dialog (including PNG/JPEG/BMP/GIF/TIFF and Unicode paths).
-   The current image is the initial selection; cancelling leaves it unchanged.
-   **Image Path** remains directly editable. **Clear** removes the image path
-   without changing Tint, restoring a solid tinted rectangle. Selected paths
-   are referenced in place, not imported or copied into the project.
-   Text is UTF-8 and uses an installed font
-   family with Unicode shaping, wrapping, clipping and Left/Center/Right
-   alignment. Buttons provide normal, hover and pressed colors.
-   When Image and Button share an object, the button state modulates the image
-   tint instead of drawing an opaque image over the interaction colors.
+1. ルート GameObject に **Canvas** を追加し、Reference Size と Sort Order を設定します。
+2. 子 GameObject に **Rect Transform** を作成します。Anchor Min/Max は親の矩形内を補間し、
+   Offset Min/Max は Canvas 単位で各辺を指定します。Y 軸は下向きです。Anchor が同じ場合は
+   固定サイズの矩形になり、Anchor が `(0,0)` と `(1,1)` で offset がゼロなら親全体に広がります。
+3. Rect Transform の後に **UI Image**、**UI Text**、または **UI Button** を追加します。
+   **UI Image** では **Browse...** をクリックし、Windows のファイルダイアログから WIC 対応画像
+   (PNG/JPEG/BMP/GIF/TIFF、Unicode パスを含む) を選択します。現在の画像が初期選択され、
+   キャンセル時は変更されません。**Image Path** は直接編集できます。**Clear** は Tint を変更せず
+   画像パスを削除し、単色の矩形に戻します。選択したパスはプロジェクトにインポート／コピー
+   せず、元の場所を参照します。Text は UTF-8 で、インストール済みフォントファミリーを使用し、
+   Unicode shaping、折り返し、クリッピング、Left/Center/Right 配置に対応します。
+   Button は通常、hover、pressed の色を持ちます。Image と Button を同じオブジェクトに置く場合、
+   不透明な画像を操作色の上に描くのではなく、button 状態に応じて画像の tint を変えます。
 
-Canvases scale uniformly and center within the Game image/client area, preserving
-the reference aspect ratio. Drawing and hit testing are clipped to the Canvas.
-Parent RectTransforms provide nested layout; nested Canvases have independent
-reference sizes/order. Higher Sort Order and later sibling drawing win.
-UI draws over scene geometry before editor ImGui or Runtime presentation.
-Images and text layouts are cached; stale entries are released after 120 UI
-frames. Layouts, styles and resource paths persist in scenes/prefabs and Play.
+Canvas は縦横比を維持して一様に拡大縮小し、Game の画像／クライアント領域の中央に配置します。
+描画と hit testing は Canvas 内にクリップされます。親 RectTransform で入れ子レイアウトを構成でき、
+入れ子 Canvas は独立した reference size と order を持ちます。Sort Order が大きいものと、
+後から描画される兄弟が手前になります。UI はシーンジオメトリ上、エディター ImGui または
+Runtime の presentation の前に描画されます。画像と text layout はキャッシュされ、
+古いエントリーは UI の120フレーム後に解放されます。layout、style、リソースパスは
+Scene/Prefab と Play に保存／複製されます。
 
-The Windows UI backend uses Direct2D/DirectWrite through D3D11On12. Some Windows
-SDK versions emit debug-layer diagnostic 916 when probing a native DX12
-resource for D3D11 sharing metadata. This is the interop metadata inquiry, not a
-render-target state/lifetime violation. Native image-effect pipelines can also
-report diagnostic 680 for their intentionally unbound optional depth/stencil
-view. The engine does not suppress either diagnostic.
+Windows UI backend は D3D11On12 を介して Direct2D/DirectWrite を使用します。
+一部の Windows SDK では、D3D11 共有 metadata の確認時に native DX12 resource に対する
+debug layer diagnostic 916 が出ます。これは相互運用 metadata の問い合わせであり、
+render target の状態／ライフタイム違反ではありません。Native image-effect pipeline では、
+意図的に未バインドとしている任意の depth/stencil view に対して diagnostic 680 が出る場合もあります。
+エンジンはどちらの diagnostic も抑制しません。
 
-Set a button's **Click Event** name and register its handler from game code:
+ボタンの **Click Event** 名を設定し、ゲームコードからハンドラーを登録します。
 
 ```cpp
 Engine::RuntimeUI::instance().registerClickEvent("StartGame",
@@ -1004,388 +937,346 @@ Engine::RuntimeUI::instance().registerClickEvent("StartGame",
     });
 ```
 
-Register each name once; unregister it when its owning game system is disposed.
-Handlers receive the runtime object, never the editing original. Closures must
-not retain pointers to editing objects or to objects destroyed on Stop.
-Handlers run on GameUpdate. Post main-thread-only session/editor operations via
-`MainThreadDispatcher::post` rather than executing them inside a click callback.
-Callbacks themselves are not serialized or cloned. An unregistered nonempty
-event is logged when clicked. A click requires press and release inside the
-same enabled, interactable button. Disabled topmost buttons block lower buttons.
-Losing Game view/window focus, Pause or Stop cancels pointer capture; editing
-and paused frames never dispatch clicks. Keyboard/gamepad navigation,
-world-space UI and general-purpose layout widgets are not provided.
+名前はそれぞれ一度だけ登録し、所有するゲームシステムの破棄時に登録解除してください。
+ハンドラーに渡されるのはランタイムオブジェクトであり、編集中の元オブジェクトではありません。
+クロージャーから編集中のオブジェクトや Stop 時に破棄されるオブジェクトへのポインターを保持しないでください。
+ハンドラーは GameUpdate で実行されます。メインスレッド限定の session/editor 操作は click callback 内で
+直接実行せず、`MainThreadDispatcher::post` で投稿します。コールバック自体はシリアライズ／複製されません。
+登録されていない空でないイベントをクリックするとログに記録されます。クリックとして認識されるには、
+同じ有効かつ操作可能な button の内側で press と release の両方を行う必要があります。
+無効な最前面 button は背後の button をブロックします。Game view／ウィンドウのフォーカス喪失、
+Pause、Stop ではポインター捕捉を解除します。編集中と一時停止中のフレームでは click を dispatch しません。
+キーボード／ゲームパッド操作、world-space UI、汎用レイアウトウィジェットには対応していません。
 
-# WAV audio
+# WAV オーディオ
 
-Add **Audio Source** to an emitter GameObject, set **WAV Path**, Volume, Pitch,
-Loop and Play On Awake. Click **Browse...** to select a WAV file with the Windows
-file dialog, including Japanese/Unicode paths. The current file (or the Assets
-folder when empty) is the initial location. Selection validates and caches WAV
-data without opening an audio device or starting playback. Cancelling or selecting
-an invalid WAV leaves the existing clip and playback unchanged; failures are logged.
-**Clear** removes the clip and stops its voice without resetting playback settings.
-Direct **WAV Path** editing remains available. Files are referenced in place,
-not copied into the project. Paths are UTF-8 in saved configuration; relative paths
-are resolved from the application's working directory. WAV files support mono
-or stereo PCM (8/16/24/32-bit) and 32-bit IEEE float, 8-192 kHz, up to 512 MiB.
-RIFF chunks and WAVEFORMATEXTENSIBLE metadata are validated before playback.
-Compressed audio formats and streaming are not provided.
+emitter GameObject に **Audio Source** を追加し、**WAV Path**、Volume、Pitch、Loop、
+Play On Awake を設定します。**Browse...** をクリックすると Windows ファイルダイアログで
+WAV ファイルを選択できます (日本語／Unicode パスに対応)。現在のファイル、または未設定時は
+Assets フォルダーが初期位置です。選択時にはオーディオデバイスを開いたり再生を開始したりせず、
+WAV データを検証してキャッシュします。キャンセルまたは無効な WAV の選択では、既存クリップと
+再生状態を維持し、エラーをログに記録します。**Clear** は再生設定をリセットせずにクリップを削除し、
+voice を停止します。**WAV Path** の直接編集も可能です。ファイルはプロジェクトにコピーせず、
+元の場所を参照します。保存設定のパスは UTF-8 で、相対パスはアプリケーションの作業ディレクトリを
+基準に解決します。WAV は mono または stereo PCM (8/16/24/32-bit) と 32-bit IEEE float、
+8-192 kHz、最大512 MiB に対応します。再生前に RIFF chunk と WAVEFORMATEXTENSIBLE metadata を
+検証します。圧縮オーディオ形式とストリーミングには対応していません。
 
-Enable **3D Spatial** for a mono clip and add exactly one enabled
-**Audio Listener** across the active/persistent scenes (usually on the camera).
-Listener local +Z/+Y define forward/up. X3DAudio applies speaker panning and
-doppler; Min/Max Distance control attenuation and silence beyond the maximum.
-Without a listener spatial voices are explicitly logged and muted; with multiple
-listeners the first is used and the configuration error is logged.
+mono クリップで **3D Spatial** を有効にし、アクティブ／persistent Scene 全体で有効な
+**Audio Listener** をちょうど1つ追加します (通常はカメラ上)。Listener のローカル +Z/+Y が
+forward/up を定義します。X3DAudio がスピーカーの定位と doppler を適用します。
+Min/Max Distance は減衰と最大距離を超えた場合の無音化を制御します。Listener がない場合、
+spatial voice は明示的にログへ記録されてミュートされます。複数ある場合は最初の Listener を使い、
+設定エラーをログに記録します。
 
-The default XAudio2 output device opens on first playback, not for `--help`,
-scene loading or a silent editor. Output/voice failures are logged, and device
-callbacks stop affected gameplay mixing rather than leaving silent queued
-voices indefinitely. A subsequent explicit play can reopen output.
-`AudioSourceComponent::play`, `pause`, `stop` and `isPlaying` are available to
-game code. `isPlaying` means buffers remain queued, including paused playback;
-`AudioSystem::playbackSeconds` returns consumed sample time, including loops.
-Changing a clip, loop or spatial mode stops its voice; call play to restart.
+既定の XAudio2 出力デバイスは初回再生時に開きます。`--help`、Scene の読み込み、無音の
+エディター操作では開きません。出力／voice の失敗はログに記録されます。デバイスコールバックは、
+無音のキュー済み voice を無期限に残さず、影響を受けたゲームプレイのミキシングを停止します。
+その後に明示的に再生すると出力を再度開けます。
+ゲームコードから `AudioSourceComponent::play`、`pause`、`stop`、`isPlaying` を使用できます。
+`isPlaying` は一時停止中も含め、バッファがキューに残っていることを示します。
+`AudioSystem::playbackSeconds` はループ再生分を含む、消費済みサンプル時間を返します。
+クリップ、Loop、Spatial モードを変更すると voice を停止します。再開するには play を呼び出してください。
 
-Editing never starts voices. Play On Awake starts when the runtime component
-is enabled. Pause freezes all mixing and preserves sample cursors; Step may
-initialize a source but never advances audio while paused. Resume continues
-playback. Stop, component disable/removal and shutdown destroy voices. Play
-copies share immutable cached WAV data but never share mutable voices.
+編集中に voice が再生されることはありません。Play On Awake はランタイムコンポーネントの有効化時に
+再生を開始します。Pause はすべてのミキシングを停止し、サンプルカーソルを保持します。
+Step で source が初期化されることはありますが、一時停止中にオーディオが進むことはありません。
+Resume で再生を続行します。Stop、コンポーネントの無効化／削除、shutdown では voice を破棄します。
+Play の複製は不変のキャッシュ済み WAV データを共有しますが、可変 voice は共有しません。
 
-# GPU occlusion culling
+# GPU オクルージョンカリング
 
-**GPU Occlusion Culling** in Renderer Statistics enables same-frame
-Hi-Z visibility and count-buffer `ExecuteIndirect` for Opaque/AlphaTest color
-draws. The existing depth pre-pass and shadow pass still draw all their submitted
-geometry. Transparent draws remain direct and retain their ordering.
+Renderer Statistics の **GPU Occlusion Culling** を有効にすると、同じフレーム内の
+Hi-Z 可視判定と count buffer による `ExecuteIndirect` を Opaque/AlphaTest のカラー描画に適用します。
+既存の depth pre-pass と shadow pass は、引き続き投入済みジオメトリをすべて描画します。
+Transparent 描画は従来どおり直接実行され、順序も維持されます。
 
-The standard-Z depth target is sampled as R32_FLOAT. A power-of-two-padded
-R32_FLOAT mip chain stores the **maximum** depth, including uncovered pixels
-at depth 1. Each instance with safe bounds projects its world AABB on the GPU; the
-screen rectangle is expanded by two pixels and nearest depth is biased toward
-the camera. All overlapping Hi-Z cells at the selected mip must be in front
-of that rectangle before the instance is removed. Unvalidated animation bounds, degenerate bounds,
-nonfinite projection and near-plane intersections stay visible. Culling is
-disabled for `CameraClearMode::Nothing`, which retains old depth.
+標準 Z の depth target を R32_FLOAT としてサンプリングします。2のべき乗に拡張した
+R32_FLOAT mip chain には、未描画ピクセルの深度1を含む**最大深度**を格納します。
+安全な bounds を持つ各 instance は GPU 上で world AABB を投影し、画面矩形を2 pixel 拡張して、
+最も近い深度をカメラ方向へ bias します。instance を除外するには、選択した mip で矩形と重なる
+すべての Hi-Z cell がその矩形より手前にある必要があります。未検証のアニメーション bounds、
+退化した bounds、有限でない投影、near plane との交差は可視のままです。
+過去の depth を保持する `CameraClearMode::Nothing` ではカリングを無効にします。
 
-Instances are tested individually, even inside a shared draw batch. Visible
-128-byte instance constants are compacted into that batch's reserved range.
-Each batch receives a 24-byte packet: `D3D12_DRAW_INDEXED_ARGUMENTS` followed
-by a 32-bit command count. An empty batch has count 0: no color Draw executes,
-not merely a predicated Draw or a Draw with zero instances. CPU state setup
-and one `ExecuteIndirect` submission per candidate batch still occur.
-This is not CPU-side scene filtering or a single global multi-material indirect
-submission; CPU object preparation, depth and shadow costs remain.
+共有 draw batch 内でも instance ごとに判定します。可視 instance の128-byte 定数データを、
+その batch 用に予約された範囲へ詰め直します。各 batch には `D3D12_DRAW_INDEXED_ARGUMENTS` と
+32-bit command count からなる24-byte packet を設定します。空の batch は count 0 となり、
+predicate 付き Draw や instance 数0の Draw を行うのではなく、カラー Draw 自体を実行しません。
+候補 batch ごとの CPU state 設定と `ExecuteIndirect` の送信は引き続き発生します。
+これは CPU 側で Scene をフィルターする方式でも、複数マテリアルをまとめた単一の indirect submission
+でもありません。CPU object 準備、depth、shadow のコストは残ります。
 
-Resources and descriptors are frame-local and reused only after their fence
-completes. Hi-Z mip transitions keep source mips readable while the destination
-is writable; generated instances transition to shader-read and packets to
-indirect-argument state before color command lists execute. CPU readback is
-asynchronous statistics only and never determines current visibility.
-Compaction preserves the sorted queue's instance order using a group-wide
-prefix scan across consecutive 64-instance tiles, without depending on wave
-size or atomic scheduling. This preserves color-pass ordering for overlapping
-coplanar instances, including the production `EQUAL` depth comparison.
+リソースと descriptor はフレーム単位で管理し、fence 完了後にのみ再利用します。
+Hi-Z mip の遷移では、書き込み先を更新する間もソース mip を読み取り可能な状態に保ちます。
+カラー command list の実行前に、生成した instance を shader-read 状態へ、packet を
+indirect-argument 状態へ遷移させます。CPU readback は非同期の統計取得だけに使い、
+現在フレームの可視判定には使いません。詰め直しは連続する64-instance tile をまたぐ
+group-wide prefix scan で、ソート済みキューの順序を維持します。wave size や atomic の実行順には
+依存しません。これにより、実運用の `EQUAL` depth 比較を含め、同一平面上で重なる instance の
+カラー描画順を保持します。
 
-Camera culling uses `CameraFrustum` world-space clip planes for perspective
-and orthographic projections, including jitter and transformed cameras.
-`CameraComponent::getFrustum`, `RenderView::frustum`, `DX12Renderer::setFrustum`
-and `RenderQueue::submit` use this type instead of `DirectX::BoundingFrustum`;
-use `CameraUtils::buildWorldFrustum` to construct it. The old math `Frustum`
-alias remains available for perspective-only DirectX collision queries.
-Invalid camera matrices log errors and disable clip-plane culling.
+カメラカリングでは、jitter と変換済みカメラを含む透視／正射影に対して、
+`CameraFrustum` のワールド空間 clip plane を使います。
+`CameraComponent::getFrustum`、`RenderView::frustum`、`DX12Renderer::setFrustum`、
+`RenderQueue::submit` は `DirectX::BoundingFrustum` の代わりにこの型を使います。
+構築には `CameraUtils::buildWorldFrustum` を使用してください。従来の数学用 `Frustum` alias は、
+透視射影専用の DirectX collision query 向けに引き続き利用できます。
+カメラ行列が無効な場合はエラーを記録し、clip-plane カリングを無効にします。
 
-Depth clears, model passes, Hi-Z and overlays share
-`CameraUtils::toPixelViewport`. Its conversion keeps normalized viewport edges
-inside the render target despite float rounding, and model scissor rectangles
-use the same floor/ceil convention as clears. Culling input validation permits
-only a small float-rounding overshoot at the right/bottom edge; genuinely
-out-of-range or nonfinite inputs still fail explicitly.
+Depth clear、model pass、Hi-Z、overlay は `CameraUtils::toPixelViewport` を共有します。
+この変換は浮動小数点の丸めがあっても、正規化 viewport の端を render target 内に収めます。
+Model の scissor rectangle は clear と同じ floor/ceil 規約を使います。
+カリング入力の検証では、右端／下端に対する小さな浮動小数点丸め超過のみを許容します。
+範囲外または有限でない入力は明示的に失敗させます。
 
-Statistics distinguish direct submissions, indirect submissions, and completed
-GPU color draws. **Frustum-visible Objects** is not an occlusion result.
-**Occluded Color Instances** counts submesh instances, not unique GameObjects.
-Completed-slot statistics can lag the current frame and return zero when that
-slot had culling disabled. Compare GPU frame time with culling enabled/disabled;
-Hi-Z construction and compaction cost can outweigh savings in small scenes.
+統計は直接送信、indirect 送信、完了した GPU color draw を区別します。
+**Frustum-visible Objects** はオクルージョン判定の統計ではありません。
+**Occluded Color Instances** は一意な GameObject 数ではなく、submesh instance 数を数えます。
+完了済み slot の統計は現在フレームより遅れることがあり、その slot でカリングが無効なら0を返します。
+カリング有効／無効時の GPU frame time を比較してください。小規模な Scene では Hi-Z の構築と
+詰め直しのコストが削減分を上回る場合があります。
 
-## Current-pose animation bounds
+## 現在のポーズに基づくアニメーション境界
 
-Animated models use the same immutable `SkinningPaletteSnapshot` for bounds
-and GPU drawing; no previous-frame pose, clip-wide estimate or fixed padding
-around bind-pose bounds determines visibility. GPU mesh creation caches the
-local minimum/maximum positions influenced by each bone, plus rigid vertices.
-For nonnegative weights, the shader's normalized linear blend lies inside the
-union of these transformed influence ranges. Each frame transforms range corners
-with the bone matrix followed by the exact mesh-node/world matrix. This handles
-model-space skinned meshes, mesh-local vertices, blended poses, nonuniform or
-negative scale, and unweighted vertices without CPU-skinning the entire mesh.
+アニメーションモデルでは、bounds 判定と GPU 描画に同じ不変の
+`SkinningPaletteSnapshot` を使います。前フレームのポーズ、クリップ全体の推定値、
+bind-pose bounds 周辺の固定 padding で可視性を決めることはありません。
+GPU mesh 作成時に、各 bone の影響を受けるローカル位置の最小／最大値と rigid vertex を
+キャッシュします。weight が非負なら、shader の正規化線形ブレンドは、これらの影響範囲を
+変換した領域の和集合内に収まります。各フレームでは bone matrix の後に、正確な
+mesh-node/world matrix を適用して範囲の各頂点を変換します。これにより mesh 全体を CPU skinning
+せずに、Model 空間の skinned mesh、mesh-local vertex、ブレンド済みポーズ、非一様／負の scale、
+weight のない vertex に対応します。
 
-Bounds arithmetic uses double precision, a magnitude-dependent float-error
-margin (including cancellation and normalization), and outward-rounded extents.
-Vertices near the shader's weight threshold contribute to both rigid and
-skinned ranges. Bone indices follow the shader's clamp to 255; unused palette
-slots retain the same identity-matrix behavior as GPU drawing.
-Animator bind-pose correction inverses preserve the exact affine last column
-`(0, 0, 0, 1)`: generic matrix inversion can round its homogeneous component away
-from one. Both clip and controller initialization reject nonfinite, singular
-or non-affine bind transforms explicitly. Bounds validation remains strict;
-invalid palette diagnostics include the last column rather than hiding failures
-with a tolerance or modifying the render-time palette.
+Bounds の演算には double 精度を使い、桁落ちと正規化を含む値の大きさに応じた float 誤差 margin と、
+外側へ丸めた extent を適用します。shader の weight しきい値に近い vertex は rigid と skinned
+両方の範囲に含めます。Bone index は shader と同じく255で clamp し、未使用 palette slot も
+GPU 描画と同じ単位行列の動作を維持します。Animator の bind-pose 補正逆行列は affine 行列の
+最終列 `(0, 0, 0, 1)` を厳密に保持します。汎用の行列逆変換では同次成分が1から丸められる場合が
+あるためです。Clip と Controller の初期化は有限でない、特異、または affine でない bind transform
+を明示的に拒否します。Bounds 検証は厳密なままです。無効な palette の診断には最終列も含め、
+許容誤差で失敗を隠したり描画時 palette を変更したりしません。
 
-The renderer merges current mesh bounds for whole-model frustum rejection,
-then uses each mesh's pose bounds for frustum checks, transparent sorting and
-Opaque/AlphaTest Hi-Z. Offscreen shadow casters still submit their shadows.
-Skinning draw batching remains unchanged; this does not stop animation updates.
-No scene/prefab or asset schema migration is required.
+Renderer は現在の mesh bounds を統合して Model 全体の frustum 判定を行い、その後、各 mesh の
+ポーズ bounds を frustum 判定、Transparent のソート、Opaque/AlphaTest の Hi-Z に使います。
+画面外の shadow caster も引き続き shadow を送信します。Skinning の draw batching は変更せず、
+アニメーション更新も停止しません。Scene/Prefab やアセット schema の移行は不要です。
 
-Invalid weights, unavailable influence caches, nonfinite/projective matrices,
-invalid palette counts or float-overflow risk are logged and disable animation
-bounds culling. `RenderItem::animationBoundsValid` defaults to false, so callers
-that only provide bind-pose bounds retain the previous safe animation bypass.
-Near-plane intersections also retain Hi-Z's visibility bypass.
+無効な weight、利用できない影響範囲 cache、有限でない／射影行列、無効な palette 数、
+float overflow の危険はログに記録され、アニメーション bounds カリングを無効にします。
+`RenderItem::animationBoundsValid` の既定値は false です。そのため bind-pose bounds だけを
+指定する呼び出し側では、従来どおり安全のためアニメーションカリングを迂回します。
+Near plane と交差する場合も Hi-Z の可視扱いを維持します。
 
-# Terrain Phase 1/2/3/4/5/6/7: Generation, materials, PhysX, chunks, LOD and background builds
+# Terrain Phase 1/2/3/4/5/6/7: 生成、マテリアル、PhysX、チャンク、LOD、バックグラウンドビルド
 
-In the Hierarchy context menu choose **Create Terrain**, or add the **Terrain**
-component to an existing GameObject. A new component contains a flat 65x65 grid.
-It renders in both the editor and Play/Runtime through the existing model
-pipeline, using the default material until terrain layers are explicitly enabled.
-It does not need a Model Renderer.
+Hierarchy のコンテキストメニューから **Create Terrain** を選択するか、既存の GameObject に
+**Terrain** コンポーネントを追加します。新しいコンポーネントには平坦な 65x65 グリッドが
+含まれます。Terrain レイヤーを明示的に有効にするまでは既定マテリアルを使い、既存の model
+pipeline 経由でエディターと Play/Runtime の両方に描画されます。Model Renderer は不要です。
 
-The Terrain Inspector provides:
+Terrain Inspector では次の項目を設定できます。
 
-- **Size X / Size Z**: local-space width and depth, centered around the origin.
-- **Height Scale / Height Offset**: `localY = offset + sample * scale`.
-- **UV Repeat X / Z** and **Cast Shadows**.
-- **Chunk Cells (16..1024)** and **Apply Chunk Settings**: repartition the
-  applied surface without changing height data or mesh dimensions.
-- **Enable Terrain LOD**, **Maximum LOD (1..4)**, **LOD Distance** and
-  **Apply LOD Settings**: explicitly enable distance-based chunk simplification.
-- **Apply / Rebuild**: apply the edited dimensions without changing samples.
-- **Import Heightmap...**: read PNG, TIFF or BMP height data and rebuild using
-  the edited dimensions. 8/16-bit grayscale PNG precision is preserved.
-- **Create Flat**: replace heights with a constant normalized value and the
-  specified X/Z sample counts. This replaces any imported height data.
-- **Generate Noise**: replace heights with seeded Perlin noise or FBM and apply
-  the edited mesh dimensions. See the procedural generation controls below.
-- **Generate Noise (GPU)**: explicitly use Compute Shader Perlin/FBM, then
-  asynchronously read back authoritative heights. CPU remains the default.
-- **Background** stage/timings and **Cancel Terrain Generation**: generation
-  and all Apply buttons queue work; the current terrain stays active
-  until the completed result is applied at a safe frame boundary.
+- **Size X / Size Z**: 原点を中心とするローカル空間での幅と奥行き。
+- **Height Scale / Height Offset**: `localY = offset + sample * scale`。
+- **UV Repeat X / Z** と **Cast Shadows**。
+- **Chunk Cells (16..1024)** と **Apply Chunk Settings**: 適用済みサーフェスを高さデータや
+  mesh 寸法を変えずに再分割します。
+- **Enable Terrain LOD**、**Maximum LOD (1..4)**、**LOD Distance**、**Apply LOD Settings**:
+  距離に応じたチャンク簡略化を明示的に有効化します。
+- **Apply / Rebuild**: サンプルを変えずに編集した寸法を適用します。
+- **Import Heightmap...**: PNG、TIFF、BMP から高さデータを読み込み、編集済み寸法で再構築します。
+  8/16-bit grayscale PNG の精度を保持します。
+- **Create Flat**: 指定した X/Z サンプル数と一定の正規化値で高さを置き換えます。
+  インポート済み高さデータも置き換えられます。
+- **Generate Noise**: seed 付き Perlin noise または FBM で高さを置き換え、編集済み mesh 寸法を適用します。
+  以下のプロシージャル生成設定を参照してください。
+- **Generate Noise (GPU)**: Compute Shader による Perlin/FBM を明示的に使用し、正準高さデータを
+  非同期で読み戻します。既定は CPU です。
+- **Background** の段階／時間と **Cancel Terrain Generation**: 生成とすべての Apply ボタンは
+  作業をキューに入れ、完了結果が安全なフレーム境界で適用されるまで現在の Terrain を維持します。
 
-Height samples are linear numeric data in `[0, 1]`, not sRGB colors. Import
-ignores gamma metadata, takes the red channel (ignoring alpha), and maps the
-image's first row to local `-Z`, increasing towards `+Z`. Each pixel becomes
-one vertex; images are not silently resized. Non-square grids are supported.
-Dimensions must be 2..1025 samples on each axis. Physical sizes are
-0.01..100000, height scale is 0..100000, height offset is -100000..100000,
-and UV repeats are 0.001..10000. Invalid input is logged and preserves the
-previous terrain; Inspector operations also display a status message.
+Height sample は sRGB 色ではなく、`[0, 1]` の線形数値データです。インポートでは gamma
+metadata を無視して red channel を取得し (alpha は無視)、画像の先頭行をローカル `-Z` に、
+そこから `+Z` 方向へ増加するよう対応付けます。各 pixel が1頂点になります。画像を暗黙に
+リサイズすることはありません。非正方形グリッドにも対応します。各軸の寸法は2..1025 samples、
+物理サイズは0.01..100000、height scale は0..100000、height offset は-100000..100000、
+UV repeat は0.001..10000 です。入力が無効な場合はログに記録して以前の Terrain を維持し、
+Inspector 操作では状態メッセージも表示します。
 
-Scene/Prefab payloads embed the normalized samples, dimensions, UV repeats and
-shadow flag. Save normally; there is no separate model asset to save and the
-source image is not needed after import. Reload, duplication and Play clones
-create independent generated geometry. Unapplied Inspector fields are not saved.
-Transforms, parent transforms, layers, component enable/disable, frustum culling
-and existing render-path occlusion behavior use the standard engine mechanisms.
+Scene/Prefab payload には正規化サンプル、寸法、UV repeat、shadow flag を埋め込みます。
+通常どおり保存してください。個別の model asset を保存する必要はなく、インポート後に元画像も
+不要です。再読み込み、複製、Play clone では独立した生成ジオメトリを作成します。
+Inspector で未適用の項目は保存されません。Transform、親 Transform、layer、コンポーネントの
+有効／無効、frustum culling、既存 render path の occlusion 動作には標準エンジン機構を使います。
 
-The CPU API is in `Source\Terrain\Data\Heightmap.h` and
-`Source\Terrain\Geometry\TerrainMeshBuilder.h`; apply data with
-`TerrainComponent::setTerrain`. Generation emits 32-bit indices, +Y-facing
-triangles, area-weighted smooth normals, orthonormal tangent frames, UVs and
-mesh/model bounds. Rebuilds retire the previous model handle; queued immutable
-CPU snapshots and GPU fences keep already submitted geometry safe.
+CPU API は `Source\Terrain\Data\Heightmap.h` と
+`Source\Terrain\Geometry\TerrainMeshBuilder.h` にあります。データの適用には
+`TerrainComponent::setTerrain` を使います。生成結果には32-bit index、+Y 向きの三角形、
+面積で重み付けした平滑法線、正規直交の tangent frame、UV、mesh/model bounds が含まれます。
+再構築時は以前の model handle を破棄します。キュー済みの不変 CPU snapshot と GPU fence により、
+送信済みジオメトリは安全に保持されます。
 
-Streaming remains out of scope. Phase 8 adds explicit CPU hydraulic erosion,
-Phase 9 adds GPU noise, and Phase 10 adds static vegetation placement below.
-Phase 7 makes Inspector generation/import/Apply work
-asynchronous. Existing synchronous C++ APIs and Scene/Prefab loading remain
-synchronous for compatibility; neither API style should regenerate every frame.
+Streaming は対象外です。Phase 8 では明示的に実行する CPU hydraulic erosion、Phase 9 では GPU noise、
+Phase 10 では後述する静的植生配置を追加します。Phase 7 では Inspector の生成／インポート／Apply を
+非同期化します。既存の同期 C++ API と Scene/Prefab 読み込みは互換性のため同期のままです。
+いずれの API でも毎フレーム再生成しないでください。
 
-## Procedural generation (Phase 2)
+## プロシージャル生成 (Phase 2)
 
-In the Terrain Inspector, edit **Procedural Heightmap**, then click
-**Generate Noise**. Generation is explicit, not performed continuously while
-dragging controls. It replaces the existing imported/flat/generated heights;
-failure logs a diagnostic, displays status, and preserves the previous terrain
-and last successfully applied recipe.
+Terrain Inspector で **Procedural Heightmap** を編集し、**Generate Noise** をクリックします。
+生成は明示的な操作であり、コントロールのドラッグ中に連続実行されることはありません。
+既存のインポート／平坦／生成済み高さを置き換えます。失敗時は診断情報と状態を表示し、
+以前の Terrain と最後に正常適用された recipe を保持します。
 
-| Control | Meaning / supported values |
+| コントロール | 意味／対応する値 |
 | --- | --- |
-| Noise Mode | Perlin (one octave) or FBM (weighted Perlin octaves) |
-| Seed | Any unsigned 32-bit value, including 0 and 4294967295 |
-| Noise Samples X / Z | 2..1025 samples on each axis, including rectangular grids |
-| Frequency | 0.001..1024 base noise cells across each complete grid axis |
-| Noise Offset X / Z | -100000..100000 base noise-space translation |
-| Octaves | 1..12 (FBM only) |
-| Persistence | 0..1 amplitude multiplier for successive octaves (FBM only) |
-| Lacunarity | 1..4 coordinate/frequency multiplier for successive octaves (FBM only) |
+| Noise Mode | Perlin (1 octave) または FBM (Perlin octave の重み付き合成) |
+| Seed | 0 と 4294967295 を含む、任意の unsigned 32-bit 値 |
+| Noise Samples X / Z | 長方形グリッドを含む、各軸2..1025 samples |
+| Frequency | グリッド全体の各軸に配置する基本 noise cell 数、0.001..1024 |
+| Noise Offset X / Z | 基本 noise 空間での平行移動、-100000..100000 |
+| Octaves | 1..12 (FBM のみ) |
+| Persistence | 後続 octave の振幅倍率、0..1 (FBM のみ) |
+| Lacunarity | 後続 octave の座標／周波数倍率、1..4 (FBM のみ) |
 
-Defaults are FBM, seed 0, 65x65 samples, frequency 4, zero offsets, 6 octaves,
-persistence 0.5 and lacunarity 2. Perlin disables the FBM-only controls but retains
-their settings; all stored fields must remain valid in both modes.
-The existing **Height Scale / Height Offset** map generated normalized samples to
-local Y. Mesh width/depth affect physical size, not the sampled noise domain.
-Changing resolution preserves the field at shared coordinates.
+既定値は FBM、seed 0、65x65 samples、frequency 4、offset 0、6 octaves、
+persistence 0.5、lacunarity 2 です。Perlin では FBM 専用コントロールを無効にしますが、
+その設定値は保持します。どちらの mode でも、保存されるすべての field が有効でなければなりません。
+既存の **Height Scale / Height Offset** は、生成した正規化サンプルを local Y に変換します。
+Mesh の幅／奥行きは物理サイズに影響しますが、サンプリングする noise domain は変わりません。
+解像度を変更しても、共通する座標での値は維持されます。
 
-The base sample coordinate is
-`(x / (width - 1) * frequency + offsetX, z / (height - 1) * frequency + offsetZ)`.
-Each octave multiplies both coordinates by lacunarity, retaining the same seed,
-and multiplies its amplitude by persistence. Offset is applied before octave
-scaling. Negative coordinates use mathematical floor, not truncation.
-Perlin uses hashed lattice coordinates, eight fixed unit gradients and quintic
-interpolation, with no mutable permutation table or global random generator.
-FBM divides its weighted sum by the sum of octave amplitudes. Signed noise is
-converted with `0.5 + 0.5 / sqrt(2) * signedNoise`, using a conservative fixed
-gradient bound. Output is finite and in `[0, 1]`, but is not stretched to fill
-that range on every map. This preserves relative height across adjacent domains
-instead of changing terrain contrast according to each grid's extrema.
-One FBM octave, or zero persistence, produces exactly the Perlin result.
+基本のサンプル座標は
+`(x / (width - 1) * frequency + offsetX, z / (height - 1) * frequency + offsetZ)` です。
+各 octave では同じ seed を維持し、両座標に lacunarity、振幅に persistence を乗算します。
+Offset は octave のスケーリング前に適用します。負の座標は切り捨てではなく数学的 floor を使います。
+Perlin noise は hash 化した格子座標、固定された8つの単位勾配、5次補間を使い、
+変更可能な permutation table やグローバル乱数生成器には依存しません。
+FBM は重み付き合計を octave 振幅の合計で除算します。符号付き noise は保守的な固定勾配上限を用い、
+`0.5 + 0.5 / sqrt(2) * signedNoise` で変換します。出力は有限かつ `[0, 1]` ですが、
+マップごとにこの範囲いっぱいまで引き伸ばしません。これにより、各グリッドの最小／最大値に応じて
+Terrain のコントラストを変えるのではなく、隣接 domain 間で相対的な高さを保ちます。
+FBM の octave が1つ、または persistence が0の場合、Perlin と完全に同じ結果になります。
 
-Use enough samples for the highest octave frequency: undersampling can alias
-fine detail, and samples landing entirely on lattice intersections produce a
-flat 0.5 map. The generator does not silently change resolution, frequency or
-octave count. Maximum settings are bounds for safe arithmetic and allocation,
-not a recommendation to generate million-vertex terrain with twelve octaves
-on every frame. Background generation is provided by Phase 7 below.
+最も高い octave 周波数に対して十分な sample 数を使ってください。サンプルが不足すると
+細部が alias し、全サンプルが格子交点に一致すると一定値0.5のマップになります。
+Generator が解像度、周波数、octave 数を黙って変更することはありません。
+最大設定値は演算と割り当ての安全上限であり、毎フレーム、12 octaves で数百万頂点の Terrain を
+生成する推奨値ではありません。バックグラウンド生成については後述の Phase 7 を参照してください。
 
-`generateTerrainNoise` in `Source\Terrain\Generation\TerrainNoise.h` generates CPU height
-data without registering a model. `TerrainComponent::generateNoise` generates
-and applies both the heightmap and mesh settings transactionally.
-The same recipe reproduces the same samples in the same build, independently
-of generation order and other engine random operations.
+`Source\Terrain\Generation\TerrainNoise.h` の `generateTerrainNoise` は Model を登録せずに
+CPU 高さデータを生成します。`TerrainComponent::generateNoise` は高さマップと mesh 設定を生成し、
+トランザクション方式で適用します。同じビルド内では、生成順や他のエンジン乱数処理にかかわらず、
+同じ recipe から同じサンプルが得られます。
 
-Terrain payload version 2 adds the **last successfully applied noise recipe**.
-Scene/Prefab/Play clones retain that recipe as well as the actual height samples.
-Saved samples remain authoritative: loading never regenerates them implicitly.
-Importing an image, creating a flat grid or rebuilding dimensions keeps the last
-noise recipe available for future generation, even though the current heights
-may no longer match it. Unapplied Inspector recipe edits are not saved.
-Version 1 terrain payloads still load their original samples unchanged and get
-the default recipe; their next save writes version 4. Invalid/missing version 2+
-recipes are rejected without replacing the existing terrain.
+Terrain payload version 2 では、**最後に正常適用された noise recipe** を追加しました。
+Scene/Prefab/Play の複製では実際の高さサンプルと recipe の両方を保持します。
+保存済みサンプルが正であり、読み込み時に暗黙の再生成は行いません。
+画像のインポート、平坦グリッドの作成、寸法の再構築後も、現在の高さと一致しない場合を含め、
+次回生成用に最後の noise recipe を保持します。Inspector で未適用の recipe 編集は保存されません。
+Version 1 の terrain payload も元のサンプルを変更せず読み込み、既定 recipe を設定します。
+次回保存時は version 4 になります。version 2 以降の recipe が無効／欠落している場合は、
+既存 Terrain を置き換えずに拒否します。
 
-## Terrain material layers (Phase 3)
+## Terrain マテリアルレイヤー (Phase 3)
 
-Open **Terrain Material Layers**, check **Enable Layered Material**, edit the
-layer controls, then click **Apply Terrain Material**. Edits are drafts until
-applied; Scene/Prefab saves store applied values only. **Reset Layer Draft**
-restores disabled soil/grass/rock/snow defaults without immediately changing the
-surface. Existing terrain remains white/default unless layers are enabled.
+**Terrain Material Layers** を開き、**Enable Layered Material** を有効にして各レイヤーを編集し、
+**Apply Terrain Material** をクリックします。適用するまでは編集値は下書きであり、
+Scene/Prefab の保存には適用済みの値のみが含まれます。**Reset Layer Draft** は soil/grass/rock/snow
+の各レイヤーを無効にした既定値へ戻しますが、サーフェスはただちに変更しません。
+レイヤーを有効にするまでは、既存 Terrain は白色／既定マテリアルのままです。
 
-There are 1..4 ordered, opaque PBR layers. Layer 0 fills uncovered regions;
-each subsequent layer overlays all previous layers according to its coverage:
+不透明な PBR レイヤーを1..4個、順序付きで設定できます。Layer 0 は未適用領域を埋めます。
+後続レイヤーは coverage に応じて、それまでの全レイヤーに重ねられます。
 
 `coverage = strength * heightBand(sample) * slopeBand(localSlopeDegrees)`
 
-Within an inclusive minimum/maximum interval, a band is 1. Outside it, it falls
-smoothly to 0 over the configured blend width (smoothstep); a zero width gives
-a hard inclusive boundary. The overlay multiplies previous weights by
-`1 - coverage` and receives `coverage` itself. Weights remain nonnegative and
-sum to 1, including gaps and overlapping ranges. A higher layer wins when its
-coverage is 1; reduce its strength for a partial overlay. Base-layer ranges and
-strength are intentionally unused because it always fills the remainder.
+最小／最大の範囲内では band は1です。範囲外では設定した blend width にわたって smoothstep で
+0まで滑らかに減衰します。幅が0の場合は境界を含む段差になります。重ねるレイヤーは以前の weight に
+`1 - coverage` を乗じ、自身の weight に `coverage` を受け取ります。範囲に隙間や重なりがあっても、
+weight は非負で合計1になります。coverage が1の高位レイヤーが全面を覆います。
+一部だけ重ねるには strength を下げます。Base layer は残り全域を埋めるため、範囲と strength は使いません。
 
-- **Height** is the original normalized heightmap sample, not world Y or a
-  per-map minimum/maximum remapping. Height offset/scale do not change this
-  normalized band selection.
-- **Slope** is the angle between the generated smooth vertex normal and local
-  +Y, in degrees. Changing physical dimensions/height scale recalculates it.
-  Object/parent transforms move the finished surface without changing its local
-  automatic layer selection.
-- Coverage is calculated at heightmap vertices and interpolated across
-  triangles; textures and PBR values blend per pixel. Use sufficient heightmap
-  resolution for narrow transitions. No splatmap or brush painting is included.
+- **Height** は元の正規化 heightmap sample であり、ワールド Y やマップごとの最小／最大値への
+  再マッピングではありません。Height offset/scale を変えても、この正規化値による band 判定は変わりません。
+- **Slope** は生成した平滑頂点法線と local +Y の角度 (度単位) です。物理寸法／height scale の変更時に
+  再計算します。Object／親の変換は完成したサーフェスを移動しますが、ローカルでの自動レイヤー判定は変えません。
+- Coverage は heightmap の各頂点で計算し、三角形内で補間します。テクスチャと PBR 値は pixel 単位で
+  ブレンドされます。狭い遷移には十分な heightmap 解像度を使用してください。Splatmap やブラシ塗りには対応しません。
 
-Each layer has a linear RGB tint, metallic and roughness factors `[0,1]`,
-normal scale `[0,2]`, UV repeat `[0.001,10000]`, and optional **BaseColor**,
-**Normal** and **Metallic-Roughness** textures. Layer UV repeat multiplies the
-terrain mesh's UV Repeat X/Z; sampling wraps. BaseColor is sRGB decoded, while
-Normal and Metallic-Roughness are linear data. Metallic uses the blue channel,
-roughness the green channel, multiplied by their layer factors. Missing textures
-use white BaseColor, flat tangent-space normal and neutral white MR, so scalar
-factors work without a texture. Failed texture loads log a warning and use those
-same defaults, following the standard material system. BaseColor alpha is not
-used: terrain layers are opaque. Normal vectors blend in a common tangent frame,
-are renormalized, and follow the terrain's object transform.
+各レイヤーには、線形 RGB tint、metallic／roughness factor `[0,1]`、normal scale `[0,2]`、
+UV repeat `[0.001,10000]`、任意の **BaseColor**、**Normal**、**Metallic-Roughness**
+テクスチャを設定できます。Layer UV repeat は terrain mesh の UV Repeat X/Z に乗算され、
+サンプリングは wrap します。BaseColor は sRGB からデコードし、Normal と Metallic-Roughness は
+線形データとして扱います。Metallic には青チャンネル、roughness には緑チャンネルを使い、
+それぞれのレイヤー factor を乗算します。テクスチャがない場合は白の BaseColor、
+平坦な tangent-space normal、中立の白 MR を使うため、スカラー factor はテクスチャなしでも機能します。
+テクスチャ読み込みに失敗した場合は警告を記録し、標準マテリアルと同じ既定値を使います。
+Terrain layer は不透明であり、BaseColor alpha は使用しません。Normal vector は共通の tangent frame
+でブレンドして再正規化し、terrain の object transform に従います。
 
-Height intervals must be ordered in `[0,1]`, slope intervals in `[0,90]`;
-height blend width is `[0,1]`, slope blend width `[0,90]`, and strength `[0,1]`.
-All stored slots, including inactive layers, must be valid and finite. Texture
-references use GUIDs plus path hints; selecting a texture stages its reference,
-and **Clear** stages removal. Textures remain external assets and must be kept
-available. Component hints follow existing component persistence (resolved paths);
-standalone/embedded material asset hints are relative to their owning file.
+Height interval は `[0,1]`、slope interval は `[0,90]` の順序付き範囲とします。
+Height blend width は `[0,1]`、slope blend width は `[0,90]`、strength は `[0,1]` です。
+無効なレイヤーを含め、保存されるすべての slot は有効かつ有限でなければなりません。
+テクスチャ参照には GUID と path hint を使います。テクスチャを選ぶと参照が下書きに設定され、
+**Clear** は削除を下書きに反映します。テクスチャは外部アセットのままなので、利用可能な状態を保ってください。
+Component の hint は既存の component 永続化方式 (解決済みパス) に従います。
+単体／埋め込み material asset の hint は、それを所有するファイルからの相対パスです。
 
-`TerrainComponent::setMaterialSettings` applies settings transactionally and
-`getMaterialSettings` returns the applied settings. Rebuilding/importing/noise
-generation preserves the applied surface and recomputes its blend weights.
-Materials are immutable shared CPU assets in MaterialManager, not a new
-MaterialComponent. Each terrain owns its generated model/material handles;
-Scene/Prefab/Play clones have independent handles but share texture references.
-Queued immutable geometry/material snapshots and GPU fences remain valid after
-regeneration or component destruction, including before the first GPU upload.
-Both Forward and Deferred use the same surface-sampling implementation.
+`TerrainComponent::setMaterialSettings` は設定をトランザクション方式で適用し、
+`getMaterialSettings` は適用済み設定を返します。再構築／インポート／noise 生成では適用済み
+サーフェスを維持し、blend weight を再計算します。Material は MaterialManager が共有する不変 CPU asset であり、
+新しい MaterialComponent ではありません。各 Terrain は生成した model/material handle を所有します。
+Scene/Prefab/Play の複製は独立した handle を持ちますが、テクスチャ参照は共有します。
+キュー済みの不変なジオメトリ／マテリアル snapshot と GPU fence は、再生成や component 破棄後も、
+最初の GPU upload 前を含めて有効です。Forward と Deferred は同じサーフェスサンプリング処理を使います。
 
-Terrain payload version 3 adds complete layer settings. Versions 1 and 2
-without layer data load with layers disabled, preserving their previous look.
-Invalid version 3 material data preserves the existing terrain on failure.
-Material/model asset version 3 also supports the optional terrain extension;
-versions 1 and 2 remain readable. Terrain component saves now use version 4
-as described below; the material/model asset version is unchanged.
-The standard material property layout and
-override block remain unchanged.
+Terrain payload version 3 で全レイヤー設定を追加しました。レイヤーデータのない version 1 と2は、
+従来の見た目を維持するためレイヤー無効で読み込みます。Version 3 のマテリアルデータが無効な場合、
+失敗時に既存 Terrain を保持します。Material/model asset version 3 も任意の Terrain 拡張に対応し、
+version 1 と2も引き続き読み込めます。Terrain component の保存 version は後述の version 4 に
+更新されますが、material/model asset version は変更されません。標準マテリアルの property layout と
+override block も変更されません。
 
-## Surface queries and PhysX collision (Phase 4)
+## サーフェスクエリと PhysX 衝突判定 (Phase 4)
 
-Add **TerrainCollider** through **Add Component** on the same GameObject as
-**Terrain**. It is optional: surface queries and rendering do not require it.
-The collider cooks the generated triangles in memory through the existing
-PhysX mesh backend. No external `.physics` file is needed. Scene/Prefab/Play
-copies retain common collider settings and rebuild collision from the embedded
-terrain samples when activated.
+**Terrain** と同じ GameObject の **Add Component** から **TerrainCollider** を追加します。
+このコンポーネントは任意であり、サーフェスクエリや描画に必要ではありません。
+既存の PhysX mesh backend を使い、生成済み三角形をメモリ内で cook します。
+外部 `.physics` ファイルは不要です。Scene/Prefab/Play の複製は共通の collider 設定を保持し、
+有効化時に埋め込み済み terrain sample から衝突形状を再生成します。
 
-- Terrain Collider is **static**, non-trigger, and cannot share its GameObject
-  with a **Rigidbody**. It supports positive, nonzero world scales and rotation,
-  including parent transforms supported by the engine's normal TRS hierarchy.
-  Reflected, zero-scale and sheared collision transforms are unsupported and
-  log errors. Apply supported transforms before enabling collision.
-- Common collider friction/restitution, layer, collision mask, query filtering
-  and Rigidbody collision events use the existing physics paths. **Center** is
-  an optional local collider-only offset; keep it zero to align physics with the
-  rendered surface and height-query APIs.
-- Import, noise generation and Apply/Rebuild update active collision together
-  with geometry. A failed cook/backend update preserves the previous terrain.
-  Synchronous C++ rebuilds must run between physics simulation steps. Phase 7
-  Inspector requests cook in the background and apply at a frame barrier; do not
-  rebuild every frame. Object transform changes synchronize at the next physics
-  simulation step, just like other static colliders.
-- Collider enablement is independent of Terrain visibility. Disabling/deleting
-  the collider or deactivating the object removes its physics shape. Removing
-  Terrain also detaches collision; adding Terrain again reconnects during the
-  next fixed update.
-- Existing **CharacterController** movement collides with terrain triangles,
-  uses its slope/step settings, and reports grounding. The controller itself
-  does not add gravity or height snapping; gameplay supplies downward movement
-  through `move`, or can use the opt-in movement component below. Regeneration
-  invalidates cached controller triangles; it does not teleport bodies when
-  ground rises through them.
-- For a basic playable character, add **CharacterController** and **Character
-  Controller Movement** to the Player GameObject, then make the active **Main
-  Camera** a child of the Player. The movement component reads WASD during
-  fixed updates, moves along world X/Z at 5 units/second, smoothly turns toward
-  movement, and applies gravity. Hold the right mouse button and move the mouse
-  to orbit the third-person camera; it follows behind the Player at a fixed
-  distance and sphere-casts against colliders to avoid clipping through them.
-  Focus the **Game** view while playing. Do not add a **Rigidbody** to the
-  Player: CharacterController already owns its PhysX actor, and the engine
-  rejects using both on the same object.
+- Terrain Collider は **static** かつ non-trigger であり、同じ GameObject に **Rigidbody** を
+  追加できません。エンジン標準の TRS 階層でサポートされる親変換を含め、正の非ゼロ world scale と
+  回転に対応します。反転、ゼロ scale、shear を含む衝突変換には対応せず、エラーを記録します。
+  衝突を有効にする前に、対応している変換を適用してください。
+- 共通の collider friction/restitution、layer、collision mask、query filter、Rigidbody collision event は
+  既存の physics 経路を使います。**Center** は collider のみに適用される任意の local offset です。
+  物理形状を描画サーフェスと高さクエリ API に一致させるには0のままにしてください。
+- インポート、noise 生成、Apply/Rebuild はジオメトリと同時に有効な衝突形状を更新します。
+  cook/backend 更新に失敗した場合、以前の Terrain を保持します。同期 C++ 再構築は physics simulation
+  の各 step の間に実行してください。Phase 7 の Inspector 要求はバックグラウンドで cook し、
+  frame barrier で適用します。毎フレーム再構築しないでください。Object transform の変更は他の
+  static collider と同様、次の physics simulation step で同期されます。
+- Collider の有効状態は Terrain の表示状態と独立しています。Collider の無効化／削除、
+  または object の非アクティブ化で physics shape を取り除きます。Terrain を削除すると衝突形状も
+  切り離され、Terrain を再追加すると次の fixed update で再接続されます。
+- 既存の **CharacterController** による移動は terrain triangle と衝突し、slope/step 設定を使って
+  接地状態を報告します。Controller 自体は重力や高さへの吸着を追加しません。
+  ゲーム側で `move` に下向きの移動を与えるか、後述の任意の移動コンポーネントを使用してください。
+  再生成時は controller がキャッシュした三角形を無効化しますが、地面が上昇しても body を瞬間移動させません。
+- 基本的なプレイヤーキャラクターを作るには、Player GameObject に **CharacterController** と
+  **Character Controller Movement** を追加し、アクティブな **Main Camera** を Player の子にします。
+  移動コンポーネントは fixed update 中に WASD を読み取り、ワールド X/Z 方向へ毎秒5 unit 移動し、
+  移動方向へ滑らかに向きを変えながら重力を適用します。右マウスボタンを押しながらマウスを動かすと
+  三人称カメラを回転できます。カメラは Player の後方で一定距離を保ち、collider に対して
+  sphere cast を行い、めり込みを避けます。プレイ中は **Game** view にフォーカスしてください。
+  Player に **Rigidbody** を追加しないでください。CharacterController はすでに PhysX actor を所有しており、
+  エンジンは同一 object 上での併用を拒否します。
 
-The public CPU API is independent of PhysX:
+公開 CPU API は PhysX に依存しません。
 
 ```cpp
 const auto local = terrain->sampleLocalSurface(localX, localZ);
@@ -1394,304 +1285,269 @@ if (world)
 {
     const float groundY = world->position.y;
     const Engine::Vector3 groundNormal = world->normal;
-    // Use the surface in gameplay; do not replace CharacterController collision.
+    // ゲームプレイでこのサーフェスを利用し、CharacterController の衝突処理を置き換えないでください。
 }
 ```
 
-`TerrainSurface` contains position and **geometric face normal**, not the
-smoothed rendering normal. Local XZ includes the grid boundary. Heights match
-the actual `a,c,b; b,c,d` mesh triangles, not bilinear interpolation.
-World queries ignore input Y and find the **highest** vertical intersection
-at world XZ, with an upward-facing normal. They support invertible affine
-transforms, use allocation-free grid traversal, and return `std::nullopt`
-outside the projected terrain. At a shared edge either adjacent face normal
-can apply. Invalid/nonfinite query inputs are logged. Queries use applied
-terrain data, independent of collider Center, enabled state and filters.
+`TerrainSurface` は位置と、平滑化した描画法線ではなく**幾何学的な面法線**を保持します。
+Local XZ のクエリ範囲にはグリッド境界を含みます。高さは双線形補間ではなく、
+実際の `a,c,b; b,c,d` mesh triangle に一致します。World query は入力 Y を無視し、
+world XZ における**最も高い**垂直交点と上向き法線を返します。逆変換可能な affine transform に対応し、
+メモリ割り当てを行わないグリッド走査を使います。投影された Terrain の範囲外では
+`std::nullopt` を返します。共有 edge では隣接するどちらかの面法線が使われる場合があります。
+無効／有限でない query 入力はログに記録します。Query は適用済み Terrain data を使い、
+Collider Center、有効状態、filter とは独立しています。
 
-## Resident chunk management (Phase 5)
+## 常駐チャンク管理 (Phase 5)
 
-A Terrain remains **one GameObject, one authoritative heightmap and one
-generated model handle**, but the model now contains one mesh per chunk.
-TerrainCollider creates one corresponding static PhysX triangle shape per
-chunk on the same actor. Queries and collision events still identify the
-original TerrainCollider/GameObject, not hidden child objects.
+Terrain は引き続き **1つの GameObject、正準 heightmap 1つ、生成 model handle 1つ**で構成されますが、
+Model はチャンクごとに1つの mesh を含みます。TerrainCollider は同じ actor 上に、
+各チャンクに対応する static PhysX triangle shape を1つずつ作成します。
+Query と collision event は非表示の子 object ではなく、元の TerrainCollider／GameObject を識別します。
 
-Set **Chunk Cells (16..1024)** and click **Apply Chunk Settings**. The default
-for newly created terrains is **64 cells per edge** (up to 65x65 vertices per
-chunk). A 257x257 heightmap therefore creates 4x4 chunks. Cell count is not
-sample count or world size. Arbitrary integer cell counts in the supported
-range are accepted; powers of two are not required. Partial chunks at +X/+Z
-retain all remaining cells. A chunk edge larger than the grid creates one
-mesh. At the maximum supported 1025x1025 heightmap, 16-cell chunks create at
-most 4096 meshes/shapes. The image import limit is unchanged.
+**Chunk Cells (16..1024)** を設定して **Apply Chunk Settings** をクリックします。
+新規 Terrain の既定値は **各辺64 cells** (1チャンクあたり最大65x65 vertices) です。
+257x257 heightmap は4x4チャンクになります。Cell 数は sample 数やワールドサイズではありません。
+対応範囲内の任意の整数を指定でき、2のべき乗である必要はありません。+X/+Z 側の端数チャンクは
+残りの全 cell を保持します。チャンクの一辺がグリッドより大きい場合は mesh を1つ作ります。
+最大対応サイズの1025x1025 heightmap を cell 数16で分割すると、mesh／shape は最大4096個になります。
+画像インポートの上限は変わりません。
 
-Chunk size edits are drafts until **Apply Chunk Settings**. That button uses
-the applied terrain dimensions, not unapplied Size/Height/UV edits.
-**Apply / Rebuild**, import, flat creation, noise generation and material
-changes retain the applied chunk settings. All chunks remain resident:
-partitioning adds neither distance loading/unloading nor partial height edits.
-Phase 6 adds opt-in LOD and early chunk culling; Phase 7 moves Inspector
-rebuilds to the background. Terrain-wide bounds are retained.
+**Apply Chunk Settings** を実行するまでは、チャンクサイズの編集は下書きです。
+このボタンは適用済み Terrain の寸法を使い、未適用の Size/Height/UV 編集は使いません。
+**Apply / Rebuild**、インポート、平坦化、noise 生成、マテリアル変更では適用済みチャンク設定を維持します。
+全チャンクは常駐し、分割によって距離単位の読み込み／解放や部分的な高さ編集が追加されることはありません。
+Phase 6 では任意の LOD と早期チャンクカリングを追加し、Phase 7 では Inspector の再構築を
+バックグラウンドで行います。Terrain 全体の bounds は維持されます。
 
-Normals, tangent frames and automatic layer weights are calculated from the
-**whole** grid before partitioning. Border vertices copy identical position,
-normal, tangent, bitangent, UV and color data. UVs remain whole-terrain UVs;
-textures do not restart at each chunk. Each cell belongs to exactly one chunk;
-shared edges duplicate vertices but not triangles. LOD zero and collision keep
-the original diagonals. Height queries continue to use authoritative whole-terrain
-samples, so results are independent of partition size.
+法線、tangent frame、自動レイヤー weight は**グリッド全体**から計算してから分割します。
+境界頂点では位置、法線、tangent、bitangent、UV、color を同一に複製します。
+UV は Terrain 全体の座標を維持し、チャンクごとにテクスチャが繰り返し開始されることはありません。
+各 cell は1つのチャンクだけに属します。共有 edge では頂点を重複させますが、三角形は重複しません。
+LOD 0 と衝突形状は元の対角線を維持します。高さクエリは Terrain 全体の正準 sample を使うため、
+結果は分割サイズに依存しません。
 
-Whole-grid normal/material calculation still uses a temporary complete mesh;
-partitioning does not lift the heightmap limit or provide out-of-core storage.
-Repartitioning stages the complete model, cooked chunk assets and backend
-shapes before replacing live resources. Allocation/cooking/backend failure
-preserves the applied terrain and collision. Queued model/material snapshots
-retain all old chunks until submission fences retire. Geometry changes
-invalidate Character Controller caches. Contact/trigger accounting tracks
-individual shape pairs while dispatching one GameObject-level event stream,
-including when a body touches several adjacent chunks. Collider settings and
-enabled state apply to all its shapes; debug collider/AABB drawing and physics
-shape statistics include every chunk.
+全グリッドの法線／マテリアル計算では、引き続き一時的な完全 mesh を使います。
+分割によって heightmap の上限が増えたり、out-of-core storage が使えるようになったりはしません。
+分割変更では完全な Model、cook 済みチャンク asset、backend shape を staging してから、
+稼働中のリソースを置き換えます。割り当て／cook／backend の失敗時は適用済み Terrain と衝突形状を維持します。
+キュー済み model/material snapshot は submission fence が完了するまで古いチャンクを保持します。
+ジオメトリ変更時は Character Controller の cache を無効にします。Contact/trigger の計数は
+shape pair ごとに追跡しつつ、body が隣り合う複数チャンクに接触した場合も GameObject 単位の
+event stream を dispatch します。Collider の設定と有効状態は全 shape に適用されます。
+Debug collider/AABB 描画と physics shape 統計にはすべてのチャンクが含まれます。
 
-Public APIs:
+公開 API:
 
 ```cpp
 if (terrain->setChunkSettings({ 32 }))
 {
     for (const auto& chunk : terrain->getChunks())
     {
-        // Row-major column/row, sampleX/sampleZ, cellsX/cellsZ, meshIndex, bounds.
-        // Positions and bounds are in whole-terrain local space.
+        // 行優先の列／行、sampleX/sampleZ、cellsX/cellsZ、meshIndex、bounds。
+        // 位置と bounds は Terrain 全体のローカル空間です。
     }
 }
 ```
 
-`getChunkSettings()` returns applied settings. `getChunks()` is empty before
-first generation; its span/references expire on successful regeneration.
-`getModel()` still returns the complete generated model, with row-major chunk
-meshes. `TerrainCollider::getChunkAssets()` exposes immutable cooked assets in
-the same order; legacy `getPhysicsAsset()` returns the **first chunk only**.
-Never unload generated model handles externally.
+`getChunkSettings()` は適用済み設定を返します。最初の生成前は `getChunks()` は空です。
+成功した再生成後は span／参照が無効になります。`getModel()` は引き続き、
+行優先のチャンク mesh を含む生成 Model 全体を返します。`TerrainCollider::getChunkAssets()` は
+同じ順序で不変の cook 済み asset を公開します。旧 `getPhysicsAsset()` が返すのは**最初のチャンクのみ**です。
+生成済み model handle を外部から unload しないでください。
 
-Terrain payload **version 4** saves chunk cell count alongside embedded heights,
-dimensions, noise recipe and material settings. Scene/Prefab/Play restore the
-same partition with independent geometry and regenerate cooked collision;
-no separate chunk files or external physics files are required. Versions 1..3
-load as one chunk (`1024` cells per edge), preserving their previous partition
-and appearance. Their next save writes the current version 5. Invalid version 4 chunk
-settings are rejected without replacing the existing terrain.
+Terrain payload **version 4** は、埋め込み高さ、寸法、noise recipe、マテリアル設定とともに
+チャンク cell 数を保存します。Scene/Prefab/Play は同じ分割を独立したジオメトリで復元し、
+cook 済み衝突形状を再生成します。個別チャンクファイルや外部 physics ファイルは不要です。
+Version 1..3 は従来の分割と見た目を維持するため1チャンク (`各辺1024 cells`) として読み込み、
+次回保存時は現行 version 5 になります。Version 4 のチャンク設定が無効な場合は、
+既存 Terrain を置き換えず拒否します。
 
-## Distance LOD and chunk culling (Phase 6)
+## 距離 LOD とチャンクカリング (Phase 6)
 
-LOD is **off by default**, including when loading terrain payloads version 1..4.
-Check **Enable Terrain LOD**, edit the following draft controls, then click
-**Apply LOD Settings**. Applying uses the existing applied heightmap, dimensions,
-material and chunk layout; it does not apply unrelated Inspector drafts.
-All rebuild/import/noise/material/chunk operations retain applied LOD settings.
+LOD は Terrain payload version 1..4 の読み込み時を含め、**既定で無効**です。
+**Enable Terrain LOD** をチェックし、下記の設定を編集してから **Apply LOD Settings** をクリックします。
+適用には既存の適用済み heightmap、寸法、マテリアル、チャンク構成を使い、関係のない Inspector 下書きは
+反映しません。再構築／インポート／noise／マテリアル／チャンク操作では、適用済み LOD 設定を維持します。
 
-| Control | Meaning |
+| コントロール | 意味 |
 | --- | --- |
-| Maximum LOD | 1..4; level 0 is full resolution, level N has interior stride `2^N` |
-| LOD Distance | First transition in world units, finite 0.1..1000000; default 50 |
+| Maximum LOD | 1..4。Level 0 はフル解像度、level N の内側は stride `2^N` |
+| LOD Distance | 最初の切り替え距離 (world unit)、有限値0.1..1000000、既定値50 |
 
-Each active render view selects from its own camera position to the **closest
-point of the transformed chunk AABB**, not its center. Parent transforms,
-rotation and nonuniform scale are included. Distances below `D` use level 0,
-then `[D,2D)` uses level 1, `[2D,4D)` uses level 2, etc., clamped to available
-levels and Maximum LOD. Exact thresholds select the coarser level.
-Thin/partial chunks may have fewer useful levels; a candidate is retained only
-when it strictly reduces triangle count. Chunks at most two cells wide/deep
-keep level 0.
+アクティブな各 render view は、各自のカメラ位置から、チャンク中心ではなく変換後の
+チャンク AABB 上の**最も近い点**までの距離で LOD を選びます。親変換、回転、非一様 scale も考慮します。
+距離が `D` 未満なら level 0、`[D,2D)` なら level 1、`[2D,4D)` なら level 2 とし、
+利用可能な level と Maximum LOD の範囲に収めます。境界値ちょうどでは粗い level を選びます。
+幅／奥行きが小さい、または端数のチャンクでは利用可能な level が少ない場合があります。
+候補 level は三角形数を確実に減らす場合のみ採用します。幅または奥行きが2 cells 以下のチャンクは level 0 のままです。
 
-All levels reuse the same full-resolution vertex buffer and attributes.
-The interior is sampled more sparsely and joined to a full-resolution outer
-border with triangulated transition strips. **Every original unit border edge
-survives**, so independently selected neighboring levels meet exactly without
-skirts, neighbor-dependent stitching or per-frame mesh rebuilding. Height,
-normal, tangent, UV and layer weights at the shared boundary are unchanged.
-Simplification changes the interior surface; abrupt distance transitions can
-pop. This phase does not add geomorphing, hysteresis or screen-error selection.
+すべての level で同じフル解像度 vertex buffer と属性を再利用します。内側は間引いてサンプリングし、
+フル解像度の外周とは三角形の transition strip で接続します。**元の単位幅の境界 edge はすべて保持**するため、
+隣接チャンクが個別に選択した level でも、skirt、隣接 level に依存する stitching、
+毎フレームの mesh 再構築なしで正確に接続できます。共有境界の高さ、法線、tangent、UV、
+レイヤー weight は変わりません。簡略化で内側のサーフェスは変化し、距離境界で急に切り替わると
+pop が生じることがあります。この段階では geomorphing、hysteresis、screen-error による選択は行いません。
 
-Chunk bounds are tested against the camera frustum **before** material/draw
-preparation, even when LOD is disabled. Outside chunks submit no camera color
-or depth items. Selected color, depth-prepass and existing Hi-Z draws use
-identical index ranges. Shadows use a **separate light frustum and level 0**:
-an off-camera chunk can still cast a visible shadow, and changing camera LOD
-does not simplify its shadow geometry. Cast Shadows and camera layers retain
-their normal engine behavior. Invalid frusta conservatively bypass culling.
+LOD が無効な場合も含め、マテリアル／draw の準備**前**にチャンク bounds をカメラ frustum と照合します。
+視錐台の外にあるチャンクはカメラ向け color/depth item を送信しません。
+選択された color、depth pre-pass、既存 Hi-Z draw は同じ index range を使います。
+Shadow は**別の light frustum と level 0**を使います。カメラ外のチャンクも可視領域に影を落とせます。
+カメラ LOD を変更しても shadow geometry は簡略化されません。Cast Shadows と camera layer は
+通常のエンジン動作に従います。Frustum が無効な場合は保守的にカリングを迂回します。
 
-Authoritative height queries and PhysX always use the full-resolution triangles.
-Adding/re-enabling a TerrainCollider after generating LOD cannot cook the
-appended alternative indices as overlapping collision geometry.
-LOD ranges/settings are immutable snapshots paired with queued model snapshots;
-regeneration, camera changes and owner destruction cannot retarget queued draws.
+正準高さクエリと PhysX は常にフル解像度三角形を使います。LOD 生成後に TerrainCollider を追加／再有効化しても、
+追加された代替 index が重複する衝突ジオメトリとして cook されることはありません。
+LOD range／設定はキュー済み model snapshot と対になる不変 snapshot です。
+再生成、カメラ変更、所有者の破棄によってキュー済み draw の参照先が変わることはありません。
 
-The renderer's Model statistics show visible/culled/shadow chunk counts and
-selected versus full-resolution camera triangle counts. These are CPU
-submissions **before GPU occlusion**, not GPU-visible triangle counts.
-`RendererStatistics::terrainLodChunks` exposes the selected-level distribution.
-LOD reduces triangles, not vertex-buffer residency or chunk draw count.
-Alternative index ranges add memory; early culling reduces draw submissions,
-while full-resolution shadows intentionally retain their geometry cost.
+Renderer の Model 統計には可視／カリング済み／shadow チャンク数と、選択 LOD／フル解像度での
+カメラ描画三角形数が表示されます。これは**GPU occlusion より前**の CPU 送信数であり、
+GPU 上で可視な三角形数ではありません。`RendererStatistics::terrainLodChunks` から
+選択 level の内訳を取得できます。LOD が削減するのは三角形数であり、vertex buffer の常駐量や
+チャンク draw 数ではありません。代替 index range はメモリを増やします。
+早期カリングは draw 送信を減らしますが、フル解像度 shadow のジオメトリコストは意図的に維持します。
 
 ```cpp
 if (!terrain->setLodSettings({ true, 4, 50.0f }))
 {
-    // Error is logged; the previously applied terrain and collision remain valid.
+    // エラーがログに記録され、適用済みの Terrain と衝突形状は以前の状態を維持します。
 }
 ```
 
-`getLodSettings()` returns applied settings. `getLodSnapshot()` is null before
-generation and otherwise exposes immutable chunk index ranges matching
-`getModel()`. `setLodSettings` is a synchronous authoring rebuild, including
-full-resolution cooking if a TerrainCollider is attached. Inspector Apply
-queues the same CPU preparation in the background; neither is intended
-as a per-frame camera update. Distance selection and culling do not recook,
-allocate meshes, or modify component state each frame.
+`getLodSettings()` は適用済み設定を返します。生成前は `getLodSnapshot()` は null で、
+生成後は `getModel()` と一致する不変チャンク index range を公開します。
+`setLodSettings` は同期の authoring rebuild で、TerrainCollider がある場合はフル解像度での cook も行います。
+Inspector の Apply は同じ CPU 準備をバックグラウンドにキューします。どちらも毎フレームの
+カメラ更新を目的としていません。距離に応じた選択とカリングでは、毎フレーム cook／mesh 割り当てを
+行わず、component state も変更しません。
 
-Payload **version 5** saves applied LOD settings with embedded samples, chunk
-dimensions and materials. Scene/Prefab/Play restore independent generated
-resources; missing/invalid version 5 LOD settings are rejected transactionally.
-Versions 1..4 load with LOD disabled and retain their existing chunk migration.
+Payload **version 5** は埋め込み sample、チャンク寸法、マテリアルとともに適用済み LOD 設定を保存します。
+Scene/Prefab/Play は独立した生成リソースを復元します。Version 5 の LOD 設定が欠落／無効な場合は
+トランザクション方式で拒否します。Version 1..4 は LOD 無効で読み込み、既存のチャンク移行を維持します。
 
-## Background terrain generation (Phase 7)
+## Terrain のバックグラウンド生成 (Phase 7)
 
-The Terrain Inspector's **Generate Noise**, **Create Flat**, **Import Heightmap**,
-**Apply / Rebuild**, **Apply Terrain Material**, **Apply Chunk Settings** and
-**Apply LOD Settings** now submit background requests. No additional checkbox
-is needed. The modal file picker still runs on the main thread; image metadata
-read/decode and all expensive CPU preparation run after selection, on a dedicated
-terrain worker. Material texture-reference registration remains on the owner
-thread; texture decoding/upload still uses the existing renderer texture path.
+Terrain Inspector の **Generate Noise**、**Create Flat**、**Import Heightmap**、
+**Apply / Rebuild**、**Apply Terrain Material**、**Apply Chunk Settings**、**Apply LOD Settings** は、
+バックグラウンド要求を送信するようになりました。追加のチェックボックスは不要です。
+モーダルのファイル選択ダイアログは引き続きメインスレッドで動作しますが、画像 metadata の読み取り／
+デコードと、時間のかかる CPU 準備処理は選択後に専用 Terrain worker で実行します。
+Material texture reference の登録は owner thread で行い、テクスチャのデコード／upload には
+既存の renderer texture 経路を使います。
 
-The worker pipeline is:
+Worker の処理手順:
 
-1. Copy captured heights, generate CPU Perlin/FBM (or explicit GPU noise +
-   readback in Phase 9), create flat samples, or decode WIC.
-2. Apply hydraulic erosion only when explicitly requested (Phase 8), then
-   generate whole-grid vertices, smooth normals, tangents and UVs.
-3. Calculate whole-grid material layer weights, then partition chunks.
-4. Cook full-resolution PhysX chunk data if a TerrainCollider was attached.
-5. Append LOD indices, scatter applied vegetation recipes (Phase 10) and publish
-   the prepared CPU result.
+1. 取得済みの高さをコピーし、CPU Perlin/FBM (または Phase 9 の明示的な GPU noise と readback)、
+   平坦 sample の生成、WIC デコードのいずれかを行います。
+2. 明示的な要求があった場合のみ hydraulic erosion (Phase 8) を適用し、グリッド全体の頂点、
+   平滑法線、tangent、UV を生成します。
+3. グリッド全体のマテリアル layer weight を計算してから、チャンクに分割します。
+4. TerrainCollider がある場合、フル解像度の PhysX チャンクデータを cook します。
+5. LOD index を追加し、適用済み植生 recipe (Phase 10) を散布して、CPU 準備結果を公開します。
 
-Requests own value snapshots. Workers do **not** access components, scenes,
-resource registries, renderer-owned resources, PhysX scenes, actors or shapes.
-Phase 9 GPU noise uses only its independent queue/buffers/fence. Cooking
-uses local parameters/output buffers and produces immutable bytes only.
-One lazy-started background thread is shared by all terrains. It is separate
-from the cooperative frame JobSystem, so a frame/job waiter cannot accidentally
-execute a multi-second terrain build. Work is serial within this queue; it
-does not create one thread per terrain/chunk/request.
+要求は値 snapshot を所有します。Worker は component、Scene、resource registry、
+renderer 所有リソース、PhysX scene／actor／shape に**アクセスしません**。
+Phase 9 の GPU noise は独立した queue/buffer/fence のみを使います。
+Cooking はローカルな parameter/output buffer を使い、不変の byte 列だけを生成します。
+Terrain 間で遅延起動のバックグラウンド thread を1つ共有します。
+協調動作する frame JobSystem とは独立しているため、frame/job waiter が数秒かかる Terrain build を
+誤って実行することはありません。この queue 内の作業は直列で、Terrain／chunk／request ごとに
+thread を作成しません。
 
-The **Background** label shows Queued, Height samples, GPU noise, GPU readback,
-Hydraulic erosion, Mesh, Material weights,
-Chunks, PhysX cooking, LOD, Vegetation, Ready to apply, Applied, Cancelled or Failed.
-These are stages, not equal-duration progress percentages. Whole-build and final
-apply timings appear after completion. **Ready to apply** does not mean that
-the new terrain is live. While work is pending, rendering, collision, surface
-queries, model handles, applied settings and saved samples continue using the
-previous terrain. An ungenerated component with an accepted request does not
-run the automatic synchronous fallback or draw partial data.
+**Background** 表示には Queued、Height samples、GPU noise、GPU readback、Hydraulic erosion、
+Mesh、Material weights、Chunks、PhysX cooking、LOD、Vegetation、Ready to apply、Applied、Cancelled、
+Failed が表示されます。これらは処理段階であり、等しい時間の進捗率ではありません。
+完了後に build 全体と最終適用の所要時間を表示します。**Ready to apply** は新しい Terrain が
+稼働中であることを意味しません。処理中も描画、衝突、サーフェスクエリ、model handle、
+適用済み設定、保存済み sample は以前の Terrain を使います。要求を受理した未生成 component も、
+自動の同期 fallback を実行したり不完全なデータを描画したりしません。
 
-After game/render/physics work has joined, `Window::run` calls
-`TerrainGenerationQueue::applyCompleted()`. It never waits for the worker and
-attempts at most **one prepared live terrain result per frame**. Resource
-registration and PhysX shape replacement are staged before committing the new
-heightmap, geometry, material, chunk/LOD settings and noise recipe together.
-Invalid input, decoding/cooking failures or backend failure preserve the
-previous applied terrain and emit diagnostics. If TerrainCollider presence
-changed while a build ran, the result is rejected explicitly; request again
-with the current configuration. There is no surprise main-thread recooking.
+ゲーム／描画／physics の処理をすべて join した後、`Window::run` は
+`TerrainGenerationQueue::applyCompleted()` を呼び出します。Worker の完了を待つことはなく、
+1フレームで適用を試みる準備済み Terrain 結果は**最大1件**です。新しい heightmap、ジオメトリ、
+マテリアル、チャンク／LOD 設定、noise recipe をまとめて確定する前に、resource 登録と
+PhysX shape 置換を staging します。無効入力、デコード／cook の失敗、backend の失敗時は、
+以前の適用済み Terrain を維持して診断を出力します。Build 中に TerrainCollider の有無が変わった場合は
+結果を明示的に拒否します。現在の構成で再度要求してください。メインスレッドで予期せず recook することはありません。
 
-**Latest accepted request wins for each component.** A new request cancels
-older work without waiting; cancelled queued inputs are pruned and an active
-build drops its result. Erosion checks every droplet/step, noise checks each sample row, cooking
-checks each chunk, and the remaining work checks between CPU stages. WIC decode
-and an individual CPU stage/cooked chunk are not forcibly interrupted. Submitted
-GPU dispatches retire on the worker's compute fence before buffers can be reused;
-cancellation discards their output rather than forcibly interrupting GPU work.
-**Cancel Terrain Generation** also discards already-Ready output. Invalid
-requests do not supersede valid work. A successful synchronous edit/load/clone
-into the same component invalidates its pending asynchronous result.
-Destruction/removal cancels before callbacks can access the owner; lifecycle
-deactivation also cancels active gameplay builds. A replacement component at
-the same GameObject GUID cannot receive the old component's result.
+**各 component では最後に受理した要求が優先されます。** 新しい要求は待機せず古い要求をキャンセルします。
+キャンセル済みの待機入力は除去され、実行中の build は結果を破棄します。
+Erosion は droplet/step ごと、noise は sample row ごと、cooking は chunk ごとに確認し、
+残りの処理は CPU stage 間でキャンセルを確認します。WIC decode と個々の CPU stage／cook 済み chunk は
+強制中断しません。送信済み GPU dispatch は worker の compute fence 完了後に buffer を再利用します。
+GPU 作業を強制中断するのではなく、その出力を破棄します。**Cancel Terrain Generation** は
+すでに Ready の出力も破棄します。無効な要求は有効な処理を置き換えません。同じ component に対する
+同期編集／読み込み／複製が成功すると、保留中の非同期結果は無効になります。
+破棄／削除時は callback が owner にアクセスする前にキャンセルし、ライフサイクル上の無効化時も
+実行中のゲームプレイ build をキャンセルします。同じ GameObject GUID の置換 component に、
+古い component の結果が適用されることはありません。
 
-Each Apply button captures the applied heightmap and **other applied settings**
-plus that button's draft. Mesh generation/import/flat/noise captures the mesh
-dimension draft. Requests do not implicitly merge a previous pending Apply;
-submit the desired complete configuration through `requestRebuild` when
-changing multiple settings together. Editing drafts after submission does not
-alter the captured build, and completing a build does not overwrite newer
-Inspector drafts. Scene/Prefab/Play snapshots contain only applied data:
-pending/cancelled requests, progress and unapplied drafts are never saved,
-cloned or replayed. Phase 7 retained payload **5**; Phase 8 uses **6** to store
-the last applied erosion recipe alongside the authoritative samples.
+各 Apply ボタンは適用済み heightmap と**その他の適用済み設定**に、そのボタンの下書きを加えて取得します。
+Mesh 生成／インポート／平坦化／noise 生成では mesh 寸法の下書きも取得します。
+要求は以前の保留中 Apply と暗黙に統合されません。複数設定を同時に変更する場合は、
+希望する完全な構成を `requestRebuild` で送信してください。送信後に下書きを編集しても取得済み build は
+変わらず、完了時にも新しい Inspector 下書きを上書きしません。Scene/Prefab/Play snapshot には
+適用済みデータのみを含みます。保留／キャンセル済み要求、進捗、未適用の下書きは保存、複製、
+再実行されません。Phase 7 は payload **5** を維持し、Phase 8 では正準 sample とともに
+最後に適用された erosion recipe を保存するため **6** を使用します。
 
-Existing immediate-return APIs (`setTerrain`, `generateNoise`, `setMaterialSettings`,
-`setChunkSettings`, `setLodSettings`) retain synchronous success/failure semantics.
-The new owner-thread APIs return **request acceptance**, not completion:
+既存の即時返却 API (`setTerrain`、`generateNoise`、`setMaterialSettings`、
+`setChunkSettings`、`setLodSettings`) は同期の成功／失敗動作を維持します。
+新しい owner-thread API が返すのは完了ではなく**要求の受理結果**です。
 
 ```cpp
 if (terrain->requestNoise(recipe, meshSettings))
 {
-    // Keep using the current terrain. Later, at an owner-thread update:
+    // 現在の Terrain を使い続けます。後続の owner-thread update で:
     const auto status = terrain->getGenerationStatus();
-    // Only status.stage == TerrainGenerationStage::Applied means the result is live.
+    // status.stage == TerrainGenerationStage::Applied の場合のみ結果が有効です。
 }
 ```
 
-Additional APIs are `requestTerrain`, `requestFlat`, `requestHeightmap`,
-`requestRebuild` and `cancelGeneration`. They must be serialized with scene,
-render and other owner operations, just like the existing component APIs.
-Custom/headless loops must call `TerrainGenerationQueue::applyCompleted()`
-after joining all game/render/physics work, and `shutdown()` **before**
-`PhysicsSystem::shutdown()`. Shutdown cancels and joins the worker; component
-destruction and ordinary cancellation never join. The normal engine loop and
-shutdown are already wired.
+追加 API は `requestTerrain`、`requestFlat`、`requestHeightmap`、`requestRebuild`、
+`cancelGeneration` です。既存の component API と同様、Scene、描画、その他の owner 操作と
+直列化する必要があります。独自／headless loop では、ゲーム／描画／physics の作業をすべて join した後に
+`TerrainGenerationQueue::applyCompleted()` を呼び出し、`PhysicsSystem::shutdown()` **より前**に
+`shutdown()` を呼び出してください。Shutdown は worker をキャンセルして join しますが、
+component の破棄や通常のキャンセルでは join しません。通常のエンジン loop と shutdown には
+すでにこの処理が組み込まれています。
 
-**Limits:** this phase removes expensive CPU preparation from the frame, not
-all final-application costs. Creating/attaching PhysX shapes and the renderer's
-first GPU buffer/texture uploads remain synchronous at their existing safe
-points. A large result can therefore still cause a one-time application/upload
-spike; this is not a guaranteed 16ms-frame streaming system. Generation keeps
-the previous terrain and an independent replacement in memory, increasing
-peak RAM. Chunks remain resident; there is no incremental GPU upload,
-distance streaming or partial terrain editing.
+**制限:** この段階でフレームから取り除くのは時間のかかる CPU 準備処理であり、最終適用の全コストではありません。
+PhysX shape の作成／接続と、renderer が最初に行う GPU buffer/texture upload は、
+既存の安全なタイミングで同期実行されます。そのため大きな結果では適用／upload 時に一度だけ
+急な負荷が発生することがあります。16 ms/frame を保証する streaming システムではありません。
+生成中は以前の Terrain と独立した置換用データをメモリに保持するため、ピーク RAM が増加します。
+チャンクは常駐し、段階的な GPU upload、距離に応じた streaming、部分的な Terrain 編集には対応しません。
 
-## Hydraulic erosion (Phase 8)
+## 水力侵食 (Phase 8)
 
-Open **Hydraulic Erosion** in the Terrain Inspector and click
-**Apply Hydraulic Erosion**. This explicitly erodes a snapshot of the **applied**
-heightmap, using the other **applied** mesh/material/chunk/LOD settings, not their
-unapplied drafts. The dedicated terrain worker runs seeded CPU droplets and
-rebuilds the whole mesh, normals, tangents, layer weights, chunks, full-resolution
-PhysX collision and LOD ranges. The previous terrain remains active until the
-normal frame-boundary transaction succeeds. Progress includes a **Hydraulic
-erosion** stage; cancellation and latest-accepted-request semantics are unchanged.
+Terrain Inspector で **Hydraulic Erosion** を開き、**Apply Hydraulic Erosion** をクリックします。
+この操作は**適用済み** heightmap の snapshot を明示的に侵食します。未適用の下書きではなく、
+他の**適用済み** mesh/material/chunk/LOD 設定を使います。専用 Terrain worker は seed 指定の
+CPU droplet 処理を行い、mesh 全体、法線、tangent、layer weight、chunk、フル解像度 PhysX 衝突形状、
+LOD range を再構築します。通常のフレーム境界トランザクションが成功するまで、以前の Terrain は
+有効なままです。進捗に **Hydraulic erosion** stage が追加されます。キャンセルと最後に受理した要求を
+優先する動作は変わりません。
 
-The simulation uses bilinear heights/gradients, inertia-driven unit-cell steps,
-water/speed-dependent sediment capacity, and evaporation. Downhill height loss
-increases speed; uphill motion decreases it. Erosion uses a radius-weighted disk
-centered on the nearest vertex (clipped and weight-normalized at map boundaries);
-removal is bounded by the step's downhill drop and available sample heights.
-Deposition distributes sediment bilinearly and is bounded by each sample's
-remaining normalized-height capacity. There is no min/max renormalization.
-Flat maps remain flat; normalized samples always stay within `[0,1]`.
+シミュレーションでは高さ／勾配に双線形補間を使い、慣性に応じて1 cell 単位で進みます。
+水量／速度に応じた土砂容量と蒸発も扱います。下り坂で高さが低下すると速度が増し、上り坂では減少します。
+侵食には最寄り頂点を中心とする半径重み付き円盤を使い (マップ端では範囲を切り詰めて weight を正規化)、
+除去量は step の下り高低差と利用可能な sample 高さで制限します。堆積土砂は双線形に分配し、
+各 sample の正規化高さの残り容量を上限とします。最小／最大値に基づく再正規化は行いません。
+平坦なマップは平坦なままで、正規化 sample は常に `[0,1]` の範囲内です。
 
-**Units and boundaries:** horizontal distances/radius are in grid cells, vertical
-heights are normalized sample values. Mesh dimensions, height scale, object
-transforms and rectangular-cell world aspect ratio do not affect the simulation.
-This is an authoring model, not a physical water solver. Increasing grid resolution
-changes its spatial scale. Edges are open: droplets leaving the grid export carried
-sediment. Droplets stopping from lifetime, evaporation or zero direction settle
-locally; any sediment exceeding local deposition capacity is also exported.
-Consequently total height mass can decrease, but never appears from nowhere.
-`TerrainErosionBudget` reports eroded/deposited/exported totals before float output
-rounding; eroded equals deposited plus exported.
+**単位と境界:** 水平方向の距離／半径は grid cell 単位、垂直方向の高さは正規化 sample 値です。
+Mesh 寸法、height scale、object transform、長方形 cell のワールド aspect ratio は
+シミュレーションに影響しません。これは制作用モデルであり、物理的な水流ソルバーではありません。
+Grid 解像度を上げると空間スケールが変化します。端は開放境界です。Grid 外へ出た droplet は、
+運んでいる土砂を外部へ排出します。寿命、蒸発、または方向ベクトルが0で停止した droplet は
+その場に堆積します。局所的な堆積容量を超える土砂も排出されます。
+このため高さの総量は減少することがありますが、何もないところから増えることはありません。
+`TerrainErosionBudget` は float 出力丸め前の侵食／堆積／排出合計を報告し、
+侵食量は堆積量と排出量の合計に一致します。
 
-| Parameter | Default | Accepted range |
+| パラメーター | 既定値 | 許容範囲 |
 |---|---:|---|
 | Seed | 0 | uint32 |
 | Droplets | 5000 | 1..1000000 |
@@ -1706,12 +1562,11 @@ rounding; eroded equals deposited plus exported.
 | Initial Water | 1 | 0.01..10 |
 | Initial Speed | 1 | 0..10 |
 
-Identical samples and recipes produce identical samples in the same build,
-independently of global RNG state. A fixed droplet count is **not** scaled with
-resolution. Costs grow with droplets, lifetime and brush area; extreme settings
-can take substantial time. Cancellation is cooperative at every droplet/step,
-but subsequent mesh/cooking/upload and final-application limits from Phase 7
-still apply. **Reset Erosion Draft** only resets unapplied controls.
+同じビルド内では、global RNG の状態にかかわらず、同じ sample と recipe から同じ sample が得られます。
+Droplet 数は解像度に応じて**自動調整されません**。処理コストは droplet 数、寿命、ブラシ面積に応じて増え、
+極端な設定では時間がかかります。Droplet/step ごとに協調的なキャンセル確認を行いますが、
+後続の mesh/cooking/upload と最終適用には Phase 7 の制限が引き続き適用されます。
+**Reset Erosion Draft** は未適用のコントロールのみをリセットします。
 
 ```cpp
 TerrainErosionSettings erosion;
@@ -1719,178 +1574,151 @@ erosion.seed = 723;
 erosion.droplets = 5000;
 if (terrain->requestErosion(erosion))
 {
-    // Accepted, not yet applied. Poll getGenerationStatus() at normal owner-thread updates.
+    // 要求は受理済みですが、未適用です。通常の owner-thread update で getGenerationStatus() を確認します。
 }
 ```
 
-`TerrainComponent::applyErosion` provides synchronous transactional success/failure;
-`erodeTerrain(source, settings, destination, cancelled, budget)` is the standalone
-CPU operation and supports aliased source/destination. Invalid input/cancellation
-preserves destination and budget. Component APIs preserve pending work on invalid
-requests and cancel older work only after successful replacement/acceptance.
+`TerrainComponent::applyErosion` は同期処理の成功／失敗をトランザクション方式で返します。
+`erodeTerrain(source, settings, destination, cancelled, budget)` は単体で使える CPU 処理で、
+source と destination の alias に対応します。入力が無効、またはキャンセルされた場合は
+destination と budget を維持します。Component API は無効な要求では保留中の処理を維持し、
+新しい処理の置換／受理が成功した場合に限り古い処理をキャンセルします。
 
-**Persistence and cumulative editing:** payload **6** saves the actual eroded
-samples plus the last successfully applied recipe. Versions **1..5** load unchanged
-samples and default erosion controls. Scene/Prefab/Play clones never replay erosion.
-Ordinary Rebuild, material/chunk/LOD changes, save/load, and noise/image/flat
-replacement do not automatically run it. Repeated successful erosion applications
-are cumulative. Requests submitted while another is pending all capture current
-applied samples; they replace, rather than chain onto, pending results.
-Pending requests and newer Inspector draft edits are not saved.
-There is no erosion undo/history, rainfall mask, cross-terrain flow, live water
-rendering or GPU erosion in this phase; Phase 9 accelerates noise generation only.
+**永続化と累積編集:** Payload **6** は実際に侵食された sample と最後に正常適用された recipe を保存します。
+Version **1..5** は sample を変更せず読み込み、erosion control を既定値にします。
+Scene/Prefab/Play の複製で侵食処理を再実行することはありません。通常の Rebuild、material/chunk/LOD の変更、
+save/load、noise／画像／平坦化による置換で自動的に侵食することもありません。
+侵食を適用するたびに成功した変更が累積します。別の処理が保留中に送信した要求は、すべて現在の
+適用済み sample を取得します。保留中の結果に連鎖適用するのではなく、既存の要求を置き換えます。
+保留中要求と Inspector の新しい下書き編集は保存されません。
+この段階では侵食の undo/history、雨量 mask、Terrain 間の水流、リアルタイム水描画、GPU 侵食には
+対応しません。Phase 9 で高速化するのは noise 生成のみです。
 
-## GPU terrain noise (Phase 9)
+## GPU Terrain Noise (Phase 9)
 
-Click **Generate Noise (GPU)** beside **Generate Noise** in the Terrain Inspector.
-Both capture the same Perlin/FBM recipe and mesh-dimension draft. The ordinary
-button and `generateNoise` / `requestNoise` remain CPU-based; GPU execution is
-an explicit action, not a persistent backend setting or an automatic fallback.
+Terrain Inspector で **Generate Noise** の隣にある **Generate Noise (GPU)** をクリックします。
+どちらの操作も同じ Perlin/FBM recipe と mesh 寸法の下書きを取得します。
+通常のボタンと `generateNoise`／`requestNoise` は CPU 処理のままです。
+GPU 実行は明示的に選択する操作であり、永続的な backend 設定や自動 fallback ではありません。
 
 ```cpp
 if (terrain->requestGpuNoise(recipe, meshSettings))
 {
-    // Request accepted; keep using the old terrain until status.stage == Applied.
+    // 要求は受理済みです。status.stage == Applied になるまで以前の Terrain を使い続けます。
 }
 ```
 
-`TerrainNoise.hlsl` runs 8x8 Compute groups, rejects out-of-grid threads, and
-writes one normalized float per sample to a structured UAV. The entire existing
-noise parameter range is supported: rectangular 2..1025 grids, Perlin/FBM,
-uint32 seeds, negative offsets, 12 octaves and extreme frequency/lacunarity.
-Only separable axis-coordinate decomposition is done on the CPU, in double
-precision (`O((width + height) * octaves)`). Signed 64-bit lattice cells and
-fractional offsets are uploaded independently, avoiding float coordinate
-collapse at large offsets/high octaves. Hashing, gradients, quintic interpolation,
-octave accumulation and normalization run in the shader. Hash arithmetic uses
-32-bit pairs and exact low-64-bit multiplication; optional GPU double/Int64
-features are not required.
+`TerrainNoise.hlsl` は8x8 thread の Compute group を実行し、グリッド外の thread を除外して、
+各 sample の正規化 float 値を structured UAV に書き込みます。既存の noise parameter 全範囲、
+すなわち長方形の2..1025 grid、Perlin/FBM、uint32 seed、負の offset、12 octaves、
+大きな frequency/lacunarity に対応します。CPU 側で行うのは、分離可能な各軸の座標分解のみで、
+double 精度を使います (`O((width + height) * octaves)`)。符号付き64-bit の格子 cell と
+小数 offset を個別に upload するため、大きな offset／高 octave でも float 座標が潰れません。
+Hash、勾配、5次補間、octave の累積、正規化は shader 内で実行します。
+Hash 演算は32-bit pair と正確な下位64-bit 乗算を使い、任意の GPU double／Int64 機能には依存しません。
 
-GPU interpolation/accumulation uses floats rather than the CPU's doubles.
-The same GPU recipe reproduces exact samples in the same shader/device/build;
-cross-device/build bit identity is not promised. Validation requires every tested
-sample to be within **2e-6 normalized height units** of CPU noise, including
-extreme and maximum-grid recipes. This is a tested tolerance, not a promise of
-CPU/GPU bit identity. World height differences scale with Height Scale.
-Use saved samples, rather than regenerating recipes on another backend, when
-exact surface preservation matters.
+GPU の補間／累積には CPU の double ではなく float を使います。同じ shader/device/build では、
+同じ GPU recipe から正確に同じ sample が得られますが、異なる device/build 間で bit 単位の一致は
+保証しません。極端な設定や最大 grid を含む全検証 sample は、CPU noise との差が
+**正規化高さ単位で2e-6以内**である必要があります。これは検証済みの許容誤差であり、
+CPU/GPU の bit 単位一致を保証するものではありません。ワールド高さの差は Height Scale に比例します。
+サーフェスを厳密に維持する必要がある場合は、別 backend で recipe を再生成せず、保存済み sample を使ってください。
 
-The renderer initializes one `TerrainGpuNoise` backend on its own D3D12 device.
-It owns an independent **COMPUTE queue**, command allocator/list, immutable PSO,
-upload/UAV/readback buffers and fence, separate from rendering queues/resources.
-The dedicated terrain worker dispatches, waits for that fence, and reads back
-heights. Owner-thread request acceptance and `applyCompleted` never wait for the
-compute fence. No renderer frames are needed to finish a request. Concurrent
-standalone backend calls serialize internally; the direct `generate` method is
-CPU-blocking and is not intended for frame callbacks.
+Renderer は独自の D3D12 device 上に `TerrainGpuNoise` backend を1つ初期化します。
+描画 queue/resource とは独立した **COMPUTE queue**、command allocator/list、不変 PSO、
+upload/UAV/readback buffer、fence を所有します。専用 Terrain worker が dispatch し、fence を待って
+高さを読み戻します。Owner-thread での要求受理と `applyCompleted` は compute fence を待ちません。
+要求の完了に renderer frame は不要です。単体 backend の同時呼び出しは内部で直列化されます。
+直接呼び出す `generate` method は CPU を block するため、frame callback 内での使用を想定していません。
 
-After readback, the existing worker pipeline builds mesh normals/tangents,
-material weights, chunks, full-resolution PhysX cooking and LODs from **the same
-height samples**. The frame-boundary transaction then replaces the terrain.
-Saved data, height queries, collision and rendering cannot independently
-regenerate or diverge. Payload remains **6**: authoritative samples plus existing
-noise/erosion authoring recipes; no queue, GPU handles or execution choice is
-serialized. Scene/Prefab/Play/rebuild does not rerun GPU generation.
+Readback 後、既存の worker pipeline が**同じ高さ sample**から mesh 法線／tangent、
+material weight、chunk、フル解像度 PhysX cook、LOD を構築します。
+その後フレーム境界の transaction で Terrain を置き換えます。保存データ、高さ query、衝突形状、
+描画結果がそれぞれ独立に再生成され、食い違うことはありません。Payload は **6** のままです。
+正準 sample と既存の noise/erosion authoring recipe を保存し、queue、GPU handle、実行方式は保存しません。
+Scene/Prefab/Play/再構築時に GPU 生成を再実行しません。
 
-Latest-accepted-request, invalid-input preservation, cancellation, progress,
-newer Inspector drafts, and applied-only saving retain Phase 7 semantics.
-GPU failure is logged and preserves the previous terrain; there is **no silent
-CPU fallback**. **GPU noise** and **GPU readback** are stages, not percentages.
-The displayed build time includes CPU coordinate preparation, GPU submission/
-wait/readback and subsequent CPU terrain work, not GPU timestamp-only time.
-Submitted GPU work is not forcibly cancelled: buffers remain owned until the
-compute fence completes, even when the owner has been destroyed. Queue shutdown
-joins the worker before renderer/device shutdown, then drains/releases the
-backend. `DX12Renderer::finalize` enforces that ordering. Custom/headless callers
-must do the same, and must not concurrently invoke backend initialize/shutdown.
+最後に受理した要求を優先する動作、無効入力時の既存データ保持、キャンセル、進捗、
+新しい Inspector 下書きの保持、適用済みデータのみの保存は Phase 7 の仕様を維持します。
+GPU 処理の失敗はログに記録して以前の Terrain を保持し、**CPU へ黙って fallback することはありません**。
+**GPU noise** と **GPU readback** は処理 stage であり、進捗率ではありません。
+表示される build 時間には CPU 座標準備、GPU 送信／待機／readback、その後の CPU Terrain 処理を含み、
+GPU timestamp のみの時間ではありません。送信済み GPU 作業は強制キャンセルしません。
+所有者が破棄された場合も compute fence の完了まで buffer を保持します。
+Queue shutdown は renderer/device shutdown より前に worker を join し、その後 backend を drain/release します。
+`DX12Renderer::finalize` がこの順序を保証します。独自／headless caller も同じ順序にし、
+backend の initialize/shutdown を同時に呼び出さないでください。
 
-The normal shader build compiles `TerrainNoise_csMain_cs.cso` with pinned DXC
-and Shader Model 6.0; deployment must include it. Like required rendering
-shaders, a missing/invalid CSO fails initialization explicitly. The terrain PSO
-is immutable during work; this phase does not hot-reload it. Rebuild shaders
-and restart to apply shader edits.
+通常の shader build は固定 DXC と Shader Model 6.0 で `TerrainNoise_csMain_cs.cso` をコンパイルします。
+配布物にも含めてください。必須の rendering shader と同様、CSO の欠落／無効時は初期化に失敗したことを
+明示します。Terrain PSO は処理中不変であり、この段階では hot reload しません。
+Shader の変更を反映するには再ビルドして再起動してください。
 
-**Limits:** only Perlin/FBM height generation is GPU-accelerated here.
-Image decoding, mesh/layer/chunk/LOD construction, PhysX cooking and the Phase 8
-order-dependent water-droplet erosion remain CPU work. This is not a GPU-resident
-terrain mesh, GPU erosion, distance streaming or a fully GPU-driven terrain
-pipeline. GPU work competes with rendering on the same hardware; a separate
-queue does not guarantee simultaneous execution, speedup or a particular frame
-budget. Readback and old/replacement terrain increase memory use. Final PhysX
-shape attachment and initial renderer uploads can still cause application spikes.
+**制限:** ここで GPU 化するのは Perlin/FBM による高さ生成のみです。画像デコード、
+mesh/layer/chunk/LOD 構築、PhysX cooking、Phase 8 の順序依存 water-droplet erosion は CPU 処理のままです。
+GPU 常駐 Terrain mesh、GPU erosion、距離 streaming、完全な GPU 駆動 Terrain pipeline ではありません。
+GPU 作業は同じ hardware 上の描画と競合します。独立 queue でも同時実行、速度向上、特定 frame budget は
+保証されません。Readback と旧／置換 Terrain によってメモリ使用量が増えます。
+PhysX shape の最終接続と Renderer の初回 upload では、依然として適用時に負荷が発生する場合があります。
 
-## Automatic vegetation (Phase 10)
+## 自動植生配置 (Phase 10)
 
-**Scope:** opt-in, seeded static-model scatter owned by `TerrainComponent`.
-There are four independent layers; no per-plant GameObjects, PhysX shapes,
-wind deformation, streaming or vegetation-specific distance LOD are created.
-Existing static-model frustum/layer/shadow culling, compatible opaque/alpha-test
-GPU instancing and Hi-Z occlusion are reused. Transparent materials keep the
-renderer’s ordinary sorted, noninstanced path.
+**範囲:** `TerrainComponent` が所有する、明示的に有効化する seed 指定の静的 Model 散布です。
+独立した4レイヤーを使います。植物ごとの GameObject や PhysX shape、風による変形、streaming、
+植生専用の距離 LOD は作成しません。既存の静的 Model 向け frustum／layer／shadow カリング、
+対応する opaque/alpha-test の GPU instancing、Hi-Z occlusion を再利用します。
+Transparent material は Renderer の通常のソート済み非 instanced 経路を使います。
 
-1. Prepare and save a static `.model` / `.mdl` asset using the existing model
-   tools. Use +Y up, with the origin at the plant root; model meshes, nodes,
-   embedded/default materials and alpha-test materials are retained.
-2. Expand **Terrain Vegetation**, enable **Enable Vegetation**, open one of the
-   four **Vegetation Layer** entries, enable it, and **Select Model...**.
-3. Configure the seed, density, minimum spacing, maximum instances,
-   normalized height/slope ranges, uniform scale range and root offset.
-   Yaw is randomized over a full turn. **Align To Surface Normal** aligns local
-   +Y with the exact geometric triangle normal; otherwise plants stay upright.
-   Root offset follows this chosen up axis. Shadows are controlled per layer,
-   independently of the terrain surface's Cast Shadows toggle.
-4. Click **Apply Vegetation**. The previous terrain and vegetation remain live
-   until the complete replacement succeeds. **Reset Vegetation Draft** changes
-   only unapplied edits. Existing cancellation/latest-accepted-wins behavior and
-   preservation of newer Inspector drafts apply to vegetation too.
+1. 既存の Model tool で静的 `.model`／`.mdl` asset を準備して保存します。上方向を +Y とし、
+   原点を植物の根元に置きます。Model の mesh、node、埋め込み／既定 material、
+   alpha-test material はそのまま保持されます。
+2. **Terrain Vegetation** を展開して **Enable Vegetation** を有効にし、
+   4つの **Vegetation Layer** のいずれかを開いて有効化し、**Select Model...** を選択します。
+3. Seed、density、最小間隔、最大 instance 数、正規化 height/slope 範囲、一様 scale 範囲、
+   根元 offset を設定します。Yaw は全周からランダムに選びます。
+   **Align To Surface Normal** を有効にすると local +Y を幾何学的な三角形法線に正確に合わせます。
+   無効の場合は植物を垂直に保ちます。Root offset は選択した上方向に沿って適用します。
+   Shadow は layer ごとに設定でき、Terrain surface の Cast Shadows 設定とは独立しています。
+4. **Apply Vegetation** をクリックします。置換全体が成功するまで以前の Terrain と植生を有効なまま保ちます。
+   **Reset Vegetation Draft** は未適用の編集のみをリセットします。既存のキャンセル／最後に受理した要求を
+   優先する動作と、新しい Inspector 下書きの保持は植生にも適用されます。
 
-**Placement contract:** dimensions, spacing and scale are terrain-local.
-Height filters use the original normalized triangle-interpolated samples,
-even with zero height scale; slopes use the actual local geometric normals.
-Height/slope ranges are inclusive. Grounding follows the mesh's exact
-`a,c,b; b,c,d` diagonal, not bilinear interpolation. Object/parent translation,
-rotation, nonuniform scaling and reflection are composed at rendering time;
-they do not reseed or redistribute instances.
+**配置規則:** 寸法、間隔、scale は Terrain の local 空間です。Height filter は height scale が0でも
+元の正規化済み三角形補間 sample を使います。Slope には実際の local 幾何法線を使います。
+Height/slope 範囲の境界値も含みます。接地位置は双線形補間ではなく、mesh の正確な
+`a,c,b; b,c,d` 対角線に従います。Object／親の平行移動、回転、非一様 scale、反転は描画時に合成され、
+seed や instance 配置を変更しません。
 
-For each enabled layer, the worker tests `ceil(sizeX * sizeZ * density)`
-uniform random XZ candidates in a deterministic order, rejecting height/slope
-violations and centers closer than Minimum Spacing to an accepted center.
-Spacing is checked at terrain surface anchors **before** root offset and
-independently per layer, not between layers or model bounding boxes.
-`density` therefore controls the **candidate budget**, not a guaranteed final
-population. Filtering/spacing can reduce counts; `maxInstances` stops further
-placement when reached. Layers with the same seed/rules intentionally produce
-the same layout; use different seeds to avoid matching distributions.
+有効な各 layer について、worker は `ceil(sizeX * sizeZ * density)` 個の一様乱数 XZ 候補を
+決定的な順序で評価します。Height/slope の条件外、または受理済み中心との距離が Minimum Spacing
+未満の候補は除外されます。間隔は root offset 適用**前**の Terrain surface anchor で確認し、
+layer ごとに独立して判定します。layer 間や Model bounding box 間では判定しません。
+したがって `density` が決めるのは**候補数の上限**であり、最終的な配置数ではありません。
+Filter／間隔条件により配置数は減少します。`maxInstances` に達すると配置を終了します。
+同じ seed／規則の layer は意図的に同じ配置になります。分布を変えるには異なる seed を使用してください。
 
-Limits are density **0..100** per local XZ area, spacing **0.1..10000**,
-maximum instances **1..25000** per layer (**100000** per terrain),
-normalized height **0..1**, slope **0..90 degrees**, scale **0.001..1000**,
-and root offset **-1000..1000**. Each layer permits at most **100000
-candidates**; exceeding this budget fails explicitly instead of silently
-truncating or blocking for an unbounded workload. Disabled numeric fields
-are still validated. Zero density is valid and produces no instances.
-The cap is a safety bound, not a promise that 100000 visible models will fit
-your frame budget.
+範囲は、local XZ 面積あたり density **0..100**、spacing **0.1..10000**、
+layer ごとの最大 instance 数 **1..25000** (Terrain 全体で **100000**)、
+正規化 height **0..1**、slope **0..90度**、scale **0.001..1000**、
+root offset **-1000..1000** です。各 layer の候補数は最大 **100000** です。
+上限を超える場合、黙って切り詰めたり無制限の処理を続けたりせず、明示的に失敗させます。
+無効な layer の数値 field も検証します。Density 0 は有効で、instance を生成しません。
+この上限は安全のための制約であり、可視モデル100000個が frame budget に収まる保証ではありません。
 
-**Regeneration and persistence:** ordinary height imports, flat/noise/GPU
-generation, erosion and mesh/material/chunk/LOD rebuilds all capture the
-currently **applied** vegetation recipes and re-scatter against the resulting
-authoritative samples. Chunk/LOD changes do not change the distribution.
-`setVegetationSettings` is synchronous; `requestVegetation` prepares on the
-dedicated terrain worker. CPU placement never accesses scene objects or asset
-managers. Model/material loading and final registration remain owner-thread
-operations; missing/skinned models fail explicitly and preserve the previous
-mesh, vegetation and PhysX together. Loading assets, attaching physics and
-initial GPU uploads can still cause frame spikes.
+**再生成と永続化:** 通常の高さインポート、flat/noise/GPU 生成、侵食、mesh/material/chunk/LOD 再構築では、
+現在の**適用済み**植生 recipe を取得し、更新後の正準 sample に対して配置を再計算します。
+Chunk/LOD の変更は分布に影響しません。`setVegetationSettings` は同期処理です。
+`requestVegetation` は専用 Terrain worker で準備します。CPU 配置処理は Scene object や asset manager に
+アクセスしません。Model/material の読み込みと最終登録は owner thread で行います。
+Model が見つからない、または skinned model の場合は明示的に失敗し、以前の mesh、植生、PhysX を
+まとめて保持します。Asset の読み込み、physics shape の接続、GPU 初回 upload では、
+引き続きフレーム負荷が生じることがあります。
 
-Payload **7** stores applied recipes and model paths alongside authoritative
-height samples. Versions **1..6** migrate to disabled vegetation. Scene,
-Prefab and Play/duplicate reconstruct exactly the same local transforms from
-saved samples and recipes; pending work and newer Inspector drafts are not
-saved. Vegetation uses model asset paths with the same working-directory /
-absolute reference convention as Model Renderer; deploy those model assets
-and their material/texture dependencies too. Models/materials are shared
-manager resources, not owned/unloaded by individual vegetation layers.
-Queued instance/model/material snapshots remain immutable and alive across
-regeneration or scene destruction. Reapply vegetation to capture changed
-model/default-material assets.
+Payload **7** は正準 height sample とともに、適用済み recipe と Model path を保存します。
+Version **1..6** は植生を無効として移行します。Scene、Prefab、Play／複製では保存済み sample と recipe から
+同じ local transform を再構築します。保留中の作業や新しい Inspector 下書きは保存されません。
+植生で使う Model asset path は Model Renderer と同じ、作業ディレクトリ基準／絶対パスの参照規約に従います。
+Model asset と material/texture の依存アセットも配布してください。Model/material は manager が共有する
+resource であり、個々の植生 layer が所有したり unload したりしません。
+キュー済み instance/model/material snapshot は再生成や Scene 破棄後も不変かつ有効です。
+Model／既定 material の変更を反映するには植生を再適用してください。
