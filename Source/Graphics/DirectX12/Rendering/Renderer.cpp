@@ -636,7 +636,17 @@ namespace Engine
             m_psoRebuildPending = false;
         }
 
-        m_lighting = LightingFrame::instance().forCamera(m_cameraPosition, m_cameraForward);
+        m_lighting = LightingFrame::instance().forCamera(m_cameraPosition, m_cameraForward, m_viewProjection);
+        const auto& lightShafts = m_lighting.lightShafts;
+        m_cameraPostProcess.lightShafts = {
+            lightShafts.options.x > 0.5f,
+            lightShafts.options.y > 0.5f,
+            Vector2(lightShafts.screenPosition.x, lightShafts.screenPosition.y),
+            Vector3(lightShafts.tint.x, lightShafts.tint.y, lightShafts.tint.z),
+            lightShafts.options.z,
+            lightShafts.options.w,
+            lightShafts.tint.w,
+        };
         if (hasCameraView && LightingFrame::instance().hasShadow())
             m_shadowViewProjection = m_lighting.shadowViewProjection;
         else

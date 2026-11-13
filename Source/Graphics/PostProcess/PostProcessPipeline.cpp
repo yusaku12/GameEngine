@@ -328,6 +328,19 @@ namespace Engine
         if (!std::isfinite(camera.weight) || camera.weight < 0 || camera.weight > 1
             || !std::isfinite(camera.nearClip) || !std::isfinite(camera.farClip)
             || camera.nearClip <= 0 || camera.farClip <= camera.nearClip
+            || !std::isfinite(camera.lightShafts.sourcePosition.x)
+            || !std::isfinite(camera.lightShafts.sourcePosition.y)
+            || !std::isfinite(camera.lightShafts.bloomScale)
+            || camera.lightShafts.bloomScale < 0 || camera.lightShafts.bloomScale > 10
+            || !std::isfinite(camera.lightShafts.bloomThreshold)
+            || camera.lightShafts.bloomThreshold < 0 || camera.lightShafts.bloomThreshold > 64
+            || !std::isfinite(camera.lightShafts.tint.x) || !std::isfinite(camera.lightShafts.tint.y)
+            || !std::isfinite(camera.lightShafts.tint.z)
+            || camera.lightShafts.tint.x < 0 || camera.lightShafts.tint.x > 1
+            || camera.lightShafts.tint.y < 0 || camera.lightShafts.tint.y > 1
+            || camera.lightShafts.tint.z < 0 || camera.lightShafts.tint.z > 1
+            || !std::isfinite(camera.lightShafts.occlusionMaskDarkness)
+            || camera.lightShafts.occlusionMaskDarkness < 0 || camera.lightShafts.occlusionMaskDarkness > 1
             || !std::all_of(POST_PROCESS_WEIGHT_MEMBERS.begin(), POST_PROCESS_WEIGHT_MEMBERS.end(),
                 [&camera](const auto member) { const float value = camera.effects.*member;
                     return std::isfinite(value) && value >= 0 && value <= 1; })
@@ -385,6 +398,7 @@ namespace Engine
                 || settings.highlightColor.value != Vector3::Zero);
         const bool depthOfField = depthOfFieldWeight > 0 && settings.depthOfFieldEnabled.value
             && settings.depthOfFieldMaxBlur.value > 0;
+        const bool lightShafts = camera.lightShafts.bloomEnabled && camera.lightShafts.bloomScale > 0;
         const bool colorGradingLut = lutWeight > 0 && settings.colorGradingLutEnabled.value
             && settings.colorGradingLutIntensity.value > 0;
         const bool autoExposure = autoExposureWeight > 0 && settings.autoExposureEnabled.value;
@@ -506,7 +520,7 @@ namespace Engine
             LOG_ERROR("[PostProcess] Incompatible HDR/display textures or viewport.");
             return false;
         }
-        if (depthOfField)
+        if (depthOfField || lightShafts)
         {
             if (depth == nullptr || depth->resource == nullptr || depth->resource->get() == nullptr
                 || depth->srv.native.ptr == 0
@@ -514,7 +528,7 @@ namespace Engine
                 || depth->resource->getDescription().Width != inputDesc.Width
                 || depth->resource->getDescription().Height != inputDesc.Height)
             {
-                LOG_ERROR("[PostProcess] Depth of Field requires a matching Camera depth texture.");
+                LOG_ERROR("[PostProcess] Depth effects require a matching Camera depth texture.");
                 return false;
             }
         }
@@ -605,21 +619,24 @@ namespace Engine
             return true;
         };
         bool depthWasUsed = false;
-        const auto runDepthEffect = [&](const PostProcessBuiltin slot, const std::span<const float> parameters)
+        const auto runDepthEffect = [&](const PostProcessBuiltin slot, const std::span<const float> parameters,
+            const std::uint32_t resolutionDivisor)
         {
             const PostProcessTargetDescription description{
-                static_cast<std::uint32_t>(outputDesc.Width), static_cast<std::uint32_t>(outputDesc.Height),
+                static_cast<std::uint32_t>((outputDesc.Width + resolutionDivisor - 1) / resolutionDivisor),
+                (outputDesc.Height + resolutionDivisor - 1) / resolutionDivisor,
             };
             PostProcessImage* const next = m_targets.acquire(description);
+            const auto targetViewport = temporaryViewport(viewport, description, outputDesc);
             if (next == nullptr || !draw(commandList, m_builtins[static_cast<std::size_t>(slot)],
-                *current, *next, currentViewport, viewport, effectiveExposure, false, parameters,
+                *current, *next, currentViewport, targetViewport, effectiveExposure, false, parameters,
                 depth, &viewport))
                 return false;
             if (borrowed && !m_targets.release(*borrowed))
                 return false;
             borrowed = next;
             current = next;
-            currentViewport = viewport;
+            currentViewport = targetViewport;
             depthWasUsed = true;
             ++m_statistics.effectPasses;
             return true;
@@ -672,7 +689,23 @@ namespace Engine
             parameters[4] = camera.farClip;
             parameters[5] = depthOfFieldWeight;
             parameters[8] = camera.perspectiveProjection ? 1.0f : 0.0f;
-            if (!runDepthEffect(PostProcessBuiltin::DepthOfField, parameters))
+            if (!runDepthEffect(PostProcessBuiltin::DepthOfField, parameters, 1))
+                return false;
+        }
+        if (lightShafts)
+        {
+            const std::array<float, 16> parameters{
+                camera.lightShafts.sourcePosition.x,
+                camera.lightShafts.sourcePosition.y,
+                camera.lightShafts.bloomScale,
+                camera.lightShafts.bloomThreshold,
+                camera.lightShafts.tint.x,
+                camera.lightShafts.tint.y,
+                camera.lightShafts.tint.z,
+                camera.lightShafts.occlusionMaskDarkness,
+                camera.lightShafts.occlusionEnabled ? 1.0f : 0.0f,
+            };
+            if (!runDepthEffect(PostProcessBuiltin::LightShafts, parameters, 2))
                 return false;
         }
         if (motionBlur)

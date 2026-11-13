@@ -435,6 +435,9 @@
     <ClCompile Include="Source\Components\Rendering\VolumetricCloudComponent.cpp">
       <Filter>Source\Components\Rendering</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Components\Rendering\VolumetricFogComponent.cpp">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Components\Rendering\ModelRendererComponent.cpp">
       <Filter>Source\Components\Rendering</Filter>
     </ClCompile>
@@ -770,6 +773,9 @@
     <ClInclude Include="Generated\FlatBuffers\SkyAtmosphereComponent_generated.h">
       <Filter>Generated\FlatBuffers</Filter>
     </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\VolumetricFogComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
     <ClInclude Include="Generated\FlatBuffers\Material_generated.h">
       <Filter>Generated\FlatBuffers</Filter>
     </ClInclude>
@@ -975,6 +981,9 @@
       <Filter>Source\Components\Rendering</Filter>
     </ClInclude>
     <ClInclude Include="Source\Components\Rendering\VolumetricCloudComponent.h">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Rendering\VolumetricFogComponent.h">
       <Filter>Source\Components\Rendering</Filter>
     </ClInclude>
     <ClInclude Include="Source\Components\Rendering\ModelRendererComponent.h">

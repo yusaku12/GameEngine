@@ -14,13 +14,14 @@ namespace Engine
     {
         BloomPrefilter, BloomDownsample, BloomUpsample, BloomComposite, CustomComposite, Vignette,
         ChromaticAberration, FilmGrain, Fxaa,
-        DepthOfField, ColorGradingLut, AutoExposureDownsample, AutoExposureAdapt, TemporalAA, MotionBlur, Count,
+        DepthOfField, ColorGradingLut, AutoExposureDownsample, AutoExposureAdapt, TemporalAA, MotionBlur,
+        LightShafts, Count,
     };
     inline constexpr std::array POST_PROCESS_BUILTIN_ENTRIES{
         "psBloomPrefilter", "psBloomDownsample", "psBloomUpsample", "psBloomComposite",
         "psCustomComposite", "psVignette", "psChromaticAberration", "psFilmGrain",
         "psFxaa", "psDepthOfField", "psColorGradingLut", "psAutoExposureDownsample",
-        "psAutoExposureAdapt", "psTemporalAA", "psMotionBlur",
+        "psAutoExposureAdapt", "psTemporalAA", "psMotionBlur", "psLightShafts",
     };
     static_assert(POST_PROCESS_BUILTIN_ENTRIES.size() == static_cast<std::size_t>(PostProcessBuiltin::Count));
     using PostProcessBuiltinShaders = std::array<std::shared_ptr<const DX12Shader>, POST_PROCESS_BUILTIN_ENTRIES.size()>;

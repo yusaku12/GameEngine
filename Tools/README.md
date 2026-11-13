@@ -66,7 +66,7 @@ PowerShell や CMake を起動しません。DirectXTex は従来どおり MSBui
 ## シェーダーのインクリメンタルビルド
 
 `Tools\Build\Shaders.targets` は、Terrain とすべてのポストプロセスパスを含む
-32個の組み込みシェーダーエントリーポイントの唯一のビルド入口です。ジョブ一覧と
+33個の組み込みシェーダーエントリーポイントの唯一のビルド入口です。ジョブ一覧と
 コンパイラオプションは `Tools\Shaders\CompileShaders.ps1` にあります。Debug と Release
 ではシェーダーオプションが同一のため、同じバイトコードと記録を共有します。
 Terrain の警告をエラーとして扱うオプションを含め、既存の最適化／デバッグ設定は維持します。
@@ -289,6 +289,24 @@ Transform を含む必須コンポーネントは削除できません。削除�
 
 # Runtime と Play
 
+## Volumetric Fog
+
+シーンに **Volumetric Fog** コンポーネントを1つ追加します。GameObject のワールド Y 座標が
+フォグの基準高度です。Density と Height Falloff で高さによる指数密度を調整し、
+Albedo、Emissive、Extinction Scale、Scattering Distribution、Start Distance、
+Near Fade In Distance、View Distance、Maximum Opacity を設定できます。距離と高度は
+エンジンのワールド単位です。Fog の有効化と設定は Scene／Prefab に保存されます。
+
+Deferred HDR レンダラーで不透明物と Skybox に適用されます。Directional、Point、Spot Light は
+それぞれの **Volumetric Scattering Intensity** で寄与を調整できます。Directional Light の
+既存シャドウマップが使われる場合は、そのフォグ散乱にもシャドウを適用します。有効な
+Volumetric Fog が複数ある場合は最初のものだけを使用します。
+
+この実装は各ピクセルの視線をレイマーチするグローバル高さフォグです。サンプル数を増やすと
+品質と GPU 負荷が上がります。Temporal Froxel Reprojection、ローカルな粒子ボリューム、
+Point／Spot Light のボリュームシャドウ、Forward／透明描画への適用は未対応です。
+Unreal Engine の内部実装や画質・性能との一致を保証するものではありません。
+
 ## Sky Atmosphere
 
 GameObject に **Sky Atmosphere** を追加します。そのワールド位置が惑星の中心になります。
@@ -323,13 +341,19 @@ Sky Atmosphere と Atmosphere Sun Light を設定すると、太陽光の散乱�
 最初のものだけを使用します。水平な雲層は地上視点向けで、惑星曲率、雲から地表への影、
 Sky Light の反射、透明物体との深度交差、Forward 描画には対応していません。
 大気と雲の合成も近似であり、Unreal Engine と同一の見た目や性能を保証するものではありません。
-保存・設定検証の回帰テストは Visual Studio の CMake ツールで実行できます。
 
-```powershell
-cmake -S Tools\Rendering\Tests -B Build\CloudTests
-cmake --build Build\CloudTests --config Debug
-ctest --test-dir Build\CloudTests -C Debug --output-on-failure
-```
+## Light Shafts
+
+Directional Light の **Light Shafts Bloom** を有効にすると、明るい HDR 画素をライト方向へ
+放射状にサンプリングし、Bloom Scale、Bloom Threshold、Bloom Tint で光芒を調整できます。
+**Light Shafts Occlusion** は Bloom のレイサンプルを深度バッファに応じて暗くします。設定は Light
+コンポーネントとともに Scene／Prefab に保存されます。複数の Directional Light で有効にした
+場合は最初のライトだけを使います。
+
+Deferred レンダラーのトーンマッピング前に半解像度で適用されます。1出力画素あたり64回の色
+サンプルを行い、Bloom が有効で Occlusion も有効な場合は深度を参照する画面空間効果です。
+画面外の光源、Forward レンダラー、透明物体による遮蔽には対応せず、Unreal Engine の実装や
+画質・性能との一致を保証するものではありません。
 
 プロジェクトのルートから起動します。
 
@@ -626,9 +650,10 @@ key、compensation、最小／最大値から EV を算出します。Phase 7 �
 分けた、Camera ごとの時間適応が追加されます。算出値は HDR 縮小と Bloom の後、トーンマッピング時に
 適用されます。
 
-Fog はランタイム設定と描画処理から削除されました。後続フィールド ID を変更せずに古い Profile を
-読み込めるよう、FlatBuffers のフィールドは予約 wire slot として保持します。Profile 保存時には
-これらの旧 slot に中立値を書き込みます。
+旧 PostEffect の画面空間 Fog はランタイム設定と描画処理から削除されています。後続フィールド ID を
+変更せず古い Profile を読み込めるよう、FlatBuffers のフィールドは予約 wire slot として保持します。
+Profile 保存時にはこれらの旧 slot に中立値を書き込みます。シーン単位の Volumetric Fog は
+別の Rendering Component として実装されています。
 
 ## PostEffect Phase 7 の時間的露出履歴
 
@@ -868,33 +893,7 @@ Physics が一時停止中または利用できない場合、controller の移�
 
 編集時のプレビューでは、ポーズから Root Motion を取り除きますが、Scene オブジェクトは移動しません。
 
-### Root motion の回帰テスト
-
-対象を絞った CPU 専用テストスイートは、グラフィックスデバイスなしで製品版の
-インポーター／Animator コードと ozz をビルドします。Visual Studio Developer shell から実行します。
-
-```powershell
-cmake -S Tools\Animation\Tests -B Build\RootMotionTests -G "Visual Studio 18 2026" -A x64
-cmake --build Build\RootMotionTests --config Debug --target RootMotionTests --parallel
-ctest --test-dir Build\RootMotionTests -C Debug --output-on-failure
-```
-
-最適化コードをテストするには、ビルドとテストの両方の構成引数に `Release` を指定します。
-既定以外の SDK を使う場合は、構成時に `-DFBXSDK_ROOT="C:\path\to\FBX SDK"` を渡します。
-テストでは Once/Loop/PingPong、逆再生／複数周回、単位以外の開始／rest 変換、
-スケールされた階層、再構成、復元済み Controller、クロスフェード、snapshot の backpressure にわたって、
-抽出した移動を独立した行列軌跡と比較します。生成される FBX fixture は6つの Euler 順序、
-3軸、疎／密なカーブを網羅し、テスト後に削除されます。影響のある idle FBX に対しては、
-次のコマンドも実行します。
-
-```powershell
-.\Build\RootMotionTests\Debug\RootMotionTests.exe --idle-model "C:\path\to\idle.fbx"
-```
-
-このテストはすべての skinned vertex、Root Motion のワールドポーズ再構成 (最大誤差0.2 mm)、
-affine 行列を厳密に保つ palette、有効なアニメーション境界、120 Hz での頂点連続性
-(最大移動5 cm) を確認します。First Root を使い、存在する場合は `root`／`pelvis` という名前の
-joint も確認します。Animator payload v5 と Play 用複製はクリップごとの設定と選択 joint を保持します。
+Animator payload v5 と Play 用複製はクリップごとの設定と選択 joint を保持します。
 v1 payload も読み込め、既定値は First Root です。Runtime の移動量は一時データであり、
 保存も読み込み後の再生もされません。
 

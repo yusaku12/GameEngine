@@ -22,9 +22,13 @@ namespace Engine
         m_atmosphereSuns = {};
         m_hasAtmosphere = false;
         m_hasCloud = false;
+        m_hasFog = false;
+        m_hasLightShafts = false;
         std::array<bool, 2> sunIndices{};
         bool duplicateAtmosphere = false;
         bool duplicateCloud = false;
+        bool duplicateFog = false;
+        bool duplicateLightShafts = false;
         bool duplicateSun = false;
         std::size_t count = 0;
         bool overflow = false;
@@ -62,6 +66,20 @@ namespace Engine
                         duplicateCloud = true;
                     }
                 }
+                if (const auto* fog = object->getComponent<VolumetricFogComponent>();
+                    fog && fog->isEnabled() && fog->settings().enabled)
+                {
+                    if (!m_hasFog)
+                    {
+                        m_fog = fog->settings();
+                        m_fogHeight = object->getWorldPosition().y;
+                        m_hasFog = true;
+                    }
+                    else
+                    {
+                        duplicateFog = true;
+                    }
+                }
                 const auto* light = object->getComponent<LightComponent>();
                 if (!light || !light->isEnabled())
                     continue;
@@ -91,6 +109,20 @@ namespace Engine
                 }
                 Vector3 direction = Vector3::Transform(Vector3::UnitZ, object->getWorldRotation());
                 direction.Normalize();
+                if (settings.kind == LightKind::Directional
+                    && (settings.lightShaftBloomEnabled || settings.lightShaftOcclusionEnabled))
+                {
+                    if (!m_hasLightShafts)
+                    {
+                        m_lightShaftLight = settings;
+                        m_lightShaftDirection = -direction;
+                        m_hasLightShafts = true;
+                    }
+                    else
+                    {
+                        duplicateLightShafts = true;
+                    }
+                }
                 m_constants.lights[count] = {
                     Vector4(object->getWorldPosition().x, object->getWorldPosition().y,
                         object->getWorldPosition().z, static_cast<float>(settings.kind)),
@@ -98,7 +130,8 @@ namespace Engine
                         settings.color.z * settings.intensity, settings.range),
                     Vector4(direction.x, direction.y, direction.z,
                         std::cos(DirectX::XMConvertToRadians(settings.innerAngle * 0.5f))),
-                    Vector4(std::cos(DirectX::XMConvertToRadians(settings.outerAngle * 0.5f)), 0, 0, 0) };
+                    Vector4(std::cos(DirectX::XMConvertToRadians(settings.outerAngle * 0.5f)), 0,
+                        settings.volumetricScatteringIntensity, 0) };
                 if (settings.kind == LightKind::Directional && settings.castsShadow && settings.intensity > 0
                     && m_shadowIndex < 0)
                 {
@@ -121,12 +154,19 @@ namespace Engine
             LOG_ERROR("[Sky Atmosphere] Multiple directional lights use the same atmosphere sun index; only the first is used.");
         if (duplicateCloud && !m_duplicateCloudReported)
             LOG_ERROR("[Volumetric Cloud] Multiple active components were found; only the first is rendered.");
+        if (duplicateFog && !m_duplicateFogReported)
+            LOG_ERROR("[Volumetric Fog] Multiple active components were found; only the first is rendered.");
+        if (duplicateLightShafts && !m_duplicateLightShaftsReported)
+            LOG_ERROR("[Light Shafts] Multiple directional lights were configured; only the first is rendered.");
         m_duplicateAtmosphereReported = duplicateAtmosphere;
         m_duplicateSunReported = duplicateSun;
         m_duplicateCloudReported = duplicateCloud;
+        m_duplicateFogReported = duplicateFog;
+        m_duplicateLightShaftsReported = duplicateLightShafts;
     }
 
-    LightingConstants LightingFrame::forCamera(const Vector3& position, const Vector3& forward) const noexcept
+    LightingConstants LightingFrame::forCamera(const Vector3& position, const Vector3& forward,
+        const Matrix& viewProjection) const noexcept
     {
         LightingConstants result = m_constants;
         result.cameraPosition = Vector4(position.x, position.y, position.z, 1);
@@ -139,6 +179,59 @@ namespace Engine
                 static_cast<float>(m_cloud.sampleCount));
             result.cloud.cameraFromAnchor = Vector4(cameraFromAnchor.x, cameraFromAnchor.y, cameraFromAnchor.z,
                 m_cloud.worldUnitsPerKilometer);
+        }
+        if (m_hasFog)
+        {
+            result.fog.options = Vector4(1.0f, m_fog.density, m_fog.heightFalloff, m_fog.extinctionScale);
+            result.fog.appearance = Vector4(m_fog.albedo.x, m_fog.albedo.y, m_fog.albedo.z,
+                m_fog.scatteringDistribution);
+            result.fog.emissive = Vector4(m_fog.emissive.x, m_fog.emissive.y, m_fog.emissive.z,
+                m_fog.maxOpacity);
+            result.fog.distances = Vector4(m_fog.startDistance, m_fog.nearFadeInDistance,
+                m_fog.viewDistance, m_fogHeight);
+            result.fog.samples = Vector4(static_cast<float>(m_fog.sampleCount), 0, 0, 0);
+        }
+        if (m_hasLightShafts)
+        {
+            const Vector4 clipPosition = Vector4::Transform(Vector4(m_lightShaftDirection.x,
+                m_lightShaftDirection.y, m_lightShaftDirection.z, 0.0f), viewProjection);
+            float sourceX = 0.5f;
+            float sourceY = 0.5f;
+            bool sourceVisible = false;
+            if (std::isfinite(clipPosition.x) && std::isfinite(clipPosition.y)
+                && std::isfinite(clipPosition.z) && std::isfinite(clipPosition.w))
+            {
+                if (clipPosition.w > 0.0001f)
+                {
+                    const float inverseW = 1.0f / clipPosition.w;
+                    sourceX = clipPosition.x * inverseW * 0.5f + 0.5f;
+                    sourceY = 0.5f - clipPosition.y * inverseW * 0.5f;
+                    sourceVisible = true;
+                }
+                else if (clipPosition.z > 0.0001f)
+                {
+                    const float screenDirectionLength = std::sqrt(
+                        clipPosition.x * clipPosition.x + clipPosition.y * clipPosition.y);
+                    if (screenDirectionLength > 0.0001f)
+                    {
+                        sourceX += clipPosition.x / screenDirectionLength * 0.75f;
+                        sourceY -= clipPosition.y / screenDirectionLength * 0.75f;
+                    }
+                    sourceVisible = true;
+                }
+            }
+            if (sourceVisible && std::isfinite(sourceX) && std::isfinite(sourceY))
+            {
+                result.lightShafts.options = Vector4(
+                    m_lightShaftLight.lightShaftBloomEnabled ? 1.0f : 0.0f,
+                    m_lightShaftLight.lightShaftOcclusionEnabled ? 1.0f : 0.0f,
+                    m_lightShaftLight.lightShaftBloomScale,
+                    m_lightShaftLight.lightShaftBloomThreshold);
+                result.lightShafts.tint = Vector4(m_lightShaftLight.lightShaftBloomTint.x,
+                    m_lightShaftLight.lightShaftBloomTint.y, m_lightShaftLight.lightShaftBloomTint.z,
+                    m_lightShaftLight.lightShaftOcclusionMaskDarkness);
+                result.lightShafts.screenPosition = Vector4(sourceX, sourceY, 1.0f, 0.0f);
+            }
         }
         if (m_hasAtmosphere)
         {

@@ -13,6 +13,13 @@ table LightComponentPayload {
     normal_bias:float = 0.02;
     atmosphere_sun_light:bool = false;
     atmosphere_sun_index:ubyte = 0;
+    volumetric_scattering_intensity:float = 1;
+    light_shaft_bloom_enabled:bool = false;
+    light_shaft_bloom_scale:float = 1;
+    light_shaft_bloom_threshold:float = 1;
+    light_shaft_bloom_tint:Vec3;
+    light_shaft_occlusion_enabled:bool = false;
+    light_shaft_occlusion_mask_darkness:float = 0.5;
 }
 root_type LightComponentPayload;
 file_identifier "LGHT";

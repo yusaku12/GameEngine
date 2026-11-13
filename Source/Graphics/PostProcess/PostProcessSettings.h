@@ -202,6 +202,20 @@ namespace Engine
         float motionBlur = 1;
         bool operator==(const PostProcessEffectWeights&) const = default;
     };
+
+    /** @brief Directional-light shaft inputs resolved for the current camera. */
+    struct PostProcessLightShaftSnapshot
+    {
+        bool bloomEnabled = false; //!< Radial HDR bloom switch.
+        bool occlusionEnabled = false; //!< Mask samples hidden by scene depth.
+        Vector2 sourcePosition = Vector2::Zero; //!< Normalized camera-viewport position; may be off-screen.
+        Vector3 tint = Vector3::One; //!< Linear RGB tint.
+        float bloomScale = 0.0f; //!< Additive shaft contribution.
+        float bloomThreshold = 1.0f; //!< Scene-linear brightness threshold.
+        float occlusionMaskDarkness = 0.5f; //!< Attenuation for samples covered by geometry.
+        bool operator==(const PostProcessLightShaftSnapshot&) const = default;
+    };
+
     inline constexpr std::array POST_PROCESS_WEIGHT_MEMBERS{
         &PostProcessEffectWeights::bloom, &PostProcessEffectWeights::exposure,
         &PostProcessEffectWeights::colorAdjustments, &PostProcessEffectWeights::vignette,
@@ -247,6 +261,7 @@ namespace Engine
         bool temporalHistoryReset = false; //!< Camera cut/projection reset invalidates temporal history.
         PostProcessSettings settings; //!< Resolved values with authored override flags removed.
         PostProcessEffectWeights effects; //!< Continuous switch contributions; default preserves pre-Volume snapshots.
+        PostProcessLightShaftSnapshot lightShafts; //!< Active directional-light shaft snapshot.
         std::vector<PostProcessEffectPassSnapshot> customEffects; //!< Ordered immutable custom shader passes.
         bool operator==(const PostProcessCameraSnapshot&) const = default;
     };

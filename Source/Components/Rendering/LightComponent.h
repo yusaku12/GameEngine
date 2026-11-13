@@ -23,6 +23,13 @@ namespace Engine
         float normalBias = 0.02f;
         bool atmosphereSunLight = false;
         std::uint8_t atmosphereSunIndex = 0;
+        float volumetricScatteringIntensity = 1.0f;
+        bool lightShaftBloomEnabled = false;
+        float lightShaftBloomScale = 1.0f;
+        float lightShaftBloomThreshold = 1.0f;
+        Vector3 lightShaftBloomTint = Vector3::One;
+        bool lightShaftOcclusionEnabled = false;
+        float lightShaftOcclusionMaskDarkness = 0.5f;
     };
 
     /**
@@ -37,7 +44,7 @@ namespace Engine
         /** @brief Validates and replaces configuration; invalid values are logged and rejected. */
         bool setSettings(const LightSettings& settings) noexcept;
         /** @brief Returns the persisted configuration version. */
-        std::uint32_t getPayloadVersion() const noexcept override { return 2; }
+        std::uint32_t getPayloadVersion() const noexcept override { return 4; }
         /** @brief Serializes light settings, excluding runtime state. */
         bool serializePayload(std::vector<std::uint8_t>& payload) const override;
         /** @brief Validates and restores a versioned light payload. */

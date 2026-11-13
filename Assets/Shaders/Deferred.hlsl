@@ -31,6 +31,14 @@ cbuffer LightingConstants : register(b4)
     float4 cloudOptions;
     float4 cloudShape;
     float4 cloudCameraFromAnchor;
+    float4 fogOptions;
+    float4 fogAppearance;
+    float4 fogEmissive;
+    float4 fogDistances;
+    float4 fogSamples;
+    float4 lightShaftOptions;
+    float4 lightShaftTint;
+    float4 lightShaftScreenPosition;
 };
 
 cbuffer DeferredPassConstants : register(b5)
@@ -378,6 +386,87 @@ float shadowVisibility(float3 position, float3 normal)
     return visibility / 9.0f;
 }
 
+float3 applyVolumetricFog(float3 background, float3 viewDirection, float maximumDistance)
+{
+    if (fogOptions.x <= 0.0f || fogOptions.y <= 0.0f || fogOptions.w <= 0.0f)
+        return background;
+
+    const float startDistance = max(fogDistances.x, 0.0f);
+    const float endDistance = min(maximumDistance, fogDistances.z);
+    if (endDistance <= startDistance)
+        return background;
+
+    const uint sampleCount = clamp((uint)round(fogSamples.x), 4u, 64u);
+    const float stepLength = (endDistance - startDistance) / sampleCount;
+    const float anisotropy = fogAppearance.w;
+    float transmittance = 1.0f;
+    float3 inScattering = 0.0f;
+    [loop]
+    for (uint sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex)
+    {
+        const float distance = startDistance + (sampleIndex + 0.5f) * stepLength;
+        const float nearFade = fogDistances.y > 0.0f
+            ? saturate((distance - startDistance) / fogDistances.y) : 1.0f;
+        const float heightDensity = exp(clamp(
+            -(cameraPosition.y + viewDirection.y * distance - fogDistances.w) * fogOptions.z,
+            -80.0f, 40.0f));
+        const float extinction = min(fogOptions.y * fogOptions.w * heightDensity * nearFade, 1.0e20f);
+        const float stepTransmittance = exp(-min(extinction * stepLength, 80.0f));
+        const float sampleOpacity = 1.0f - stepTransmittance;
+        if (sampleOpacity <= 0.0f)
+            continue;
+
+        const float3 samplePosition = cameraPosition.xyz + viewDirection * distance;
+        float3 incidentRadiance = environment.rgb;
+        [loop]
+        for (uint lightIndex = 0; lightIndex < min((uint)environment.w, 32u); ++lightIndex)
+        {
+            const SceneLight light = lights[lightIndex];
+            const float scatteringIntensity = light.parameters.z;
+            if (scatteringIntensity <= 0.0f)
+                continue;
+
+            float3 directionToLight = -light.directionInner.xyz;
+            float attenuation = 1.0f;
+            if (light.positionKind.w != 0.0f)
+            {
+                const float3 lightOffset = light.positionKind.xyz - samplePosition;
+                const float lightDistance = length(lightOffset);
+                if (light.colorRange.w <= 0.0f || lightDistance >= light.colorRange.w)
+                    continue;
+                directionToLight = lightOffset / max(lightDistance, 0.0001f);
+                const float rangeFade = saturate(1.0f - pow(lightDistance / light.colorRange.w, 4.0f));
+                attenuation = rangeFade * rangeFade / max(lightDistance * lightDistance, 1.0f);
+                if (light.positionKind.w == 2.0f)
+                {
+                    const float cone = dot(-directionToLight, light.directionInner.xyz);
+                    attenuation *= smoothstep(light.parameters.x, light.directionInner.w, cone);
+                }
+            }
+
+            const float phaseDenominator = max(1.0f + anisotropy * anisotropy
+                - 2.0f * anisotropy * dot(viewDirection, directionToLight), 0.0001f);
+            const float phase = (1.0f - anisotropy * anisotropy)
+                / (4.0f * 3.14159265f * phaseDenominator * sqrt(phaseDenominator));
+            const float visibility = light.parameters.y != 0.0f
+                ? shadowVisibility(samplePosition, directionToLight) : 1.0f;
+            incidentRadiance += light.colorRange.rgb * attenuation * scatteringIntensity
+                * (phase * 12.5663706f) * visibility;
+        }
+
+        const float3 sourceRadiance = fogEmissive.rgb + fogAppearance.rgb * incidentRadiance;
+        inScattering += transmittance * sampleOpacity * sourceRadiance;
+        transmittance *= stepTransmittance;
+        if (transmittance <= 1.0f - fogEmissive.w)
+            break;
+    }
+
+    const float opacity = min(1.0f - transmittance, fogEmissive.w);
+    const float radianceScale = (1.0f - transmittance) > 0.00001f
+        ? opacity / (1.0f - transmittance) : 0.0f;
+    return min(max(background * (1.0f - opacity) + inScattering * radianceScale, 0.0f), 65504.0f);
+}
+
 float3 evaluateLighting(float3 position, float3 albedo, float3 normal, float3 material,
     float3 emission)
 {
@@ -441,18 +530,20 @@ float4 psLighting(VertexOutput input) : SV_Target0
     const float depth = depthTexture.Load(int3(pixel, 0));
     if (!isfinite(depth) || depth < 0.0f || depth >= 1.0f)
     {
-        if (renderSize.z <= 0.0f || cloudOptions.x <= 0.0f)
-        {
-            if (atmosphereOptions.x > 0.0f && renderSize.z > 0.0f)
-                return float4(evaluateAtmosphereSky(input.position.xy), backgroundColor.a);
+        if (renderSize.z <= 0.0f)
             return backgroundColor;
-        }
+
         float3 sky = backgroundColor.rgb;
         if (atmosphereOptions.x > 0.0f)
             sky = evaluateAtmosphereSky(input.position.xy);
         float3 pointOnRay;
         if (reconstructWorldPosition(input.position.xy, 0.5f, pointOnRay))
-            sky = compositeCloud(sky, normalize(pointOnRay - cameraPosition.xyz), cloudOptions.w);
+        {
+            const float3 viewDirection = normalize(pointOnRay - cameraPosition.xyz);
+            if (cloudOptions.x > 0.0f)
+                sky = compositeCloud(sky, viewDirection, cloudOptions.w);
+            sky = applyVolumetricFog(sky, viewDirection, fogDistances.z);
+        }
         return float4(clamp(sky, 0.0f, 65504.0f), backgroundColor.a);
     }
 
@@ -480,13 +571,14 @@ float4 psLighting(VertexOutput input) : SV_Target0
         const float3 inScattering = integrateAtmosphere(rayOrigin, viewDirection, distanceKm, transmittance);
         result = result * transmittance + inScattering;
     }
-    if (renderSize.z > 0.0f && cloudOptions.x > 0.0f)
+    const float3 offset = position - cameraPosition.xyz;
+    const float distance = length(offset);
+    if (renderSize.z > 0.0f && cloudOptions.x > 0.0f && distance > 0.0001f)
     {
-        const float3 offset = position - cameraPosition.xyz;
-        const float distance = length(offset);
-        if (distance > 0.0001f)
-            result = compositeCloud(result, offset / distance, distance / cloudCameraFromAnchor.w);
+        result = compositeCloud(result, offset / distance, distance / cloudCameraFromAnchor.w);
     }
+    if (distance > 0.0001f)
+        result = applyVolumetricFog(result, offset / distance, distance);
     return float4(clamp(result, 0.0f, 65504.0f), albedo.a);
 }
 

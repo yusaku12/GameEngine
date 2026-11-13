@@ -1,0 +1,18 @@
+include "Common.fbs";
+namespace Engine.Serialization;
+table VolumetricFogComponentPayload {
+    enabled:bool = true;
+    density:float = 0.02;
+    height_falloff:float = 0.2;
+    extinction_scale:float = 1;
+    albedo:Vec3;
+    emissive:Vec3;
+    scattering_distribution:float = 0;
+    max_opacity:float = 0.98;
+    start_distance:float = 0;
+    near_fade_in_distance:float = 0;
+    view_distance:float = 10000;
+    sample_count:uint = 16;
+}
+root_type VolumetricFogComponentPayload;
+file_identifier "VFOG";
