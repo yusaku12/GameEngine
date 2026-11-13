@@ -2,6 +2,7 @@
 #include <array>
 #include "Components\Rendering\LightComponent.h"
 #include "Components\Rendering\SkyAtmosphereComponent.h"
+#include "Components\Rendering\VolumetricCloudComponent.h"
 
 namespace Engine
 {
@@ -31,6 +32,13 @@ namespace Engine
         Vector4 planetCenterFromCamera;
         std::array<GpuAtmosphereSun, 2> suns{};
     };
+    /** @brief Camera-relative cloud inputs shared with Deferred.hlsl. */
+    struct GpuVolumetricCloud
+    {
+        Vector4 options;
+        Vector4 shape;
+        Vector4 cameraFromAnchor;
+    };
     /** @brief Immutable frame-barrier snapshot; bounded to 32 direct lights and one directional shadow. */
     struct LightingConstants
     {
@@ -40,11 +48,13 @@ namespace Engine
         Vector4 environment = Vector4(0.15f, 0.15f, 0.15f, 0);
         std::array<GpuLight, 32> lights{};
         GpuSkyAtmosphere atmosphere;
+        GpuVolumetricCloud cloud;
     };
     static_assert(sizeof(GpuLight) == sizeof(float) * 16);
     static_assert(sizeof(GpuAtmosphereSun) == sizeof(float) * 8);
     static_assert(sizeof(GpuSkyAtmosphere) == sizeof(float) * 40);
-    static_assert(sizeof(LightingConstants) == sizeof(float) * (16 + 12 + 32 * 16 + 40));
+    static_assert(sizeof(GpuVolumetricCloud) == sizeof(float) * 12);
+    static_assert(sizeof(LightingConstants) == sizeof(float) * (16 + 12 + 32 * 16 + 40 + 12));
     /**
      * @brief Builds lighting from active and persistent scenes independently of gameplay lifecycle.
      * @thread_safety Not thread-safe. Capture on GameUpdate, read only after joining that job.
@@ -64,11 +74,15 @@ namespace Engine
         LightingConstants m_constants;
         LightSettings m_shadow;
         SkyAtmosphereSettings m_atmosphere;
+        VolumetricCloudSettings m_cloud;
         Vector3 m_atmosphereCenter = Vector3::Zero;
+        Vector3 m_cloudAnchor = Vector3::Zero;
         std::array<GpuAtmosphereSun, 2> m_atmosphereSuns{};
         int m_shadowIndex = -1;
         bool m_hasAtmosphere = false;
+        bool m_hasCloud = false;
         bool m_duplicateAtmosphereReported = false;
+        bool m_duplicateCloudReported = false;
         bool m_duplicateSunReported = false;
     };
 }

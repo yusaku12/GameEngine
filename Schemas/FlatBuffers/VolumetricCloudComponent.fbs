@@ -1,0 +1,14 @@
+namespace Engine.Serialization;
+table VolumetricCloudComponentPayload {
+    enabled:bool = true;
+    base_height_km:float = 2;
+    thickness_km:float = 2;
+    world_units_per_kilometer:float = 1000;
+    coverage:float = 0.55;
+    density:float = 1;
+    noise_scale_km:float = 4;
+    max_distance_km:float = 80;
+    sample_count:uint = 32;
+}
+root_type VolumetricCloudComponentPayload;
+file_identifier "VCLD";

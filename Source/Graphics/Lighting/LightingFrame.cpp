@@ -21,8 +21,10 @@ namespace Engine
         m_atmosphereCenter = Vector3::Zero;
         m_atmosphereSuns = {};
         m_hasAtmosphere = false;
+        m_hasCloud = false;
         std::array<bool, 2> sunIndices{};
         bool duplicateAtmosphere = false;
+        bool duplicateCloud = false;
         bool duplicateSun = false;
         std::size_t count = 0;
         bool overflow = false;
@@ -44,6 +46,20 @@ namespace Engine
                     else
                     {
                         duplicateAtmosphere = true;
+                    }
+                }
+                if (const auto* cloud = object->getComponent<VolumetricCloudComponent>();
+                    cloud && cloud->isEnabled() && cloud->settings().enabled)
+                {
+                    if (!m_hasCloud)
+                    {
+                        m_cloud = cloud->settings();
+                        m_cloudAnchor = object->getWorldPosition();
+                        m_hasCloud = true;
+                    }
+                    else
+                    {
+                        duplicateCloud = true;
                     }
                 }
                 const auto* light = object->getComponent<LightComponent>();
@@ -103,14 +119,27 @@ namespace Engine
             LOG_ERROR("[Sky Atmosphere] Multiple active components were found; only the first is rendered.");
         if (duplicateSun && !m_duplicateSunReported)
             LOG_ERROR("[Sky Atmosphere] Multiple directional lights use the same atmosphere sun index; only the first is used.");
+        if (duplicateCloud && !m_duplicateCloudReported)
+            LOG_ERROR("[Volumetric Cloud] Multiple active components were found; only the first is rendered.");
         m_duplicateAtmosphereReported = duplicateAtmosphere;
         m_duplicateSunReported = duplicateSun;
+        m_duplicateCloudReported = duplicateCloud;
     }
 
     LightingConstants LightingFrame::forCamera(const Vector3& position, const Vector3& forward) const noexcept
     {
         LightingConstants result = m_constants;
         result.cameraPosition = Vector4(position.x, position.y, position.z, 1);
+        if (m_hasCloud)
+        {
+            const Vector3 cameraFromAnchor = (position - m_cloudAnchor) / m_cloud.worldUnitsPerKilometer;
+            result.cloud.options = Vector4(1.0f, m_cloud.baseHeightKm, m_cloud.thicknessKm,
+                m_cloud.maxDistanceKm);
+            result.cloud.shape = Vector4(m_cloud.coverage, m_cloud.density, m_cloud.noiseScaleKm,
+                static_cast<float>(m_cloud.sampleCount));
+            result.cloud.cameraFromAnchor = Vector4(cameraFromAnchor.x, cameraFromAnchor.y, cameraFromAnchor.z,
+                m_cloud.worldUnitsPerKilometer);
+        }
         if (m_hasAtmosphere)
         {
             const float unitsPerKilometer = m_atmosphere.worldUnitsPerKilometer;

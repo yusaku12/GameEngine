@@ -432,6 +432,9 @@
     <ClCompile Include="Source\Components\Rendering\SkyAtmosphereComponent.cpp">
       <Filter>Source\Components\Rendering</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Components\Rendering\VolumetricCloudComponent.cpp">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Components\Rendering\ModelRendererComponent.cpp">
       <Filter>Source\Components\Rendering</Filter>
     </ClCompile>
@@ -971,6 +974,9 @@
     <ClInclude Include="Source\Components\Rendering\SkyAtmosphereComponent.h">
       <Filter>Source\Components\Rendering</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Components\Rendering\VolumetricCloudComponent.h">
+      <Filter>Source\Components\Rendering</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Components\Rendering\ModelRendererComponent.h">
       <Filter>Source\Components\Rendering</Filter>
     </ClInclude>
@@ -1445,6 +1451,9 @@
       <Filter>Schemas\FlatBuffers</Filter>
     </None>
     <None Include="Schemas\FlatBuffers\SkyAtmosphereComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\VolumetricCloudComponent.fbs">
       <Filter>Schemas\FlatBuffers</Filter>
     </None>
     <None Include="Schemas\FlatBuffers\Material.fbs">

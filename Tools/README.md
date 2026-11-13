@@ -309,6 +309,28 @@ Light** を有効にして、それぞれ異なるインデックス 0 と 1 を
 version 1 の Light payload を読み込めます。レンダラーは Unreal の事前計算ルックアップ
 テクスチャではなく、固定ステップの単一散乱を使用するため、結果やコストは同一ではありません。
 
+## Volumetric Cloud
+
+地面の高さに置いた別の GameObject に **Volumetric Cloud** を追加し、カメラの clear mode を **Skybox**、
+レンダラーを Deferred に設定します。GameObject の位置を基準とする水平な雲層を、
+トーンマッピング前にレイマーチングします。Base Height と Thickness は km 単位で、
+World Units per km は通常 1000 です。Coverage、Density、Noise Scale、Maximum Distance、
+View Samples を Inspector で調整できます。設定は Scene と Prefab に保存されます。
+
+雲の形状は手続き的な 3D ノイズで生成されるため、外部テクスチャは不要です。
+Sky Atmosphere と Atmosphere Sun Light を設定すると、太陽光の散乱と雲の自己遮蔽を
+近似します。不透明物体の深度で雲を遮ります。有効な雲コンポーネントが複数ある場合は
+最初のものだけを使用します。水平な雲層は地上視点向けで、惑星曲率、雲から地表への影、
+Sky Light の反射、透明物体との深度交差、Forward 描画には対応していません。
+大気と雲の合成も近似であり、Unreal Engine と同一の見た目や性能を保証するものではありません。
+保存・設定検証の回帰テストは Visual Studio の CMake ツールで実行できます。
+
+```powershell
+cmake -S Tools\Rendering\Tests -B Build\CloudTests
+cmake --build Build\CloudTests --config Debug
+ctest --test-dir Build\CloudTests -C Debug --output-on-failure
+```
+
 プロジェクトのルートから起動します。
 
 ```powershell

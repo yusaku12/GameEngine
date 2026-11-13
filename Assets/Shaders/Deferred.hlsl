@@ -28,6 +28,9 @@ cbuffer LightingConstants : register(b4)
     float4 atmosphereArtistic;
     float4 atmospherePlanetCenterFromCamera;
     AtmosphereSun atmosphereSuns[2];
+    float4 cloudOptions;
+    float4 cloudShape;
+    float4 cloudCameraFromAnchor;
 };
 
 cbuffer DeferredPassConstants : register(b5)
@@ -238,6 +241,123 @@ float3 evaluateAtmosphereSky(float2 pixelPosition)
     return min(max(radiance, 0.0f), 65504.0f);
 }
 
+float cloudHash(float3 cell)
+{
+    cell = frac(cell * 0.1031f);
+    cell += dot(cell, cell.yxz + 33.33f);
+    return frac((cell.x + cell.y) * cell.z);
+}
+
+float cloudNoise(float3 position)
+{
+    const float3 cell = floor(position);
+    float3 f = frac(position);
+    f = f * f * (3.0f - 2.0f * f);
+    const float x00 = lerp(cloudHash(cell), cloudHash(cell + float3(1, 0, 0)), f.x);
+    const float x10 = lerp(cloudHash(cell + float3(0, 1, 0)), cloudHash(cell + float3(1, 1, 0)), f.x);
+    const float x01 = lerp(cloudHash(cell + float3(0, 0, 1)), cloudHash(cell + float3(1, 0, 1)), f.x);
+    const float x11 = lerp(cloudHash(cell + float3(0, 1, 1)), cloudHash(cell + float3(1, 1, 1)), f.x);
+    return lerp(lerp(x00, x10, f.y), lerp(x01, x11, f.y), f.z);
+}
+
+float cloudDensity(float3 position)
+{
+    const float height = (position.y - cloudOptions.y) / cloudOptions.z;
+    if (height <= 0.0f || height >= 1.0f)
+        return 0.0f;
+    const float3 coordinate = position / cloudShape.z;
+    const float noise = cloudNoise(coordinate) * 0.7f + cloudNoise(coordinate * 2.07f + 19.0f) * 0.3f;
+    const float profile = smoothstep(0.0f, 0.15f, height) * (1.0f - smoothstep(0.65f, 1.0f, height));
+    const float threshold = 1.0f - cloudShape.x;
+    return saturate((noise - threshold) * 3.0f) * profile * cloudShape.y;
+}
+
+float cloudSunVisibility(float3 position, float3 direction)
+{
+    if (direction.y <= 0.0f)
+        return 0.0f;
+    const float distance = min((cloudOptions.y + cloudOptions.z - position.y) / direction.y, 20.0f);
+    const float stepLength = max(distance, 0.0f) / 4.0f;
+    float opticalDepth = 0.0f;
+    [unroll]
+    for (uint index = 0; index < 4; ++index)
+        opticalDepth += cloudDensity(position + direction * ((index + 0.5f) * stepLength)) * stepLength;
+    return exp(-min(opticalDepth, 80.0f));
+}
+
+float3 compositeCloud(float3 background, float3 viewDirection, float maximumDistance)
+{
+    if (cloudOptions.x <= 0.0f || cloudShape.x <= 0.0f || cloudShape.y <= 0.0f)
+        return background;
+    const float3 origin = cloudCameraFromAnchor.xyz;
+    float start = 0.0f;
+    float end = min(maximumDistance, cloudOptions.w);
+    if (abs(viewDirection.y) < 0.00001f)
+    {
+        if (origin.y <= cloudOptions.y || origin.y >= cloudOptions.y + cloudOptions.z)
+            return background;
+    }
+    else
+    {
+        const float a = (cloudOptions.y - origin.y) / viewDirection.y;
+        const float b = (cloudOptions.y + cloudOptions.z - origin.y) / viewDirection.y;
+        start = max(start, min(a, b));
+        end = min(end, max(a, b));
+    }
+    if (end <= start)
+        return background;
+
+    const uint sampleCount = (uint)cloudShape.w;
+    const float stepLength = (end - start) / sampleCount;
+    float transmittance = 1.0f;
+    float3 radiance = 0.0f;
+    [loop]
+    for (uint index = 0; index < sampleCount; ++index)
+    {
+        const float3 samplePosition = origin + viewDirection * (start + (index + 0.5f) * stepLength);
+        const float density = cloudDensity(samplePosition);
+        if (density <= 0.0f)
+            continue;
+        const float stepTransmittance = exp(-min(density * stepLength, 80.0f));
+        float3 incident = 0.15f.xxx;
+        [unroll]
+        for (uint sunIndex = 0; sunIndex < 2; ++sunIndex)
+        {
+            const AtmosphereSun sun = atmosphereSuns[sunIndex];
+            if (sun.directionEnabled.w <= 0.0f)
+                continue;
+            const float3 sunDirection = normalize(sun.directionEnabled.xyz);
+            const float visibility = cloudSunVisibility(samplePosition, sunDirection);
+            const float cosine = dot(viewDirection, sunDirection);
+            const float g = 0.6f;
+            const float denominator = max(1.0f + g * g - 2.0f * g * cosine, 0.0001f);
+            const float phase = (1.0f - g * g) / (4.0f * 3.14159265f * denominator * sqrt(denominator));
+            const float3 atmospherePosition = -atmospherePlanetCenterFromCamera.xyz
+                + viewDirection * (start + (index + 0.5f) * stepLength)
+                    * (cloudCameraFromAnchor.w / atmosphereOptions.w);
+            const float3 sunTransmittance = atmosphereOptions.x > 0.0f
+                ? atmosphereTransmittance(atmospherePosition, sunDirection) : 1.0f.xxx;
+            incident += sun.radiance.rgb * atmosphereArtistic.w * sunTransmittance
+                * (visibility * phase + 0.02f * sqrt(visibility));
+        }
+        radiance += transmittance * (1.0f - stepTransmittance) * incident;
+        transmittance *= stepTransmittance;
+        if (transmittance < 0.01f)
+            break;
+    }
+
+    if (atmosphereOptions.x > 0.0f && transmittance < 1.0f)
+    {
+        float3 atmosphereViewTransmittance;
+        const float distanceKm = (start + end) * 0.5f * cloudCameraFromAnchor.w / atmosphereOptions.w;
+        const float3 inScattering = integrateAtmosphere(-atmospherePlanetCenterFromCamera.xyz,
+            viewDirection, distanceKm, atmosphereViewTransmittance);
+        return background * transmittance + radiance * atmosphereViewTransmittance
+            + inScattering * (1.0f - transmittance);
+    }
+    return background * transmittance + radiance;
+}
+
 float shadowVisibility(float3 position, float3 normal)
 {
     if (shadowOptions.x == 0.0f)
@@ -321,9 +441,19 @@ float4 psLighting(VertexOutput input) : SV_Target0
     const float depth = depthTexture.Load(int3(pixel, 0));
     if (!isfinite(depth) || depth < 0.0f || depth >= 1.0f)
     {
-        if (atmosphereOptions.x > 0.0f && renderSize.z > 0.0f)
-            return float4(evaluateAtmosphereSky(input.position.xy), backgroundColor.a);
-        return backgroundColor;
+        if (renderSize.z <= 0.0f || cloudOptions.x <= 0.0f)
+        {
+            if (atmosphereOptions.x > 0.0f && renderSize.z > 0.0f)
+                return float4(evaluateAtmosphereSky(input.position.xy), backgroundColor.a);
+            return backgroundColor;
+        }
+        float3 sky = backgroundColor.rgb;
+        if (atmosphereOptions.x > 0.0f)
+            sky = evaluateAtmosphereSky(input.position.xy);
+        float3 pointOnRay;
+        if (reconstructWorldPosition(input.position.xy, 0.5f, pointOnRay))
+            sky = compositeCloud(sky, normalize(pointOnRay - cameraPosition.xyz), cloudOptions.w);
+        return float4(clamp(sky, 0.0f, 65504.0f), backgroundColor.a);
     }
 
     float3 position;
@@ -349,6 +479,13 @@ float4 psLighting(VertexOutput input) : SV_Target0
         float3 transmittance;
         const float3 inScattering = integrateAtmosphere(rayOrigin, viewDirection, distanceKm, transmittance);
         result = result * transmittance + inScattering;
+    }
+    if (renderSize.z > 0.0f && cloudOptions.x > 0.0f)
+    {
+        const float3 offset = position - cameraPosition.xyz;
+        const float distance = length(offset);
+        if (distance > 0.0001f)
+            result = compositeCloud(result, offset / distance, distance / cloudCameraFromAnchor.w);
     }
     return float4(clamp(result, 0.0f, 65504.0f), albedo.a);
 }

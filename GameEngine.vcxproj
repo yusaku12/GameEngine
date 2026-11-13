@@ -29,6 +29,7 @@
     <ClInclude Include="Source\Core\System\ExecutionMode.h" />
     <ClInclude Include="Source\Components\Rendering\LightComponent.h" />
     <ClInclude Include="Source\Components\Rendering\SkyAtmosphereComponent.h" />
+    <ClInclude Include="Source\Components\Rendering\VolumetricCloudComponent.h" />
     <ClInclude Include="Source\Graphics\Lighting\LightingFrame.h" />
     <ClInclude Include="Source\Audio\AudioSystem.h" />
     <ClInclude Include="Source\UI\RuntimeUI.h" />
@@ -246,6 +247,7 @@
     <ClCompile Include="Source\Components\Terrain\TerrainComponent.cpp" />
     <ClCompile Include="Source\Components\Rendering\LightComponent.cpp" />
     <ClCompile Include="Source\Components\Rendering\SkyAtmosphereComponent.cpp" />
+    <ClCompile Include="Source\Components\Rendering\VolumetricCloudComponent.cpp" />
     <ClCompile Include="Source\Graphics\Lighting\LightingFrame.cpp" />
     <ClCompile Include="Source\Audio\AudioSystem.cpp" />
     <ClCompile Include="Source\UI\RuntimeUI.cpp" />
@@ -415,6 +417,7 @@
     <None Include="Schemas\FlatBuffers\PostProcessEffectAsset.fbs" />
     <None Include="Schemas\FlatBuffers\LightComponent.fbs" />
     <None Include="Schemas\FlatBuffers\SkyAtmosphereComponent.fbs" />
+    <None Include="Schemas\FlatBuffers\VolumetricCloudComponent.fbs" />
     <None Include="Schemas\FlatBuffers\TerrainComponent.fbs" />
     <None Include="Schemas\FlatBuffers\TerrainMaterial.fbs" />
     <None Include="Schemas\FlatBuffers\RuntimeUI.fbs" />
