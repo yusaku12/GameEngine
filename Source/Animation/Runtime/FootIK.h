@@ -39,12 +39,13 @@ namespace Engine
     /**
      * @brief Apply ozz two-bone/aim corrections and a model-space visual root offset.
      * @details Inputs must be a fresh, uncorrected pose. All descendants are recomputed with LocalToModelJob.
+     * @param modelUp Unit world-up direction expressed in skeleton-model space.
      * @return False with a diagnostic on invalid input or failed jobs. Caller must not publish failed output.
      * @thread_safety Independent buffers can be processed concurrently.
      */
     bool solveFootIK(const ozz::animation::Skeleton& skeleton, std::span<const FootIKTarget> targets,
         const Vector3& pelvisOffset, std::span<ozz::math::SoaTransform> locals,
-        std::span<ozz::math::Float4x4> models);
+        std::span<ozz::math::Float4x4> models, const Vector3& modelUp = Vector3::UnitY);
 
     /**
      * @brief Find the ankle on its vertical ray at the requested perpendicular sole clearance.

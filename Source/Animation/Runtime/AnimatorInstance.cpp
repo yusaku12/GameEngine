@@ -1154,8 +1154,10 @@ namespace Engine
         }
         std::copy(m_localTransforms.begin(), m_localTransforms.end(), m_ikLocalTransforms.begin());
         std::copy(m_modelMatrices.begin(), m_modelMatrices.end(), m_ikModelMatrices.begin());
+        Vector3 modelUp = Vector3::TransformNormal(Vector3::UnitY, inverse);
+        modelUp.Normalize();
         if (!solveFootIK(m_skeleton->skeleton, std::span(modelTargets).first(targets.size()),
-            Vector3::TransformNormal(pelvisOffset, inverse), m_ikLocalTransforms, m_ikModelMatrices))
+            Vector3::TransformNormal(pelvisOffset, inverse), m_ikLocalTransforms, m_ikModelMatrices, modelUp))
             return false;
         return publishPose(m_ikModelMatrices);
     }

@@ -37,7 +37,7 @@ namespace Engine
         bool normalize(Vector3& value) noexcept
         {
             const float lengthSquared = value.LengthSquared();
-            if (!finite(value) || !std::isfinite(lengthSquared) || lengthSquared <= 1.0e-12f)
+            if (!finite(value) || !std::isfinite(lengthSquared) || lengthSquared <= 0.0f)
                 return false;
             value /= std::sqrt(lengthSquared);
             return true;
@@ -197,9 +197,11 @@ namespace Engine
 
     bool solveFootIK(const ozz::animation::Skeleton& skeleton,
         const std::span<const FootIKTarget> targets, const Vector3& pelvisOffset,
-        const std::span<ozz::math::SoaTransform> locals, const std::span<ozz::math::Float4x4> models)
+        const std::span<ozz::math::SoaTransform> locals, const std::span<ozz::math::Float4x4> models,
+        const Vector3& modelUp)
     {
-        if (!finite(pelvisOffset) || locals.size() < static_cast<std::size_t>(skeleton.num_soa_joints())
+        if (!finite(pelvisOffset) || !unit(modelUp)
+            || locals.size() < static_cast<std::size_t>(skeleton.num_soa_joints())
             || models.size() < static_cast<std::size_t>(skeleton.num_joints())
             || !validateFootIKTargets(skeleton, targets))
         {
@@ -292,10 +294,19 @@ namespace Engine
             ankle.forward = simd(target.footUp);
             ankle.up = simd(target.footForward);
             const auto normal = simd(target.normal);
-            auto heading = originalForward - normal * ozz::math::SplatX(ozz::math::Dot3(originalForward, normal));
-            if (ozz::math::GetX(ozz::math::Length3Sqr(heading)) < 1.0e-8f)
-                heading = ozz::math::Cross3(ozz::math::Cross3(originalUp, originalForward), normal);
-            ankle.pole_vector = heading;
+            // Recover upright heading before tilting to ground; direct slope alignment can become antiparallel.
+            const auto upright = simd(modelUp);
+            const auto recoverHeading = ozz::math::SimdQuaternion::FromVectors(originalUp, upright);
+            const auto tiltToGround = ozz::math::SimdQuaternion::FromUnitVectors(upright, normal);
+            auto heading = vector(ozz::math::TransformVector(tiltToGround,
+                ozz::math::TransformVector(recoverHeading, originalForward)));
+            heading -= target.normal * target.normal.Dot(heading);
+            if (!normalize(heading))
+            {
+                LOG_ERROR("[FootIK] Cannot recover a finite, nonzero foot heading.");
+                return false;
+            }
+            ankle.pole_vector = simd(heading);
             ankle.weight = target.weight;
             ozz::math::SimdQuaternion ankleCorrection;
             ankle.joint_correction = &ankleCorrection;
