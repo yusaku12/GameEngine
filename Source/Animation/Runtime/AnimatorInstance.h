@@ -203,6 +203,14 @@ namespace Engine
         bool getJointWorldPosition(int joint, const Matrix& world, Vector3& position) const;
 
         /**
+         * @brief Transform a joint-local direction through the uncorrected pose and root-motion removal.
+         * @return False with a diagnostic for invalid input or a collapsed direction; otherwise write a unit direction.
+         * @thread_safety Must not run concurrently with instance evaluation.
+         */
+        bool getJointWorldDirection(int joint, const Vector3& localDirection, const Matrix& world,
+            Vector3& direction) const;
+
+        /**
          * @brief Publish visual IK without changing sampled animation or extracted root motion.
          * @param targets World-space ankle targets and rig axes.
          * @param pelvisOffset World-space visual displacement. Does not move the GameObject.

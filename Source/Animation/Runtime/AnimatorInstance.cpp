@@ -1124,6 +1124,37 @@ namespace Engine
         return true;
     }
 
+    bool AnimatorInstance::getJointWorldDirection(const int joint, const Vector3& localDirection,
+        const Matrix& world, Vector3& direction) const
+    {
+        if (joint < 0 || static_cast<std::size_t>(joint) >= m_modelMatrices.size() || !isFinite(world)
+            || !std::isfinite(localDirection.x) || !std::isfinite(localDirection.y)
+            || !std::isfinite(localDirection.z))
+        {
+            LOG_ERROR("[FootIK] Cannot read a missing joint or invalid direction transform.");
+            return false;
+        }
+        Matrix removal;
+        if (!getPoseRemoval(removal))
+            return false;
+        Vector3 result = Vector3::TransformNormal(localDirection,
+            toEngineMatrix(m_modelMatrices[static_cast<std::size_t>(joint)]) * removal * world);
+        const float lengthSquared = result.LengthSquared();
+        if (!std::isfinite(lengthSquared) || lengthSquared <= 0.0f)
+        {
+            LOG_ERROR("[FootIK] Joint direction is nonfinite or collapsed.");
+            return false;
+        }
+        result /= std::sqrt(lengthSquared);
+        if (std::abs(result.LengthSquared() - 1.0f) > 1.0e-3f)
+        {
+            LOG_ERROR("[FootIK] Joint direction cannot be normalized reliably.");
+            return false;
+        }
+        direction = result;
+        return true;
+    }
+
     bool AnimatorInstance::applyFootIK(const std::span<const FootIKTarget> targets,
         const Vector3& pelvisOffset, const Matrix& world)
     {
@@ -1151,6 +1182,8 @@ namespace Engine
             modelTargets[index].position = Vector3::Transform(targets[index].position, inverse);
             modelTargets[index].normal = Vector3::TransformNormal(targets[index].normal, inverse);
             modelTargets[index].normal.Normalize();
+            if (targets[index].minimumPosition)
+                modelTargets[index].minimumPosition = Vector3::Transform(*targets[index].minimumPosition, inverse);
         }
         std::copy(m_localTransforms.begin(), m_localTransforms.end(), m_ikLocalTransforms.begin());
         std::copy(m_modelMatrices.begin(), m_modelMatrices.end(), m_ikModelMatrices.begin());

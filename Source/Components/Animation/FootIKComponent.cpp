@@ -51,6 +51,7 @@ namespace Engine
                 || !range(settings.maxAdjustment, 0.0f, 10000.0f)
                 || !range(settings.maxSlope, 0.0f, 89.0f)
                 || !range(settings.maxPelvisOffset, 0.0f, 10000.0f)
+                || !range(settings.contactFadeDistance, 0.001f, 10000.0f)
                 || !range(settings.responseSpeed, 0.0f, 1000.0f))
                 return false;
             for (const auto& leg : settings.legs)
@@ -219,18 +220,28 @@ namespace Engine
             const bool grounded = hit && calculateFootIKGroundTarget(hit->point, hit->normal,
                 leg.footHeight, m_settings.maxSlope, ground)
                 && std::abs(ground.y - ankle.y) <= m_settings.maxAdjustment;
-            const float desiredWeight = grounded ? leg.weight * m_settings.weight : 0.0f;
-            contact.weight += (desiredWeight - contact.weight) * blend;
             if (grounded)
             {
                 contact.offset += (ground.y - ankle.y - contact.offset) * blend;
                 contact.normal = Vector3::Lerp(contact.normal, hit->normal, blend);
                 contact.normal.Normalize();
             }
+            float stance = 1.0f;
+            if (grounded && m_settings.automaticContact)
+            {
+                Vector3 animatedUp;
+                if (!animator.getJointWorldDirection(m_rig[index].ankle, leg.footUp, world, animatedUp)
+                    || !calculateFootIKContactWeight(ankle, ground, animatedUp, contact.normal,
+                        m_settings.contactFadeDistance, stance))
+                    return fail("Cannot estimate foot contact from the animated sole.");
+            }
+            const float desiredWeight = grounded ? leg.weight * m_settings.weight * stance : 0.0f;
+            contact.weight += (desiredWeight - contact.weight) * blend;
             if (contact.weight <= 1.0e-4f)
             {
                 contact = {};
-                continue;
+                if (!grounded || leg.weight * m_settings.weight == 0.0f)
+                    continue;
             }
             auto& target = targets[count++];
             target = m_rig[index];
@@ -239,6 +250,11 @@ namespace Engine
             target.weight = contact.weight;
             target.soften = m_settings.soften;
             target.alignFoot = m_settings.alignFeet;
+            if (grounded)
+            {
+                target.minimumPosition = ground;
+                target.minimumWeight = leg.weight * m_settings.weight;
+            }
             desiredPelvis = (std::min)(desiredPelvis, contact.offset * contact.weight);
         }
         desiredPelvis = m_settings.pelvisCorrection
@@ -275,7 +291,8 @@ namespace Engine
         const auto root = Serialization::CreateFootIKComponentPayload(builder, legs[0], legs[1],
             settings.weight, settings.soften, settings.rayHeight, settings.rayDepth,
             settings.maxAdjustment, settings.maxSlope, settings.pelvisCorrection, settings.maxPelvisOffset,
-            settings.alignFeet, settings.responseSpeed, settings.layerMask, settings.includeDynamic);
+            settings.alignFeet, settings.responseSpeed, settings.layerMask, settings.includeDynamic,
+            settings.automaticContact, settings.contactFadeDistance);
         Serialization::FinishFootIKComponentPayloadBuffer(builder, root);
         payload.assign(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
         return true;
@@ -326,6 +343,8 @@ namespace Engine
         settings.responseSpeed = source->response_speed();
         settings.layerMask = source->layer_mask();
         settings.includeDynamic = source->include_dynamic();
+        settings.automaticContact = source->automatic_contact();
+        settings.contactFadeDistance = source->contact_fade_distance();
         return setSettings(settings);
     }
 
@@ -441,6 +460,10 @@ namespace Engine
         changed |= ImGui::SliderFloat("IK weight", &settings.weight, 0.0f, 1.0f);
         changed |= ImGui::SliderFloat("Soften", &settings.soften, 0.0f, 1.0f);
         changed |= ImGui::Checkbox("Align feet to ground", &settings.alignFeet);
+        changed |= ImGui::Checkbox("Automatic foot contact", &settings.automaticContact);
+        ImGui::BeginDisabled(!settings.automaticContact);
+        changed |= ImGui::DragFloat("Contact fade distance", &settings.contactFadeDistance, 0.005f, 0.001f, 10.0f);
+        ImGui::EndDisabled();
         changed |= ImGui::Checkbox("Visual pelvis correction", &settings.pelvisCorrection);
         changed |= ImGui::DragFloat("Max pelvis drop", &settings.maxPelvisOffset, 0.01f, 0.0f, 10.0f);
         changed |= ImGui::DragFloat("Ray height", &settings.rayHeight, 0.01f, 0.0f, 10.0f);
@@ -456,6 +479,7 @@ namespace Engine
         if (!m_status.empty())
             ImGui::TextWrapped("%s", m_status.c_str());
         ImGui::TextWrapped("World Y is up. Positive uniform world scale is required. "
-            "Set leg weight to zero while a foot is airborne. Knee hinge direction is rig-specific.");
+            "Automatic contact preserves lifted or reverse-facing feet. "
+            "Use leg weights for animation-specific contact phases. Knee hinge direction is rig-specific.");
     }
 }

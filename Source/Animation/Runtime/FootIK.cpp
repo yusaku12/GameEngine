@@ -114,6 +114,8 @@ namespace Engine
                 || !unit(target.footUp) || !unit(target.footForward)
                 || std::abs(target.footUp.Dot(target.footForward)) > 1.0e-3f
                 || !finite(target.position) || !unit(target.normal)
+                || (target.minimumPosition && !finite(*target.minimumPosition))
+                || !std::isfinite(target.minimumWeight) || target.minimumWeight < 0.0f || target.minimumWeight > 1.0f
                 || !std::isfinite(target.weight) || target.weight < 0.0f || target.weight > 1.0f
                 || !std::isfinite(target.soften) || target.soften < 0.0f || target.soften > 1.0f)
             {
@@ -253,6 +255,23 @@ namespace Engine
         return true;
     }
 
+    bool calculateFootIKContactWeight(const Vector3& ankle, const Vector3& groundTarget,
+        const Vector3& animatedUp, const Vector3& groundNormal, const float fadeDistance, float& weight) noexcept
+    {
+        if (!finite(ankle) || !finite(groundTarget) || !unit(animatedUp) || !unit(groundNormal)
+            || !std::isfinite(fadeDistance) || fadeDistance <= 0.0f)
+        {
+            LOG_ERROR("[FootIK] Contact estimation requires finite positions, unit directions and positive fade distance.");
+            return false;
+        }
+        const auto smooth = [](const float value) { return value * value * (3.0f - 2.0f * value); };
+        const double clearance = static_cast<double>(ankle.y) - groundTarget.y;
+        const float proximity = static_cast<float>(std::clamp(1.0 - clearance / fadeDistance, 0.0, 1.0));
+        const float facing = std::clamp((std::min)(animatedUp.y, animatedUp.Dot(groundNormal)) * 2.0f, 0.0f, 1.0f);
+        weight = smooth(proximity) * smooth(facing);
+        return true;
+    }
+
     bool solveFootIK(const ozz::animation::Skeleton& skeleton,
         const std::span<const FootIKTarget> targets, const Vector3& pelvisOffset,
         const std::span<ozz::math::SoaTransform> locals, const std::span<ozz::math::Float4x4> models,
@@ -302,7 +321,7 @@ namespace Engine
             return false;
         for (const auto& target : targets)
         {
-            if (target.weight == 0.0f)
+            if (target.weight == 0.0f && (!target.minimumPosition || target.minimumWeight == 0.0f))
                 continue;
             for (const int joint : { target.hip, target.knee, target.ankle })
             {
@@ -337,16 +356,39 @@ namespace Engine
             ozz::math::SimdQuaternion kneeCorrection;
             leg.start_joint_correction = &hipCorrection;
             leg.mid_joint_correction = &kneeCorrection;
-            if (!leg.Run())
+            const auto applyLeg = [&]()
             {
-                LOG_ERROR("[FootIK] IKTwoBoneJob failed.");
-                return false;
+                if (!leg.Run())
+                {
+                    LOG_ERROR("[FootIK] IKTwoBoneJob failed.");
+                    return false;
+                }
+                multiplyRotation(target.hip, hipCorrection, locals);
+                multiplyRotation(target.knee, kneeCorrection, locals);
+                return rebuild();
+            };
+            bool corrected = false;
+            if (target.weight > 0.0f)
+            {
+                if (!applyLeg())
+                    return false;
+                corrected = true;
             }
-            multiplyRotation(target.hip, hipCorrection, locals);
-            multiplyRotation(target.knee, kneeCorrection, locals);
-            if (!rebuild())
-                return false;
-            if (!target.alignFoot)
+            if (target.minimumPosition && target.minimumWeight > 0.0f)
+            {
+                const Vector3 position = vector(models[target.ankle].cols[3]);
+                const float correction = modelUp.Dot(*target.minimumPosition - position);
+                if (correction > 0.0f)
+                {
+                    leg.target = simd(position + modelUp * correction);
+                    leg.weight = target.minimumWeight;
+                    leg.soften = 1.0f;
+                    if (!applyLeg())
+                        return false;
+                    corrected = true;
+                }
+            }
+            if (!corrected || !target.alignFoot)
                 continue;
             ozz::animation::IKAimJob ankle;
             ankle.joint = &models[target.ankle];

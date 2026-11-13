@@ -25,6 +25,10 @@ namespace Engine
         bool alignFoot = true;
         /** @brief Pole anchor; unset uses the knee, kNoParent uses skeleton-model space. */
         std::optional<int> poleJoint;
+        /** @brief Optional lower ankle boundary along modelUp, independent of stance fade and ankle alignment. */
+        std::optional<Vector3> minimumPosition;
+        /** @brief Explicit user influence for penetration recovery, separate from the temporal stance weight. */
+        float minimumWeight = 1.0f;
     };
 
     /** @brief Validate finite targets, orthogonal foot axes and non-overlapping ancestor chains. */
@@ -64,4 +68,12 @@ namespace Engine
      */
     bool calculateFootIKGroundTarget(const Vector3& hitPoint, const Vector3& normal,
         float footHeight, float maxSlopeDegrees, Vector3& target) noexcept;
+
+    /**
+     * @brief Estimate stance influence from world-space sole clearance and animated sole orientation.
+     * @details Fade out above fadeDistance, and between 60 and 90 degrees away from world up or ground normal.
+     * @return False with a diagnostic for invalid inputs; otherwise write an influence in [0,1].
+     */
+    bool calculateFootIKContactWeight(const Vector3& ankle, const Vector3& groundTarget,
+        const Vector3& animatedUp, const Vector3& groundNormal, float fadeDistance, float& weight) noexcept;
 }

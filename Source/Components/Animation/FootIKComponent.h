@@ -43,6 +43,8 @@ namespace Engine
         float responseSpeed = 15.0f;
         PhysicsLayerMask layerMask = ALL_PHYSICS_LAYERS;
         bool includeDynamic = true;
+        bool automaticContact = true;
+        float contactFadeDistance = 0.15f;
     };
 
     /**

@@ -29,6 +29,8 @@ table FootIKComponentPayload {
     response_speed:float = 15;
     layer_mask:uint = 4294967295;
     include_dynamic:bool = true;
+    automatic_contact:bool = true;
+    contact_fade_distance:float = 0.15;
 }
 
 root_type FootIKComponentPayload;
