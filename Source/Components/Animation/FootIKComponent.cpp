@@ -144,8 +144,12 @@ namespace Engine
         }
         if (count == 0)
             return fail("Select hip, knee and ankle joints in the Foot IK Inspector.");
-        if (!validateFootIKTargets(skeleton.skeleton, std::span(configured).first(count)))
+        if (!anchorFootIKPolesToHipParents(skeleton.skeleton, std::span(configured).first(count)))
             return fail("Invalid rig. Select independent hip/knee/ankle chains and check local axes.");
+        std::size_t resolved = 0;
+        for (auto& target : m_rig)
+            if (target.hip >= 0)
+                target = configured[resolved++];
         m_rigValid = true;
         return true;
     }

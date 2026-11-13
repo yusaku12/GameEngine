@@ -1,6 +1,7 @@
 #pragma once
 
 #include <span>
+#include <optional>
 #include <ozz/animation/runtime/skeleton.h>
 #include <ozz/base/maths/soa_transform.h>
 #include "Core\Math\MathTypes.h"
@@ -22,6 +23,8 @@ namespace Engine
         float weight = 1.0f;
         float soften = 1.0f;
         bool alignFoot = true;
+        /** @brief Pole anchor; unset uses the knee, kNoParent uses skeleton-model space. */
+        std::optional<int> poleJoint;
     };
 
     /** @brief Validate finite targets, orthogonal foot axes and non-overlapping ancestor chains. */
@@ -34,6 +37,14 @@ namespace Engine
      * @thread_safety Independent target buffers can be processed concurrently.
      */
     bool configureFootIKAxesFromRestPose(const ozz::animation::Skeleton& skeleton,
+        std::span<FootIKTarget> targets);
+
+    /**
+     * @brief Preserve rest-pose pole directions in hip-parent space, independent of animated knee flexion.
+     * @return False with a diagnostic, leaving all targets unchanged.
+     * @thread_safety Independent target buffers can be processed concurrently.
+     */
+    bool anchorFootIKPolesToHipParents(const ozz::animation::Skeleton& skeleton,
         std::span<FootIKTarget> targets);
 
     /**

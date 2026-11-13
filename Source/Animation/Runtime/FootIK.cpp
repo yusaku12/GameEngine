@@ -40,7 +40,38 @@ namespace Engine
             if (!finite(value) || !std::isfinite(lengthSquared) || lengthSquared <= 0.0f)
                 return false;
             value /= std::sqrt(lengthSquared);
+            return unit(value);
+        }
+
+        bool buildRestModels(const ozz::animation::Skeleton& skeleton,
+            std::vector<ozz::math::Float4x4>& models)
+        {
+            models.resize(static_cast<std::size_t>(skeleton.num_joints()));
+            ozz::animation::LocalToModelJob job;
+            job.skeleton = &skeleton;
+            job.input = skeleton.joint_rest_poses();
+            job.output = ozz::span<ozz::math::Float4x4>(models.data(), models.size());
+            if (!job.Run())
+            {
+                LOG_ERROR("[FootIK] Cannot build the skeleton rest pose.");
+                return false;
+            }
             return true;
+        }
+
+        bool localDirection(const std::span<const ozz::math::Float4x4> models, const int joint,
+            ozz::math::SimdFloat4 direction, Vector3& result)
+        {
+            if (joint >= 0)
+            {
+                ozz::math::SimdInt4 invertible;
+                const auto inverse = ozz::math::Invert(models[joint], &invertible);
+                if (!ozz::math::AreAllTrue1(invertible))
+                    return false;
+                direction = ozz::math::TransformVector(inverse, direction);
+            }
+            result = vector(direction);
+            return normalize(result);
         }
 
         void multiplyRotation(const int joint, const ozz::math::SimdQuaternion correction,
@@ -75,6 +106,8 @@ namespace Engine
             if (target.hip < 0 || target.knee < 0 || target.ankle < 0
                 || target.hip >= skeleton.num_joints() || target.knee >= skeleton.num_joints()
                 || target.ankle >= skeleton.num_joints()
+                || (target.poleJoint && (*target.poleJoint < ozz::animation::Skeleton::kNoParent
+                    || *target.poleJoint >= skeleton.num_joints()))
                 || !ancestor(skeleton, target.hip, target.knee)
                 || !ancestor(skeleton, target.knee, target.ankle)
                 || !unit(target.kneeAxis) || !unit(target.poleAxis)
@@ -109,16 +142,9 @@ namespace Engine
             LOG_ERROR("[FootIK] Select valid leg chains before configuring rest-pose axes.");
             return false;
         }
-        std::vector<ozz::math::Float4x4> models(static_cast<std::size_t>(skeleton.num_joints()));
-        ozz::animation::LocalToModelJob job;
-        job.skeleton = &skeleton;
-        job.input = skeleton.joint_rest_poses();
-        job.output = ozz::span<ozz::math::Float4x4>(models.data(), models.size());
-        if (!job.Run())
-        {
-            LOG_ERROR("[FootIK] Cannot build the skeleton rest pose.");
+        std::vector<ozz::math::Float4x4> models;
+        if (!buildRestModels(skeleton, models))
             return false;
-        }
         std::vector<FootIKTarget> configured(targets.begin(), targets.end());
         for (auto& target : configured)
         {
@@ -143,8 +169,9 @@ namespace Engine
             auto pole = mid - direction * mid.Dot(direction);
             if (pole.LengthSquared() <= 1.0e-6f * mid.LengthSquared())
                 pole = Vector3::UnitZ - direction * direction.z;
-            target.poleAxis = vector(ozz::math::TransformVector(kneeInverse, simd(pole)));
-            if (!normalize(target.poleAxis))
+            Vector3 kneePole;
+            if (!localDirection(models, target.knee, simd(pole), kneePole)
+                || !localDirection(models, target.poleJoint.value_or(target.knee), simd(pole), target.poleAxis))
             {
                 LOG_ERROR("[FootIK] Rest-pose knee bend is ambiguous; configure axes manually.");
                 return false;
@@ -152,7 +179,7 @@ namespace Engine
             // This sign makes ozz's initial knee angle positive (positive rotation opens the knee).
             target.kneeAxis = start.Cross(end);
             if (target.kneeAxis.LengthSquared() <= 1.0e-6f)
-                target.kneeAxis = target.poleAxis.Cross(start);
+                target.kneeAxis = kneePole.Cross(start);
             target.footUp = vector(ozz::math::TransformVector(ankleInverse, simd(Vector3::UnitY)));
             target.footForward = vector(ozz::math::TransformVector(ankleInverse, simd(Vector3::UnitZ)));
             if (!normalize(target.kneeAxis) || !normalize(target.footUp))
@@ -166,6 +193,37 @@ namespace Engine
                 LOG_ERROR("[FootIK] Rest-pose foot-forward axis is invalid.");
                 return false;
             }
+        }
+        if (!validateFootIKTargets(skeleton, configured))
+            return false;
+        std::copy(configured.begin(), configured.end(), targets.begin());
+        return true;
+    }
+
+    bool anchorFootIKPolesToHipParents(const ozz::animation::Skeleton& skeleton,
+        const std::span<FootIKTarget> targets)
+    {
+        if (targets.empty() || !validateFootIKTargets(skeleton, targets))
+        {
+            LOG_ERROR("[FootIK] Select valid leg chains before resolving pole anchors.");
+            return false;
+        }
+        std::vector<ozz::math::Float4x4> models;
+        if (!buildRestModels(skeleton, models))
+            return false;
+        std::vector<FootIKTarget> configured(targets.begin(), targets.end());
+        for (auto& target : configured)
+        {
+            const int previous = target.poleJoint.value_or(target.knee);
+            const auto pole = previous >= 0
+                ? ozz::math::TransformVector(models[previous], simd(target.poleAxis)) : simd(target.poleAxis);
+            const int parent = skeleton.joint_parents()[target.hip];
+            if (!localDirection(models, parent, pole, target.poleAxis))
+            {
+                LOG_ERROR("[FootIK] Cannot resolve a finite pole direction in hip-parent rest space.");
+                return false;
+            }
+            target.poleJoint = parent;
         }
         if (!validateFootIKTargets(skeleton, configured))
             return false;
@@ -267,7 +325,9 @@ namespace Engine
             ozz::animation::IKTwoBoneJob leg;
             leg.target = simd(target.position);
             leg.mid_axis = simd(target.kneeAxis);
-            leg.pole_vector = ozz::math::TransformVector(models[target.knee], simd(target.poleAxis));
+            const int poleJoint = target.poleJoint.value_or(target.knee);
+            leg.pole_vector = poleJoint >= 0
+                ? ozz::math::TransformVector(models[poleJoint], simd(target.poleAxis)) : simd(target.poleAxis);
             leg.weight = target.weight;
             leg.soften = target.soften;
             leg.start_joint = &models[target.hip];
@@ -290,24 +350,48 @@ namespace Engine
                 continue;
             ozz::animation::IKAimJob ankle;
             ankle.joint = &models[target.ankle];
-            ankle.target = models[target.ankle].cols[3] + simd(target.normal);
             ankle.forward = simd(target.footUp);
             ankle.up = simd(target.footForward);
             const auto normal = simd(target.normal);
-            // Recover upright heading before tilting to ground; direct slope alignment can become antiparallel.
+            Vector3 animatedUp = vector(originalUp);
+            if (!normalize(animatedUp))
+            {
+                LOG_ERROR("[FootIK] Cannot recover a finite, nonzero animated foot-up direction.");
+                return false;
+            }
+            // Blend the two swings separately; a combined 180-degree correction flips its weighted rotation path.
             const auto upright = simd(modelUp);
-            const auto recoverHeading = ozz::math::SimdQuaternion::FromVectors(originalUp, upright);
-            const auto tiltToGround = ozz::math::SimdQuaternion::FromUnitVectors(upright, normal);
-            auto heading = vector(ozz::math::TransformVector(tiltToGround,
-                ozz::math::TransformVector(recoverHeading, originalForward)));
-            heading -= target.normal * target.normal.Dot(heading);
+            const auto partialRotation = [&target](const ozz::math::SimdQuaternion rotation)
+            {
+                return ozz::math::Normalize(ozz::math::SimdQuaternion{
+                    ozz::math::Lerp(ozz::math::SimdQuaternion::identity().xyzw, rotation.xyzw,
+                        ozz::math::simd_float4::Load1(target.weight)) });
+            };
+            const auto recoverHeading = partialRotation(
+                ozz::math::SimdQuaternion::FromUnitVectors(simd(animatedUp), upright));
+            const auto tiltToGround = partialRotation(
+                ozz::math::SimdQuaternion::FromUnitVectors(upright, normal));
+            const auto transport = [&recoverHeading, &tiltToGround](const ozz::math::SimdFloat4 direction)
+            {
+                return vector(ozz::math::TransformVector(tiltToGround,
+                    ozz::math::TransformVector(recoverHeading, direction)));
+            };
+            Vector3 desiredUp = transport(simd(animatedUp));
+            Vector3 heading = transport(originalForward);
+            if (!normalize(desiredUp))
+            {
+                LOG_ERROR("[FootIK] Cannot recover a finite, nonzero target foot-up direction.");
+                return false;
+            }
+            heading -= desiredUp * desiredUp.Dot(heading);
             if (!normalize(heading))
             {
                 LOG_ERROR("[FootIK] Cannot recover a finite, nonzero foot heading.");
                 return false;
             }
+            ankle.target = models[target.ankle].cols[3] + simd(desiredUp);
             ankle.pole_vector = simd(heading);
-            ankle.weight = target.weight;
+            ankle.weight = 1.0f;
             ozz::math::SimdQuaternion ankleCorrection;
             ankle.joint_correction = &ankleCorrection;
             if (!ankle.Run())
