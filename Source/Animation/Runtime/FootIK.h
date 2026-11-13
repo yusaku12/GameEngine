@@ -28,6 +28,15 @@ namespace Engine
     bool validateFootIKTargets(const ozz::animation::Skeleton& skeleton, std::span<const FootIKTarget> targets);
 
     /**
+     * @brief Derive joint-local axes from a Y-up, +Z-forward skeleton rest pose.
+     * @details Preserve the rest knee bend; straight legs use +Z as the preferred bend direction.
+     * @return False with a diagnostic, leaving all targets unchanged. Only rig axes are replaced on success.
+     * @thread_safety Independent target buffers can be processed concurrently.
+     */
+    bool configureFootIKAxesFromRestPose(const ozz::animation::Skeleton& skeleton,
+        std::span<FootIKTarget> targets);
+
+    /**
      * @brief Apply ozz two-bone/aim corrections and a model-space visual root offset.
      * @details Inputs must be a fresh, uncorrected pose. All descendants are recomputed with LocalToModelJob.
      * @return False with a diagnostic on invalid input or failed jobs. Caller must not publish failed output.

@@ -2,6 +2,7 @@
 #include "Animation\Runtime\FootIK.h"
 #include <cmath>
 #include <limits>
+#include <vector>
 #include <ozz/animation/runtime/ik_aim_job.h>
 #include <ozz/animation/runtime/ik_two_bone_job.h>
 #include <ozz/animation/runtime/local_to_model_job.h>
@@ -26,6 +27,20 @@ namespace Engine
         ozz::math::SimdFloat4 simd(const Vector3& value) noexcept
         {
             return ozz::math::simd_float4::Load(value.x, value.y, value.z, 0.0f);
+        }
+
+        Vector3 vector(const ozz::math::SimdFloat4 value) noexcept
+        {
+            return { ozz::math::GetX(value), ozz::math::GetY(value), ozz::math::GetZ(value) };
+        }
+
+        bool normalize(Vector3& value) noexcept
+        {
+            const float lengthSquared = value.LengthSquared();
+            if (!finite(value) || !std::isfinite(lengthSquared) || lengthSquared <= 1.0e-12f)
+                return false;
+            value /= std::sqrt(lengthSquared);
+            return true;
         }
 
         void multiplyRotation(const int joint, const ozz::math::SimdQuaternion correction,
@@ -83,6 +98,78 @@ namespace Engine
                 }
             }
         }
+        return true;
+    }
+
+    bool configureFootIKAxesFromRestPose(const ozz::animation::Skeleton& skeleton,
+        const std::span<FootIKTarget> targets)
+    {
+        if (targets.empty() || !validateFootIKTargets(skeleton, targets))
+        {
+            LOG_ERROR("[FootIK] Select valid leg chains before configuring rest-pose axes.");
+            return false;
+        }
+        std::vector<ozz::math::Float4x4> models(static_cast<std::size_t>(skeleton.num_joints()));
+        ozz::animation::LocalToModelJob job;
+        job.skeleton = &skeleton;
+        job.input = skeleton.joint_rest_poses();
+        job.output = ozz::span<ozz::math::Float4x4>(models.data(), models.size());
+        if (!job.Run())
+        {
+            LOG_ERROR("[FootIK] Cannot build the skeleton rest pose.");
+            return false;
+        }
+        std::vector<FootIKTarget> configured(targets.begin(), targets.end());
+        for (auto& target : configured)
+        {
+            ozz::math::SimdInt4 kneeInvertible;
+            ozz::math::SimdInt4 ankleInvertible;
+            const auto kneeInverse = ozz::math::Invert(models[target.knee], &kneeInvertible);
+            const auto ankleInverse = ozz::math::Invert(models[target.ankle], &ankleInvertible);
+            if (!ozz::math::AreAllTrue1(kneeInvertible) || !ozz::math::AreAllTrue1(ankleInvertible))
+            {
+                LOG_ERROR("[FootIK] Rest-pose axis setup requires nonsingular leg transforms.");
+                return false;
+            }
+            auto start = vector(ozz::math::TransformPoint(kneeInverse, models[target.hip].cols[3]));
+            auto end = vector(ozz::math::TransformPoint(kneeInverse, models[target.ankle].cols[3]));
+            auto direction = vector(models[target.ankle].cols[3] - models[target.hip].cols[3]);
+            if (!normalize(start) || !normalize(end) || !normalize(direction))
+            {
+                LOG_ERROR("[FootIK] Cannot infer axes from a zero-length or folded rest-pose leg.");
+                return false;
+            }
+            const auto mid = vector(models[target.knee].cols[3] - models[target.hip].cols[3]);
+            auto pole = mid - direction * mid.Dot(direction);
+            if (pole.LengthSquared() <= 1.0e-6f * mid.LengthSquared())
+                pole = Vector3::UnitZ - direction * direction.z;
+            target.poleAxis = vector(ozz::math::TransformVector(kneeInverse, simd(pole)));
+            if (!normalize(target.poleAxis))
+            {
+                LOG_ERROR("[FootIK] Rest-pose knee bend is ambiguous; configure axes manually.");
+                return false;
+            }
+            // This sign makes ozz's initial knee angle positive (positive rotation opens the knee).
+            target.kneeAxis = start.Cross(end);
+            if (target.kneeAxis.LengthSquared() <= 1.0e-6f)
+                target.kneeAxis = target.poleAxis.Cross(start);
+            target.footUp = vector(ozz::math::TransformVector(ankleInverse, simd(Vector3::UnitY)));
+            target.footForward = vector(ozz::math::TransformVector(ankleInverse, simd(Vector3::UnitZ)));
+            if (!normalize(target.kneeAxis) || !normalize(target.footUp))
+            {
+                LOG_ERROR("[FootIK] Rest-pose hinge or foot-up axis is invalid.");
+                return false;
+            }
+            target.footForward -= target.footUp * target.footUp.Dot(target.footForward);
+            if (!normalize(target.footForward))
+            {
+                LOG_ERROR("[FootIK] Rest-pose foot-forward axis is invalid.");
+                return false;
+            }
+        }
+        if (!validateFootIKTargets(skeleton, configured))
+            return false;
+        std::copy(configured.begin(), configured.end(), targets.begin());
         return true;
     }
 

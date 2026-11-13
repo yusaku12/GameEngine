@@ -37,6 +37,12 @@ namespace Engine
                 && std::abs(axis.LengthSquared() - 1.0f) < 1.0e-3f;
         }
 
+        int resolveJoint(const SkeletonAsset& skeleton, const std::string& name)
+        {
+            const auto found = skeleton.jointLookup.find(name);
+            return found != skeleton.jointLookup.end() ? static_cast<int>(found->second) : -1;
+        }
+
         bool validSettings(const FootIKSettings& settings)
         {
             if (!range(settings.weight, 0.0f, 1.0f) || !range(settings.soften, 0.0f, 1.0f)
@@ -127,14 +133,9 @@ namespace Engine
             if (leg.hip.empty() && leg.knee.empty() && leg.ankle.empty())
                 continue;
             auto& target = m_rig[index];
-            const auto resolve = [&skeleton](const std::string& name) -> int
-            {
-                const auto found = skeleton.jointLookup.find(name);
-                return found != skeleton.jointLookup.end() ? static_cast<int>(found->second) : -1;
-            };
-            target.hip = resolve(leg.hip);
-            target.knee = resolve(leg.knee);
-            target.ankle = resolve(leg.ankle);
+            target.hip = resolveJoint(skeleton, leg.hip);
+            target.knee = resolveJoint(skeleton, leg.knee);
+            target.ankle = resolveJoint(skeleton, leg.ankle);
             target.kneeAxis = leg.kneeAxis;
             target.poleAxis = leg.poleAxis;
             target.footUp = leg.footUp;
@@ -375,6 +376,8 @@ namespace Engine
                     }
                 ImGui::EndCombo();
             }
+            if (selected < 0)
+                ImGui::TextDisabled("Local: (%.4f, %.4f, %.4f)", value.x, value.y, value.z);
             return edited;
         };
         for (std::size_t index = 0; index < settings.legs.size(); ++index)
@@ -396,6 +399,41 @@ namespace Engine
             }
             ImGui::PopID();
         }
+        ImGui::BeginDisabled(!skeleton);
+        if (ImGui::Button("Set axes from rest pose") && skeleton)
+        {
+            std::array<FootIKTarget, 2> targets;
+            std::array<std::size_t, 2> legs{};
+            std::size_t count = 0;
+            for (std::size_t index = 0; index < settings.legs.size(); ++index)
+            {
+                const auto& leg = settings.legs[index];
+                if (leg.hip.empty() && leg.knee.empty() && leg.ankle.empty())
+                    continue;
+                auto& target = targets[count];
+                target.hip = resolveJoint(*skeleton, leg.hip);
+                target.knee = resolveJoint(*skeleton, leg.knee);
+                target.ankle = resolveJoint(*skeleton, leg.ankle);
+                legs[count++] = index;
+            }
+            if (configureFootIKAxesFromRestPose(skeleton->skeleton, std::span(targets).first(count)))
+            {
+                for (std::size_t index = 0; index < count; ++index)
+                {
+                    auto& leg = settings.legs[legs[index]];
+                    leg.kneeAxis = targets[index].kneeAxis;
+                    leg.poleAxis = targets[index].poleAxis;
+                    leg.footUp = targets[index].footUp;
+                    leg.footForward = targets[index].footForward;
+                }
+                changed = true;
+            }
+            else
+                m_status = "Rest-pose axis setup failed. Check the selected leg chains and the log.";
+        }
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Use a Y-up, +Z-forward neutral rest pose. Each leg is calibrated separately.");
         changed |= ImGui::SliderFloat("IK weight", &settings.weight, 0.0f, 1.0f);
         changed |= ImGui::SliderFloat("Soften", &settings.soften, 0.0f, 1.0f);
         changed |= ImGui::Checkbox("Align feet to ground", &settings.alignFeet);
