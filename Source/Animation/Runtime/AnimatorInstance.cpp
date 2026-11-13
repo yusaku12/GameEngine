@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Animation\Runtime\AnimatorInstance.h"
+#include "Animation\Runtime\FootIK.h"
 #include <ozz/animation/runtime/blending_job.h>
 #include <ozz/animation/runtime/local_to_model_job.h>
 #include <ozz/base/maths/simd_math.h>
@@ -242,6 +243,8 @@ namespace Engine
         m_samplingContext = std::make_unique<ozz::animation::SamplingJob::Context>(jointCount);
         m_localTransforms.resize(static_cast<std::size_t>(m_skeleton->skeleton.num_soa_joints()));
         m_modelMatrices.resize(static_cast<std::size_t>(jointCount));
+        m_ikLocalTransforms.resize(m_localTransforms.size());
+        m_ikModelMatrices.resize(m_modelMatrices.size());
         m_bindPoseCorrections.resize(static_cast<std::size_t>(jointCount));
         ozz::animation::LocalToModelJob restPoseJob;
         restPoseJob.skeleton = &m_skeleton->skeleton;
@@ -400,6 +403,8 @@ namespace Engine
         m_localTransforms.resize(soaJointCount);
         m_blendedTransforms.resize(soaJointCount);
         m_modelMatrices.resize(static_cast<std::size_t>(jointCount));
+        m_ikLocalTransforms.resize(m_localTransforms.size());
+        m_ikModelMatrices.resize(m_modelMatrices.size());
         m_bindPoseCorrections.resize(static_cast<std::size_t>(jointCount));
         ozz::animation::LocalToModelJob restPoseJob;
         restPoseJob.skeleton = &m_skeleton->skeleton;
@@ -445,6 +450,8 @@ namespace Engine
         for (auto& snapshot : m_snapshotRing)
             snapshot.reset();
         m_modelMatrices.clear();
+        m_ikLocalTransforms.clear();
+        m_ikModelMatrices.clear();
         m_bindPoseCorrections.clear();
         m_blendedTransforms.clear();
         m_localTransforms.clear();
@@ -784,7 +791,7 @@ namespace Engine
         return std::clamp(m_time / m_clip->duration, 0.0f, 1.0f);
     }
 
-    bool AnimatorInstance::update(const float deltaTime)
+    bool AnimatorInstance::update(const float deltaTime, const bool publishSnapshot)
     {
         m_rootMotionDelta = Matrix::Identity;
         if (m_skeleton == nullptr || !std::isfinite(deltaTime))
@@ -863,7 +870,7 @@ namespace Engine
                         m_playing = false;
                 }
             }
-            if (!sampleControllerPose() || !publishPose())
+            if (!sampleControllerPose() || !publishPose(m_modelMatrices, publishSnapshot))
                 return false;
             m_rootMotionDelta = rootDelta;
             return true;
@@ -903,7 +910,7 @@ namespace Engine
                 previousTime, m_time, static_cast<double>(deltaTime) * m_speed, rootDelta))
                 return false;
         }
-        if (!samplePose(getNormalizedTime()) || !publishPose())
+        if (!samplePose(getNormalizedTime()) || !publishPose(m_modelMatrices, publishSnapshot))
             return false;
         m_rootMotionDelta = rootDelta;
         return true;
@@ -1044,6 +1051,7 @@ namespace Engine
             pose = &m_blendedTransforms;
         }
 
+        std::copy(pose->begin(), pose->end(), m_localTransforms.begin());
         ozz::animation::LocalToModelJob localToModel;
         localToModel.skeleton = &m_skeleton->skeleton;
         localToModel.input = ozz::make_span(*pose);
@@ -1079,7 +1087,12 @@ namespace Engine
 
     bool AnimatorInstance::publishPose()
     {
-        Matrix removeMotion = Matrix::Identity;
+        return publishPose(m_modelMatrices);
+    }
+
+    bool AnimatorInstance::getPoseRemoval(Matrix& removeMotion) const
+    {
+        removeMotion = Matrix::Identity;
         if (m_rootMotionEnabled)
         {
             Matrix root;
@@ -1088,12 +1101,76 @@ namespace Engine
             // Filter the trajectory, not its frame delta, so pose and extracted motion stay complementary.
             removeMotion = inverseRigidTransform(filterRootMotion(m_inverseRootReference * root, m_rootMotionAxes));
         }
+        return true;
+    }
+
+    bool AnimatorInstance::getJointWorldPosition(const int joint, const Matrix& world, Vector3& position) const
+    {
+        if (joint < 0 || static_cast<std::size_t>(joint) >= m_modelMatrices.size() || !isFinite(world))
+        {
+            LOG_ERROR("[FootIK] Cannot read a missing joint or invalid world transform.");
+            return false;
+        }
+        Matrix removal;
+        if (!getPoseRemoval(removal))
+            return false;
+        position = Vector3::Transform(toEngineMatrix(m_modelMatrices[static_cast<std::size_t>(joint)]).Translation(),
+            removal * world);
+        if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z))
+        {
+            LOG_ERROR("[FootIK] Joint world position overflowed finite coordinates.");
+            return false;
+        }
+        return true;
+    }
+
+    bool AnimatorInstance::applyFootIK(const std::span<const FootIKTarget> targets,
+        const Vector3& pelvisOffset, const Matrix& world)
+    {
+        Matrix removal;
+        Transform transform;
+        if (m_skeleton == nullptr || targets.size() > 2
+            || !validateFootIKTargets(m_skeleton->skeleton, targets) || !getPoseRemoval(removal)
+            || !isFinite(world) || !Transform::tryFromMatrix(removal * world, transform))
+        {
+            LOG_ERROR("[FootIK] Missing animation or invalid model-to-world transform.");
+            return false;
+        }
+        const Vector3 scale = transform.getScale();
+        if (scale.x <= 0.0f || std::abs(scale.y - scale.x) > scale.x * 1.0e-4f
+            || std::abs(scale.z - scale.x) > scale.x * 1.0e-4f)
+        {
+            LOG_ERROR("[FootIK] Model-to-world transform requires positive uniform scale without shear.");
+            return false;
+        }
+        const Matrix inverse = (removal * world).Invert();
+        std::array<FootIKTarget, 2> modelTargets;
+        for (std::size_t index = 0; index < targets.size(); ++index)
+        {
+            modelTargets[index] = targets[index];
+            modelTargets[index].position = Vector3::Transform(targets[index].position, inverse);
+            modelTargets[index].normal = Vector3::TransformNormal(targets[index].normal, inverse);
+            modelTargets[index].normal.Normalize();
+        }
+        std::copy(m_localTransforms.begin(), m_localTransforms.end(), m_ikLocalTransforms.begin());
+        std::copy(m_modelMatrices.begin(), m_modelMatrices.end(), m_ikModelMatrices.begin());
+        if (!solveFootIK(m_skeleton->skeleton, std::span(modelTargets).first(targets.size()),
+            Vector3::TransformNormal(pelvisOffset, inverse), m_ikLocalTransforms, m_ikModelMatrices))
+            return false;
+        return publishPose(m_ikModelMatrices);
+    }
+
+    bool AnimatorInstance::publishPose(const std::span<const ozz::math::Float4x4> models, const bool publishSnapshot)
+    {
+        Matrix removeMotion;
+        if (!getPoseRemoval(removeMotion))
+            return false;
         SkinningPaletteSnapshot* const snapshot = acquireSnapshot();
         if (snapshot == nullptr)
             return false;
-        for (std::size_t index = 0; index < m_modelMatrices.size(); ++index)
+        for (std::size_t index = 0; index < models.size(); ++index)
         {
-            const Matrix modelMatrix = toEngineMatrix(m_modelMatrices[index]) * removeMotion;
+            const Matrix modelMatrix = toEngineMatrix(models[index]) * removeMotion;
             const Matrix skinningMatrix = m_bindPoseCorrections[index]
                 * m_skeleton->inverseBindPoses[index] * modelMatrix;
             const Matrix normalMatrix = skinningMatrix.Invert().Transpose();
@@ -1106,7 +1183,8 @@ namespace Engine
             snapshot->constants.boneMatrices[index] = skinningMatrix;
             snapshot->constants.boneNormalMatrices[index] = normalMatrix;
         }
-        m_publishedSnapshot = m_snapshotRing[(m_nextSnapshot + m_snapshotRing.size() - 1) % m_snapshotRing.size()];
+        if (publishSnapshot)
+            m_publishedSnapshot = m_snapshotRing[(m_nextSnapshot + m_snapshotRing.size() - 1) % m_snapshotRing.size()];
         return true;
     }
 

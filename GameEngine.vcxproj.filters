@@ -315,6 +315,12 @@
     <ClCompile Include="Source\Animation\Runtime\AnimatorInstance.cpp">
       <Filter>Source\Animation\Runtime</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Animation\Runtime\FootIK.cpp">
+      <Filter>Source\Animation\Runtime</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Animation\FootIKComponent.cpp">
+      <Filter>Source\Components\Animation</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Assets\Animation\AnimationAssetBuilder.cpp">
       <Filter>Source\Assets\Animation</Filter>
     </ClCompile>
@@ -817,6 +823,15 @@
     </ClInclude>
     <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h">
       <Filter>Source\Animation\Runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Animation\Runtime\FootIK.h">
+      <Filter>Source\Animation\Runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Animation\FootIKComponent.h">
+      <Filter>Source\Components\Animation</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\FootIKComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
     </ClInclude>
     <ClInclude Include="Source\Assets\Animation\AnimationAssetBuilder.h">
       <Filter>Source\Assets\Animation</Filter>
@@ -1436,6 +1451,9 @@
       <Filter>Schemas\FlatBuffers</Filter>
     </None>
     <None Include="Schemas\FlatBuffers\AnimatorComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\FootIKComponent.fbs">
       <Filter>Schemas\FlatBuffers</Filter>
     </None>
     <None Include="Schemas\FlatBuffers\AnimatorController.fbs">

@@ -2,6 +2,7 @@
 
 #include <string>
 #include <string_view>
+#include <span>
 #include <ozz/animation/runtime/sampling_job.h>
 #include <ozz/base/maths/simd_math.h>
 #include <ozz/base/maths/soa_transform.h>
@@ -12,6 +13,8 @@
 
 namespace Engine
 {
+    struct FootIKTarget;
+
     /**
      * @brief GameObjectごとのController状態とozz評価Bufferを所有する。
      * @thread_safety Thread-safeではない。同一Instanceへのアクセスは直列化すること。
@@ -140,8 +143,9 @@ namespace Engine
          * @details 同一Instanceへの他のアクセスと並行して呼び出してはならない。
          * 再生方向はdeltaTimeと再生速度の符号で決まり、正規化開始時刻は0.0〜1.0へ制限される。
          * @param deltaTime 前回updateからの経過時間(秒)。負値は逆再生として扱う。
+         * @param publishSnapshot falseの場合は後段のIKまたはpublishCurrentPoseでSnapshotを公開する。
          */
-        bool update(float deltaTime);
+        bool update(float deltaTime, bool publishSnapshot = true);
 
         /**
          * @brief XYZ移動と回転の抽出を設定する。空の名前は先頭ルートを使用する。
@@ -189,6 +193,23 @@ namespace Engine
          */
         std::shared_ptr<const SkinningPaletteSnapshot> getSnapshot() const noexcept { return m_publishedSnapshot; }
 
+        /** @brief Current immutable skeleton definition, or nullptr when unbound. */
+        std::shared_ptr<const SkeletonAsset> getSkeletonAsset() const noexcept { return m_skeleton; }
+
+        /** @brief Publish the uncorrected pose after update with publishSnapshot=false. Exclusive access required. */
+        bool publishCurrentPose() { return publishPose(); }
+
+        /** @brief Read the uncorrected joint position, including root-motion removal, in world space. */
+        bool getJointWorldPosition(int joint, const Matrix& world, Vector3& position) const;
+
+        /**
+         * @brief Publish visual IK without changing sampled animation or extracted root motion.
+         * @param targets World-space ankle targets and rig axes.
+         * @param pelvisOffset World-space visual displacement. Does not move the GameObject.
+         * @thread_safety Must run after animation jobs join, with exclusive instance access.
+         */
+        bool applyFootIK(std::span<const FootIKTarget> targets, const Vector3& pelvisOffset, const Matrix& world);
+
     private:
 
         struct RootMotionTrack
@@ -202,6 +223,8 @@ namespace Engine
         bool calculateRootDelta(const AnimationClipAsset& clip, const RootMotionTrack& track,
             AnimationWrapMode wrapMode, float oldTime, float newTime, double step, Matrix& delta);
         bool publishPose();
+        bool publishPose(std::span<const ozz::math::Float4x4> models, bool publishSnapshot = true);
+        bool getPoseRemoval(Matrix& removal) const;
 
         /**
          * @brief 再生中のstateのozz runtime評価に必要な情報を保持する。
@@ -343,6 +366,8 @@ namespace Engine
         std::unique_ptr<ozz::animation::SamplingJob::Context> m_samplingContext; //!< ozz runtimeのSamplingJob用Context。ozz runtimeが必要とする中間バッファを保持する。
         std::vector<ozz::math::SoaTransform> m_localTransforms;                  //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
         std::vector<ozz::math::Float4x4> m_modelMatrices;                        //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。
+        std::vector<ozz::math::SoaTransform> m_ikLocalTransforms;
+        std::vector<ozz::math::Float4x4> m_ikModelMatrices;
         std::vector<Matrix> m_bindPoseCorrections;                               //!< Import時の逆バインド行列とOzzレスト姿勢の差分補正。
         std::array<std::shared_ptr<SkinningPaletteSnapshot>, 3> m_snapshotRing;  //!< Ring Bufferとして保持するPalette Snapshot。Game threadが評価中のSnapshotとRender threadが参照中のSnapshotを分離する。
         std::shared_ptr<const SkinningPaletteSnapshot> m_publishedSnapshot;      //!< Render threadが参照中のPalette Snapshot。Game threadはこのSnapshotを更新しない。

@@ -2,6 +2,7 @@
 #include <flatbuffers/flatbuffers.h>
 #include "Generated\FlatBuffers\AnimatorComponent_generated.h"
 #include "Components\Animation\AnimatorComponent.h"
+#include "Components\Animation\FootIKComponent.h"
 #include "Assets\Animation\AnimationAssetManager.h"
 #include "Assets\Model\ModelManager.h"
 #include "Components\Rendering\ModelRendererComponent.h"
@@ -689,6 +690,8 @@ namespace Engine
         m_evaluationErrorLogged = false;
         m_evaluationPending = false;
         m_rootMotionPending = false;
+        m_footIKPending = false;
+        m_footIKRequested = false;
         m_rootMotionErrorLogged = false;
     }
 
@@ -736,6 +739,8 @@ namespace Engine
     {
         m_evaluationPending = false;
         m_rootMotionPending = false;
+        m_footIKPending = false;
+        m_footIKRequested = false;
 
         if (m_startupPending && !prepareStartup())
             return;
@@ -762,6 +767,9 @@ namespace Engine
 
         if (!m_instance.configureRootMotion(m_applyRootMotion, m_rootMotionJoint, getRootMotionAxes()))
             return;
+        const auto* object = getGameObject();
+        const auto* footIK = object ? object->getComponent<FootIKComponent>() : nullptr;
+        m_footIKRequested = footIK && footIK->isEnabled();
         m_evaluationPending = true;
     }
 
@@ -771,7 +779,8 @@ namespace Engine
             return;
 
         m_evaluationPending = false;
-        const bool succeeded = m_instance.update(deltaTime);
+        const bool succeeded = m_instance.update(deltaTime, !m_footIKRequested);
+        m_footIKPending = succeeded && m_footIKRequested;
         m_rootMotionPending = succeeded && m_applyRootMotion
             && m_instance.getRootMotionDelta() != Matrix::Identity;
         if (!succeeded && !m_evaluationErrorLogged)
@@ -855,6 +864,20 @@ namespace Engine
             local->setPosition(position);
         local->setRotation(rotation);
         m_rootMotionErrorLogged = false;
+    }
+
+    void AnimatorComponent::applyPendingFootIK(const float deltaTime)
+    {
+        if (!std::exchange(m_footIKPending, false))
+            return;
+        GameObject* const object = getGameObject();
+        if (!object || object->isDestroyRequested() || !object->isActiveInHierarchy() || !isEnabled())
+            return;
+        if (auto* footIK = object->getComponent<FootIKComponent>(); footIK && footIK->isEnabled()
+            && footIK->evaluate(m_instance, deltaTime))
+            return;
+        if (!m_instance.publishCurrentPose())
+            LOG_ERROR("[FootIK] Could not publish the uncorrected animation pose after IK was unavailable.");
     }
 
     void AnimatorComponent::onImGui()

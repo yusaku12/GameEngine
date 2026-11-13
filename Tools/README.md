@@ -897,6 +897,49 @@ Animator payload v5 と Play 用複製はクリップごとの設定と選択 jo
 v1 payload も読み込め、既定値は First Root です。Runtime の移動量は一時データであり、
 保存も読み込み後の再生もされません。
 
+## Foot IK（ozz-animation と PhysX）
+
+Model Renderer、Animator の順に追加して Skeleton とクリップを設定し、**Foot IK** を追加します。
+**Left Foot / Right Foot** で Hip、Knee、Ankle を選択してください。脚は
+Hip → Knee → Ankle の祖先チェーンであり、左右の Hip のサブツリーは独立している必要があります。
+片脚だけの使用も可能です。空または未完成の設定は保存できますが、未完成・不正なリグは
+Inspector とログで通知し、通常のアニメーション姿勢を表示します。
+
+- **Knee hinge axis** は膝のローカル回転軸です。ozz の規約では正の回転で膝の角度が開きます。
+  **Knee pole axis** はアニメーション済み膝の変換を通じてモデル空間の曲げ方向を指定します。
+  軸はモデル依存です。既定の -X / +Z をそのまま全モデルに使わないでください。
+- **Foot up axis / Foot forward axis** は足のローカル上方向と前方向です。
+  互いに直交する軸を設定します。`IKTwoBoneJob` で脚を補正した後、
+  `IKAimJob` で上方向を地面法線へ向け、アニメーションの足の進行方向を維持します。
+- レイはワールド +Y を上方向として、未補正の足首の **Ray height** 上から
+  **Ray depth** 下まで照会します。自分自身の GameObject と Trigger は除外し、
+  **Ground layer mask / Include dynamic ground** を適用します。
+- **Sole height** はワールド単位での足首から足裏までの距離です。斜面では法線方向の
+  クリアランスを確保しながら足首をレイ上に保ちます。**Max ground slope** より急な斜面、
+  裏面、**Max foot adjustment** を超える地面は接地として扱いません。
+- **IK weight / Leg weight** は補正率です。ジャンプや歩行中の遊脚はゲーム側から
+  `setLegWeight(0, weight)`（左）／`setLegWeight(1, weight)`（右）で補正率を下げてください。
+  `setWeight` は全体の補正率を変更します。これらは接地の平滑化状態を維持し、
+  設定全体を差し替える `setSettings` と異なり、リグの再解決を発生させません。
+  歩行の接地フェーズの自動推定や
+  足のワールド位置固定は行いません。**Soften** は伸び切る直前の脚の緩和率です。
+- **Visual pelvis correction** は最も下がる足に合わせて姿勢全体を下げ、
+  **Max pelvis drop** で制限します。GameObject、CharacterController、Collider は動かしません。
+  到達不能なターゲットへ脚を伸縮して合わせることもありません。
+- **Response speed** は補正と接地解除の指数平滑化速度です。0 なら即時反映します。
+  接地しなくなった足は補正率を減衰させて元の姿勢に戻します。
+  設定変更・Skeleton 変更・無効化時に平滑化状態をリセットします。
+
+IK は全 Animator worker の同期と全 Root Motion 適用の後にゲーム更新スレッドで実行します。
+未補正姿勢を保持した専用バッファを使い、補正後に全子孫の `LocalToModelJob` を再実行して
+immutable skinning snapshot を公開します。worker は未補正の skinning 変換を検証してから
+Root Motion 差分を確定し、Snapshot の最終公開だけを IK 後へ遅延します。通常再生・一時停止に
+補正が累積しません。編集中のアニメーションプレビューの評価経路にも適用しますが、
+照会対象は PhysX ワールドに登録済みの Collider のみです。編集時のプレビューのために
+ゲームプレイの物理 Lifecycle を起動することはありません。Play Pause は表示を凍結します。
+ワールド変換は正の均等スケールで shear がないことが必要です。非対応の変換はログ付きで拒否します。
+Scene/Prefab と Play 複製は専用 payload v1 で設定だけを保持し、接地状態は保存しません。
+
 # Light と Directional Shadow
 
 GameObject を作成し、Inspector で **Light** を追加します。Directional、Point、Spot のいずれかを

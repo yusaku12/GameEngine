@@ -1,0 +1,35 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+table FootIKLeg {
+    hip:string;
+    knee:string;
+    ankle:string;
+    knee_axis:Vec3;
+    pole_axis:Vec3;
+    foot_up:Vec3;
+    foot_forward:Vec3;
+    weight:float = 1;
+    foot_height:float = 0.08;
+}
+
+table FootIKComponentPayload {
+    left:FootIKLeg (required);
+    right:FootIKLeg (required);
+    weight:float = 1;
+    soften:float = 1;
+    ray_height:float = 0.5;
+    ray_depth:float = 0.75;
+    max_adjustment:float = 0.5;
+    max_slope:float = 60;
+    pelvis_correction:bool = true;
+    max_pelvis_offset:float = 0.4;
+    align_feet:bool = true;
+    response_speed:float = 15;
+    layer_mask:uint = 4294967295;
+    include_dynamic:bool = true;
+}
+
+root_type FootIKComponentPayload;
+file_identifier "GFIK";

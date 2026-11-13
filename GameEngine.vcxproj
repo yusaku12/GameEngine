@@ -63,6 +63,9 @@
     <ClInclude Include="Generated\FlatBuffers\PostProcessEffectAsset_generated.h" />
     <ClInclude Include="Source\Editor\PostProcess\PostProcessInspector.h" />
     <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h" />
+    <ClInclude Include="Source\Animation\Runtime\FootIK.h" />
+    <ClInclude Include="Source\Components\Animation\FootIKComponent.h" />
+    <ClInclude Include="Generated\FlatBuffers\FootIKComponent_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimationClip_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\AnimatorController_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\StateMachineAsset_generated.h" />
@@ -232,6 +235,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\Animation\Runtime\AnimatorInstance.cpp" />
+    <ClCompile Include="Source\Animation\Runtime\FootIK.cpp" />
+    <ClCompile Include="Source\Components\Animation\FootIKComponent.cpp" />
     <ClCompile Include="Source\Core\System\GameSession.cpp" />
     <ClCompile Include="Source\Terrain\Data\Heightmap.cpp" />
     <ClCompile Include="Source\Terrain\Generation\TerrainNoise.cpp" />
@@ -436,6 +441,7 @@
     <None Include="Schemas\FlatBuffers\StateMachineAsset.fbs" />
     <None Include="Schemas\FlatBuffers\StateMachineComponent.fbs" />
     <None Include="Schemas\FlatBuffers\AnimatorComponent.fbs" />
+    <None Include="Schemas\FlatBuffers\FootIKComponent.fbs" />
     <None Include="Schemas\FlatBuffers\ModelRendererComponent.fbs" />
     <None Include="Schemas\FlatBuffers\PhysicsComponent.fbs" />
     <None Include="Tools\FlatBuffers\build_schema.bat" />

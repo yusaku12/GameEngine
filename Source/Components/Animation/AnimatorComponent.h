@@ -262,6 +262,7 @@ namespace Engine
          */
         void evaluatePendingUpdate(float deltaTime);
         void applyPendingRootMotion(float deltaTime);
+        void applyPendingFootIK(float deltaTime);
 
         AnimatorInstance m_instance;                                    //!< AnimatorInstanceはozz runtimeをラップし、Animation Clipの再生と評価を管理する。
         SkeletonHandle m_skeleton;                                      //!< Skeleton Handleは再生対象Skeleton Assetを識別するためのハンドル。
@@ -283,6 +284,8 @@ namespace Engine
         bool m_applyRootMotion = false;                                 //!< Root Motionを適用するかどうかを示すフラグ。
         std::string m_rootMotionJoint;
         bool m_rootMotionPending = false;
+        bool m_footIKPending = false;
+        bool m_footIKRequested = false;
         bool m_rootMotionErrorLogged = false;
         std::vector<AnimationClipHandle> m_availableClips;              //!< 再生可能なAnimation Clip Handleのリスト。
     };
