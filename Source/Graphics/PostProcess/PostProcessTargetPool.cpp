@@ -45,6 +45,15 @@ namespace Engine
                 }
                 target->srv.reset();
             }
+            if (target->uav)
+            {
+                if (!m_srvHeap->release(target->uav->cpu.index))
+                {
+                    LOG_ERROR("[PostProcess] Cannot release a temporary UAV.");
+                    return false;
+                }
+                target->uav.reset();
+            }
         }
         m_targets.clear();
         return true;
@@ -108,7 +117,10 @@ namespace Engine
         const auto required = D3D12_FORMAT_SUPPORT1_RENDER_TARGET | D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE;
         const HRESULT supportResult = m_device->CheckFeatureSupport(
             D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support));
-        if (FAILED(supportResult) || (support.Support1 & required) != required)
+        if (FAILED(supportResult) || (support.Support1 & required) != required
+            || (description.unorderedAccess
+                && ((support.Support1 & D3D12_FORMAT_SUPPORT1_TYPED_UNORDERED_ACCESS_VIEW) == 0
+                    || (support.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE) == 0)))
         {
             LOG_ERROR("[PostProcess] Unsupported temporary texture format {}.",
                 static_cast<unsigned int>(description.format));
@@ -128,13 +140,18 @@ namespace Engine
         texture.Format = description.format;
         texture.SampleDesc = { 1, 0 };
         texture.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+        if (description.unorderedAccess)
+            texture.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
         if (!entry.resource.initialize(*m_device, { .description = texture })
             || !entry.rtvHeap.initialize(*m_device, {
                 .type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV, .capacity = 1 }))
             return nullptr;
         const auto rtv = entry.rtvHeap.allocate();
         entry.srv = m_srvHeap->allocate();
-        if (!rtv || !entry.srv || !entry.srv->gpu)
+        if (description.unorderedAccess)
+            entry.uav = m_srvHeap->allocate();
+        if (!rtv || !entry.srv || !entry.srv->gpu
+            || (description.unorderedAccess && (!entry.uav || !entry.uav->gpu)))
         {
             LOG_ERROR("[PostProcess] Cannot allocate temporary texture views.");
             return nullptr;
@@ -146,7 +163,15 @@ namespace Engine
         srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srv.Texture2D.MipLevels = 1;
         m_device->CreateShaderResourceView(entry.resource.get(), &srv, entry.srv->cpu.native);
-        entry.image = { &entry.resource, *entry.srv->gpu, rtv->cpu };
+        if (entry.uav)
+        {
+            D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
+            uav.Format = description.format;
+            uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+            m_device->CreateUnorderedAccessView(entry.resource.get(), nullptr, &uav, entry.uav->cpu.native);
+        }
+        entry.image = { &entry.resource, *entry.srv->gpu, rtv->cpu,
+            entry.uav ? *entry.uav->gpu : DX12GpuDescriptorHandle{} };
         entry.borrowed = true;
         entry.touched = true;
         return &entry.image;

@@ -99,6 +99,8 @@ namespace Engine
         m_toneMapping.finalize();
         for (auto& pipeline : m_builtins)
             pipeline.finalize();
+        for (auto& pipeline : m_bloom)
+            pipeline.finalize();
         m_vertexShader.reset();
         m_lastFenceValue = 0;
         m_recorded = false;
@@ -223,6 +225,40 @@ namespace Engine
             .enableDepthWrite = false,
             .cullMode = D3D12_CULL_MODE_NONE,
         });
+    }
+
+    bool PostProcessPipeline::createBloomPipeline(DX12ComputePipeline& pipeline, const DX12Shader& shader)
+    {
+        const D3D12_DESCRIPTOR_RANGE inputRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, 0 };
+        const D3D12_DESCRIPTOR_RANGE secondaryRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, 0 };
+        const D3D12_DESCRIPTOR_RANGE outputRange{ D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, 0 };
+        std::array<D3D12_ROOT_PARAMETER, 7> parameters{};
+        parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[0].DescriptorTable = { 1, &inputRange };
+        parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        parameters[1].Constants = { 0, 0, 9 };
+        parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        parameters[2].Constants = { 1, 0, 4 };
+        parameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[3].DescriptorTable = { 1, &secondaryRange };
+        parameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        parameters[4].Constants = { 2, 0, 4 };
+        parameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[5].DescriptorTable = { 1, &outputRange };
+        parameters[6].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        parameters[6].Constants = { 3, 0, 4 };
+        const D3D12_STATIC_SAMPLER_DESC sampler{
+            .Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+            .AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+            .AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+            .AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+            .MaxAnisotropy = 1,
+            .ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS,
+            .MaxLOD = D3D12_FLOAT32_MAX,
+            .ShaderRegister = 0,
+            .ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL,
+        };
+        return pipeline.initialize(*m_device, shader, parameters, std::span(&sampler, 1));
     }
 
     bool PostProcessPipeline::configureOcio(const PostProcessOcioDescription* description)
@@ -490,7 +526,7 @@ namespace Engine
 
     bool PostProcessPipeline::rebuild(std::shared_ptr<const DX12Shader> vertex,
         std::shared_ptr<const DX12Shader> toneMapping, std::shared_ptr<const DX12Shader> output,
-        const PostProcessBuiltinShaders& builtins)
+        const PostProcessBuiltinShaders& builtins, const PostProcessBloomShaders& bloom)
     {
         if (m_device == nullptr || m_recorded || !vertex || !toneMapping || !output
             || !vertex->isCompiled() || !toneMapping->isCompiled() || !output->isCompiled())
@@ -505,6 +541,7 @@ namespace Engine
         DX12GraphicsPipeline nextOcio;
         DX12GraphicsPipeline nextCameraOcio;
         std::array<DX12GraphicsPipeline, POST_PROCESS_BUILTIN_ENTRIES.size()> nextBuiltins;
+        std::array<DX12ComputePipeline, POST_PROCESS_BLOOM_ENTRIES.size()> nextBloom;
         for (std::size_t index = 0; index < builtins.size(); ++index)
         {
             if (!builtins[index] || !builtins[index]->isCompiled())
@@ -515,6 +552,16 @@ namespace Engine
             const auto format = index == static_cast<std::size_t>(PostProcessBuiltin::AutoExposureDownsample)
                 ? DXGI_FORMAT_R32G32B32A32_FLOAT : DXGI_FORMAT_R16G16B16A16_FLOAT;
             if (!createPipeline(nextBuiltins[index], *vertex, *builtins[index], format))
+                return false;
+        }
+        for (std::size_t index = 0; index < bloom.size(); ++index)
+        {
+            if (!bloom[index] || !bloom[index]->isCompiled())
+            {
+                LOG_ERROR("[PostProcess] Missing Bloom shader '{}'.", POST_PROCESS_BLOOM_ENTRIES[index]);
+                return false;
+            }
+            if (!createBloomPipeline(nextBloom[index], *bloom[index]))
                 return false;
         }
         std::vector<PostProcessPassDescription> descriptions;
@@ -548,6 +595,8 @@ namespace Engine
         m_vertexShader = std::move(vertex);
         for (std::size_t index = 0; index < builtins.size(); ++index)
             m_builtins[index].swap(nextBuiltins[index]);
+        for (std::size_t index = 0; index < bloom.size(); ++index)
+            m_bloom[index].swap(nextBloom[index]);
         return true;
     }
 
@@ -654,6 +703,68 @@ namespace Engine
         }
         native->DrawInstanced(3, 1, 0, 0);
         ++m_statistics.drawCalls;
+        return true;
+    }
+
+    bool PostProcessPipeline::dispatchBloom(DX12CommandList& commandList, const PostProcessBloom stage,
+        const PostProcessImage& input, const PostProcessImage& output,
+        const D3D12_VIEWPORT& sourceViewport, const D3D12_VIEWPORT& targetViewport,
+        const std::span<const float> parameters, const PostProcessImage* secondary,
+        const D3D12_VIEWPORT* secondaryViewport)
+    {
+        const auto index = static_cast<std::size_t>(stage);
+        if (index >= m_bloom.size() || input.resource == nullptr || output.resource == nullptr
+            || input.resource == output.resource || (secondary && secondary->resource == output.resource)
+            || input.srv.native.ptr == 0 || output.uav.native.ptr == 0 || parameters.size() > 4
+            || (secondary && (secondary->resource == nullptr || secondary->srv.native.ptr == 0)))
+        {
+            LOG_ERROR("[PostProcess] Invalid or aliased Bloom compute resources.");
+            return false;
+        }
+        if (!input.resource->transition(commandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+            || (secondary && !secondary->resource->transition(commandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE))
+            || !output.resource->transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+            || !m_bloom[index].bind(commandList))
+            return false;
+        struct Constants
+        {
+            Vector4 source;
+            Vector4 target;
+            std::uint32_t exposureMode;
+        };
+        static_assert(sizeof(Constants) == sizeof(float) * 9);
+        const Constants constants{
+            Vector4(sourceViewport.TopLeftX, sourceViewport.TopLeftY, sourceViewport.Width, sourceViewport.Height),
+            Vector4(targetViewport.TopLeftX, targetViewport.TopLeftY, targetViewport.Width, targetViewport.Height),
+            0,
+        };
+        const auto& description = output.resource->getDescription();
+        const std::uint32_t left = static_cast<std::uint32_t>(std::floor(targetViewport.TopLeftX));
+        const std::uint32_t top = static_cast<std::uint32_t>(std::floor(targetViewport.TopLeftY));
+        const std::uint32_t right = std::min(static_cast<std::uint32_t>(description.Width),
+            static_cast<std::uint32_t>(std::ceil(targetViewport.TopLeftX + targetViewport.Width)));
+        const std::uint32_t bottom = std::min(description.Height,
+            static_cast<std::uint32_t>(std::ceil(targetViewport.TopLeftY + targetViewport.Height)));
+        if (left >= right || top >= bottom)
+            return true;
+        const std::array<std::uint32_t, 4> dispatch{ left, top, right, bottom };
+        std::array<float, 4> values{};
+        std::copy(parameters.begin(), parameters.end(), values.begin());
+        const auto& auxiliaryViewport = secondaryViewport ? *secondaryViewport : sourceViewport;
+        const Vector4 auxiliary(auxiliaryViewport.TopLeftX, auxiliaryViewport.TopLeftY,
+            auxiliaryViewport.Width, auxiliaryViewport.Height);
+        auto* const native = commandList.getForRecording();
+        ID3D12DescriptorHeap* const heap = m_srvHeap->get();
+        native->SetDescriptorHeaps(1, &heap);
+        native->SetComputeRootDescriptorTable(0, input.srv.native);
+        native->SetComputeRoot32BitConstants(1, 9, &constants, 0);
+        native->SetComputeRoot32BitConstants(2, 4, values.data(), 0);
+        native->SetComputeRootDescriptorTable(3, secondary ? secondary->srv.native : input.srv.native);
+        native->SetComputeRoot32BitConstants(4, 4, &auxiliary, 0);
+        native->SetComputeRootDescriptorTable(5, output.uav.native);
+        native->SetComputeRoot32BitConstants(6, 4, dispatch.data(), 0);
+        native->Dispatch((right - left + 7) / 8, (bottom - top + 7) / 8, 1);
+        ++m_statistics.dispatchCalls;
         return true;
     }
 
@@ -1311,15 +1422,16 @@ namespace Engine
         };
         const auto& fullSize = output.resource->getDescription();
         PostProcessTargetDescription description{
-            static_cast<std::uint32_t>((fullSize.Width + 1) / 2), (fullSize.Height + 1) / 2 };
+            static_cast<std::uint32_t>((fullSize.Width + 1) / 2), (fullSize.Height + 1) / 2,
+            DXGI_FORMAT_R16G16B16A16_FLOAT, true };
         std::size_t count = 0;
         levels[count] = acquireTarget(description);
         if (!levels[count])
             return fail();
         viewports[count] = temporaryViewport(viewport, description, fullSize);
-        const std::array<float, 16> prefilterParameters{ threshold };
-        if (!draw(commandList, m_builtins[static_cast<std::size_t>(PostProcessBuiltin::BloomPrefilter)],
-            *current, *levels[count], currentViewport, viewports[count], 1, false, prefilterParameters))
+        const std::array<float, 4> prefilterParameters{ threshold };
+        if (!dispatchBloom(commandList, PostProcessBloom::Prefilter,
+            *current, *levels[count], currentViewport, viewports[count], prefilterParameters))
             return fail();
         ++count;
         ++m_statistics.effectPasses;
@@ -1332,10 +1444,10 @@ namespace Engine
 
             const PostProcessTargetDescription nextDescription{
                 static_cast<std::uint32_t>((sourceDescription.Width + 1) / 2),
-                (sourceDescription.Height + 1) / 2 };
+                (sourceDescription.Height + 1) / 2, DXGI_FORMAT_R16G16B16A16_FLOAT, true };
             auto* const horizontal = acquireTarget({
                 static_cast<std::uint32_t>(sourceDescription.Width),
-                sourceDescription.Height });
+                sourceDescription.Height, DXGI_FORMAT_R16G16B16A16_FLOAT, true });
             if (!horizontal)
                 return fail();
             levels[count] = acquireTarget(nextDescription);
@@ -1346,15 +1458,14 @@ namespace Engine
                 return fail();
             }
             viewports[count] = temporaryViewport(viewport, nextDescription, fullSize);
-            const std::array<float, 16> horizontalParameters{ 0.0f, sizeScale };
-            const std::array<float, 16> verticalParameters{ 1.0f, sizeScale };
-            const bool blurred = draw(commandList,
-                m_builtins[static_cast<std::size_t>(PostProcessBuiltin::BloomDownsample)],
+            const std::array<float, 4> horizontalParameters{ 0.0f, sizeScale };
+            const std::array<float, 4> verticalParameters{ 1.0f, sizeScale };
+            const bool blurred = dispatchBloom(commandList, PostProcessBloom::Downsample,
                 *levels[count - 1], *horizontal, viewports[count - 1], viewports[count - 1],
-                1, false, horizontalParameters)
-                && draw(commandList, m_builtins[static_cast<std::size_t>(PostProcessBuiltin::BloomDownsample)],
+                horizontalParameters)
+                && dispatchBloom(commandList, PostProcessBloom::Downsample,
                     *horizontal, *levels[count], viewports[count - 1], viewports[count],
-                    1, false, verticalParameters);
+                    verticalParameters);
             if (!releaseTarget(*horizontal) || !blurred)
                 return fail();
             m_statistics.effectPasses += 2;
@@ -1364,12 +1475,13 @@ namespace Engine
         {
             const auto& highDescription = levels[index - 1]->resource->getDescription();
             auto* const next = acquireTarget({
-                static_cast<std::uint32_t>(highDescription.Width), highDescription.Height });
+                static_cast<std::uint32_t>(highDescription.Width), highDescription.Height,
+                DXGI_FORMAT_R16G16B16A16_FLOAT, true });
             if (!next)
                 return fail();
-            const std::array<float, 16> parameters{ scatter };
-            if (!draw(commandList, m_builtins[static_cast<std::size_t>(PostProcessBuiltin::BloomUpsample)],
-                *levels[index - 1], *next, viewports[index - 1], viewports[index - 1], 1, false, parameters,
+            const std::array<float, 4> parameters{ scatter };
+            if (!dispatchBloom(commandList, PostProcessBloom::Upsample,
+                *levels[index - 1], *next, viewports[index - 1], viewports[index - 1], parameters,
                 levels[index], &viewports[index])
                 || !releaseTarget(*levels[index]) || !releaseTarget(*levels[index - 1]))
                 return fail();
@@ -1377,12 +1489,13 @@ namespace Engine
             levels[index - 1] = next;
         }
         auto* const composite = acquireTarget({
-            static_cast<std::uint32_t>(fullSize.Width), fullSize.Height });
+            static_cast<std::uint32_t>(fullSize.Width), fullSize.Height,
+            DXGI_FORMAT_R16G16B16A16_FLOAT, true });
         if (!composite)
             return fail();
-        const std::array<float, 16> parameters{ intensity };
-        if (!draw(commandList, m_builtins[static_cast<std::size_t>(PostProcessBuiltin::BloomComposite)],
-            *current, *composite, currentViewport, viewport, 1, false, parameters,
+        const std::array<float, 4> parameters{ intensity };
+        if (!dispatchBloom(commandList, PostProcessBloom::Composite,
+            *current, *composite, currentViewport, viewport, parameters,
             levels[0], &viewports[0])
             || !releaseTarget(*levels[0]) || (borrowed && !m_targets.release(*borrowed)))
             return fail();

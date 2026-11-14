@@ -307,6 +307,16 @@ namespace Engine
                 / (std::string("PostProcessEffects_") + POST_PROCESS_BUILTIN_ENTRIES[index] + "_ps.cso");
             m_postProcessBuiltinShaderIDs[index] = m_shaderManager.registerShader(postProcessDesc);
         }
+        postProcessDesc.sourcePath = "Assets/Shaders/Bloom.hlsl";
+        postProcessDesc.stage = ShaderStage::Compute;
+        postProcessDesc.optimize = true;
+        for (std::size_t index = 0; index < POST_PROCESS_BLOOM_ENTRIES.size(); ++index)
+        {
+            postProcessDesc.entryPoint = POST_PROCESS_BLOOM_ENTRIES[index];
+            postProcessDesc.outputPath = std::filesystem::path("Assets\\Shaders\\Compiled")
+                / (std::string("Bloom_") + POST_PROCESS_BLOOM_ENTRIES[index] + "_cs.cso");
+            m_postProcessBloomShaderIDs[index] = m_shaderManager.registerShader(postProcessDesc);
+        }
         const ShaderCompileDesc debugVertexShaderDesc{
             .sourcePath = "Assets/Shaders/DebugPrimitive.hlsl",
             .outputPath = "Assets/Shaders/Compiled/DebugPrimitive_vsMain_vs.cso",
@@ -516,6 +526,7 @@ namespace Engine
         m_postProcessToneMappingShaderID = 0;
         m_postProcessOutputShaderID = 0;
         m_postProcessBuiltinShaderIDs.fill(0);
+        m_postProcessBloomShaderIDs.fill(0);
         m_debugVertexShaderID = 0;
         m_debugShapeVertexShaderID = 0;
         m_debugPixelShaderID = 0;
@@ -1569,6 +1580,9 @@ namespace Engine
         PostProcessBuiltinShaders postProcessBuiltins;
         for (std::size_t index = 0; index < postProcessBuiltins.size(); ++index)
             postProcessBuiltins[index] = m_shaderManager.get(m_postProcessBuiltinShaderIDs[index]);
+        PostProcessBloomShaders postProcessBloom;
+        for (std::size_t index = 0; index < postProcessBloom.size(); ++index)
+            postProcessBloom[index] = m_shaderManager.get(m_postProcessBloomShaderIDs[index]);
         const auto debugVertexShader = m_shaderManager.get(m_debugVertexShaderID);
         const auto debugShapeVertexShader = m_shaderManager.get(m_debugShapeVertexShaderID);
         const auto debugPixelShader = m_shaderManager.get(m_debugPixelShaderID);
@@ -1816,7 +1830,8 @@ namespace Engine
                 nextHiZPipeline, nextOcclusionPipeline)
             || !DebugPrimitive::instance().rebuildPipeline(*debugVertexShader, *debugShapeVertexShader, *debugPixelShader)
             || !m_materialGpuCache.rebuildAll()
-            || !m_postProcess.rebuild(postProcessVertexShader, postProcessToneMappingShader, postProcessOutputShader, postProcessBuiltins))
+            || !m_postProcess.rebuild(postProcessVertexShader, postProcessToneMappingShader, postProcessOutputShader,
+                postProcessBuiltins, postProcessBloom))
         {
             return false;
         }
