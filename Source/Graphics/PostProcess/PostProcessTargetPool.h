@@ -11,6 +11,7 @@ namespace Engine
         DX12Resource* resource = nullptr;                 //!< Non-owning texture.
         DX12GpuDescriptorHandle srv{};                   //!< Shader-visible SRV.
         DX12CpuDescriptorHandle rtv{};                   //!< Render target view.
+        DX12GpuDescriptorHandle uav{};                   //!< Optional shader-visible UAV.
     };
 
     /** @brief 解像度と色精度が一致する一時画像の設定。 */
@@ -19,11 +20,12 @@ namespace Engine
         std::uint32_t width = 0; //!< Pixel width.
         std::uint32_t height = 0; //!< Pixel height.
         DXGI_FORMAT format = DXGI_FORMAT_R16G16B16A16_FLOAT; //!< Linear color format.
+        bool unorderedAccess = false; //!< Create a typed UAV for compute output.
         bool operator==(const PostProcessTargetDescription&) const = default;
     };
 
     /**
-     * @brief Fence付き一時RTV/SRV Textureの再利用Pool。
+     * @brief Fence付き一時RTV/SRV Textureと任意のUAVの再利用Pool。
      * @details acquire/releaseは同じコマンド列内の論理寿命。GPU寿命はmarkSubmittedで追跡する。
      * @thread_safety Render thread only. The device, fence and SRV heap must outlive this pool.
      */
@@ -58,6 +60,7 @@ namespace Engine
             PostProcessImage image;
             PostProcessTargetDescription description;
             std::optional<DX12DescriptorAllocation> srv;
+            std::optional<DX12DescriptorAllocation> uav;
             DX12DescriptorHeap rtvHeap;
             std::uint64_t fenceValue = 0;
             bool borrowed = false;

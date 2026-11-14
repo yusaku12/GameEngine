@@ -420,6 +420,7 @@
     <None Include="Assets\Shaders\Deferred.hlsl" />
     <None Include="Assets\Shaders\PostProcess.hlsl" />
     <None Include="Assets\Shaders\PostProcessEffects.hlsl" />
+    <None Include="Assets\Shaders\Bloom.hlsl" />
     <None Include="Assets\Shaders\PostProcessExample.hlsl" />
     <None Include="Assets\Shaders\PostProcess.hlsli" />
     <None Include="Assets\Shaders\ColorOutput.hlsli" />

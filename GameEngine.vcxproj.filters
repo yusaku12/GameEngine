@@ -1474,6 +1474,9 @@
     <None Include="Assets\Shaders\PostProcessEffects.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>
+    <None Include="Assets\Shaders\Bloom.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
     <None Include="Assets\Shaders\PostProcessExample.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>

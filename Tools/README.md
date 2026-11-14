@@ -550,6 +550,8 @@ fence 対応プールで管理します。Forward、`Nothing` clear mode、G-Buf
   順にアップサンプル・加算します。最後もtentフィルターで元画像へ加算します。しきい値は露出前の
   scene-referred BT.709輝度で評価し、`-1` は全ピクセルを含めます。Size Scale はGaussianの
   サンプル半径、Scatter は各低解像度レベルの加算寄与、Intensity は最終HDR加算の強度を制御します。
+  各段階は Compute Shader で実行し、RGBA16F の typed UAV store に対応する GPU が必要です。
+  一時画像は既存の fence 対応プールで管理し、描画回数とは別に dispatch 回数を記録します。
 - **Exposure** の Mode は Off、Manual、Automatic から選びます。Manual は `exp2(EV * Weight)`、
   Automatic は測光結果から求めた EV を使います。Volume の補間中は両モードを連続的に切り替えます。
   設定値はモードとは別にオーバーライドできます。極端な EV でのオーバーフローを防ぐため、
