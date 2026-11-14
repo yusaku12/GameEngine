@@ -228,37 +228,6 @@ float4 psTemporalAA(PostProcessVertex input) : SV_Target0
     return float4(lerp(current, clampedHistory, feedback), currentDepth);
 }
 
-float logLuminance(float3 color)
-{
-    return log2(max(dot(max(color, 0.0f), float3(0.2126f, 0.7152f, 0.0722f)), 0.0001f));
-}
-
-float4 psAutoExposureDownsample(PostProcessVertex input) : SV_Target0
-{
-    const int2 first = int2(sourceViewport.xy);
-    const int2 end = first + int2(sourceViewport.zw);
-    const int2 base = first + int2(input.position.xy) * 2;
-    float weightedSum = 0.0f;
-    float totalWeight = 0.0f;
-    [unroll]
-    for (int y = 0; y < 2; ++y)
-    {
-        [unroll]
-        for (int x = 0; x < 2; ++x)
-        {
-            const int2 position = base + int2(x, y);
-            if (all(position < end))
-            {
-                const float4 value = inputColor.Load(int3(position, 0));
-                const float weight = parameters[0].x > 0.5f ? 1.0f : value.g;
-                weightedSum += (parameters[0].x > 0.5f ? logLuminance(value.rgb) : value.r) * weight;
-                totalWeight += weight;
-            }
-        }
-    }
-    return float4(weightedSum / totalWeight, totalWeight * 0.25f, 0.0f, 1.0f);
-}
-
 float4 psAutoExposureAdapt(PostProcessVertex input) : SV_Target0
 {
     const float averageLogLuminance = loadInputColor(input.position.xy).r;

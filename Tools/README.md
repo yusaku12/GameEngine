@@ -737,6 +737,8 @@ Camera ごとの HDR 履歴を再投影し、深度で disocclusion を排除し
 projection type は不変の PostEffect snapshot に保存されます。
 
 自動露出は、Camera viewport 内の画素を重み付き縮小チェーンで集計し、現在フレームの HDR 対数平均輝度を計算します。
+輝度の集約は Compute Shader で行い、16×16 画素ごとに従来の 2×2 縮小を4段まとめます。
+一時画像には RGBA32F typed UAV store の対応が必要です。Compute 化による高速化は保証されません。
 奇数サイズや分割 viewport でも各画素を一度ずつ評価し、縮小端の画素を過大評価しません。
 この値と key、compensation、最小／最大値から EV を算出します。Phase 7 では明るくする速度と暗くする速度を
 分けた、Camera ごとの時間適応が追加されます。算出値は HDR 縮小と Bloom の後、トーンマッピング時に
@@ -1066,6 +1068,10 @@ GameObject を作成し、Inspector で **Light** を追加します。Direction
 Directional と Spot はローカル **+Z** 方向へ光を放つため、照射方向は Transform の回転で調整します。
 Spot angle は内側／外側の円錐角全体を指定します。アクティブ Scene と persistent Scene の有効な
 ライトは、編集中や一時停止中も描画されます。最大32灯まで対応し、超過分はログに記録されます。
+Deferred の不透明面では、ライトが16灯以上の場合、Compute Shader が 8×8 画素ごとに
+可視面のワールド空間境界を集約し、Point/Spot の到達範囲と交差しないライトを除外します。
+Directional は常に対象とし、Spot は保守的に Range の範囲で判定します。透明描画と
+ボリュームフォグは従来どおり全ライトを評価します。効果は配置や GPU に依存します。
 
 **Cast Shadow** が有効な最初の Directional light が、2048x2048 の動的 shadow map を所有します。
 シーンのスケールに合わせて Shadow Distance、Shadow Bias、Normal Bias を設定してください。

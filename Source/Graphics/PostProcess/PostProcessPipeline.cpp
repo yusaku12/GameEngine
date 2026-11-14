@@ -102,6 +102,7 @@ namespace Engine
         for (auto& pipeline : m_bloom)
             pipeline.finalize();
         m_lightShafts.finalize();
+        m_autoExposure.finalize();
         m_lightShaftsFallback.finalize();
         m_vertexShader.reset();
         m_lastFenceValue = 0;
@@ -529,11 +530,13 @@ namespace Engine
     bool PostProcessPipeline::rebuild(std::shared_ptr<const DX12Shader> vertex,
         std::shared_ptr<const DX12Shader> toneMapping, std::shared_ptr<const DX12Shader> output,
         const PostProcessBuiltinShaders& builtins, const PostProcessBloomShaders& bloom,
-        std::shared_ptr<const DX12Shader> lightShafts, std::shared_ptr<const DX12Shader> lightShaftsFallback)
+        std::shared_ptr<const DX12Shader> lightShafts, std::shared_ptr<const DX12Shader> lightShaftsFallback,
+        std::shared_ptr<const DX12Shader> autoExposure)
     {
         if (m_device == nullptr || m_recorded || !vertex || !toneMapping || !output
-            || !lightShafts || !lightShaftsFallback || !vertex->isCompiled() || !toneMapping->isCompiled()
-            || !output->isCompiled() || !lightShafts->isCompiled() || !lightShaftsFallback->isCompiled())
+            || !lightShafts || !lightShaftsFallback || !autoExposure || !vertex->isCompiled() || !toneMapping->isCompiled()
+            || !output->isCompiled() || !lightShafts->isCompiled() || !lightShaftsFallback->isCompiled()
+            || !autoExposure->isCompiled())
         {
             LOG_ERROR("[PostProcess] Invalid shader rebuild or unsubmitted commands.");
             return false;
@@ -547,6 +550,7 @@ namespace Engine
         std::array<DX12GraphicsPipeline, POST_PROCESS_BUILTIN_ENTRIES.size()> nextBuiltins;
         std::array<DX12ComputePipeline, POST_PROCESS_BLOOM_ENTRIES.size()> nextBloom;
         DX12ComputePipeline nextLightShafts;
+        DX12ComputePipeline nextAutoExposure;
         DX12GraphicsPipeline nextLightShaftsFallback;
         for (std::size_t index = 0; index < builtins.size(); ++index)
         {
@@ -555,9 +559,7 @@ namespace Engine
                 LOG_ERROR("[PostProcess] Missing built-in shader '{}'.", POST_PROCESS_BUILTIN_ENTRIES[index]);
                 return false;
             }
-            const auto format = index == static_cast<std::size_t>(PostProcessBuiltin::AutoExposureDownsample)
-                ? DXGI_FORMAT_R32G32B32A32_FLOAT : DXGI_FORMAT_R16G16B16A16_FLOAT;
-            if (!createPipeline(nextBuiltins[index], *vertex, *builtins[index], format))
+            if (!createPipeline(nextBuiltins[index], *vertex, *builtins[index], DXGI_FORMAT_R16G16B16A16_FLOAT))
                 return false;
         }
         for (std::size_t index = 0; index < bloom.size(); ++index)
@@ -571,6 +573,7 @@ namespace Engine
                 return false;
         }
         if (!createComputePipeline(nextLightShafts, *lightShafts)
+            || !createComputePipeline(nextAutoExposure, *autoExposure)
             || !createPipeline(nextLightShaftsFallback, *vertex, *lightShaftsFallback, DXGI_FORMAT_R16G16B16A16_FLOAT))
             return false;
         std::vector<PostProcessPassDescription> descriptions;
@@ -607,6 +610,7 @@ namespace Engine
         for (std::size_t index = 0; index < bloom.size(); ++index)
             m_bloom[index].swap(nextBloom[index]);
         m_lightShafts.swap(nextLightShafts);
+        m_autoExposure.swap(nextAutoExposure);
         m_lightShaftsFallback.swap(nextLightShaftsFallback);
         return true;
     }
@@ -721,7 +725,7 @@ namespace Engine
         const PostProcessImage& input, const PostProcessImage& output,
         const D3D12_VIEWPORT& sourceViewport, const D3D12_VIEWPORT& targetViewport,
         const std::span<const float> parameters, const PostProcessImage* secondary,
-        const D3D12_VIEWPORT* secondaryViewport)
+        const D3D12_VIEWPORT* secondaryViewport, const bool groupPerPixel)
     {
         if (input.resource == nullptr || output.resource == nullptr
             || input.resource == output.resource || (secondary && secondary->resource == output.resource)
@@ -773,7 +777,8 @@ namespace Engine
         native->SetComputeRoot32BitConstants(4, 4, &auxiliary, 0);
         native->SetComputeRootDescriptorTable(5, output.uav.native);
         native->SetComputeRoot32BitConstants(6, 4, dispatch.data(), 0);
-        native->Dispatch((right - left + 7) / 8, (bottom - top + 7) / 8, 1);
+        native->Dispatch(groupPerPixel ? right - left : (right - left + 7) / 8,
+            groupPerPixel ? bottom - top : (bottom - top + 7) / 8, 1);
         ++m_statistics.dispatchCalls;
         return true;
     }
@@ -1345,7 +1350,7 @@ namespace Engine
         const auto width = static_cast<std::uint32_t>(right - left);
         const auto height = static_cast<std::uint32_t>(bottom - top);
         PostProcessTargetDescription description{
-            (width + 1) / 2, (height + 1) / 2, DXGI_FORMAT_R32G32B32A32_FLOAT,
+            (width + 15) / 16, (height + 15) / 16, DXGI_FORMAT_R32G32B32A32_FLOAT, true,
         };
         const PostProcessImage* source = &input;
         PostProcessImage* previous = nullptr;
@@ -1358,11 +1363,10 @@ namespace Engine
                 return nullptr;
             const D3D12_VIEWPORT targetViewport{ 0, 0, static_cast<float>(description.width),
                 static_cast<float>(description.height), 0, 1 };
-            std::array<float, 16> parameters{};
+            std::array<float, 4> parameters{};
             parameters[0] = level == 0 ? 1.0f : 0.0f;
-            if (!draw(commandList,
-                m_builtins[static_cast<std::size_t>(PostProcessBuiltin::AutoExposureDownsample)],
-                *source, *target, sourcePixels, targetViewport, 1, false, parameters))
+            if (!dispatchCompute(commandList, m_autoExposure, *source, *target,
+                sourcePixels, targetViewport, parameters, nullptr, nullptr, true))
                 return nullptr;
             if (previous && !m_targets.release(*previous))
                 return nullptr;
@@ -1372,8 +1376,8 @@ namespace Engine
             ++m_statistics.effectPasses;
             if (description.width == 1 && description.height == 1)
                 return target;
-            description.width = (description.width + 1) / 2;
-            description.height = (description.height + 1) / 2;
+            description.width = (description.width + 15) / 16;
+            description.height = (description.height + 15) / 16;
         }
         LOG_ERROR("[PostProcess] Automatic exposure downsample exceeded its bounded mip chain.");
         return nullptr;
