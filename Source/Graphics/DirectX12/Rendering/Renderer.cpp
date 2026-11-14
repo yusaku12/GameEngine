@@ -227,7 +227,7 @@ namespace Engine
             .shaderModel = ShaderModel::SM_6_0,
             .languageVersion = HlslLanguageVersion::Hlsl2021,
             .debug = true,
-            .optimize = false,
+            .optimize = true,
         };
         const ShaderCompileDesc modelPixelShaderDesc{
             .sourcePath = "Assets/Shaders/Model.hlsl",
@@ -237,7 +237,7 @@ namespace Engine
             .shaderModel = ShaderModel::SM_6_0,
             .languageVersion = HlslLanguageVersion::Hlsl2021,
             .debug = true,
-            .optimize = false,
+            .optimize = true,
         };
         m_modelVertexShaderID = m_shaderManager.registerShader(modelVertexShaderDesc);
         ShaderCompileDesc skinningComputeShaderDesc = modelVertexShaderDesc;
@@ -269,7 +269,7 @@ namespace Engine
             .shaderModel = ShaderModel::SM_6_0,
             .languageVersion = HlslLanguageVersion::Hlsl2021,
             .debug = true,
-            .optimize = false,
+            .optimize = true,
         };
         m_deferredVertexShaderID = m_shaderManager.registerShader(deferredVertexShaderDesc);
         const ShaderCompileDesc deferredComputeShaderDesc{
@@ -280,7 +280,7 @@ namespace Engine
             .shaderModel = ShaderModel::SM_6_0,
             .languageVersion = HlslLanguageVersion::Hlsl2021,
             .debug = true,
-            .optimize = false,
+            .optimize = true,
         };
         m_deferredLightingComputeShaderID = m_shaderManager.registerShader(deferredComputeShaderDesc);
         ShaderCompileDesc deferredPixelShaderDesc = deferredComputeShaderDesc;
@@ -309,7 +309,6 @@ namespace Engine
         }
         postProcessDesc.sourcePath = "Assets/Shaders/Bloom.hlsl";
         postProcessDesc.stage = ShaderStage::Compute;
-        postProcessDesc.optimize = true;
         for (std::size_t index = 0; index < POST_PROCESS_BLOOM_ENTRIES.size(); ++index)
         {
             postProcessDesc.entryPoint = POST_PROCESS_BLOOM_ENTRIES[index];
@@ -324,13 +323,11 @@ namespace Engine
         postProcessDesc.outputPath = "Assets/Shaders/Compiled/LightShafts_psLightShaftsFallback_ps.cso";
         postProcessDesc.entryPoint = "psLightShaftsFallback";
         postProcessDesc.stage = ShaderStage::Pixel;
-        postProcessDesc.optimize = false;
         m_lightShaftsFallbackShaderID = m_shaderManager.registerShader(postProcessDesc);
         postProcessDesc.sourcePath = "Assets/Shaders/AutoExposure.hlsl";
         postProcessDesc.outputPath = "Assets/Shaders/Compiled/AutoExposure_csAutoExposure_cs.cso";
         postProcessDesc.entryPoint = "csAutoExposure";
         postProcessDesc.stage = ShaderStage::Compute;
-        postProcessDesc.optimize = true;
         m_autoExposureComputeShaderID = m_shaderManager.registerShader(postProcessDesc);
         const ShaderCompileDesc debugVertexShaderDesc{
             .sourcePath = "Assets/Shaders/DebugPrimitive.hlsl",
@@ -340,7 +337,7 @@ namespace Engine
             .shaderModel = ShaderModel::SM_6_0,
             .languageVersion = HlslLanguageVersion::Hlsl2021,
             .debug = true,
-            .optimize = false,
+            .optimize = true,
         };
         const ShaderCompileDesc debugPixelShaderDesc{
             .sourcePath = "Assets/Shaders/DebugPrimitive.hlsl",
@@ -350,7 +347,7 @@ namespace Engine
             .shaderModel = ShaderModel::SM_6_0,
             .languageVersion = HlslLanguageVersion::Hlsl2021,
             .debug = true,
-            .optimize = false,
+            .optimize = true,
         };
         m_debugVertexShaderID = m_shaderManager.registerShader(debugVertexShaderDesc);
         ShaderCompileDesc debugShapeVertexShaderDesc = debugVertexShaderDesc;

@@ -56,13 +56,13 @@ $jobs = @(
     @{ Source = Join-Path $ShaderRoot "PostProcess.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "PostProcess_vsMain_vs.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcess.hlsl"; Entry = "psToneMapping"; Target = "ps_6_0"; Output = "PostProcess_psToneMapping_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcess.hlsl"; Entry = "psOutput"; Target = "ps_6_0"; Output = "PostProcess_psOutput_ps.cso" },
-    @{ Source = Join-Path $ShaderRoot "Bloom.hlsl"; Entry = "csBloomPrefilter"; Target = "cs_6_0"; Output = "Bloom_csBloomPrefilter_cs.cso"; Optimize = $true },
-    @{ Source = Join-Path $ShaderRoot "Bloom.hlsl"; Entry = "csBloomDownsample"; Target = "cs_6_0"; Output = "Bloom_csBloomDownsample_cs.cso"; Optimize = $true },
-    @{ Source = Join-Path $ShaderRoot "Bloom.hlsl"; Entry = "csBloomUpsample"; Target = "cs_6_0"; Output = "Bloom_csBloomUpsample_cs.cso"; Optimize = $true },
-    @{ Source = Join-Path $ShaderRoot "Bloom.hlsl"; Entry = "csBloomComposite"; Target = "cs_6_0"; Output = "Bloom_csBloomComposite_cs.cso"; Optimize = $true },
-    @{ Source = Join-Path $ShaderRoot "LightShafts.hlsl"; Entry = "csLightShafts"; Target = "cs_6_0"; Output = "LightShafts_csLightShafts_cs.cso"; Optimize = $true },
+    @{ Source = Join-Path $ShaderRoot "Bloom.hlsl"; Entry = "csBloomPrefilter"; Target = "cs_6_0"; Output = "Bloom_csBloomPrefilter_cs.cso" },
+    @{ Source = Join-Path $ShaderRoot "Bloom.hlsl"; Entry = "csBloomDownsample"; Target = "cs_6_0"; Output = "Bloom_csBloomDownsample_cs.cso" },
+    @{ Source = Join-Path $ShaderRoot "Bloom.hlsl"; Entry = "csBloomUpsample"; Target = "cs_6_0"; Output = "Bloom_csBloomUpsample_cs.cso" },
+    @{ Source = Join-Path $ShaderRoot "Bloom.hlsl"; Entry = "csBloomComposite"; Target = "cs_6_0"; Output = "Bloom_csBloomComposite_cs.cso" },
+    @{ Source = Join-Path $ShaderRoot "LightShafts.hlsl"; Entry = "csLightShafts"; Target = "cs_6_0"; Output = "LightShafts_csLightShafts_cs.cso" },
     @{ Source = Join-Path $ShaderRoot "LightShafts.hlsl"; Entry = "psLightShaftsFallback"; Target = "ps_6_0"; Output = "LightShafts_psLightShaftsFallback_ps.cso" },
-    @{ Source = Join-Path $ShaderRoot "AutoExposure.hlsl"; Entry = "csAutoExposure"; Target = "cs_6_0"; Output = "AutoExposure_csAutoExposure_cs.cso"; Optimize = $true },
+    @{ Source = Join-Path $ShaderRoot "AutoExposure.hlsl"; Entry = "csAutoExposure"; Target = "cs_6_0"; Output = "AutoExposure_csAutoExposure_cs.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psCustomComposite"; Target = "ps_6_0"; Output = "PostProcessEffects_psCustomComposite_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psVignette"; Target = "ps_6_0"; Output = "PostProcessEffects_psVignette_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psChromaticAberration"; Target = "ps_6_0"; Output = "PostProcessEffects_psChromaticAberration_ps.cso" },
@@ -75,18 +75,17 @@ $jobs = @(
     @{ Source = Join-Path $ShaderRoot "DebugPrimitive.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "DebugPrimitive_vsMain_vs.cso" },
     @{ Source = Join-Path $ShaderRoot "DebugPrimitive.hlsl"; Entry = "vsShape"; Target = "vs_6_0"; Output = "DebugPrimitive_vsShape_vs.cso" },
     @{ Source = Join-Path $ShaderRoot "DebugPrimitive.hlsl"; Entry = "psMain"; Target = "ps_6_0"; Output = "DebugPrimitive_psMain_ps.cso" },
-    @{ Source = Join-Path $ShaderRoot "HiZ.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "HiZ_csMain_cs.cso"; Optimize = $true },
-    @{ Source = Join-Path $ShaderRoot "Occlusion.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "Occlusion_csMain_cs.cso"; Optimize = $true },
-    @{ Source = Join-Path $ShaderRoot "TerrainNoise.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "TerrainNoise_csMain_cs.cso"; Optimize = $true; WarningsAsErrors = $true },
-    @{ Source = Join-Path $ShaderRoot "TerrainMesh.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "TerrainMesh_csMain_cs.cso"; Optimize = $true; WarningsAsErrors = $true }
+    @{ Source = Join-Path $ShaderRoot "HiZ.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "HiZ_csMain_cs.cso" },
+    @{ Source = Join-Path $ShaderRoot "Occlusion.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "Occlusion_csMain_cs.cso" },
+    @{ Source = Join-Path $ShaderRoot "TerrainNoise.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "TerrainNoise_csMain_cs.cso"; WarningsAsErrors = $true },
+    @{ Source = Join-Path $ShaderRoot "TerrainMesh.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "TerrainMesh_csMain_cs.cso"; WarningsAsErrors = $true }
 )
 
 $outputs = @()
 $dependencies = @()
 $compiled = 0
 foreach ($job in $jobs) {
-    $optimization = "-Od"
-    if ($job.Optimize) { $optimization = "-O3" }
+    $optimization = "-O3"
     $output = Join-Path $OutputRoot $job.Output
     $recordFile = Join-Path $stateRoot ($job.Output + ".json")
     $settings = "$toolIdentity|$sourceInventory|$ShaderRoot|$($job.Source)|$($job.Entry)|$($job.Target)|$optimization|$($job.WarningsAsErrors)|-HV 2021 -Zi -Qembed_debug"
