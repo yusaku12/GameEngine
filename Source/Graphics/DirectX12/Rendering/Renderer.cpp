@@ -317,6 +317,15 @@ namespace Engine
                 / (std::string("Bloom_") + POST_PROCESS_BLOOM_ENTRIES[index] + "_cs.cso");
             m_postProcessBloomShaderIDs[index] = m_shaderManager.registerShader(postProcessDesc);
         }
+        postProcessDesc.sourcePath = "Assets/Shaders/LightShafts.hlsl";
+        postProcessDesc.outputPath = "Assets/Shaders/Compiled/LightShafts_csLightShafts_cs.cso";
+        postProcessDesc.entryPoint = "csLightShafts";
+        m_lightShaftsComputeShaderID = m_shaderManager.registerShader(postProcessDesc);
+        postProcessDesc.outputPath = "Assets/Shaders/Compiled/LightShafts_psLightShaftsFallback_ps.cso";
+        postProcessDesc.entryPoint = "psLightShaftsFallback";
+        postProcessDesc.stage = ShaderStage::Pixel;
+        postProcessDesc.optimize = false;
+        m_lightShaftsFallbackShaderID = m_shaderManager.registerShader(postProcessDesc);
         const ShaderCompileDesc debugVertexShaderDesc{
             .sourcePath = "Assets/Shaders/DebugPrimitive.hlsl",
             .outputPath = "Assets/Shaders/Compiled/DebugPrimitive_vsMain_vs.cso",
@@ -527,6 +536,8 @@ namespace Engine
         m_postProcessOutputShaderID = 0;
         m_postProcessBuiltinShaderIDs.fill(0);
         m_postProcessBloomShaderIDs.fill(0);
+        m_lightShaftsComputeShaderID = 0;
+        m_lightShaftsFallbackShaderID = 0;
         m_debugVertexShaderID = 0;
         m_debugShapeVertexShaderID = 0;
         m_debugPixelShaderID = 0;
@@ -1583,6 +1594,8 @@ namespace Engine
         PostProcessBloomShaders postProcessBloom;
         for (std::size_t index = 0; index < postProcessBloom.size(); ++index)
             postProcessBloom[index] = m_shaderManager.get(m_postProcessBloomShaderIDs[index]);
+        const auto lightShaftsComputeShader = m_shaderManager.get(m_lightShaftsComputeShaderID);
+        const auto lightShaftsFallbackShader = m_shaderManager.get(m_lightShaftsFallbackShaderID);
         const auto debugVertexShader = m_shaderManager.get(m_debugVertexShaderID);
         const auto debugShapeVertexShader = m_shaderManager.get(m_debugShapeVertexShaderID);
         const auto debugPixelShader = m_shaderManager.get(m_debugPixelShaderID);
@@ -1831,7 +1844,7 @@ namespace Engine
             || !DebugPrimitive::instance().rebuildPipeline(*debugVertexShader, *debugShapeVertexShader, *debugPixelShader)
             || !m_materialGpuCache.rebuildAll()
             || !m_postProcess.rebuild(postProcessVertexShader, postProcessToneMappingShader, postProcessOutputShader,
-                postProcessBuiltins, postProcessBloom))
+                postProcessBuiltins, postProcessBloom, lightShaftsComputeShader, lightShaftsFallbackShader))
         {
             return false;
         }

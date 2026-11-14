@@ -101,6 +101,8 @@ namespace Engine
             pipeline.finalize();
         for (auto& pipeline : m_bloom)
             pipeline.finalize();
+        m_lightShafts.finalize();
+        m_lightShaftsFallback.finalize();
         m_vertexShader.reset();
         m_lastFenceValue = 0;
         m_recorded = false;
@@ -227,7 +229,7 @@ namespace Engine
         });
     }
 
-    bool PostProcessPipeline::createBloomPipeline(DX12ComputePipeline& pipeline, const DX12Shader& shader)
+    bool PostProcessPipeline::createComputePipeline(DX12ComputePipeline& pipeline, const DX12Shader& shader)
     {
         const D3D12_DESCRIPTOR_RANGE inputRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, 0 };
         const D3D12_DESCRIPTOR_RANGE secondaryRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, 0 };
@@ -238,7 +240,7 @@ namespace Engine
         parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         parameters[1].Constants = { 0, 0, 9 };
         parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        parameters[2].Constants = { 1, 0, 4 };
+        parameters[2].Constants = { 1, 0, 12 };
         parameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         parameters[3].DescriptorTable = { 1, &secondaryRange };
         parameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
@@ -526,10 +528,12 @@ namespace Engine
 
     bool PostProcessPipeline::rebuild(std::shared_ptr<const DX12Shader> vertex,
         std::shared_ptr<const DX12Shader> toneMapping, std::shared_ptr<const DX12Shader> output,
-        const PostProcessBuiltinShaders& builtins, const PostProcessBloomShaders& bloom)
+        const PostProcessBuiltinShaders& builtins, const PostProcessBloomShaders& bloom,
+        std::shared_ptr<const DX12Shader> lightShafts, std::shared_ptr<const DX12Shader> lightShaftsFallback)
     {
         if (m_device == nullptr || m_recorded || !vertex || !toneMapping || !output
-            || !vertex->isCompiled() || !toneMapping->isCompiled() || !output->isCompiled())
+            || !lightShafts || !lightShaftsFallback || !vertex->isCompiled() || !toneMapping->isCompiled()
+            || !output->isCompiled() || !lightShafts->isCompiled() || !lightShaftsFallback->isCompiled())
         {
             LOG_ERROR("[PostProcess] Invalid shader rebuild or unsubmitted commands.");
             return false;
@@ -542,6 +546,8 @@ namespace Engine
         DX12GraphicsPipeline nextCameraOcio;
         std::array<DX12GraphicsPipeline, POST_PROCESS_BUILTIN_ENTRIES.size()> nextBuiltins;
         std::array<DX12ComputePipeline, POST_PROCESS_BLOOM_ENTRIES.size()> nextBloom;
+        DX12ComputePipeline nextLightShafts;
+        DX12GraphicsPipeline nextLightShaftsFallback;
         for (std::size_t index = 0; index < builtins.size(); ++index)
         {
             if (!builtins[index] || !builtins[index]->isCompiled())
@@ -561,9 +567,12 @@ namespace Engine
                 LOG_ERROR("[PostProcess] Missing Bloom shader '{}'.", POST_PROCESS_BLOOM_ENTRIES[index]);
                 return false;
             }
-            if (!createBloomPipeline(nextBloom[index], *bloom[index]))
+            if (!createComputePipeline(nextBloom[index], *bloom[index]))
                 return false;
         }
+        if (!createComputePipeline(nextLightShafts, *lightShafts)
+            || !createPipeline(nextLightShaftsFallback, *vertex, *lightShaftsFallback, DXGI_FORMAT_R16G16B16A16_FLOAT))
+            return false;
         std::vector<PostProcessPassDescription> descriptions;
         for (const auto& pass : m_passes)
             descriptions.push_back(pass->description);
@@ -597,6 +606,8 @@ namespace Engine
             m_builtins[index].swap(nextBuiltins[index]);
         for (std::size_t index = 0; index < bloom.size(); ++index)
             m_bloom[index].swap(nextBloom[index]);
+        m_lightShafts.swap(nextLightShafts);
+        m_lightShaftsFallback.swap(nextLightShaftsFallback);
         return true;
     }
 
@@ -706,25 +717,24 @@ namespace Engine
         return true;
     }
 
-    bool PostProcessPipeline::dispatchBloom(DX12CommandList& commandList, const PostProcessBloom stage,
+    bool PostProcessPipeline::dispatchCompute(DX12CommandList& commandList, const DX12ComputePipeline& pipeline,
         const PostProcessImage& input, const PostProcessImage& output,
         const D3D12_VIEWPORT& sourceViewport, const D3D12_VIEWPORT& targetViewport,
         const std::span<const float> parameters, const PostProcessImage* secondary,
         const D3D12_VIEWPORT* secondaryViewport)
     {
-        const auto index = static_cast<std::size_t>(stage);
-        if (index >= m_bloom.size() || input.resource == nullptr || output.resource == nullptr
+        if (input.resource == nullptr || output.resource == nullptr
             || input.resource == output.resource || (secondary && secondary->resource == output.resource)
-            || input.srv.native.ptr == 0 || output.uav.native.ptr == 0 || parameters.size() > 4
+            || input.srv.native.ptr == 0 || output.uav.native.ptr == 0 || parameters.size() > 12
             || (secondary && (secondary->resource == nullptr || secondary->srv.native.ptr == 0)))
         {
-            LOG_ERROR("[PostProcess] Invalid or aliased Bloom compute resources.");
+            LOG_ERROR("[PostProcess] Invalid or aliased compute resources.");
             return false;
         }
         if (!input.resource->transition(commandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
             || (secondary && !secondary->resource->transition(commandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE))
             || !output.resource->transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-            || !m_bloom[index].bind(commandList))
+            || !pipeline.bind(commandList))
             return false;
         struct Constants
         {
@@ -748,7 +758,7 @@ namespace Engine
         if (left >= right || top >= bottom)
             return true;
         const std::array<std::uint32_t, 4> dispatch{ left, top, right, bottom };
-        std::array<float, 4> values{};
+        std::array<float, 12> values{};
         std::copy(parameters.begin(), parameters.end(), values.begin());
         const auto& auxiliaryViewport = secondaryViewport ? *secondaryViewport : sourceViewport;
         const Vector4 auxiliary(auxiliaryViewport.TopLeftX, auxiliaryViewport.TopLeftY,
@@ -758,7 +768,7 @@ namespace Engine
         native->SetDescriptorHeaps(1, &heap);
         native->SetComputeRootDescriptorTable(0, input.srv.native);
         native->SetComputeRoot32BitConstants(1, 9, &constants, 0);
-        native->SetComputeRoot32BitConstants(2, 4, values.data(), 0);
+        native->SetComputeRoot32BitConstants(2, static_cast<UINT>(values.size()), values.data(), 0);
         native->SetComputeRootDescriptorTable(3, secondary ? secondary->srv.native : input.srv.native);
         native->SetComputeRoot32BitConstants(4, 4, &auxiliary, 0);
         native->SetComputeRootDescriptorTable(5, output.uav.native);
@@ -1012,12 +1022,10 @@ namespace Engine
             return true;
         };
         bool depthWasUsed = false;
-        const auto runDepthEffect = [&](const PostProcessBuiltin slot, const std::span<const float> parameters,
-            const std::uint32_t resolutionDivisor)
+        const auto runDepthEffect = [&](const PostProcessBuiltin slot, const std::span<const float> parameters)
         {
             const PostProcessTargetDescription description{
-                static_cast<std::uint32_t>((outputDesc.Width + resolutionDivisor - 1) / resolutionDivisor),
-                (outputDesc.Height + resolutionDivisor - 1) / resolutionDivisor,
+                static_cast<std::uint32_t>(outputDesc.Width), outputDesc.Height,
             };
             PostProcessImage* const next = m_targets.acquire(description);
             const auto targetViewport = temporaryViewport(viewport, description, outputDesc);
@@ -1111,12 +1119,12 @@ namespace Engine
             parameters[4] = camera.farClip;
             parameters[5] = depthOfFieldWeight;
             parameters[8] = camera.perspectiveProjection ? 1.0f : 0.0f;
-            if (!runDepthEffect(PostProcessBuiltin::DepthOfField, parameters, 1))
+            if (!runDepthEffect(PostProcessBuiltin::DepthOfField, parameters))
                 return false;
         }
         if (lightShafts)
         {
-            const std::array<float, 16> parameters{
+            const std::array<float, 12> parameters{
                 camera.lightShafts.sourcePosition.x,
                 camera.lightShafts.sourcePosition.y,
                 camera.lightShafts.bloomScale,
@@ -1127,8 +1135,28 @@ namespace Engine
                 camera.lightShafts.occlusionMaskDarkness,
                 camera.lightShafts.occlusionEnabled ? 1.0f : 0.0f,
             };
-            if (!runDepthEffect(PostProcessBuiltin::LightShafts, parameters, 2))
+            const PostProcessTargetDescription description{
+                static_cast<std::uint32_t>((outputDesc.Width + 1) / 2),
+                (outputDesc.Height + 1) / 2, DXGI_FORMAT_R16G16B16A16_FLOAT, true };
+            PostProcessImage* const next = m_targets.acquire(description);
+            const auto targetViewport = temporaryViewport(viewport, description, outputDesc);
+            const bool sourceInside = camera.lightShafts.sourcePosition.x >= 0
+                && camera.lightShafts.sourcePosition.x <= 1
+                && camera.lightShafts.sourcePosition.y >= 0 && camera.lightShafts.sourcePosition.y <= 1;
+            const bool fallbackOnly = camera.lightShafts.occlusionEnabled && !sourceInside;
+            if (next == nullptr || (!fallbackOnly && !dispatchCompute(commandList, m_lightShafts, *current, *next,
+                currentViewport, targetViewport, parameters, depth, &viewport))
+                || (camera.lightShafts.occlusionEnabled && !draw(commandList, m_lightShaftsFallback,
+                    *current, *next, currentViewport, targetViewport, effectiveExposure, false, parameters,
+                    depth, &viewport)))
                 return false;
+            if (borrowed && !m_targets.release(*borrowed))
+                return false;
+            borrowed = next;
+            current = next;
+            currentViewport = targetViewport;
+            depthWasUsed = true;
+            ++m_statistics.effectPasses;
         }
         if (motionBlur)
         {
@@ -1430,7 +1458,7 @@ namespace Engine
             return fail();
         viewports[count] = temporaryViewport(viewport, description, fullSize);
         const std::array<float, 4> prefilterParameters{ threshold };
-        if (!dispatchBloom(commandList, PostProcessBloom::Prefilter,
+        if (!dispatchCompute(commandList, m_bloom[static_cast<std::size_t>(PostProcessBloom::Prefilter)],
             *current, *levels[count], currentViewport, viewports[count], prefilterParameters))
             return fail();
         ++count;
@@ -1460,10 +1488,10 @@ namespace Engine
             viewports[count] = temporaryViewport(viewport, nextDescription, fullSize);
             const std::array<float, 4> horizontalParameters{ 0.0f, sizeScale };
             const std::array<float, 4> verticalParameters{ 1.0f, sizeScale };
-            const bool blurred = dispatchBloom(commandList, PostProcessBloom::Downsample,
+            const bool blurred = dispatchCompute(commandList, m_bloom[static_cast<std::size_t>(PostProcessBloom::Downsample)],
                 *levels[count - 1], *horizontal, viewports[count - 1], viewports[count - 1],
                 horizontalParameters)
-                && dispatchBloom(commandList, PostProcessBloom::Downsample,
+                && dispatchCompute(commandList, m_bloom[static_cast<std::size_t>(PostProcessBloom::Downsample)],
                     *horizontal, *levels[count], viewports[count - 1], viewports[count],
                     verticalParameters);
             if (!releaseTarget(*horizontal) || !blurred)
@@ -1480,7 +1508,7 @@ namespace Engine
             if (!next)
                 return fail();
             const std::array<float, 4> parameters{ scatter };
-            if (!dispatchBloom(commandList, PostProcessBloom::Upsample,
+            if (!dispatchCompute(commandList, m_bloom[static_cast<std::size_t>(PostProcessBloom::Upsample)],
                 *levels[index - 1], *next, viewports[index - 1], viewports[index - 1], parameters,
                 levels[index], &viewports[index])
                 || !releaseTarget(*levels[index]) || !releaseTarget(*levels[index - 1]))
@@ -1494,7 +1522,7 @@ namespace Engine
         if (!composite)
             return fail();
         const std::array<float, 4> parameters{ intensity };
-        if (!dispatchBloom(commandList, PostProcessBloom::Composite,
+        if (!dispatchCompute(commandList, m_bloom[static_cast<std::size_t>(PostProcessBloom::Composite)],
             *current, *composite, currentViewport, viewport, parameters,
             levels[0], &viewports[0])
             || !releaseTarget(*levels[0]) || (borrowed && !m_targets.release(*borrowed)))

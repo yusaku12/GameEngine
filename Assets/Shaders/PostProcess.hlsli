@@ -20,11 +20,10 @@ bool shouldApplyToneMapping()
 
 cbuffer PostProcessParameters : register(b1)
 {
-#ifdef ENGINE_BLOOM_COMPUTE
-    float4 parameters[1];
-#else
-    float4 parameters[12];
+#ifndef ENGINE_POST_PROCESS_PARAMETER_COUNT
+#define ENGINE_POST_PROCESS_PARAMETER_COUNT 12
 #endif
+    float4 parameters[ENGINE_POST_PROCESS_PARAMETER_COUNT];
 };
 
 Texture2D<float4> inputColor : register(t0);

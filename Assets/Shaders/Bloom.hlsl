@@ -1,12 +1,5 @@
-#define ENGINE_BLOOM_COMPUTE
-#include "PostProcess.hlsli"
-
-cbuffer BloomDispatch : register(b3)
-{
-    uint2 dispatchOrigin;
-    uint2 dispatchEnd;
-};
-RWTexture2D<float4> bloomOutput : register(u0);
+#define ENGINE_POST_PROCESS_PARAMETER_COUNT 1
+#include "PostProcessCompute.hlsli"
 
 float bloomLuminance(float3 color)
 {
@@ -37,22 +30,12 @@ float3 bloomTent(Texture2D<float4> image, float4 imageViewport, float2 pixel)
         + sampleViewport(image, imageViewport, pixel, float2(0.5f, 0.5f)).rgb);
 }
 
-bool bloomPixel(uint2 thread, out uint2 pixel, out float2 position)
-{
-    pixel = dispatchOrigin + thread;
-    position = float2(pixel) + 0.5f;
-    // Match fullscreen rasterization's subpixel snapping and implicit viewport scissor.
-    const float2 rasterOrigin = round(targetViewport.xy * 256.0f) / 256.0f;
-    return all(pixel < dispatchEnd) && all(position >= rasterOrigin)
-        && all(pixel < uint2(floor(targetViewport.xy + targetViewport.zw)));
-}
-
 [numthreads(8, 8, 1)]
 void csBloomPrefilter(uint3 id : SV_DispatchThreadID)
 {
     uint2 destination;
     float2 pixel;
-    if (!bloomPixel(id.xy, destination, pixel))
+    if (!postProcessPixel(id.xy, destination, pixel))
         return;
     const float threshold = parameters[0].x;
     const float3 center = karisAverage(
@@ -72,7 +55,7 @@ void csBloomPrefilter(uint3 id : SV_DispatchThreadID)
     const float3 result = center * 0.5f
         + (karisAverage(a, b, d, e) + karisAverage(c, b, e, f)
             + karisAverage(g, d, e, h) + karisAverage(i, e, f, h)) * 0.125f;
-    bloomOutput[destination] = float4(min(max(result, 0.0f), 65504.0f), 1.0f);
+    outputColor[destination] = float4(min(max(result, 0.0f), 65504.0f), 1.0f);
 }
 
 [numthreads(8, 8, 1)]
@@ -80,7 +63,7 @@ void csBloomDownsample(uint3 id : SV_DispatchThreadID)
 {
     uint2 destination;
     float2 pixel;
-    if (!bloomPixel(id.xy, destination, pixel))
+    if (!postProcessPixel(id.xy, destination, pixel))
         return;
     const float2 direction = parameters[0].x < 0.5f ? float2(1.0f, 0.0f) : float2(0.0f, 1.0f);
     const float radius = max(parameters[0].y, 0.0f);
@@ -89,7 +72,7 @@ void csBloomDownsample(uint3 id : SV_DispatchThreadID)
         + sampleInputOffset(pixel, -direction * (1.3846153846f * radius))) * 0.3162162162f;
     result += (sampleInputOffset(pixel, direction * (3.2307692308f * radius))
         + sampleInputOffset(pixel, -direction * (3.2307692308f * radius))) * 0.0702702703f;
-    bloomOutput[destination] = float4(min(max(result, 0.0f), 65504.0f), 1.0f);
+    outputColor[destination] = float4(min(max(result, 0.0f), 65504.0f), 1.0f);
 }
 
 [numthreads(8, 8, 1)]
@@ -97,11 +80,11 @@ void csBloomUpsample(uint3 id : SV_DispatchThreadID)
 {
     uint2 destination;
     float2 pixel;
-    if (!bloomPixel(id.xy, destination, pixel))
+    if (!postProcessPixel(id.xy, destination, pixel))
         return;
     const float3 high = loadInputColor(pixel).rgb;
     const float3 low = bloomTent(secondaryColor, secondaryViewport, pixel);
-    bloomOutput[destination] = float4(min(max(high + low * saturate(parameters[0].x), 0.0f), 65504.0f), 1.0f);
+    outputColor[destination] = float4(min(max(high + low * saturate(parameters[0].x), 0.0f), 65504.0f), 1.0f);
 }
 
 [numthreads(8, 8, 1)]
@@ -109,9 +92,9 @@ void csBloomComposite(uint3 id : SV_DispatchThreadID)
 {
     uint2 destination;
     float2 pixel;
-    if (!bloomPixel(id.xy, destination, pixel))
+    if (!postProcessPixel(id.xy, destination, pixel))
         return;
     const float3 bloom = bloomTent(secondaryColor, secondaryViewport, pixel);
-    bloomOutput[destination] = float4(min(max(loadInputColor(pixel).rgb + bloom * parameters[0].x, 0.0f),
+    outputColor[destination] = float4(min(max(loadInputColor(pixel).rgb + bloom * parameters[0].x, 0.0f),
         65504.0f), 1.0f);
 }
