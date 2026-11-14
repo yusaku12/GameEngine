@@ -3,6 +3,10 @@
 #include "Core\Logging\Logger.h"
 #include "Core\Threading\ThreadUtility.h"
 
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+
 namespace Engine
 {
     /**
@@ -105,7 +109,7 @@ namespace Engine
          * @brief 残っている待機対象の数を取得する
          * @return uint32_t 残数
          */
-        uint32_t getValue() const { return m_value.load(std::memory_order_acquire); }
+        uint32_t getValue() const;
 
         /**
          * @brief すべて完了したかを取得する
@@ -113,9 +117,18 @@ namespace Engine
          */
         bool isComplete() const { return getValue() == 0; }
 
+        /**
+         * @brief ジョブの完了までスレッドを休止する。
+         * @details ジョブの実行は手伝わない。ワーカーや入れ子の待機にはJobSystem::waitを使用する。
+         * 待機開始前に対象のジョブをすべて投入し、完了までカウンタを存続させること。
+         */
+        void waitForCompletion() const;
+
     private:
 
         std::atomic<uint32_t> m_value{ 0 }; //!< 残っている待機対象の数
+        mutable std::mutex m_completionMutex; //!< 完了通知とカウンタの寿命を同期
+        mutable std::condition_variable m_completionCondition; //!< 完了時に待機スレッドを起こす
     };
 
     /**

@@ -30,12 +30,42 @@ namespace Engine
         uint32_t current = m_value.load(std::memory_order_acquire);
         while (current != 0)
         {
-            if (m_value.compare_exchange_weak(current, current - 1,
+            if (current == 1)
+            {
+                std::lock_guard<std::mutex> lock(m_completionMutex);
+                if (m_value.compare_exchange_weak(current, 0,
+                    std::memory_order_acq_rel, std::memory_order_acquire))
+                {
+                    m_completionCondition.notify_all();
+                    return true;
+                }
+            }
+            else if (m_value.compare_exchange_weak(current, current - 1,
                 std::memory_order_acq_rel, std::memory_order_acquire))
+            {
                 return true;
+            }
         }
         LOG_ERROR("[Job] Cannot decrement a completed job counter.");
         return false;
+    }
+
+    uint32_t JobCounter::getValue() const
+    {
+        const uint32_t current = m_value.load(std::memory_order_acquire);
+        if (current != 0)
+            return current;
+
+        // A completed counter can be destroyed by its owner immediately after this call.
+        std::lock_guard<std::mutex> lock(m_completionMutex);
+        return m_value.load(std::memory_order_acquire);
+    }
+
+    void JobCounter::waitForCompletion() const
+    {
+        std::unique_lock<std::mutex> lock(m_completionMutex);
+        m_completionCondition.wait(lock, [this]
+            { return m_value.load(std::memory_order_acquire) == 0; });
     }
 
     JobDependency::JobDependency(uint32_t count)
