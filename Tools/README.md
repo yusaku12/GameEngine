@@ -1103,20 +1103,6 @@ Deferred の **Shadow Map** 表示では **Shadow Cascade** で確認する配�
 baked lighting には対応していません。Cascade 数を増やすと描画負荷も増えるため、既存方式より
 軽いことは保証されません。
 
-Cascade の分割・射影・安定化のテストは Visual Studio Developer PowerShell で実行できます。
-リポジトリルートから、ビルド生成物を専用ディレクトリに置いて実行してください。
-
-```powershell
-$root = (Get-Location).Path
-New-Item -ItemType Directory -Force -Path .\Build\CascadedShadowTests | Out-Null
-Push-Location .\Build\CascadedShadowTests
-cl /nologo /std:c++20 /utf-8 /EHsc "/I$root\Source" "/I$root\Library\DirectXTex-main\Common" "/I$root\Library\spdlog\include" "$root\Tools\Tests\CascadedShadowTests.cpp" "$root\Source\Graphics\Lighting\CascadedShadow.cpp" "$root\Source\Core\Math\SimpleMath.cpp" /Fe:CascadedShadowTests.exe
-if ($LASTEXITCODE -eq 0) { .\CascadedShadowTests.exe }
-cl /nologo /std:c++20 /utf-8 /EHsc /O2 /fp:precise "/I$root\Source" "/I$root\Library\DirectXTex-main\Common" "/I$root\Library\spdlog\include" "$root\Tools\Tests\SkinningBoundsTests.cpp" "$root\Source\Graphics\Renderer\SkinningBounds.cpp" "$root\Source\Core\Logging\Logger.cpp" "$root\Source\Core\Math\SimpleMath.cpp" /Fe:SkinningBoundsTests.exe /link user32.lib d3d11.lib dxgi.lib
-if ($LASTEXITCODE -eq 0) { .\SkinningBoundsTests.exe }
-Pop-Location
-```
-
 Scene のライトが従来のハードコードされた照射方向に置き換わります。有効なライトがない Scene は、
 基本 ambient 寄与 (0.15) と emissive マテリアルのみで照らされます。既存 Scene で直接光が必要な
 場合は Directional light を追加してください。Light 設定は Scene/Prefab に保存され、
