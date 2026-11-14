@@ -639,6 +639,9 @@
     <ClCompile Include="Source\Graphics\Lighting\LightingFrame.cpp">
       <Filter>Source\Graphics\Lighting</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Graphics\Lighting\CascadedShadow.cpp">
+      <Filter>Source\Graphics\Lighting</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Graphics\Material\MaterialGpuCache.cpp">
       <Filter>Source\Graphics\Material</Filter>
     </ClCompile>
@@ -1275,6 +1278,9 @@
       <Filter>Source\Graphics\DirectX12\Resource</Filter>
     </ClInclude>
     <ClInclude Include="Source\Graphics\Lighting\LightingFrame.h">
+      <Filter>Source\Graphics\Lighting</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Lighting\CascadedShadow.h">
       <Filter>Source\Graphics\Lighting</Filter>
     </ClInclude>
     <ClInclude Include="Source\Graphics\Material\MaterialGpuCache.h">

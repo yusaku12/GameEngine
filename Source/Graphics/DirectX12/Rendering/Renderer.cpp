@@ -152,7 +152,7 @@ namespace Engine
             })
             || !m_dsvHeap.initialize(*m_device.get(), {
                 .type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
-                .capacity = 2,
+                .capacity = 1 + SHADOW_CASCADE_COUNT,
                 .shaderVisible = false,
                 })
                 || !createGameRenderTarget(width, height, m_cameraClearColor)
@@ -474,7 +474,7 @@ namespace Engine
         m_gbufferRenderTargetViews = {};
         m_deferredLightingRenderTargetView = {};
         m_depthStencilView = {};
-        m_shadowDepthStencilView = {};
+        m_shadowDepthStencilViews = {};
 
         ModelRenderSubmissionQueue::instance().clear();
         m_modelRenderQueue.clear();
@@ -704,7 +704,8 @@ namespace Engine
             m_psoRebuildPending = false;
         }
 
-        m_lighting = LightingFrame::instance().forCamera(m_cameraPosition, m_cameraForward, m_viewProjection);
+        m_lighting = LightingFrame::instance().forCamera(m_cameraPosition, m_cameraForward, m_viewProjection,
+            m_inverseUnjitteredViewProjection, m_unjitteredProjection, m_cameraNearClip, m_cameraFarClip, hasCameraView);
         const auto& lightShafts = m_lighting.lightShafts;
         m_cameraPostProcess.lightShafts = {
             lightShafts.options.x > 0.5f,
@@ -715,13 +716,17 @@ namespace Engine
             lightShafts.options.w,
             lightShafts.tint.w,
         };
-        if (hasCameraView && LightingFrame::instance().hasShadow())
+        if (hasCameraView && LightingFrame::instance().hasShadow() && m_lighting.shadowOptions.x > 0.0f)
             m_shadowViewProjection = m_lighting.shadowViewProjection;
         else
+        {
             m_shadowViewProjection.reset();
+            m_lighting.shadowOptions.x = 0.0f;
+        }
         std::vector<ModelHandle> usedModels;
         std::vector<MaterialHandle> usedMaterials;
-        buildModelRenderQueue(usedModels, usedMaterials);
+        if (!buildModelRenderQueue(usedModels, usedMaterials))
+            return false;
         if (m_imguiSystem != nullptr)
             m_imguiSystem->beginFrame(&m_shaderManager,
             m_imguiSystem->getGameTextureId(), m_requestedGameWidth, m_requestedGameHeight, [this]
@@ -738,6 +743,9 @@ namespace Engine
                         };
                         ImGui::Combo("G-Buffer View", &m_deferredDebugView,
                             DEFERRED_VIEWS, static_cast<int>(std::size(DEFERRED_VIEWS)));
+                        if (m_deferredDebugView == static_cast<int>(DeferredDebugView::ShadowMap))
+                            ImGui::SliderInt("Shadow Cascade", &m_shadowDebugCascade, 0,
+                                static_cast<int>(SHADOW_CASCADE_COUNT) - 1);
                     }
                     else
                     {
@@ -749,6 +757,10 @@ namespace Engine
                     ImGui::Text("Terrain triangles: %llu / %llu full",
                         static_cast<unsigned long long>(m_statistics.terrainTriangles),
                         static_cast<unsigned long long>(m_statistics.terrainFullTriangles));
+                    for (std::size_t cascade = 0; cascade < SHADOW_CASCADE_COUNT; ++cascade)
+                        ImGui::Text("Shadow %u: %u items, %llu triangles",
+                            static_cast<unsigned>(cascade), m_statistics.shadowItems[cascade],
+                            static_cast<unsigned long long>(m_statistics.shadowTriangles[cascade]));
                     ImGui::Text("Render Items: %u", m_statistics.renderItemCount);
                     ImGui::Text("Submitted Direct Draw Calls: %u", m_statistics.drawCallCount);
                     ImGui::Text("Submitted ExecuteIndirect Calls: %u", m_statistics.indirectCallCount);
@@ -816,7 +828,8 @@ namespace Engine
             .backgroundColor = Vector4(m_cameraClearColor.x, m_cameraClearColor.y,
                 m_cameraClearColor.z, m_cameraClearColor.w),
             .clipAndDebug = Vector4(m_cameraNearClip, m_cameraFarClip,
-                static_cast<float>(std::clamp(m_deferredDebugView, 0, 8)), 0.0f),
+                static_cast<float>(std::clamp(m_deferredDebugView, 0, 8)),
+                static_cast<float>(std::clamp(m_shadowDebugCascade, 0, static_cast<int>(SHADOW_CASCADE_COUNT) - 1))),
         };
         DX12CommandList& commandList = m_commandLists[frameIndex];
         if (!m_lightingBuffers[frameIndex].write(std::as_bytes(std::span(&m_lighting, 1)))
@@ -1157,6 +1170,11 @@ namespace Engine
             && view.postProcess.settings.temporalAAEnabled.value;
         m_temporalAAActive = requestedTemporalAA;
         Matrix projection = view.camera.projection;
+        Matrix unjitteredProjection = projection;
+        unjitteredProjection._31 -= view.camera.jitter.x;
+        unjitteredProjection._32 -= view.camera.jitter.y;
+        m_unjitteredProjection = unjitteredProjection;
+        m_inverseUnjitteredViewProjection = (view.camera.view * unjitteredProjection).Invert();
         if (requestedTemporalAA)
         {
             if (view.camera.temporalHistoryReset)
@@ -1385,16 +1403,15 @@ namespace Engine
 
     bool DX12Renderer::createShadowMap()
     {
-        constexpr std::uint32_t SHADOW_MAP_SIZE = 2048;
         if (m_device.get() == nullptr || m_dsvHeap.get() == nullptr)
             return false;
 
         m_shadowMap.finalize();
         D3D12_RESOURCE_DESC description{};
         description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-        description.Width = SHADOW_MAP_SIZE;
-        description.Height = SHADOW_MAP_SIZE;
-        description.DepthOrArraySize = 1;
+        description.Width = SHADOW_CASCADE_SIZE;
+        description.Height = SHADOW_CASCADE_SIZE;
+        description.DepthOrArraySize = static_cast<UINT16>(SHADOW_CASCADE_COUNT);
         description.MipLevels = 1;
         description.Format = DXGI_FORMAT_R32_TYPELESS;
         description.SampleDesc = { 1, 0 };
@@ -1411,26 +1428,32 @@ namespace Engine
         };
         if (!m_shadowMap.initialize(*m_device.get(), config))
             return false;
-        if (m_dsvHeap.getAllocatedCount() < 2)
+        for (std::size_t cascade = 0; cascade < SHADOW_CASCADE_COUNT; ++cascade)
         {
-            const std::optional<DX12DescriptorAllocation> allocation = m_dsvHeap.allocate();
-            if (!allocation)
-                return false;
-            m_shadowDepthStencilView = allocation->cpu;
+            if (m_shadowDepthStencilViews[cascade].native.ptr == 0)
+            {
+                const std::optional<DX12DescriptorAllocation> allocation = m_dsvHeap.allocate();
+                if (!allocation)
+                    return false;
+                m_shadowDepthStencilViews[cascade] = allocation->cpu;
+            }
+            D3D12_DEPTH_STENCIL_VIEW_DESC dsv{};
+            dsv.Format = DXGI_FORMAT_D32_FLOAT;
+            dsv.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
+            dsv.Texture2DArray.FirstArraySlice = static_cast<UINT>(cascade);
+            dsv.Texture2DArray.ArraySize = 1;
+            m_device.get()->CreateDepthStencilView(m_shadowMap.get(), &dsv, m_shadowDepthStencilViews[cascade].native);
         }
-        D3D12_DEPTH_STENCIL_VIEW_DESC dsv{};
-        dsv.Format = DXGI_FORMAT_D32_FLOAT;
-        dsv.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-        m_device.get()->CreateDepthStencilView(m_shadowMap.get(), &dsv, m_shadowDepthStencilView.native);
         if (!m_shadowSrv)
             m_shadowSrv = TextureManager::instance().getDescriptorHeap().allocate();
         if (!m_shadowSrv || !m_shadowSrv->gpu)
             return false;
         D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
         srv.Format = DXGI_FORMAT_R32_FLOAT;
-        srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
         srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        srv.Texture2D.MipLevels = 1;
+        srv.Texture2DArray.MipLevels = 1;
+        srv.Texture2DArray.ArraySize = static_cast<UINT>(SHADOW_CASCADE_COUNT);
         m_device.get()->CreateShaderResourceView(m_shadowMap.get(), &srv, m_shadowSrv->cpu.native);
         return true;
     }
@@ -1870,7 +1893,7 @@ namespace Engine
         return true;
     }
 
-    void DX12Renderer::buildModelRenderQueue(std::vector<ModelHandle>& usedModels, std::vector<MaterialHandle>& usedMaterials)
+    bool DX12Renderer::buildModelRenderQueue(std::vector<ModelHandle>& usedModels, std::vector<MaterialHandle>& usedMaterials)
     {
         FrameProfiler::ScopedCpuTimer profile(FrameProfileMetric::RenderQueue);
         m_modelRenderQueue.clear();
@@ -1879,8 +1902,18 @@ namespace Engine
         m_modelRenderQueue.reserve(m_modelSubmissions.size());
         usedModels.reserve(m_modelSubmissions.size());
         usedMaterials.reserve(m_modelSubmissions.size());
-        const auto shadowFrustum = m_shadowViewProjection
-            ? std::optional(CameraUtils::buildWorldFrustum(*m_shadowViewProjection, Matrix::Identity)) : std::nullopt;
+        std::array<CameraFrustum, SHADOW_CASCADE_COUNT> shadowFrusta{};
+        if (m_shadowViewProjection)
+        {
+            for (std::size_t cascade = 0; cascade < SHADOW_CASCADE_COUNT; ++cascade)
+            {
+                shadowFrusta[cascade] = CameraUtils::buildWorldFrustum(
+                    (*m_shadowViewProjection)[cascade], Matrix::Identity);
+                // A caster can be arbitrarily far toward the light while affecting a receiver.
+                shadowFrusta[cascade].planes[4] = { 0.0, 0.0, 0.0, 1.0 };
+                shadowFrusta[cascade].planes[5] = { 0.0, 0.0, 0.0, 1.0 };
+            }
+        }
 
         for (const ModelRenderSubmission& batch : m_modelSubmissions)
         {
@@ -1947,6 +1980,10 @@ namespace Engine
                             continue;
                         pose.valid = gpuMesh->skinningBounds.calculate(*submission.skinningPalette,
                             gpuMesh->nodeTransform * submission.worldMatrix, pose.worldBounds);
+                        if (!pose.valid && submitsShadow)
+                            pose.valid = gpuMesh->skinningBounds.calculateVertices(
+                                gpuModel->source->meshes[meshIndex].vertices, *submission.skinningPalette,
+                                gpuMesh->nodeTransform * submission.worldMatrix, pose.worldBounds);
                         allBoundsValid = allBoundsValid && pose.valid;
                         if (pose.valid)
                         {
@@ -1981,8 +2018,16 @@ namespace Engine
                         meshWorldBounds = m_animatedMeshBounds[meshIndex].worldBounds;
                     const TerrainChunkLod* terrain = submission.terrainLod ? &submission.terrainLod->chunks[meshIndex] : nullptr;
                     const bool terrainInCamera = !terrain || !m_frustum || isVisible(*m_frustum, meshWorldBounds);
-                    const bool terrainInShadow = (!terrain && !batch.instanceTransforms)
-                        || !shadowFrustum || isVisible(*shadowFrustum, meshWorldBounds);
+                    std::array<bool, SHADOW_CASCADE_COUNT> inShadow{};
+                    bool inAnyShadow = false;
+                    if (submitsShadow)
+                    {
+                        for (std::size_t cascade = 0; cascade < SHADOW_CASCADE_COUNT; ++cascade)
+                        {
+                            inShadow[cascade] = !boundsCullable || isVisible(shadowFrusta[cascade], meshWorldBounds);
+                            inAnyShadow = inAnyShadow || inShadow[cascade];
+                        }
+                    }
                     std::uint32_t terrainLevel = 0;
                     if (terrain)
                     {
@@ -2001,7 +2046,7 @@ namespace Engine
                         }
                         if (!terrainInCamera)
                             ++m_frameStatistics.terrainCulledChunks;
-                        if (!terrainInCamera && (!submitsShadow || !terrainInShadow))
+                        if (!terrainInCamera && !inAnyShadow)
                             continue;
                         terrainLevel = selectTerrainLod(submission.terrainLod->settings, meshWorldBounds,
                             m_cameraPosition, terrain->levelCount);
@@ -2070,24 +2115,35 @@ namespace Engine
                                 depthItem.pass = RenderPassType::DepthOnly;
                                 m_modelRenderQueue.submit(depthItem);
                             }
-                            if (submitsShadow && terrainInShadow && pass != RenderPassType::Transparent)
+                            if (inAnyShadow && pass != RenderPassType::Transparent)
                             {
                                 RenderItem shadowItem = colorItem;
                                 shadowItem.pipelineID = colorItem.surfaceType == MaterialSurfaceType::AlphaTest ? 1u : 0u;
-                                shadowItem.pass = RenderPassType::Shadow;
                                 if (terrain)
                                 {
                                     // Shadows retain full resolution, independent of camera LOD or visibility.
                                     shadowItem.indexStart = terrain->levels[0].start;
                                     shadowItem.indexCount = terrain->levels[0].count;
                                 }
-                                const bool shadowSubmitted = m_modelRenderQueue.submit(shadowItem);
-                                if (shadowSubmitted && terrain)
+                                for (std::size_t cascade = 0; cascade < SHADOW_CASCADE_COUNT; ++cascade)
                                 {
-                                    ++m_frameStatistics.terrainShadowChunks;
-                                    m_frameStatistics.terrainShadowTriangles += shadowItem.indexCount / 3;
+                                    if (!inShadow[cascade])
+                                        continue;
+                                    shadowItem.pass = static_cast<RenderPassType>(
+                                        static_cast<std::size_t>(RenderPassType::Shadow) + cascade);
+                                    const bool shadowSubmitted = m_modelRenderQueue.submit(shadowItem);
+                                    if (shadowSubmitted)
+                                    {
+                                        ++m_frameStatistics.shadowItems[cascade];
+                                        m_frameStatistics.shadowTriangles[cascade] += shadowItem.indexCount / 3;
+                                    }
+                                    if (shadowSubmitted && terrain)
+                                    {
+                                        ++m_frameStatistics.terrainShadowChunks;
+                                        m_frameStatistics.terrainShadowTriangles += shadowItem.indexCount / 3;
+                                    }
+                                    materialUsed = shadowSubmitted || materialUsed;
                                 }
-                                materialUsed = shadowSubmitted || materialUsed;
                             }
                             objectVisible = submitted || objectVisible;
                             modelResourceUsed = materialUsed || modelResourceUsed;
@@ -2119,8 +2175,37 @@ namespace Engine
             }
         }
 
+        if (m_shadowViewProjection)
+        {
+            std::array<ShadowDepthRange, SHADOW_CASCADE_COUNT> ranges{};
+            std::array<float, SHADOW_CASCADE_COUNT> depthScale{};
+            for (const RenderItem& item : m_modelRenderQueue.getItems())
+            {
+                if (!isShadowPass(item.pass))
+                    continue;
+                const std::size_t cascade = shadowCascadeIndex(item.pass);
+                const Matrix& matrix = (*m_shadowViewProjection)[cascade];
+                if (!item.hasCullableBounds() || !ranges[cascade].include(matrix, item.worldBounds))
+                {
+                    LOG_ERROR("[Shadow] Cannot determine a finite caster depth range for cascade {}.", cascade);
+                    return false;
+                }
+            }
+            for (std::size_t cascade = 0; cascade < SHADOW_CASCADE_COUNT; ++cascade)
+            {
+                Matrix& matrix = (*m_shadowViewProjection)[cascade];
+                if (!ranges[cascade].apply(matrix, depthScale[cascade]))
+                {
+                    LOG_ERROR("[Shadow] Cannot fit the depth range for cascade {}.", cascade);
+                    return false;
+                }
+                m_lighting.shadowViewProjection[cascade] = matrix;
+            }
+            m_lighting.shadowDepthScale = Vector4(depthScale[0], depthScale[1], depthScale[2], 0.0f);
+        }
         m_modelRenderQueue.sort();
         m_frameStatistics.renderItemCount = static_cast<std::uint32_t>(m_modelRenderQueue.getItems().size());
+        return true;
     }
 
     bool DX12Renderer::renderModelQueue(DX12CommandList& commandList, const std::uint32_t frameIndex)
@@ -2135,13 +2220,14 @@ namespace Engine
         if (!recordSkinning(commandList, frameIndex))
             return false;
         const bool hasShadow = std::any_of(m_preparedModelDraws.begin(), m_preparedModelDraws.end(),
-            [](const DX12PreparedModelDraw& draw) { return draw.item->pass == RenderPassType::Shadow; });
+            [](const DX12PreparedModelDraw& draw) { return isShadowPass(draw.item->pass); });
         if (m_shadowViewProjection.has_value())
         {
             if (!m_shadowMap.transition(commandList, D3D12_RESOURCE_STATE_DEPTH_WRITE))
                 return false;
-            commandList.getForRecording()->ClearDepthStencilView(
-                m_shadowDepthStencilView.native, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+            for (const auto& view : m_shadowDepthStencilViews)
+                commandList.getForRecording()->ClearDepthStencilView(
+                    view.native, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
         }
         if (!commandList.close())
             return false;
@@ -2161,7 +2247,9 @@ namespace Engine
             .deferredTarget = m_deferredLightingRenderTargetView.native,
             .deferred = m_deferredFrameActive,
             .depthTarget = m_depthStencilView.native,
-            .shadowTarget = m_shadowDepthStencilView.native,
+            .shadowTargets = {
+                m_shadowDepthStencilViews[0].native, m_shadowDepthStencilViews[1].native,
+                m_shadowDepthStencilViews[2].native },
             .viewport = {
                 pixelViewport.x, pixelViewport.y, pixelViewport.width, pixelViewport.height,
                 pixelViewport.minDepth, pixelViewport.maxDepth },
@@ -2217,7 +2305,7 @@ namespace Engine
         for (std::size_t index = 0; index < ranges.size(); ++index)
         {
             const RenderPassType pass = m_preparedModelDraws[ranges[index].first].item->pass;
-            if (!queryInserted && pass > RenderPassType::Shadow)
+            if (!queryInserted && pass > RenderPassType::Shadow2)
             {
                 m_executionLists.push_back(queryList.getForExecution());
                 queryInserted = true;
@@ -2285,8 +2373,9 @@ namespace Engine
         for (std::size_t index = 0; index < items.size(); ++index)
         {
             const RenderItem& item = items[index];
-            const bool shadowPass = item.pass == RenderPassType::Shadow && m_shadowViewProjection.has_value();
-            const Matrix& viewProjection = shadowPass ? *m_shadowViewProjection : m_viewProjection;
+            const bool shadowPass = isShadowPass(item.pass) && m_shadowViewProjection.has_value();
+            const Matrix& viewProjection = shadowPass
+                ? (*m_shadowViewProjection)[shadowCascadeIndex(item.pass)] : m_viewProjection;
             const std::uint64_t objectMeshKey = (static_cast<std::uint64_t>(item.objectID) << 32)
                 | item.meshID;
             const auto previousObject = item.objectID != 0
@@ -2338,7 +2427,7 @@ namespace Engine
             const std::size_t batchSize = m_enableModelInstancing
                 ? m_modelRenderQueue.getInstanceBatchSize(itemIndex) : 1;
             const DX12GraphicsPipeline* requiredPipeline = &m_modelPipeline;
-            if (item.pass == RenderPassType::DepthOnly || item.pass == RenderPassType::Shadow)
+            if (item.pass == RenderPassType::DepthOnly || isShadowPass(item.pass))
             {
                 requiredPipeline = item.surfaceType == MaterialSurfaceType::AlphaTest
                     ? &m_depthAlphaTestModelPipeline : &m_depthOnlyModelPipeline;

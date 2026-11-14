@@ -3,6 +3,7 @@
 #include <span>
 
 #include "Graphics\DirectX12\Command\Command.h"
+#include "Graphics\Lighting\CascadedShadow.h"
 #include "Graphics\Renderer\CommandRecordingRange.h"
 #include "Graphics\Renderer\RenderItem.h"
 #include "Terrain\Material\TerrainMaterial.h"
@@ -46,7 +47,7 @@ namespace Engine
         D3D12_CPU_DESCRIPTOR_HANDLE deferredTarget{};  //!< HDR target for deferred transparent draws
         bool deferred = false;                          //!< Route opaque draws through the G-Buffer
         D3D12_CPU_DESCRIPTOR_HANDLE depthTarget{};     //!< 描画対象の RenderItem の深度レンダーターゲットへの CPU ディスクリプタハンドル
-        D3D12_CPU_DESCRIPTOR_HANDLE shadowTarget{};    //!< 描画対象の RenderItem のシャドウレンダーターゲットへの CPU ディスクリプタハンドル
+        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, SHADOW_CASCADE_COUNT> shadowTargets{}; //!< Cascade depth targets.
         D3D12_VIEWPORT viewport{};                     //!< 描画対象の RenderItem のビューポート
         D3D12_RECT scissor{};                          //!< 描画対象の RenderItem のシザー矩形
         D3D12_VIEWPORT shadowViewport{};               //!< 描画対象の RenderItem のシャドウマップ用ビューポート

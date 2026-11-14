@@ -166,7 +166,8 @@ namespace Engine
     }
 
     LightingConstants LightingFrame::forCamera(const Vector3& position, const Vector3& forward,
-        const Matrix& viewProjection) const noexcept
+        const Matrix& viewProjection, const Matrix& inverseUnjitteredViewProjection, const Matrix& unjitteredProjection,
+        const float nearClip, const float farClip, const bool hasCameraView) const noexcept
     {
         LightingConstants result = m_constants;
         result.cameraPosition = Vector4(position.x, position.y, position.z, 1);
@@ -255,22 +256,23 @@ namespace Engine
                 centerFromCamera.z, 0);
             result.atmosphere.suns = m_atmosphereSuns;
         }
-        if (m_shadowIndex < 0)
+        if (m_shadowIndex < 0 || !hasCameraView)
             return result;
         const auto& light = result.lights[static_cast<std::size_t>(m_shadowIndex)];
         const Vector3 direction(light.directionInner.x, light.directionInner.y, light.directionInner.z);
-        const Vector3 up = std::abs(direction.Dot(Vector3::UnitY)) > 0.95f ? Vector3::UnitX : Vector3::UnitY;
-        const float distance = m_shadow.shadowDistance;
-        const Vector3 center = position + forward * (distance * 0.5f);
-        Matrix view(DirectX::XMMatrixLookAtLH(Vector3::Zero, direction, up));
-        const float texel = distance / 2048.0f;
-        const Vector3 lightCenter = Vector3::Transform(center, view);
-        view._41 = -std::round(lightCenter.x / texel) * texel;
-        view._42 = -std::round(lightCenter.y / texel) * texel;
-        view._43 = distance - lightCenter.z;
-        result.shadowViewProjection = view * Matrix(DirectX::XMMatrixOrthographicLH(
-            distance, distance, 0.1f, distance * 2.0f));
-        result.shadowOptions = Vector4(1, m_shadow.shadowBias, m_shadow.normalBias, 1.0f / 2048.0f);
+        CascadedShadowData cascades;
+        if (!buildCascadedShadow(inverseUnjitteredViewProjection, unjitteredProjection, nearClip, farClip,
+            m_shadow.shadowDistance, m_shadow.normalBias, direction, cascades))
+        {
+            LOG_ERROR("[Shadow] Cannot construct cascades from the camera and light configuration.");
+            return result;
+        }
+        result.shadowViewProjection = cascades.viewProjections;
+        result.shadowSplits = Vector4(cascades.splits[0], cascades.splits[1], cascades.splits[2], SHADOW_CASCADE_BLEND);
+        result.shadowCameraForward = Vector4(forward.x, forward.y, forward.z, nearClip);
+        result.shadowTexelWorld = Vector4(cascades.texelWorld[0], cascades.texelWorld[1], cascades.texelWorld[2], 0.1f);
+        result.shadowOptions = Vector4(1, m_shadow.shadowBias, m_shadow.normalBias,
+            1.0f / static_cast<float>(SHADOW_CASCADE_SIZE));
         return result;
     }
 }

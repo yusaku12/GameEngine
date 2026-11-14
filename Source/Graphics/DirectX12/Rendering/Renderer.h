@@ -63,6 +63,8 @@ namespace Engine
         std::uint64_t terrainTriangles = 0;         //!< Current view's selected color triangles before GPU occlusion.
         std::uint64_t terrainFullTriangles = 0;     //!< Full-resolution baseline for those visible chunks.
         std::uint64_t terrainShadowTriangles = 0;   //!< Full-resolution triangles submitted for independent shadows.
+        std::array<std::uint32_t, SHADOW_CASCADE_COUNT> shadowItems{}; //!< Shadow submissions per cascade.
+        std::array<std::uint64_t, SHADOW_CASCADE_COUNT> shadowTriangles{}; //!< Submitted triangles per cascade.
         std::array<std::uint32_t, 5> terrainLodChunks{}; //!< Visible chunk counts by selected level.
     };
 
@@ -142,17 +144,6 @@ namespace Engine
          * @param position CameraのWorld座標
          */
         void setCameraPosition(const Vector3& position) noexcept { m_cameraPosition = position; }
-
-        /**
-         * @brief ShadowCaster passで使用するLight View Projectionを設定する。
-         * @param viewProjection Light View Projection行列
-         */
-        void setShadowViewProjection(const Matrix& viewProjection) noexcept { m_shadowViewProjection = viewProjection; }
-
-        /**
-         * @brief ShadowCaster passを無効化する。
-         */
-        void clearShadowViewProjection() noexcept { m_shadowViewProjection.reset(); }
 
         /**
          * @brief Model描画に使用するWorld Space視錐台を設定する。
@@ -317,8 +308,10 @@ namespace Engine
         /**
          * @brief 現在フレームの Model 描画 Queue を構築する
          * @param usedModels 描画対象となる ModelHandle のリスト
+         * @param usedMaterials 描画対象となる MaterialHandle のリスト
+         * @return Shadow の深度範囲を含めて構築できた場合は true。
          */
-        void buildModelRenderQueue(std::vector<ModelHandle>& usedModels, std::vector<MaterialHandle>& usedMaterials);
+        bool buildModelRenderQueue(std::vector<ModelHandle>& usedModels, std::vector<MaterialHandle>& usedMaterials);
 
         /**
          * @brief Model描画を準備・並列記録し、GPU提出順のCommand List配列を構築する。
@@ -381,7 +374,7 @@ namespace Engine
         DX12Resource m_depthBuffer;                                                                       //!< 画面描画用深度バッファ
         DX12CpuDescriptorHandle m_depthStencilView;                                                       //!< 深度バッファの DSV
         DX12Resource m_shadowMap;                                                                         //!< ShadowCaster pass用Depth Buffer
-        DX12CpuDescriptorHandle m_shadowDepthStencilView;                                                 //!< Shadow MapのDSV
+        std::array<DX12CpuDescriptorHandle, SHADOW_CASCADE_COUNT> m_shadowDepthStencilViews{};            //!< Cascade DSVs.
         std::array<DX12UploadBuffer, FRAME_COUNT> m_lightingBuffers;
         std::array<DX12UploadBuffer, FRAME_COUNT> m_deferredConstantsBuffers;
         DeferredPassConstants m_deferredConstants;
@@ -465,6 +458,8 @@ namespace Engine
         bool m_enableModelInstancing = true;                                                              //!< 非透明Modelの互換Drawをまとめる
         Matrix m_viewProjection = Matrix::Identity;                                                       //!< CameraのView Projection行列
         Matrix m_inverseViewProjection = Matrix::Identity;
+        Matrix m_inverseUnjitteredViewProjection = Matrix::Identity;
+        Matrix m_unjitteredProjection = Matrix::Identity;
         Matrix m_previousViewProjection = Matrix::Identity;
         Matrix m_lastSubmittedViewProjection = Matrix::Identity;
         ObjectGUID m_previousRenderCamera;
@@ -479,7 +474,7 @@ namespace Engine
         Vector3 m_cameraPosition = Vector3::Zero;                                                         //!< Transparent sort用Camera座標
         Vector3 m_cameraForward = Vector3::UnitZ;                                                         //!< Transparent sort用Camera視線方向
         std::optional<CameraFrustum> m_frustum;                                                           //!< World Space Camera Clip Planes
-        std::optional<Matrix> m_shadowViewProjection;                                                     //!< Light View Projection。未設定時はShadow passを省略
+        std::optional<std::array<Matrix, SHADOW_CASCADE_COUNT>> m_shadowViewProjection;                  //!< Cascade projections.
         CameraViewport m_cameraViewport{};                                                                //!< 描画先に対する正規化Camera Viewport
         CameraClearMode m_cameraClearMode = CameraClearMode::SolidColor;                                  //!< CameraのClear方式
         Color m_cameraClearColor = Color(0.08f, 0.16f, 0.24f, 1.0f);                                      //!< Cameraの背景Clear Color
@@ -503,6 +498,7 @@ namespace Engine
         bool m_deferredFrameActive = false;
         bool m_deferredPassRecorded = false;
         int m_deferredDebugView = 0;
+        int m_shadowDebugCascade = 0;
         bool m_deferredRenderingEnabled = true;
         std::uint32_t m_requestedGameWidth = 0;                                                           //!< ImGui Game Viewが要求する描画幅
         std::uint32_t m_requestedGameHeight = 0;                                                          //!< ImGui Game Viewが要求する描画高さ

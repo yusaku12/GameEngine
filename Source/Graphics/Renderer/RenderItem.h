@@ -18,11 +18,25 @@ namespace Engine
     enum class RenderPassType : std::uint8_t
     {
         DepthOnly,   //!< Depth Pre-Pass
-        Shadow,      //!< Shadow Map Pass
+        Shadow,      //!< First directional shadow cascade
+        Shadow1,     //!< Second directional shadow cascade
+        Shadow2,     //!< Third directional shadow cascade
         Opaque,      //!< Opaque Pass
         AlphaTest,   //!< Alpha Test Pass
         Transparent, //!< Transparent Pass
     };
+
+    /** @brief Whether a pass renders a directional shadow cascade. */
+    constexpr bool isShadowPass(const RenderPassType pass) noexcept
+    {
+        return pass >= RenderPassType::Shadow && pass <= RenderPassType::Shadow2;
+    }
+
+    /** @brief Returns the cascade index of a shadow pass. */
+    constexpr std::size_t shadowCascadeIndex(const RenderPassType pass) noexcept
+    {
+        return static_cast<std::size_t>(pass) - static_cast<std::size_t>(RenderPassType::Shadow);
+    }
 
     /**
      * @brief Rendererが処理する一時的なモデル描画データ。

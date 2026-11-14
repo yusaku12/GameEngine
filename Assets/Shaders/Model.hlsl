@@ -72,7 +72,7 @@ Texture2D<float4> metallicRoughnessTexture : register(t2);
 Texture2D<float4> ambientOcclusionTexture : register(t3);
 Texture2D<float4> emissiveTexture : register(t4);
 SamplerState linearSampler : register(s0);
-Texture2D<float> shadowTexture : register(t6);
+Texture2DArray<float> shadowTexture : register(t6);
 Texture2D<float4> terrainBase0 : register(t7);
 Texture2D<float4> terrainNormal0 : register(t8);
 Texture2D<float4> terrainMr0 : register(t9);
@@ -96,9 +96,13 @@ struct SceneLight
 };
 cbuffer LightingConstants : register(b4)
 {
-    row_major float4x4 shadowViewProjection;
+    row_major float4x4 shadowViewProjection[3];
     float4 cameraPosition;
     float4 shadowOptions;
+    float4 shadowSplits;
+    float4 shadowCameraForward;
+    float4 shadowTexelWorld;
+    float4 shadowDepthScale;
     float4 environment;
     SceneLight lights[32];
     float4 atmosphereOptions;
@@ -109,6 +113,8 @@ cbuffer LightingConstants : register(b4)
     float4 atmospherePlanetCenterFromCamera;
     float4 atmosphereSuns[4];
 };
+
+#include "CascadedShadow.hlsli"
 
 struct VertexInput
 {
@@ -253,23 +259,6 @@ void csSkinning(uint3 group : SV_GroupID, uint threadIndex : SV_GroupIndex)
     skinningOutput.Store3(destination + 36, asuint(bitangent));
     skinningOutput.Store4(destination + 96, asuint(previousPosition));
     skinningOutput.Store(destination + 112, asuint(position.w));
-}
-
-float shadowVisibility(float3 position, float3 normal)
-{
-    if (shadowOptions.x == 0)
-        return 1;
-    float4 projected = mul(float4(position + normal * shadowOptions.z, 1), shadowViewProjection);
-    float3 coordinate = projected.xyz / projected.w;
-    float2 uv = coordinate.xy * float2(0.5f, -0.5f) + 0.5f;
-    if (coordinate.z <= 0 || coordinate.z >= 1 || any(uv < 0) || any(uv > 1))
-        return 1;
-    float visibility = 0;
-    [unroll] for (int y = -1; y <= 1; ++y)
-        [unroll] for (int x = -1; x <= 1; ++x)
-            visibility += shadowTexture.SampleCmpLevelZero(shadowSampler,
-                uv + float2(x, y) * shadowOptions.w, coordinate.z - shadowOptions.y);
-    return visibility / 9;
 }
 
 struct SurfaceSample
