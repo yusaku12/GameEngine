@@ -570,6 +570,7 @@ fence 対応プールで管理します。Forward、`Nothing` clear mode、G-Buf
   OCIO 設定ファイル、DXC、外部 LUT の読み込みは不要です。
   この出力変換の生成元は `Tools/Shaders/GenerateAcesOutput.cpp` です。OpenColorIO 2.6.0 の
   ライセンスは `Assets/Shaders/OCIO/OpenColorIO-LICENSE.txt` に記載し、ビルド先にもコピーします。
+  このファイルは配布に必要なため、フォルダ整理時にも削除しないでください。
 - **OpenColorIO** は生成済み変換を HDR または線形 LDR に適用します。
 
 - **Vignette** はトーンマッピング後に linear RGB 色をブレンドします。Intensity はゼロから
