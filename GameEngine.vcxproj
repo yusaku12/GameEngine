@@ -145,6 +145,7 @@
     <ClInclude Include="Source\Graphics\Camera\CameraTypes.h" />
     <ClInclude Include="Source\Graphics\Camera\CameraUtils.h" />
     <ClInclude Include="Source\Graphics\Debug\DebugPrimitive.h" />
+    <ClInclude Include="Source\Graphics\Debug\DebugPrimitiveCulling.h" />
     <ClInclude Include="Source\Graphics\Material\MaterialGpuCache.h" />
     <ClInclude Include="Source\Graphics\Material\MaterialGpuResource.h" />
     <ClInclude Include="Source\Graphics\Material\MaterialParameterLayout.h" />

@@ -1,5 +1,6 @@
 ﻿#include "Pch.h"
 #include "Graphics\Debug\DebugPrimitive.h"
+#include "Graphics\Debug\DebugPrimitiveCulling.h"
 #include "Graphics\DirectX12\Command\Command.h"
 #include "Graphics\DirectX12\Device\Device.h"
 #include "Graphics\DirectX12\Command\Fence.h"
@@ -240,6 +241,7 @@ namespace Engine
         DX12CommandList& commandList,
         const std::uint32_t frameIndex,
         const Matrix& viewProjection,
+        const CameraFrustum& frustum,
         const bool enabled)
     {
         if (frameIndex >= FRAME_COUNT)
@@ -254,7 +256,7 @@ namespace Engine
             return true;
         }
 
-        if (!buildVertices())
+        if (!buildVertices(frustum))
             return false;
         m_renderRequests.clear();
         if (m_vertices.empty())
@@ -305,9 +307,36 @@ namespace Engine
         m_renderRequests.swap(m_pending);
     }
 
-    bool DebugPrimitive::buildVertices()
+    bool DebugPrimitive::buildVertices(const CameraFrustum& frustum)
     {
         m_vertices.clear();
+        if (frustum.valid)
+        {
+            std::erase_if(m_renderRequests.lines, [&frustum](const LineRequest& line)
+                { return !DebugPrimitiveCulling::isVisibleLine(frustum, line.start, line.end); });
+            std::erase_if(m_renderRequests.grids, [&frustum](const GridRequest& grid)
+                {
+                    return !DebugPrimitiveCulling::isVisibleBox(frustum, Matrix::CreateTranslation(grid.center),
+                        Vector3(grid.width * 0.5f, 0.0f, grid.depth * 0.5f));
+                });
+            std::erase_if(m_renderRequests.spheres, [&frustum](const SphereRequest& sphere)
+                {
+                    return !DebugPrimitiveCulling::isVisibleBox(frustum, sphere.world,
+                        Vector3(sphere.radius, sphere.radius, sphere.radius));
+                });
+            std::erase_if(m_renderRequests.boxes, [&frustum](const BoxRequest& box)
+                { return !DebugPrimitiveCulling::isVisibleBox(frustum, box.world, box.extents); });
+            std::erase_if(m_renderRequests.cylinders, [&frustum](const CylinderRequest& cylinder)
+                {
+                    return !DebugPrimitiveCulling::isVisibleBox(frustum, cylinder.world,
+                        Vector3(cylinder.radius, cylinder.height * 0.5f, cylinder.radius));
+                });
+            std::erase_if(m_renderRequests.capsules, [&frustum](const CapsuleRequest& capsule)
+                {
+                    return !DebugPrimitiveCulling::isVisibleBox(frustum, capsule.world,
+                        Vector3(capsule.radius, capsule.halfHeight + capsule.radius, capsule.radius));
+                });
+        }
         constexpr std::size_t maxVertexCount = (std::numeric_limits<UINT>::max)();
         std::size_t estimate = 0;
         const auto addVertices = [&estimate](const std::size_t count, const std::size_t verticesPerRequest)

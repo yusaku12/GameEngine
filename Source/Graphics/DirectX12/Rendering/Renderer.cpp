@@ -847,7 +847,9 @@ namespace Engine
         nativeCommandList->RSSetScissorRects(1, &scissorRect);
         if (hasCameraView && m_mode == ExecutionMode::Editor && m_editorOverlayEnabled)
             DebugPrimitive::instance().drawGrid(Vector3::Zero, 20.0f, 20.0f, 1.0f);
-        if (!DebugPrimitive::instance().render(finishList, frameIndex, m_viewProjection, hasCameraView))
+        const CameraFrustum debugFrustum = hasCameraView
+            ? CameraUtils::buildWorldFrustum(m_viewProjection, Matrix::Identity) : CameraFrustum{};
+        if (!DebugPrimitive::instance().render(finishList, frameIndex, m_viewProjection, debugFrustum, hasCameraView))
             return false;
 
         const bool hasUi = !RuntimeUI::instance().draws().empty();

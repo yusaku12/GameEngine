@@ -1229,6 +1229,9 @@
     <ClInclude Include="Source\Graphics\Debug\DebugPrimitive.h">
       <Filter>Source\Graphics\Debug</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Graphics\Debug\DebugPrimitiveCulling.h">
+      <Filter>Source\Graphics\Debug</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Graphics\DirectX12\Command\Command.h">
       <Filter>Source\Graphics\DirectX12\Command</Filter>
     </ClInclude>

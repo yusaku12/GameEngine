@@ -11,6 +11,7 @@ namespace Engine
     class DX12Device;
     class DX12Fence;
     class DX12Shader;
+    struct CameraFrustum;
 
     /**
      * @brief 線分を一括転送して描画するデバッグプリミティブサービス。
@@ -176,6 +177,7 @@ namespace Engine
          * @param commandList 描画に使用するコマンドリスト
          * @param frameIndex 描画対象のフレームインデックス
          * @param viewProjection ビュー射影行列
+         * @param frustum 描画に使用するビュー射影行列の視錐台
          * @param enabled 描画可能なCameraがある場合は true
          * @return 描画に成功した場合は true
          */
@@ -183,6 +185,7 @@ namespace Engine
             DX12CommandList& commandList,
             std::uint32_t frameIndex,
             const Matrix& viewProjection,
+            const CameraFrustum& frustum,
             bool enabled);
 
         /**
@@ -201,7 +204,7 @@ namespace Engine
         /**
          * @brief 描画要求を頂点バッファに展開する
          */
-        bool buildVertices();
+        bool buildVertices(const CameraFrustum& frustum);
 
         /**
          * @brief フレームインデックスに対応する頂点バッファの容量を確保する
