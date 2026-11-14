@@ -349,30 +349,6 @@ float4 psTemporalAA(PostProcessVertex input) : SV_Target0
     return float4(lerp(current, clampedHistory, feedback), currentDepth);
 }
 
-float3 sampleColorGradingLut(float3 color)
-{
-    uint width, height;
-    secondaryColor.GetDimensions(width, height);
-    const float size = (float)height;
-    const float blue = saturate(color.b) * (size - 1.0f);
-    const float lowerSlice = floor(blue);
-    const float upperSlice = min(lowerSlice + 1.0f, size - 1.0f);
-    const float2 redGreen = saturate(color.rg) * (size - 1.0f);
-    const float v = (redGreen.y + 0.5f) / size;
-    const float lowerU = (lowerSlice * size + redGreen.x + 0.5f) / width;
-    const float upperU = (upperSlice * size + redGreen.x + 0.5f) / width;
-    const float3 lower = secondaryColor.SampleLevel(linearClamp, float2(lowerU, v), 0).rgb;
-    const float3 upper = secondaryColor.SampleLevel(linearClamp, float2(upperU, v), 0).rgb;
-    return lerp(lower, upper, blue - lowerSlice);
-}
-
-float4 psColorGradingLut(PostProcessVertex input) : SV_Target0
-{
-    const float4 source = loadInputColor(input.position.xy);
-    const float3 graded = sampleColorGradingLut(source.rgb);
-    return float4(lerp(source.rgb, graded, saturate(parameters[0].x)), source.a);
-}
-
 float logLuminance(float3 color)
 {
     return log2(max(dot(max(color, 0.0f), float3(0.2126f, 0.7152f, 0.0722f)), 0.0001f));
@@ -380,16 +356,28 @@ float logLuminance(float3 color)
 
 float4 psAutoExposureDownsample(PostProcessVertex input) : SV_Target0
 {
-    const float2 pixel = input.position.xy;
-    float4 values = sampleViewport(inputColor, sourceViewport, pixel, float2(-0.5f, -0.5f));
-    float result = parameters[0].x > 0.5f ? logLuminance(values.rgb) : values.r;
-    values = sampleViewport(inputColor, sourceViewport, pixel, float2(0.5f, -0.5f));
-    result += parameters[0].x > 0.5f ? logLuminance(values.rgb) : values.r;
-    values = sampleViewport(inputColor, sourceViewport, pixel, float2(-0.5f, 0.5f));
-    result += parameters[0].x > 0.5f ? logLuminance(values.rgb) : values.r;
-    values = sampleViewport(inputColor, sourceViewport, pixel, float2(0.5f, 0.5f));
-    result += parameters[0].x > 0.5f ? logLuminance(values.rgb) : values.r;
-    return float4(result * 0.25f, 0.0f, 0.0f, 1.0f);
+    const int2 first = int2(sourceViewport.xy);
+    const int2 end = first + int2(sourceViewport.zw);
+    const int2 base = first + int2(input.position.xy) * 2;
+    float weightedSum = 0.0f;
+    float totalWeight = 0.0f;
+    [unroll]
+    for (int y = 0; y < 2; ++y)
+    {
+        [unroll]
+        for (int x = 0; x < 2; ++x)
+        {
+            const int2 position = base + int2(x, y);
+            if (all(position < end))
+            {
+                const float4 value = inputColor.Load(int3(position, 0));
+                const float weight = parameters[0].x > 0.5f ? 1.0f : value.g;
+                weightedSum += (parameters[0].x > 0.5f ? logLuminance(value.rgb) : value.r) * weight;
+                totalWeight += weight;
+            }
+        }
+    }
+    return float4(weightedSum / totalWeight, totalWeight * 0.25f, 0.0f, 1.0f);
 }
 
 float4 psAutoExposureAdapt(PostProcessVertex input) : SV_Target0

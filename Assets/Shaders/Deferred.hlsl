@@ -47,7 +47,7 @@ cbuffer DeferredPassConstants : register(b5)
     float4 viewport;
     float4 renderSize;
     float4 backgroundColor;
-    float4 clipExposureDebug;
+    float4 clipAndDebug;
 };
 
 Texture2D<float4> albedoTexture : register(t0);
@@ -585,7 +585,7 @@ float4 psLighting(VertexOutput input) : SV_Target0
 float4 psDebug(VertexOutput input) : SV_Target0
 {
     const int2 pixel = int2(input.position.xy);
-    const uint debugView = (uint)clipExposureDebug.w;
+    const uint debugView = (uint)clipAndDebug.z;
     if (debugView == 1u)
     {
         const float4 albedo = albedoTexture.Load(int3(pixel, 0));
@@ -606,12 +606,12 @@ float4 psDebug(VertexOutput input) : SV_Target0
         return float4(encodeSrgb(channel.xxx), 1.0f);
     }
     if (debugView == 6u)
-        return float4(encodeSrgb(toneMap(emissionTexture.Load(int3(pixel, 0)).rgb, clipExposureDebug.z)), 1.0f);
+        return float4(encodeSrgb(emissionTexture.Load(int3(pixel, 0)).rgb), 1.0f);
     if (debugView == 7u)
     {
         const float depth = depthTexture.Load(int3(pixel, 0));
-        const float nearClip = max(clipExposureDebug.x, 0.0001f);
-        const float farClip = max(clipExposureDebug.y, nearClip + 0.0001f);
+        const float nearClip = max(clipAndDebug.x, 0.0001f);
+        const float farClip = max(clipAndDebug.y, nearClip + 0.0001f);
         const float linearDepth = nearClip * farClip / max(farClip - depth * (farClip - nearClip), 0.0001f);
         const float visibleDepth = saturate(linearDepth / farClip);
         return float4(encodeSrgb(visibleDepth.xxx), 1.0f);

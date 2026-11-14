@@ -1,0 +1,42 @@
+ocio_profile_version: 2
+name: Neutral Game SDR
+search_path: .
+
+roles:
+  default: Linear
+  scene_linear: Linear
+
+displays:
+  Preview:
+    - !<View> {name: Linear, colorspace: Linear}
+
+looks:
+  - !<Look>
+    name: Neutral
+    process_space: Linear
+    transform: !<MatrixTransform>
+      matrix: [0.968504, 0.028608, 0.002888, 0,
+               0.008504, 0.988608, 0.002888, 0,
+               0.008504, 0.028608, 0.962888, 0,
+               0, 0, 0, 1]
+  - !<Look>
+    name: Cinematic
+    process_space: Linear
+    transform: !<CDLTransform>
+      slope: [1.035, 1.0, 0.98]
+      power: [1.12, 1.08, 1.04]
+      sat: 0.94
+      style: noclamp
+  - !<Look>
+    name: SlayFilm
+    process_space: Linear
+    transform: !<GroupTransform>
+      children:
+        - !<ExponentWithLinearTransform> {gamma: 2.4, offset: 0.055, direction: inverse}
+        - !<FileTransform> {src: slay-04-film.cube, interpolation: linear}
+        - !<ExponentWithLinearTransform> {gamma: 2.4, offset: 0.055}
+
+colorspaces:
+  - !<ColorSpace>
+    name: Linear
+    isdata: false

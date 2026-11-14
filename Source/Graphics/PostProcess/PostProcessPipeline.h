@@ -1,6 +1,11 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <span>
+#include <vector>
 
 #include "Graphics\PostProcess\PostProcessTargetPool.h"
 #include "Graphics\DirectX12\Pipeline\Pipeline.h"
@@ -14,13 +19,13 @@ namespace Engine
     {
         BloomPrefilter, BloomDownsample, BloomUpsample, BloomComposite, CustomComposite, Vignette,
         ChromaticAberration, FilmGrain, Fxaa,
-        DepthOfField, ColorGradingLut, AutoExposureDownsample, AutoExposureAdapt, TemporalAA, MotionBlur,
+        DepthOfField, AutoExposureDownsample, AutoExposureAdapt, TemporalAA, MotionBlur,
         LightShafts, Count,
     };
     inline constexpr std::array POST_PROCESS_BUILTIN_ENTRIES{
         "psBloomPrefilter", "psBloomDownsample", "psBloomUpsample", "psBloomComposite",
         "psCustomComposite", "psVignette", "psChromaticAberration", "psFilmGrain",
-        "psFxaa", "psDepthOfField", "psColorGradingLut", "psAutoExposureDownsample",
+        "psFxaa", "psDepthOfField", "psAutoExposureDownsample",
         "psAutoExposureAdapt", "psTemporalAA", "psMotionBlur", "psLightShafts",
     };
     static_assert(POST_PROCESS_BUILTIN_ENTRIES.size() == static_cast<std::size_t>(PostProcessBuiltin::Count));
@@ -39,6 +44,44 @@ namespace Engine
         std::array<float, 16> parameters{}; //!< b1に渡す16個の32-bit値。
         std::uint32_t resolutionDivisor = 1; //!< Render Target寸法の縮小率。1以上16以下。
         bool enabled = true; //!< Disabled passes do not draw or acquire targets.
+    };
+
+    /** @brief OCIO GPU LUT texture dimensionality. */
+    enum class PostProcessOcioTextureDimension
+    {
+        Texture1D, //!< One-dimensional LUT.
+        Texture2D, //!< Two-dimensional LUT.
+        Texture3D, //!< Three-dimensional LUT.
+    };
+
+    /** @brief One OCIO-generated LUT and its explicitly assigned HLSL bindings. */
+    struct PostProcessOcioTexture
+    {
+        PostProcessOcioTextureDimension dimension = PostProcessOcioTextureDimension::Texture2D; //!< Texture type.
+        std::uint32_t width = 0; //!< Width in texels.
+        std::uint32_t height = 1; //!< Height in texels; one for 1D.
+        std::uint32_t depth = 1; //!< Depth in texels; one for 1D and 2D.
+        std::uint32_t channels = 3; //!< OCIO values are tightly packed R or RGB floats.
+        std::uint32_t textureRegister = 1; //!< t0 is reserved for the source image.
+        std::uint32_t samplerRegister = 1; //!< s0 is reserved for the source image.
+        bool linearInterpolation = true; //!< Linear sampling; false selects point sampling.
+        std::vector<float> values; //!< Tightly packed texels, with X varying fastest.
+    };
+
+    /**
+     * @brief A compiled OCIO fullscreen shader and the LUTs referenced by it.
+     * @details The wrapper uses t0/s0 for the input image, b0 for the standard
+     * PostProcess frame constants and b1 for the 16 supplied float constants.
+     * LUT registers must agree with the compiled shader's bindings. The shader
+     * must handle source/target viewport differences using the b0 constants.
+     */
+    struct PostProcessOcioDescription
+    {
+        std::shared_ptr<const DX12Shader> pixelShader; //!< Compiled fullscreen shader snapshot.
+        std::vector<PostProcessOcioTexture> textures; //!< LUTs and their bindings.
+        std::array<float, 16> parameters{}; //!< b1 constants.
+        PostProcessStage stage = PostProcessStage::BeforeToneMapping; //!< HDR or linear LDR.
+        float contribution = 1.0f; //!< Blending strength in [0,1].
     };
 
     /** @brief 直近の記録に対する統計。無効パスのDraw/Target取得は含めない。 */
@@ -74,13 +117,21 @@ namespace Engine
         /** @brief パス列をSnapshotとして設定する。失敗時は既存列を保持する。GPU完了を待つ。 */
         bool configure(std::span<const PostProcessPassDescription> descriptions);
         /**
+         * @brief OCIO ShaderとLUTを設定する。nullptrは設定解除。
+         * @details 設定値はコピーされ、最初の描画時にLUTをUploadする。
+         * 失敗時は既存の設定を保持する。置換・解除時はGPU完了を待つ。
+         * @param description コンパイル済みShaderとLUT。nullptrなら解除。
+         * @return 設定または解除に成功した場合はtrue。
+         */
+        bool configureOcio(const PostProcessOcioDescription* description);
+        /**
          * @brief HDR入力から最終sRGB画像へ記録する。input/outputの同一Resourceは不可。
          * @details 記録失敗時は当該コマンド列を提出せず破棄してfinalizeすること。
          * 必須色変換は最終出力だけに適用する。AfterToneMapping入力はLinear LDR。
          * Camera Weightは中立設定から補間する。FXAAのみ処理前後の画像を補間する。
          */
         bool record(DX12CommandList& commandList, const PostProcessImage& input,
-            const PostProcessImage& output, const D3D12_VIEWPORT& viewport, float exposure,
+            const PostProcessImage& output, const D3D12_VIEWPORT& viewport,
             const PostProcessCameraSnapshot& camera = {}, const PostProcessImage* depth = nullptr,
             const PostProcessImage* motionVectors = nullptr);
         /** @brief 記録した全パスのPSO/一時画像へ提出Fenceを関連付ける。 */
@@ -103,9 +154,40 @@ namespace Engine
             std::shared_ptr<const DX12Shader> shader;
             DX12GraphicsPipeline pipeline;
         };
+        struct OcioTexture
+        {
+            DX12Resource resource;
+            Microsoft::WRL::ComPtr<ID3D12Resource> upload;
+            std::optional<DX12DescriptorAllocation> srv;
+            std::vector<float> pixels;
+            std::uint32_t textureRegister = 0;
+            std::uint32_t samplerRegister = 0;
+            bool linearInterpolation = true;
+            std::uint64_t rowPitch = 0;
+            std::uint64_t slicePitch = 0;
+        };
+        struct OcioPass
+        {
+            ~OcioPass();
+            DX12DescriptorHeap* heap = nullptr;
+            std::shared_ptr<const DX12Shader> shader;
+            std::vector<std::unique_ptr<OcioTexture>> textures;
+            std::array<float, 16> parameters{};
+            PostProcessStage stage = PostProcessStage::BeforeToneMapping;
+            float contribution = 1;
+            DX12GraphicsPipeline pipeline;
+            std::uint64_t uploadFenceValue = 0;
+            bool uploadRecorded = false;
+            bool uploaded = false;
+        };
+        bool createOcioPipeline(DX12GraphicsPipeline& pipeline, const DX12Shader& vertex,
+            const OcioPass& pass);
+        bool configureOcioPass(const PostProcessOcioDescription* description,
+            std::unique_ptr<OcioPass>& destination, bool lutOnly = false);
+        bool uploadOcioTextures(DX12CommandList& commandList, OcioPass& pass);
         DX12GraphicsPipeline* getCustomPipeline(const std::shared_ptr<const DX12Shader>& shader);
         bool createPipeline(DX12GraphicsPipeline& pipeline, const DX12Shader& vertex,
-            const DX12Shader& pixel, DXGI_FORMAT format);
+            const DX12Shader& pixel, DXGI_FORMAT format, bool outputTransform = false);
         bool createPasses(std::span<const PostProcessPassDescription> descriptions,
             const DX12Shader& vertex, std::vector<std::unique_ptr<Pass>>& destination);
         bool draw(DX12CommandList& commandList, const DX12GraphicsPipeline& pipeline,
@@ -114,10 +196,10 @@ namespace Engine
             float exposure, bool toneMapping, std::span<const float> parameters,
             const PostProcessImage* secondary = nullptr, const D3D12_VIEWPORT* secondaryViewport = nullptr,
             const DX12GpuDescriptorHandle* externalSecondary = nullptr,
-            const PostProcessImage* tertiary = nullptr);
+            const PostProcessImage* tertiary = nullptr, const OcioPass* ocio = nullptr,
+            bool outputTransform = false);
         PostProcessImage* recordAutoExposure(DX12CommandList& commandList,
-            const PostProcessImage& input, const D3D12_VIEWPORT& sourceViewport,
-            const D3D12_RESOURCE_DESC& fullSize);
+            const PostProcessImage& input, const D3D12_VIEWPORT& sourceViewport);
         bool initializeExposureHistory();
         bool releaseExposureHistory();
         bool initializeTemporalHistory(std::uint32_t width, std::uint32_t height);
@@ -161,6 +243,10 @@ namespace Engine
         std::array<DX12GraphicsPipeline, POST_PROCESS_BUILTIN_ENTRIES.size()> m_builtins;
         std::vector<std::unique_ptr<Pass>> m_passes;
         std::unordered_map<const DX12Shader*, std::unique_ptr<CustomPass>> m_customPipelines;
+        std::unique_ptr<OcioPass> m_acesLuts;
+        std::unique_ptr<OcioPass> m_ocio;
+        std::unique_ptr<OcioPass> m_cameraOcio;
+        std::shared_ptr<const PostProcessOcioDescription> m_cameraOcioSnapshot;
         std::uint64_t m_lastFenceValue = 0;
         bool m_recorded = false;
         PostProcessStatistics m_statistics;

@@ -1,5 +1,6 @@
 #include "Pch.h"
 #include "Graphics\PostProcess\PostProcessSettings.h"
+#include "Assets\PostProcess\PostProcessOcioAsset.h"
 #include <cmath>
 #include "Core\Logging\Logger.h"
 #include "Core\Math\MathTypes.h"
@@ -30,11 +31,14 @@ namespace Engine
                 value = weight == 1 ? parameter.value : Vector3::Lerp(value, parameter.value, weight);
             }
         }
-        if (layer.colorGradingLutAsset.overrideState)
+        if (layer.ocioAsset.overrideState)
         {
-            auto& destinationAsset = destination.settings.colorGradingLutAsset.value;
-            destinationAsset = layer.colorGradingLutAsset.value;
-            destination.settings.colorGradingLutAsset.overrideState = false;
+            destination.settings.ocioAsset.value = layer.ocioAsset.value;
+            destination.settings.ocioAsset.overrideState = false;
+            destination.ocio = layer.ocioAsset.value
+                ? std::shared_ptr<const PostProcessOcioDescription>(layer.ocioAsset.value,
+                    &layer.ocioAsset.value->description)
+                : nullptr;
         }
         for (std::size_t index = 0; index < POST_PROCESS_SWITCHES.size(); ++index)
         {
@@ -77,9 +81,9 @@ namespace Engine
             LOG_ERROR("[PostProcess] Auto Exposure Minimum EV must not exceed Maximum EV.");
             return false;
         }
-        if (settings.colorGradingLutEnabled.value && !settings.colorGradingLutAsset.value.isValid())
+        if (settings.ocioEnabled.value && settings.ocioAsset.overrideState && !settings.ocioAsset.value)
         {
-            LOG_ERROR("[PostProcess] An enabled Color Grading LUT requires a valid asset reference.");
+            LOG_ERROR("[PostProcess] An enabled OCIO override requires a compiled asset.");
             return false;
         }
         return true;

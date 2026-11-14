@@ -1,10 +1,11 @@
 #include "Pch.h"
+#include "Graphics\PostProcess\Aces2Luts.h"
 #include "Graphics\PostProcess\PostProcessPipeline.h"
 #include "Graphics\DirectX12\Command\Command.h"
 #include "Graphics\DirectX12\Command\Fence.h"
-#include "Graphics\Texture\TextureManager.h"
 #include <bit>
 #include <cmath>
+#include <limits>
 #include "Core\Logging\Logger.h"
 #include "Core\Math\MathTypes.h"
 
@@ -12,6 +13,8 @@ namespace Engine
 {
     namespace
     {
+        constexpr std::size_t MAX_OCIO_TEXTURES = 38; // 64 root DWORDs minus input and constants.
+
         D3D12_VIEWPORT temporaryViewport(const D3D12_VIEWPORT& viewport,
             const PostProcessTargetDescription& description, const D3D12_RESOURCE_DESC& fullSize)
         {
@@ -35,6 +38,15 @@ namespace Engine
             LOG_CRITICAL("[PostProcess] Pipeline shutdown failed.");
     }
 
+    PostProcessPipeline::OcioPass::~OcioPass()
+    {
+        for (const auto& texture : textures)
+        {
+            if (texture->srv && !heap->release(texture->srv->cpu.index))
+                LOG_ERROR("[PostProcess] Cannot release an OCIO LUT descriptor.");
+        }
+    }
+
     bool PostProcessPipeline::initialize(ID3D12Device& device, const DX12Fence& fence,
         DX12DescriptorHeap& srvHeap)
     {
@@ -43,7 +55,32 @@ namespace Engine
         m_device = &device;
         m_fence = &fence;
         m_srvHeap = &srvHeap;
-        return true;
+        try
+        {
+            PostProcessOcioDescription description;
+            auto& reach = description.textures.emplace_back();
+            reach.dimension = PostProcessOcioTextureDimension::Texture1D;
+            reach.width = static_cast<std::uint32_t>(Aces2Luts::reach.size());
+            reach.channels = 1;
+            reach.textureRegister = 3;
+            reach.samplerRegister = 1;
+            reach.linearInterpolation = false;
+            reach.values.assign(Aces2Luts::reach.begin(), Aces2Luts::reach.end());
+            auto& cusp = description.textures.emplace_back();
+            cusp.dimension = PostProcessOcioTextureDimension::Texture1D;
+            cusp.width = static_cast<std::uint32_t>(Aces2Luts::cusp.size() / 3);
+            cusp.channels = 3;
+            cusp.textureRegister = 4;
+            cusp.samplerRegister = 1;
+            cusp.linearInterpolation = false;
+            cusp.values.assign(Aces2Luts::cusp.begin(), Aces2Luts::cusp.end());
+            return configureOcioPass(&description, m_acesLuts, true);
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[PostProcess] Cannot allocate ACES 2 lookup tables.");
+            return false;
+        }
     }
 
     bool PostProcessPipeline::finalize()
@@ -54,6 +91,10 @@ namespace Engine
             return false;
         m_passes.clear();
         m_customPipelines.clear();
+        m_acesLuts.reset();
+        m_ocio.reset();
+        m_cameraOcio.reset();
+        m_cameraOcioSnapshot.reset();
         m_output.finalize();
         m_toneMapping.finalize();
         for (auto& pipeline : m_builtins)
@@ -70,11 +111,14 @@ namespace Engine
     }
 
     bool PostProcessPipeline::createPipeline(DX12GraphicsPipeline& pipeline,
-        const DX12Shader& vertex, const DX12Shader& pixel, const DXGI_FORMAT format)
+        const DX12Shader& vertex, const DX12Shader& pixel, const DXGI_FORMAT format,
+        const bool outputTransform)
     {
         const D3D12_DESCRIPTOR_RANGE range{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, 0 };
         const D3D12_DESCRIPTOR_RANGE secondaryRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, 0 };
         const D3D12_DESCRIPTOR_RANGE tertiaryRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0, 0 };
+        const D3D12_DESCRIPTOR_RANGE reachRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 0, 0 };
+        const D3D12_DESCRIPTOR_RANGE cuspRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4, 0, 0 };
         std::array<D3D12_ROOT_PARAMETER, 6> parameters{};
         parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         parameters[0].DescriptorTable = { 1, &range };
@@ -84,10 +128,20 @@ namespace Engine
         parameters[2].Constants = { 1, 0, 48 };
         parameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         parameters[3].DescriptorTable = { 1, &secondaryRange };
-        parameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        parameters[4].Constants = { 2, 0, 4 };
-        parameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        parameters[5].DescriptorTable = { 1, &tertiaryRange };
+        if (outputTransform)
+        {
+            parameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            parameters[4].DescriptorTable = { 1, &reachRange };
+            parameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            parameters[5].DescriptorTable = { 1, &cuspRange };
+        }
+        else
+        {
+            parameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+            parameters[4].Constants = { 2, 0, 4 };
+            parameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            parameters[5].DescriptorTable = { 1, &tertiaryRange };
+        }
         for (auto& parameter : parameters)
             parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         const D3D12_STATIC_SAMPLER_DESC sampler{
@@ -101,15 +155,281 @@ namespace Engine
             .ShaderRegister = 0,
             .ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL,
         };
+        auto pointSampler = sampler;
+        pointSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+        pointSampler.ShaderRegister = 1;
+        const std::array samplers{ sampler, pointSampler };
         return pipeline.initialize(*m_device, {
             .vertexShader = &vertex,
             .pixelShader = &pixel,
             .rootParameters = parameters,
-            .staticSamplers = std::span(&sampler, 1),
+            .staticSamplers = std::span(samplers).first(outputTransform ? 2 : 1),
             .renderTargetFormat = format,
             .enableDepthWrite = false,
             .cullMode = D3D12_CULL_MODE_NONE,
         });
+    }
+
+    bool PostProcessPipeline::createOcioPipeline(DX12GraphicsPipeline& pipeline,
+        const DX12Shader& vertex, const OcioPass& pass)
+    {
+        std::array<D3D12_DESCRIPTOR_RANGE, MAX_OCIO_TEXTURES + 1> ranges{};
+        std::array<D3D12_ROOT_PARAMETER, MAX_OCIO_TEXTURES + 3> parameters{};
+        ranges[0] = { D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, 0 };
+        parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[0].DescriptorTable = { 1, &ranges[0] };
+        parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        parameters[1].Constants = { 0, 0, 9 };
+        parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        parameters[2].Constants = { 1, 0, 16 };
+
+        std::array<D3D12_STATIC_SAMPLER_DESC, D3D12_COMMONSHADER_SAMPLER_REGISTER_COUNT> samplers{};
+        std::size_t samplerCount = 0;
+        const auto addSampler = [&samplers, &samplerCount](const std::uint32_t slot, const bool linear)
+        {
+            auto& sampler = samplers[samplerCount++];
+            sampler.Filter = linear ? D3D12_FILTER_MIN_MAG_MIP_LINEAR : D3D12_FILTER_MIN_MAG_MIP_POINT;
+            sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+            sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+            sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+            sampler.MaxAnisotropy = 1;
+            sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+            sampler.MaxLOD = D3D12_FLOAT32_MAX;
+            sampler.ShaderRegister = slot;
+            sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        };
+        addSampler(0, true);
+        for (std::size_t index = 0; index < pass.textures.size(); ++index)
+        {
+            const auto& texture = *pass.textures[index];
+            ranges[index + 1] = {
+                D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, texture.textureRegister, 0, 0 };
+            auto& parameter = parameters[index + 3];
+            parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            parameter.DescriptorTable = { 1, &ranges[index + 1] };
+            if (std::none_of(samplers.begin(), samplers.begin() + samplerCount, [&texture](const auto& sampler)
+                { return sampler.ShaderRegister == texture.samplerRegister; }))
+                addSampler(texture.samplerRegister, texture.linearInterpolation);
+        }
+        const auto activeParameters = std::span(parameters).first(pass.textures.size() + 3);
+        for (auto& parameter : activeParameters)
+            parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        return pipeline.initialize(*m_device, {
+            .vertexShader = &vertex,
+            .pixelShader = pass.shader.get(),
+            .rootParameters = activeParameters,
+            .staticSamplers = std::span(samplers).first(samplerCount),
+            .renderTargetFormat = DXGI_FORMAT_R16G16B16A16_FLOAT,
+            .enableDepthWrite = false,
+            .cullMode = D3D12_CULL_MODE_NONE,
+        });
+    }
+
+    bool PostProcessPipeline::configureOcio(const PostProcessOcioDescription* description)
+    {
+        return configureOcioPass(description, m_ocio);
+    }
+
+    bool PostProcessPipeline::configureOcioPass(const PostProcessOcioDescription* description,
+        std::unique_ptr<OcioPass>& destination, const bool lutOnly)
+    {
+        if (m_device == nullptr || m_recorded || (!lutOnly && !m_vertexShader))
+        {
+            LOG_ERROR("[PostProcess] Cannot configure OCIO on an uninitialized or unsubmitted pipeline.");
+            return false;
+        }
+        if (description == nullptr)
+        {
+            if (m_lastFenceValue != 0 && !m_fence->waitOnCpu(m_lastFenceValue))
+                return false;
+            destination.reset();
+            return true;
+        }
+        if ((!lutOnly && (!description->pixelShader || !description->pixelShader->isCompiled()))
+            || (description->stage != PostProcessStage::BeforeToneMapping
+                && description->stage != PostProcessStage::AfterToneMapping)
+            || !std::isfinite(description->contribution)
+            || description->contribution < 0 || description->contribution > 1
+            || description->textures.size() > MAX_OCIO_TEXTURES
+            || !std::all_of(description->parameters.begin(), description->parameters.end(),
+                [](float value) { return std::isfinite(value); }))
+        {
+            LOG_ERROR("[PostProcess] Invalid OCIO shader, stage, constants, contribution or LUT count.");
+            return false;
+        }
+        try
+        {
+            auto candidate = std::make_unique<OcioPass>();
+            candidate->heap = m_srvHeap;
+            candidate->shader = description->pixelShader;
+            candidate->parameters = description->parameters;
+            candidate->stage = description->stage;
+            candidate->contribution = description->contribution;
+            candidate->textures.reserve(description->textures.size());
+            for (const auto& source : description->textures)
+            {
+                const bool validDimensions = source.width > 0 && source.height > 0 && source.depth > 0
+                    && ((source.dimension == PostProcessOcioTextureDimension::Texture1D
+                            && source.height == 1 && source.depth == 1
+                            && source.width <= D3D12_REQ_TEXTURE1D_U_DIMENSION)
+                        || (source.dimension == PostProcessOcioTextureDimension::Texture2D
+                            && source.depth == 1
+                            && source.width <= D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION
+                            && source.height <= D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION)
+                        || (source.dimension == PostProcessOcioTextureDimension::Texture3D
+                            && source.width <= D3D12_REQ_TEXTURE3D_U_V_OR_W_DIMENSION
+                            && source.height <= D3D12_REQ_TEXTURE3D_U_V_OR_W_DIMENSION
+                            && source.depth <= D3D12_REQ_TEXTURE3D_U_V_OR_W_DIMENSION));
+                const std::uint64_t count = static_cast<std::uint64_t>(source.width)
+                    * source.height * source.depth * source.channels;
+                const auto duplicateTexture = [&source](const auto& texture)
+                    { return texture->textureRegister == source.textureRegister; };
+                const auto conflictingSampler = [&source](const auto& texture)
+                    { return texture->samplerRegister == source.samplerRegister
+                        && texture->linearInterpolation != source.linearInterpolation; };
+                if (!validDimensions || (source.channels != 1 && source.channels != 3)
+                    || source.textureRegister == 0
+                    || source.textureRegister >= D3D12_COMMONSHADER_INPUT_RESOURCE_REGISTER_COUNT
+                    || source.samplerRegister >= D3D12_COMMONSHADER_SAMPLER_REGISTER_COUNT
+                    || (source.samplerRegister == 0 && !source.linearInterpolation)
+                    || count != source.values.size()
+                    || std::any_of(candidate->textures.begin(), candidate->textures.end(), duplicateTexture)
+                    || std::any_of(candidate->textures.begin(), candidate->textures.end(), conflictingSampler)
+                    || !std::all_of(source.values.begin(), source.values.end(),
+                        [](float value) { return std::isfinite(value); }))
+                {
+                    LOG_ERROR("[PostProcess] Invalid OCIO LUT dimensions, data or shader bindings.");
+                    return false;
+                }
+                auto texture = std::make_unique<OcioTexture>();
+                auto& entry = *texture;
+                candidate->textures.push_back(std::move(texture));
+                entry.textureRegister = source.textureRegister;
+                entry.samplerRegister = source.samplerRegister;
+                entry.linearInterpolation = source.linearInterpolation;
+                const std::uint32_t gpuChannels = source.channels == 3 ? 4 : 1;
+                const std::size_t texelCount = static_cast<std::size_t>(count / source.channels);
+                entry.pixels.resize(texelCount * gpuChannels);
+                if (source.channels == 1)
+                    std::copy(source.values.begin(), source.values.end(), entry.pixels.begin());
+                else
+                {
+                    for (std::size_t index = 0; index < texelCount; ++index)
+                    {
+                        std::copy_n(source.values.begin() + index * 3, 3, entry.pixels.begin() + index * 4);
+                        entry.pixels[index * 4 + 3] = 1;
+                    }
+                }
+                entry.rowPitch = static_cast<std::uint64_t>(source.width) * gpuChannels * sizeof(float);
+                entry.slicePitch = entry.rowPitch * source.height;
+                D3D12_RESOURCE_DESC resource{};
+                resource.Dimension = source.dimension == PostProcessOcioTextureDimension::Texture1D
+                    ? D3D12_RESOURCE_DIMENSION_TEXTURE1D
+                    : source.dimension == PostProcessOcioTextureDimension::Texture2D
+                    ? D3D12_RESOURCE_DIMENSION_TEXTURE2D : D3D12_RESOURCE_DIMENSION_TEXTURE3D;
+                resource.Width = source.width;
+                resource.Height = source.height;
+                resource.DepthOrArraySize = static_cast<UINT16>(source.depth);
+                resource.MipLevels = 1;
+                resource.Format = source.channels == 1 ? DXGI_FORMAT_R32_FLOAT : DXGI_FORMAT_R32G32B32A32_FLOAT;
+                resource.SampleDesc = { 1, 0 };
+                D3D12_FEATURE_DATA_FORMAT_SUPPORT support{ .Format = resource.Format };
+                if (FAILED(m_device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support)))
+                    || (support.Support1 & D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE) == 0
+                    || !entry.resource.initialize(*m_device, {
+                        .description = resource, .initialState = D3D12_RESOURCE_STATE_COPY_DEST }))
+                {
+                    LOG_ERROR("[PostProcess] Cannot create an OCIO LUT texture.");
+                    return false;
+                }
+                const UINT64 uploadSize = GetRequiredIntermediateSize(entry.resource.get(), 0, 1);
+                const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+                const auto buffer = CD3DX12_RESOURCE_DESC::Buffer(uploadSize);
+                if (uploadSize == 0 || FAILED(m_device->CreateCommittedResource(
+                    &heap, D3D12_HEAP_FLAG_NONE, &buffer, D3D12_RESOURCE_STATE_GENERIC_READ,
+                    nullptr, IID_PPV_ARGS(&entry.upload))))
+                {
+                    LOG_ERROR("[PostProcess] Cannot create an OCIO LUT upload buffer.");
+                    return false;
+                }
+                entry.srv = m_srvHeap->allocate();
+                if (!entry.srv || !entry.srv->gpu)
+                {
+                    LOG_ERROR("[PostProcess] Cannot allocate an OCIO LUT descriptor.");
+                    return false;
+                }
+                D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+                srv.Format = resource.Format;
+                srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                if (resource.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE1D)
+                {
+                    srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1D;
+                    srv.Texture1D.MipLevels = 1;
+                }
+                else if (resource.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D)
+                {
+                    srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                    srv.Texture2D.MipLevels = 1;
+                }
+                else
+                {
+                    srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+                    srv.Texture3D.MipLevels = 1;
+                }
+                m_device->CreateShaderResourceView(entry.resource.get(), &srv, entry.srv->cpu.native);
+            }
+            if (!lutOnly && !createOcioPipeline(candidate->pipeline, *m_vertexShader, *candidate))
+                return false;
+            if (m_lastFenceValue != 0 && !m_fence->waitOnCpu(m_lastFenceValue))
+                return false;
+            destination.swap(candidate);
+            return true;
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[PostProcess] Cannot allocate OCIO LUT resources.");
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[PostProcess] OCIO LUT resources exceed available capacity.");
+        }
+        return false;
+    }
+
+    bool PostProcessPipeline::uploadOcioTextures(DX12CommandList& commandList, OcioPass& pass)
+    {
+        if (pass.uploaded)
+        {
+            if (pass.uploadFenceValue != 0 && m_fence->isComplete(pass.uploadFenceValue))
+            {
+                for (const auto& texture : pass.textures)
+                    texture->upload.Reset();
+                pass.uploadFenceValue = 0;
+            }
+            return true;
+        }
+        if (pass.uploadRecorded)
+            return true;
+        auto* const native = commandList.getForRecording();
+        if (!native)
+        {
+            LOG_ERROR("[PostProcess] Cannot upload OCIO LUTs without a recording command list.");
+            return false;
+        }
+        for (const auto& texture : pass.textures)
+        {
+            const D3D12_SUBRESOURCE_DATA data{
+                texture->pixels.data(), static_cast<LONG_PTR>(texture->rowPitch),
+                static_cast<LONG_PTR>(texture->slicePitch) };
+            if (UpdateSubresources(native, texture->resource.get(), texture->upload.Get(), 0, 0, 1, &data) == 0
+                || !texture->resource.transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
+            {
+                LOG_ERROR("[PostProcess] Failed to upload an OCIO LUT.");
+                return false;
+            }
+        }
+        pass.uploadRecorded = true;
+        return true;
     }
 
     bool PostProcessPipeline::createPasses(const std::span<const PostProcessPassDescription> descriptions,
@@ -182,6 +502,8 @@ namespace Engine
             return false;
         DX12GraphicsPipeline nextToneMapping;
         DX12GraphicsPipeline nextOutput;
+        DX12GraphicsPipeline nextOcio;
+        DX12GraphicsPipeline nextCameraOcio;
         std::array<DX12GraphicsPipeline, POST_PROCESS_BUILTIN_ENTRIES.size()> nextBuiltins;
         for (std::size_t index = 0; index < builtins.size(); ++index)
         {
@@ -190,7 +512,9 @@ namespace Engine
                 LOG_ERROR("[PostProcess] Missing built-in shader '{}'.", POST_PROCESS_BUILTIN_ENTRIES[index]);
                 return false;
             }
-            if (!createPipeline(nextBuiltins[index], *vertex, *builtins[index], DXGI_FORMAT_R16G16B16A16_FLOAT))
+            const auto format = index == static_cast<std::size_t>(PostProcessBuiltin::AutoExposureDownsample)
+                ? DXGI_FORMAT_R32G32B32A32_FLOAT : DXGI_FORMAT_R16G16B16A16_FLOAT;
+            if (!createPipeline(nextBuiltins[index], *vertex, *builtins[index], format))
                 return false;
         }
         std::vector<PostProcessPassDescription> descriptions;
@@ -207,14 +531,20 @@ namespace Engine
                 return false;
             nextCustomPipelines.emplace(key, std::move(candidate));
         }
-        if (!createPipeline(nextToneMapping, *vertex, *toneMapping, DXGI_FORMAT_R16G16B16A16_FLOAT)
-            || !createPipeline(nextOutput, *vertex, *output, DXGI_FORMAT_R8G8B8A8_UNORM)
-            || !createPasses(descriptions, *vertex, nextPasses))
+        if (!createPipeline(nextToneMapping, *vertex, *toneMapping, DXGI_FORMAT_R16G16B16A16_FLOAT, true)
+            || !createPipeline(nextOutput, *vertex, *output, DXGI_FORMAT_R8G8B8A8_UNORM, true)
+            || !createPasses(descriptions, *vertex, nextPasses)
+            || (m_ocio && !createOcioPipeline(nextOcio, *vertex, *m_ocio))
+            || (m_cameraOcio && !createOcioPipeline(nextCameraOcio, *vertex, *m_cameraOcio)))
             return false;
         m_toneMapping.swap(nextToneMapping);
         m_output.swap(nextOutput);
         m_passes.swap(nextPasses);
         m_customPipelines.swap(nextCustomPipelines);
+        if (m_ocio)
+            m_ocio->pipeline.swap(nextOcio);
+        if (m_cameraOcio)
+            m_cameraOcio->pipeline.swap(nextCameraOcio);
         m_vertexShader = std::move(vertex);
         for (std::size_t index = 0; index < builtins.size(); ++index)
             m_builtins[index].swap(nextBuiltins[index]);
@@ -244,14 +574,19 @@ namespace Engine
         const D3D12_VIEWPORT& sourceViewport, const D3D12_VIEWPORT& targetViewport,
         const float exposure, const bool toneMapping, const std::span<const float> parameters,
         const PostProcessImage* secondary, const D3D12_VIEWPORT* secondaryViewport,
-        const DX12GpuDescriptorHandle* externalSecondary, const PostProcessImage* tertiary)
+        const DX12GpuDescriptorHandle* externalSecondary, const PostProcessImage* tertiary,
+        const OcioPass* ocio, const bool outputTransform)
     {
         if (input.resource == output.resource || (secondary && secondary->resource == output.resource)
-            || (tertiary && tertiary->resource == output.resource) || parameters.size() > 48)
+            || (tertiary && tertiary->resource == output.resource)
+            || parameters.size() > (ocio ? 16u : 48u)
+            || (ocio && (secondary || secondaryViewport || externalSecondary || tertiary || outputTransform)))
         {
             LOG_ERROR("[PostProcess] A texture cannot be read and rendered to in the same pass.");
             return false;
         }
+        if (outputTransform && (!m_acesLuts || !uploadOcioTextures(commandList, *m_acesLuts)))
+            return false;
         if (!input.resource->transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
             || (secondary && !secondary->resource->transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
             || (tertiary && !tertiary->resource->transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
@@ -291,21 +626,39 @@ namespace Engine
         native->SetGraphicsRoot32BitConstants(1, 9, &constants, 0);
         std::array<float, 48> rootParameters{};
         std::copy(parameters.begin(), parameters.end(), rootParameters.begin());
-        native->SetGraphicsRoot32BitConstants(2, static_cast<UINT>(rootParameters.size()), rootParameters.data(), 0);
-        native->SetGraphicsRootDescriptorTable(3, secondary ? secondary->srv.native
-            : externalSecondary ? externalSecondary->native : input.srv.native);
-        const auto& auxiliaryViewport = secondaryViewport ? *secondaryViewport : sourceViewport;
-        const Vector4 auxiliary(auxiliaryViewport.TopLeftX, auxiliaryViewport.TopLeftY,
-            auxiliaryViewport.Width, auxiliaryViewport.Height);
-        native->SetGraphicsRoot32BitConstants(4, 4, &auxiliary, 0);
-        native->SetGraphicsRootDescriptorTable(5, tertiary ? tertiary->srv.native : input.srv.native);
+        native->SetGraphicsRoot32BitConstants(2, ocio ? 16 : static_cast<UINT>(rootParameters.size()),
+            rootParameters.data(), 0);
+        if (ocio)
+        {
+            for (std::size_t index = 0; index < ocio->textures.size(); ++index)
+                native->SetGraphicsRootDescriptorTable(static_cast<UINT>(index + 3),
+                    ocio->textures[index]->srv->gpu->native);
+        }
+        else
+        {
+            native->SetGraphicsRootDescriptorTable(3, secondary ? secondary->srv.native
+                : externalSecondary ? externalSecondary->native : input.srv.native);
+            if (outputTransform)
+            {
+                native->SetGraphicsRootDescriptorTable(4, m_acesLuts->textures[0]->srv->gpu->native);
+                native->SetGraphicsRootDescriptorTable(5, m_acesLuts->textures[1]->srv->gpu->native);
+            }
+            else
+            {
+                const auto& auxiliaryViewport = secondaryViewport ? *secondaryViewport : sourceViewport;
+                const Vector4 auxiliary(auxiliaryViewport.TopLeftX, auxiliaryViewport.TopLeftY,
+                    auxiliaryViewport.Width, auxiliaryViewport.Height);
+                native->SetGraphicsRoot32BitConstants(4, 4, &auxiliary, 0);
+                native->SetGraphicsRootDescriptorTable(5, tertiary ? tertiary->srv.native : input.srv.native);
+            }
+        }
         native->DrawInstanced(3, 1, 0, 0);
         ++m_statistics.drawCalls;
         return true;
     }
 
     bool PostProcessPipeline::record(DX12CommandList& commandList, const PostProcessImage& input,
-        const PostProcessImage& output, const D3D12_VIEWPORT& viewport, const float exposure,
+        const PostProcessImage& output, const D3D12_VIEWPORT& viewport,
         const PostProcessCameraSnapshot& camera, const PostProcessImage* depth,
         const PostProcessImage* motionVectors)
     {
@@ -314,7 +667,6 @@ namespace Engine
             || m_output.get() == nullptr || input.resource == nullptr || output.resource == nullptr
             || input.resource->get() == nullptr || output.resource->get() == nullptr
             || input.resource == output.resource || input.srv.native.ptr == 0 || output.rtv.native.ptr == 0
-            || !std::isfinite(exposure) || exposure < 0.0f
             || !std::isfinite(viewport.TopLeftX) || !std::isfinite(viewport.TopLeftY)
             || !std::isfinite(viewport.Width) || !std::isfinite(viewport.Height)
             || !std::isfinite(viewport.MinDepth) || !std::isfinite(viewport.MaxDepth)
@@ -344,6 +696,7 @@ namespace Engine
             || !std::all_of(POST_PROCESS_WEIGHT_MEMBERS.begin(), POST_PROCESS_WEIGHT_MEMBERS.end(),
                 [&camera](const auto member) { const float value = camera.effects.*member;
                     return std::isfinite(value) && value >= 0 && value <= 1; })
+            || (camera.settings.ocioEnabled.value && !camera.ocio)
             || !validatePostProcessSettings(camera.settings)
             || !std::all_of(camera.customEffects.begin(), camera.customEffects.end(), [](const auto& effect)
             {
@@ -361,9 +714,11 @@ namespace Engine
         }
         const auto& settings = camera.settings;
         const float weight = camera.enabled ? camera.weight : 0;
+        const float ocioWeight = camera.ocio
+            ? (settings.ocioEnabled.value ? weight * camera.effects.ocio * settings.ocioIntensity.value : 0)
+            : weight;
         const float bloomWeight = weight * camera.effects.bloom;
         const float exposureWeight = weight * camera.effects.exposure;
-        const float colorWeight = weight * camera.effects.colorAdjustments;
         const float vignetteWeight = weight * camera.effects.vignette;
         const float chromaticAberrationWeight = weight * camera.effects.chromaticAberration;
         const float filmGrainWeight = weight * camera.effects.filmGrain;
@@ -371,7 +726,6 @@ namespace Engine
         const float temporalAAWeight = weight * camera.effects.temporalAA;
         const float motionBlurWeight = weight * camera.effects.motionBlur;
         const float depthOfFieldWeight = weight * camera.effects.depthOfField;
-        const float lutWeight = weight * camera.effects.colorGradingLut;
         const float autoExposureWeight = weight * camera.effects.autoExposure;
         const bool bloom = bloomWeight > 0 && settings.bloomEnabled.value && settings.bloomIntensity.value > 0;
         const bool vignette = vignetteWeight > 0 && settings.vignetteEnabled.value && settings.vignetteIntensity.value > 0;
@@ -383,30 +737,20 @@ namespace Engine
         const bool motionBlur = motionBlurWeight > 0 && settings.motionBlurEnabled.value
             && settings.motionBlurAmount.value > 0 && settings.motionBlurMaxVelocity.value > 0;
         const bool fxaa = !temporalAA && fxaaWeight > 0 && settings.fxaaEnabled.value;
-        const bool colorAdjustments = colorWeight > 0 && settings.colorAdjustmentsEnabled.value
-            && (settings.contrast.value != 0 || settings.saturation.value != 0
-                || settings.colorFilter.value != Vector3::One || settings.colorTemperature.value != 6500
-                || settings.colorTint.value != 0 || settings.colorGamma.value != 1
-                || settings.colorOffset.value != Vector3::Zero
-                || settings.shadowSaturation.value != 1 || settings.shadowContrast.value != 1
-                || settings.shadowGamma.value != 1 || settings.shadowGain.value != 1
-                || settings.midtoneSaturation.value != 1 || settings.midtoneContrast.value != 1
-                || settings.midtoneGamma.value != 1 || settings.midtoneGain.value != 1
-                || settings.highlightSaturation.value != 1 || settings.highlightContrast.value != 1
-                || settings.highlightGamma.value != 1 || settings.highlightGain.value != 1
-                || settings.shadowColor.value != Vector3::Zero || settings.midtoneColor.value != Vector3::Zero
-                || settings.highlightColor.value != Vector3::Zero);
         const bool depthOfField = depthOfFieldWeight > 0 && settings.depthOfFieldEnabled.value
             && settings.depthOfFieldMaxBlur.value > 0;
         const bool lightShafts = camera.lightShafts.bloomEnabled && camera.lightShafts.bloomScale > 0;
-        const bool colorGradingLut = lutWeight > 0 && settings.colorGradingLutEnabled.value
-            && settings.colorGradingLutIntensity.value > 0;
         const bool autoExposure = autoExposureWeight > 0 && settings.autoExposureEnabled.value;
         if (autoExposure && camera.cameraGuid.isValid())
         {
             if (m_exposureHistoryCamera != camera.cameraGuid)
             {
                 m_exposureHistoryCamera = camera.cameraGuid;
+                m_exposureHistoryReadIndex = 0;
+                m_exposureHistoryValid = false;
+            }
+            if (camera.temporalHistoryReset)
+            {
                 m_exposureHistoryReadIndex = 0;
                 m_exposureHistoryValid = false;
             }
@@ -442,59 +786,15 @@ namespace Engine
             m_temporalHistoryValid = false;
             m_temporalHistoryReadIndex = 0;
         }
-        const float effectiveExposure = exposure * (exposureWeight > 0 && settings.exposureEnabled.value
-            ? std::exp2(settings.exposureEV.value * exposureWeight) : 1.0f);
+        const float manualWeight = settings.autoExposureEnabled.value ? 1.0f - camera.effects.autoExposure : 1.0f;
+        const float effectiveExposure = exposureWeight > 0 && settings.exposureEnabled.value
+            ? std::exp2(settings.exposureEV.value * exposureWeight * manualWeight) : 1.0f;
         if (!std::isfinite(effectiveExposure))
         {
-            LOG_ERROR("[PostProcess] Combined renderer/Camera exposure overflowed.");
+            LOG_ERROR("[PostProcess] Camera exposure overflowed.");
             return false;
         }
         std::array<float, 48> displayParameters{};
-        if (colorAdjustments)
-        {
-            displayParameters[0] = 1;
-            displayParameters[1] = 1 + settings.contrast.value * colorWeight * 0.01f;
-            displayParameters[2] = 1 + settings.saturation.value * colorWeight * 0.01f;
-            displayParameters[3] = std::lerp(1.0f, settings.colorGamma.value, colorWeight);
-            const auto filter = Vector3::Lerp(Vector3::One, settings.colorFilter.value, colorWeight);
-            displayParameters[4] = filter.x;
-            displayParameters[5] = filter.y;
-            displayParameters[6] = filter.z;
-            displayParameters[7] = std::lerp(6500.0f, settings.colorTemperature.value, colorWeight);
-            displayParameters[8] = std::lerp(0.0f, settings.colorTint.value, colorWeight);
-            const auto offset = Vector3::Lerp(Vector3::Zero, settings.colorOffset.value, colorWeight);
-            displayParameters[9] = offset.x;
-            displayParameters[10] = offset.y;
-            displayParameters[11] = offset.z;
-            const std::array controls{
-                Vector4(std::lerp(1.0f, settings.shadowSaturation.value, colorWeight),
-                    std::lerp(1.0f, settings.shadowContrast.value, colorWeight),
-                    std::lerp(1.0f, settings.shadowGamma.value, colorWeight),
-                    std::lerp(1.0f, settings.shadowGain.value, colorWeight)),
-                Vector4(std::lerp(1.0f, settings.midtoneSaturation.value, colorWeight),
-                    std::lerp(1.0f, settings.midtoneContrast.value, colorWeight),
-                    std::lerp(1.0f, settings.midtoneGamma.value, colorWeight),
-                    std::lerp(1.0f, settings.midtoneGain.value, colorWeight)),
-                Vector4(std::lerp(1.0f, settings.highlightSaturation.value, colorWeight),
-                    std::lerp(1.0f, settings.highlightContrast.value, colorWeight),
-                    std::lerp(1.0f, settings.highlightGamma.value, colorWeight),
-                    std::lerp(1.0f, settings.highlightGain.value, colorWeight)),
-            };
-            const std::array colors{ settings.shadowColor.value, settings.midtoneColor.value,
-                settings.highlightColor.value };
-            for (std::size_t index = 0; index < controls.size(); ++index)
-            {
-                const std::size_t parameterOffset = 16 + index * 8;
-                displayParameters[parameterOffset] = controls[index].x;
-                displayParameters[parameterOffset + 1] = controls[index].y;
-                displayParameters[parameterOffset + 2] = controls[index].z;
-                displayParameters[parameterOffset + 3] = controls[index].w;
-                const auto color = Vector3::Lerp(Vector3::Zero, colors[index], colorWeight);
-                displayParameters[parameterOffset + 4] = color.x;
-                displayParameters[parameterOffset + 5] = color.y;
-                displayParameters[parameterOffset + 6] = color.z;
-            }
-        }
         if (autoExposure)
         {
             displayParameters[12] = autoExposureWeight;
@@ -551,33 +851,13 @@ namespace Engine
             return false;
         if (temporalAA)
             m_temporalHistoryCamera = camera.cameraGuid;
-        DX12GpuDescriptorHandle lutSrv{};
-        if (colorGradingLut)
+        if (camera.ocio && ocioWeight > 0 && camera.ocio != m_cameraOcioSnapshot)
         {
-            const TextureLoadDesc loadDescription{
-                .colorSpace = TextureColorSpace::Linear,
-                .generateMips = false,
-                .allowCompression = false,
-            };
-            const auto handle = TextureManager::instance().load(
-                AssetGUID{ settings.colorGradingLutAsset.value.high, settings.colorGradingLutAsset.value.low },
-                loadDescription);
-            const Texture* const texture = TextureManager::instance().get(handle);
-            const TextureResourceInfo* const info = texture ? texture->getResourceInfo() : nullptr;
-            if (info == nullptr || info->type != TextureType::Texture2D
-                || info->colorSpace != TextureColorSpace::Linear
-                || info->height < 16 || info->height > 64
-                || info->width != info->height * info->height
-                || (info->format != DXGI_FORMAT_R8G8B8A8_UNORM
-                    && info->format != DXGI_FORMAT_R16G16B16A16_FLOAT)
-                || info->srv.ptr == 0)
-            {
-                LOG_ERROR("[PostProcess] Color Grading LUT must be a linear 16-64 size 2D strip asset.");
+            if (!configureOcioPass(camera.ocio.get(), m_cameraOcio))
                 return false;
-            }
-            lutSrv.native = info->srv;
-            lutSrv.index = info->srvIndex;
+            m_cameraOcioSnapshot = camera.ocio;
         }
+        OcioPass* const activeOcio = camera.ocio ? (ocioWeight > 0 ? m_cameraOcio.get() : nullptr) : m_ocio.get();
         if (!m_targets.beginRecording())
             return false;
         m_recorded = true;
@@ -586,7 +866,8 @@ namespace Engine
             || std::ceil(viewport.TopLeftY - 0.5f) >= std::floor(viewport.TopLeftY + viewport.Height))
         {
             const std::array<float, 16> parameters{};
-            if (!draw(commandList, m_output, input, output, viewport, viewport, effectiveExposure, true, parameters))
+            if (!draw(commandList, m_output, input, output, viewport, viewport, effectiveExposure, true, parameters,
+                nullptr, nullptr, nullptr, nullptr, nullptr, true))
                 return false;
             m_statistics.temporaryTargets = m_targets.size();
             return true;
@@ -609,7 +890,8 @@ namespace Engine
                 return false;
             const auto nextViewport = temporaryViewport(viewport, description, outputDesc);
             if (!draw(commandList, pipeline, *current, *next, currentViewport, nextViewport,
-                effectiveExposure, toneMapping, parameters, secondary, secondaryViewport, externalSecondary))
+                effectiveExposure, toneMapping, parameters, secondary, secondaryViewport, externalSecondary,
+                nullptr, nullptr, toneMapping))
                 return false;
             if (borrowed && !m_targets.release(*borrowed))
                 return false;
@@ -677,6 +959,35 @@ namespace Engine
                 currentViewport = targetViewport;
                 ++m_statistics.effectPasses;
             }
+            return true;
+        };
+        const auto runOcio = [&](const PostProcessStage stage)
+        {
+            if (!activeOcio || activeOcio->stage != stage || ocioWeight <= 0 || activeOcio->contribution <= 0)
+                return true;
+            if (!uploadOcioTextures(commandList, *activeOcio))
+                return false;
+            const PostProcessTargetDescription description{
+                static_cast<std::uint32_t>(outputDesc.Width), outputDesc.Height };
+            PostProcessImage* const effectImage = m_targets.acquire(description);
+            if (!effectImage || !draw(commandList, activeOcio->pipeline, *current, *effectImage,
+                currentViewport, viewport, effectiveExposure, false, activeOcio->parameters,
+                nullptr, nullptr, nullptr, nullptr, activeOcio))
+                return false;
+            PostProcessImage* const blendedImage = m_targets.acquire(description);
+            if (!blendedImage)
+                return false;
+            const std::array<float, 16> blendParameters{ ocioWeight * activeOcio->contribution };
+            const auto& blendPipeline = m_builtins[static_cast<std::size_t>(PostProcessBuiltin::CustomComposite)];
+            if (!draw(commandList, blendPipeline, *current, *blendedImage, currentViewport,
+                viewport, effectiveExposure, false, blendParameters, effectImage, &viewport)
+                || !m_targets.release(*effectImage)
+                || (borrowed && !m_targets.release(*borrowed)))
+                return false;
+            borrowed = blendedImage;
+            current = blendedImage;
+            currentViewport = viewport;
+            ++m_statistics.effectPasses;
             return true;
         };
         if (depthOfField)
@@ -771,10 +1082,10 @@ namespace Engine
         D3D12_VIEWPORT exposureViewport{};
         if (autoExposure)
         {
-            exposureTarget = recordAutoExposure(commandList, *current, currentViewport, outputDesc);
+            exposureTarget = recordAutoExposure(commandList, *current, currentViewport);
             if (exposureTarget == nullptr)
                 return false;
-            exposureViewport = temporaryViewport(viewport, { 1, 1 }, outputDesc);
+            exposureViewport = { 0, 0, 1, 1, 0, 1 };
             exposureTarget = recordExposureAdaptation(commandList, *exposureTarget, exposureViewport,
                 settings, camera.deltaTimeSeconds);
             if (exposureTarget == nullptr)
@@ -784,7 +1095,11 @@ namespace Engine
             settings.bloomIntensity.value * bloomWeight, settings.bloomThreshold.value,
             settings.bloomScatter.value, settings.bloomSizeScale.value))
             return false;
-        const bool hasLdrPasses = colorGradingLut || vignette || chromaticAberration || filmGrain || fxaa
+        if (!runOcio(PostProcessStage::BeforeToneMapping))
+            return false;
+        const bool hasLdrPasses = vignette || chromaticAberration || filmGrain || fxaa
+            || (activeOcio && activeOcio->stage == PostProcessStage::AfterToneMapping
+                && ocioWeight > 0 && activeOcio->contribution > 0)
             || std::any_of(m_passes.begin(), m_passes.end(), [](const auto& pass)
         {
             return pass->description.enabled && pass->description.stage == PostProcessStage::AfterToneMapping;
@@ -808,16 +1123,8 @@ namespace Engine
             }
             if (!runCustomEffects(PostProcessStage::AfterToneMapping))
                 return false;
-            if (colorGradingLut)
-            {
-                const std::array<float, 16> parameters{
-                    settings.colorGradingLutIntensity.value * lutWeight,
-                };
-                if (!runTemporary(m_builtins[static_cast<std::size_t>(PostProcessBuiltin::ColorGradingLut)],
-                    1, false, parameters, nullptr, nullptr, &lutSrv))
-                    return false;
-                ++m_statistics.effectPasses;
-            }
+            if (!runOcio(PostProcessStage::AfterToneMapping))
+                return false;
             if (vignette)
             {
                 const auto& color = settings.vignetteColor.value;
@@ -868,7 +1175,8 @@ namespace Engine
         if (!draw(commandList, m_output, *current, output, currentViewport, viewport,
             effectiveExposure, !hasLdrPasses, outputParameters,
             !hasLdrPasses ? exposureTarget : nullptr,
-            !hasLdrPasses && exposureTarget ? &exposureViewport : nullptr))
+            !hasLdrPasses && exposureTarget ? &exposureViewport : nullptr,
+            nullptr, nullptr, nullptr, true))
             return false;
         if (borrowed && !m_targets.release(*borrowed))
             return false;
@@ -879,23 +1187,38 @@ namespace Engine
     }
 
     PostProcessImage* PostProcessPipeline::recordAutoExposure(DX12CommandList& commandList,
-        const PostProcessImage& input, const D3D12_VIEWPORT& sourceViewport,
-        const D3D12_RESOURCE_DESC& fullSize)
+        const PostProcessImage& input, const D3D12_VIEWPORT& sourceViewport)
     {
+        const auto& inputDescription = input.resource->getDescription();
+        const float left = std::clamp(std::ceil(sourceViewport.TopLeftX - 0.5f),
+            0.0f, static_cast<float>(inputDescription.Width));
+        const float top = std::clamp(std::ceil(sourceViewport.TopLeftY - 0.5f),
+            0.0f, static_cast<float>(inputDescription.Height));
+        const float right = std::clamp(std::ceil(sourceViewport.TopLeftX + sourceViewport.Width - 0.5f),
+            0.0f, static_cast<float>(inputDescription.Width));
+        const float bottom = std::clamp(std::ceil(sourceViewport.TopLeftY + sourceViewport.Height - 0.5f),
+            0.0f, static_cast<float>(inputDescription.Height));
+        if (right <= left || bottom <= top)
+        {
+            LOG_ERROR("[PostProcess] Automatic exposure viewport contains no pixels.");
+            return nullptr;
+        }
+        const auto width = static_cast<std::uint32_t>(right - left);
+        const auto height = static_cast<std::uint32_t>(bottom - top);
         PostProcessTargetDescription description{
-            static_cast<std::uint32_t>((fullSize.Width + 1) / 2),
-            (fullSize.Height + 1) / 2,
+            (width + 1) / 2, (height + 1) / 2, DXGI_FORMAT_R32G32B32A32_FLOAT,
         };
         const PostProcessImage* source = &input;
         PostProcessImage* previous = nullptr;
-        D3D12_VIEWPORT sourcePixels = sourceViewport;
+        D3D12_VIEWPORT sourcePixels{ left, top, right - left, bottom - top, 0, 1 };
         constexpr std::size_t MAX_LEVELS = 32;
         for (std::size_t level = 0; level < MAX_LEVELS; ++level)
         {
             PostProcessImage* const target = m_targets.acquire(description);
             if (target == nullptr)
                 return nullptr;
-            const auto targetViewport = temporaryViewport(sourceViewport, description, fullSize);
+            const D3D12_VIEWPORT targetViewport{ 0, 0, static_cast<float>(description.width),
+                static_cast<float>(description.height), 0, 1 };
             std::array<float, 16> parameters{};
             parameters[0] = level == 0 ? 1.0f : 0.0f;
             if (!draw(commandList,
@@ -995,6 +1318,16 @@ namespace Engine
             m_temporalHistoryReadIndex = m_temporalHistoryPendingReadIndex;
             m_temporalHistoryValid = true;
             m_temporalHistoryRecorded = false;
+        }
+        for (auto* const pass : { m_acesLuts.get(), m_ocio.get(), m_cameraOcio.get() })
+        {
+            if (!pass || !pass->uploadRecorded)
+                continue;
+            pass->uploaded = true;
+            pass->uploadRecorded = false;
+            pass->uploadFenceValue = fenceValue;
+            for (const auto& texture : pass->textures)
+                std::vector<float>{}.swap(texture->pixels);
         }
         m_lastFenceValue = fenceValue;
         m_recorded = false;

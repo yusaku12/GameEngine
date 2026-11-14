@@ -5,12 +5,6 @@ struct PostProcessFloat { value:float; overridden:bool; }
 struct PostProcessBool { value:bool; overridden:bool; }
 struct PostProcessColor { value:Vec3; overridden:bool; }
 
-table PostProcessLutReference {
-    guid:AssetGuid;
-    path:string (required);
-    overridden:bool;
-}
-
 table PostProcessSettingsData {
     bloom_enabled:PostProcessBool;
     bloom_intensity:PostProcessFloat;
@@ -18,10 +12,10 @@ table PostProcessSettingsData {
     bloom_scatter:PostProcessFloat;
     exposure_enabled:PostProcessBool;
     exposure_ev:PostProcessFloat;
-    color_adjustments_enabled:PostProcessBool;
-    contrast:PostProcessFloat;
-    saturation:PostProcessFloat;
-    color_filter:PostProcessColor;
+    color_adjustments_enabled:PostProcessBool (deprecated);
+    contrast:PostProcessFloat (deprecated);
+    saturation:PostProcessFloat (deprecated);
+    color_filter:PostProcessColor (deprecated);
     vignette_enabled:PostProcessBool;
     vignette_intensity:PostProcessFloat;
     vignette_smoothness:PostProcessFloat;
@@ -40,9 +34,9 @@ table PostProcessSettingsData {
     fog_density:PostProcessFloat;
     fog_start_distance:PostProcessFloat;
     fog_color:PostProcessColor;
-    color_grading_lut_enabled:PostProcessBool;
-    color_grading_lut_intensity:PostProcessFloat;
-    color_grading_lut_asset:PostProcessLutReference;
+    color_grading_lut_enabled:PostProcessBool (deprecated);
+    color_grading_lut_intensity:PostProcessFloat (deprecated);
+    color_grading_lut_asset:ubyte (deprecated);
     auto_exposure_enabled:PostProcessBool;
     auto_exposure_key:PostProcessFloat;
     auto_exposure_min_ev:PostProcessFloat;
@@ -51,25 +45,25 @@ table PostProcessSettingsData {
     auto_exposure_speed_up:PostProcessFloat;
     auto_exposure_speed_down:PostProcessFloat;
     bloom_size_scale:PostProcessFloat;
-    color_temperature:PostProcessFloat;
-    color_tint:PostProcessFloat;
-    color_gamma:PostProcessFloat;
-    shadow_saturation:PostProcessFloat;
-    shadow_contrast:PostProcessFloat;
-    shadow_gamma:PostProcessFloat;
-    shadow_gain:PostProcessFloat;
-    midtone_saturation:PostProcessFloat;
-    midtone_contrast:PostProcessFloat;
-    midtone_gamma:PostProcessFloat;
-    midtone_gain:PostProcessFloat;
-    highlight_saturation:PostProcessFloat;
-    highlight_contrast:PostProcessFloat;
-    highlight_gamma:PostProcessFloat;
-    highlight_gain:PostProcessFloat;
-    color_offset:PostProcessColor;
-    shadow_color:PostProcessColor;
-    midtone_color:PostProcessColor;
-    highlight_color:PostProcessColor;
+    color_temperature:PostProcessFloat (deprecated);
+    color_tint:PostProcessFloat (deprecated);
+    color_gamma:PostProcessFloat (deprecated);
+    shadow_saturation:PostProcessFloat (deprecated);
+    shadow_contrast:PostProcessFloat (deprecated);
+    shadow_gamma:PostProcessFloat (deprecated);
+    shadow_gain:PostProcessFloat (deprecated);
+    midtone_saturation:PostProcessFloat (deprecated);
+    midtone_contrast:PostProcessFloat (deprecated);
+    midtone_gamma:PostProcessFloat (deprecated);
+    midtone_gain:PostProcessFloat (deprecated);
+    highlight_saturation:PostProcessFloat (deprecated);
+    highlight_contrast:PostProcessFloat (deprecated);
+    highlight_gamma:PostProcessFloat (deprecated);
+    highlight_gain:PostProcessFloat (deprecated);
+    color_offset:PostProcessColor (deprecated);
+    shadow_color:PostProcessColor (deprecated);
+    midtone_color:PostProcessColor (deprecated);
+    highlight_color:PostProcessColor (deprecated);
     chromatic_aberration_enabled:PostProcessBool;
     chromatic_aberration_intensity:PostProcessFloat;
     chromatic_aberration_start_offset:PostProcessFloat;
@@ -81,4 +75,8 @@ table PostProcessSettingsData {
     motion_blur_enabled:PostProcessBool;
     motion_blur_amount:PostProcessFloat;
     motion_blur_max_velocity:PostProcessFloat;
+    ocio_enabled:PostProcessBool;
+    ocio_intensity:PostProcessFloat;
+    ocio_asset_path:string;
+    ocio_asset_overridden:bool;
 }

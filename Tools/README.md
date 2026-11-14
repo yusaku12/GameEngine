@@ -377,10 +377,10 @@ Deferred レンダラーのトーンマッピング前に半解像度で適用�
 ```text
 G-Buffer -> HDR ライティング -> 透明ジオメトリ
          -> トーンマッピング前のカラー処理
-         -> Bloom -> ホワイトバランス／全体・階調別カラーグレーディング
-         -> 固定／自動露出 + ACES トーンマッピング (線形 HDR -> 線形 LDR)
+         -> Bloom -> OCIO (トーンマッピング前を選択した場合)
+         -> 手動／自動露出 + ACES 2 SDR 出力変換 (線形 HDR -> 線形 LDR)
          -> トーンマッピング後のカラー処理
-         -> カラーグレーディング LUT -> ビネット -> 色収差 -> FXAA -> フィルムグレイン
+         -> OCIO (トーンマッピング後を選択した場合) -> ビネット -> 色収差 -> FXAA -> フィルムグレイン
          -> sRGB エンコード -> デバッググリッド／Runtime UI／エディター UI -> 表示
 ```
 
@@ -395,7 +395,7 @@ G-Buffer -> HDR ライティング -> 透明ジオメトリ
 
 有効な LDR パスや組み込み LDR エフェクトがない場合、トーンマッピングと sRGB エンコードは
 最終出力パスに統合されます。そのため、空またはすべて無効なリストではスクラッチテクスチャを
-追加せず、Phase 0 の画像をビット単位で維持します。露出は1回だけ適用されます。
+追加しません。露出は1回だけ適用されます。
 LDR エフェクトが有効な場合、トーンマッピング後の中間画像は sRGB ではなく linear half-float です。
 表示時のアルファは 1 です。`captureFrame` は任意エフェクト適用**前**のシーン HDR を保持し、
 UI 描画後に最終表示をキャプチャします。Forward のキャプチャには HDR 画像がありません。
@@ -406,8 +406,69 @@ UI 描画後に最終表示をキャプチャします。Forward のキャプチ
 露出、変換フラグ)、`b1` (4つの `float4` パラメーターベクトル) です。組み込みシェーダーは
 さらに `t1` (副入力色) と `b2` (その viewport) を使います。従来の単一入力シェーダーの
 バインディングは変更されていません。フル解像度で viewport が同じ場合は、正確なコピーを
-維持するため整数テクスチャ読み込みを使います。`ColorOutput.hlsli` は Deferred デバッグ表示と
-ACES の近似トーンマッピング曲線および sRGB 実装を共有します。
+維持するため整数テクスチャ読み込みを使います。`ColorOutput.hlsli` は sRGB 変換を共有します。
+必須出力パスはさらに `t3`／`t4` に ACES 2 の内部 LUT、`s1` に point clamp を使います。
+G-Buffer の Emission デバッグ表示は出力変換を通さず、線形値を 0–1 に制限して表示します。
+
+### OCIO GPU パスの低レベル登録
+
+`DX12Renderer::setPostProcessOcio` は、呼び出し側でコンパイルした OCIO ピクセル
+シェーダーと、OCIO が生成した 1D／2D／3D LUT の値を登録します。`nullptr` で解除できます。
+設定はフレーム間にレンダースレッドから行ってください。失敗時は既存設定を保持します。
+
+シェーダーのラッパーは入力画像に `t0`、入力用 linear clamp sampler に `s0`、通常の
+PostEffect フレーム定数に `b0`、16 float のパラメーターに `b1` を使用します。LUT の
+テクスチャ／sampler レジスターはコンパイル済みシェーダーの実際の割り当てと一致させて
+ください。`t0` は LUT に使用できません。`s0` を共有する LUT は linear sampler に限ります。
+複数 LUT が同じ sampler を共有する場合、補間方法は一致している必要があります。
+LUT は最大38枚、値は有限の R または RGB float 配列で、X が最も速く変化する順序です。
+レジスターはすべて space 0 を使用します。OCIO ラッパーの `b1` は `float4` 4個であり、
+`float4` 12個の `b1` を宣言する標準 `PostProcess.hlsli` とそのまま共用できません。
+シェーダーは `b0` のソース／ターゲット viewport が異なる場合も正しくサンプリングする必要があります。
+
+有効な Camera PostEffect の weight と登録時の contribution で変換結果をブレンドします。
+LUT の初回転送は描画コマンドに記録され、再設定・解除・終了時には使用中の GPU 完了を
+待って PSO、テクスチャおよび descriptor を解放します。Shader のリビルド時にも OCIO の
+PSO を再構築します。
+`PostProcessCameraSnapshot::ocio` に不変の設定を渡すと、その Camera の描画では共通登録より
+Camera 固有の設定を優先します。Camera 間で設定が変わる場合は前回の GPU 完了を待って
+固有リソースを置き換えます。スナップショットが空の場合は共通登録を使用します。
+
+### OCIO アセットの生成と使用
+
+ビルド前に vcpkg の manifest モードで `x64-windows-static` の依存関係をインストールします。
+OpenColorIO のバージョンはルートの `vcpkg.json` に固定されています。Editor の Camera または
+Volume Profile の Post Effects で **OpenColorIO** を開き、入力・出力色空間と必要に応じて
+Look、適用段階を指定して **Generate OCIO Asset** を押します。`.ocio` 設定ファイルを選び、
+生成先の `.ocioasset` を保存してください。既存の成果物は **Open OCIO Asset** で選択できます。
+設定選択画面では拡張子を限定しません。次の保存画面は生成先の `.ocioasset` 用です。
+選択時にアセットと有効スイッチが override されます。Intensity と Camera／Volume の weight
+は変換前後の画像をブレンドします。
+
+トーンマッピング前は線形 HDR、後は sRGB エンコード前の線形 LDR を入力とします。
+複数 Volume のアセット参照は優先順位順に最後の有効な override が選ばれ、異なる変換間を
+補間するものではありません。Profile／Camera は保存済み成果物のパスを参照します。Runtime に
+その `.ocioasset` が必要ですが、元の config、参照 LUT、DXC は不要です。config の変更後は
+アセットを再生成してください。OCIO の動的 GPU uniform は静的アセットでは対応せず、
+生成時にエラーになります。旧 Color Grading／LUT の設定は移行されません。
+
+`Assets/Shaders/OCIO/NeutralGame.ocio` は SDR 向け Look のサンプルです。Source と
+Destination に `Linear`、Look に `Neutral` または `Cinematic` を指定し、After Tone Mapping を
+オフにして生成してください。`Neutral` は線形 HDR で彩度を少し抑え、無彩色は変えません。
+`Cinematic` は影をわずかに青寄り、明るい部分を暖色寄りにし、コントラストを高めます。
+トーンマッピングと sRGB エンコードはエンジン側で行うため、この設定には含まれません。
+これらの Look 自体に LUT は不要です。別の config から LUT を参照する場合は、生成時に LUT も必要です。
+
+同じ config の `SlayFilm` は写真向け LUT を使用します。Source／Destination を `Linear`、
+Look を `SlayFilm` にして、**After Tone Mapping をオン**にして生成してください。LUT の
+入出力は sRGB 相当と仮定し、Look 内で線形 LDR との変換を行います。元 LUT は入力色空間を
+明示していないため、実際のシーンで仕上がりを確認してください。LUT は生成時に読み込まれ、
+`.ocioasset` に内包されます。LUT の変更後は再生成が必要です。
+
+LUT: [slay](https://www.slaycamera.com/) の
+[slay Film](https://github.com/slaycamera/luts/blob/a1709044efe115640dde1dee17d4185fc059af0d/luts/slay-04-film.cube)。
+原本を無変更で使用しています。ライセンスは
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) です。
 
 これは意図的に、フル機能のレンダーグラフではなく、色のみを扱う小規模なグラフィックスパス基盤です。
 深度／法線入力、コンピュートパス、履歴、カスタムシェーダーアセット／ホットリロードの追跡は
@@ -419,7 +480,7 @@ ACES の近似トーンマッピング曲線および sRGB 実装を共有しま
 
 Inspector で **Camera** を選択して **Post Effects** を展開します。Post Effects の設定は
 Profile と Camera のローカルオーバーライドで共有され、Deferred レンダリングで実行されます。
-既存のレンダラー露出設定と診断／カスタムパス API も引き続き利用できます。
+露出は Post Effects の **Exposure** で設定します。診断／カスタムパス API も利用できます。
 
 - **Enable Post Effects** は、このカメラで Profile レンダリングを有効にします (既定では無効)。
   **Weight** は `[0,1]` の有限な寄与率です。Phase 3 では中立値から各パラメーターをブレンドします。
@@ -476,16 +537,22 @@ fence 対応プールで管理します。Forward、`Nothing` clear mode、G-Buf
   `-1` は全ピクセルを含めます。Size Scale はぼかし半径、Scatter は局所成分と低周波成分の
   混合、Intensity は HDR 加算結果のスケールを制御します。ピラミッド段数によらず定数場は
   正規化されます。
-- **Fixed exposure** はレンダラー露出に `exp2(EV * Weight)` を一度だけ乗算します。
-  自動露出／履歴は導入しません。極端な EV でのオーバーフローを防ぐため、トーンマッピング入力は
-  RGBA16F の有限最大値に制限されます。
-- **ACES Tone Mapping** は最終 linear-to-sRGB エンコードの前に近似 ACES filmic 曲線を使います。
-  固定露出と時間適応型自動露出は、この曲線の前に一度だけ適用されます。
-- **Color Grading** は Kelvin White Balance と Tint、linear RGB フィルター、中間グレー (0.18)
-  基準の全体 contrast、Rec.709 saturation と Gamma を適用します。次に Shadows/Midtones/
-  Highlights ごとに saturation、contrast、Gamma、Gain、linear color-wheel offset を個別に
-  weight 付きで適用します。負の色はゼロに制限されます。Camera/Volume weight は中立値から
-  ブレンドし、カラーグレーディングは露出／トーンマッピング前の HDR で行います。
+- **Exposure** の Mode は Off、Manual、Automatic から選びます。Manual は `exp2(EV * Weight)`、
+  Automatic は測光結果から求めた EV を使います。Volume の補間中は両モードを連続的に切り替えます。
+  設定値はモードとは別にオーバーライドできます。極端な EV でのオーバーフローを防ぐため、
+  トーンマッピング入力は RGBA16F の有限最大値に制限されます。
+- **ACES 2 SDR** は OpenColorIO 2.6.0 の公式組み込み CG config
+  `cg-config-v4.0.0_aces-v2.0_ocio-v2.5` にある `Linear Rec.709 (sRGB)` から
+  `sRGB - Display` の `ACES 2.0 - SDR 100 nits (Rec.709)` View への変換です。
+  手動または時間適応型の露出は入力に一度だけ適用されます。最終出力は HDR10 ではなく
+  8-bit SDR です。LDR エフェクトがある場合は View の表示値を sRGB デコードして線形 LDR に戻し、
+  エフェクトの後に一度だけエンコードします。LDR エフェクトがない場合は View の表示値を直接出力します。
+  内部 LUT はコンパイル済みシェーダーと共にエンジンへ組み込まれるため、Runtime での
+  OCIO 設定ファイル、DXC、外部 LUT の読み込みは不要です。
+  この出力変換の生成元は `Tools/Shaders/GenerateAcesOutput.cpp` です。OpenColorIO 2.6.0 の
+  ライセンスは `Assets/Shaders/OCIO/OpenColorIO-LICENSE.txt` に記載し、ビルド先にもコピーします。
+- **OpenColorIO** は生成済み変換を HDR または線形 LDR に適用します。
+
 - **Vignette** はトーンマッピング後に linear RGB 色をブレンドします。Intensity はゼロから
   ブレンドし、smoothness は放射状減衰を制御します。roundness は viewport 正規化距離と
   アスペクト補正距離を混合します。
@@ -500,6 +567,18 @@ fence 対応プールで管理します。Forward、`Nothing` clear mode、G-Buf
 - **Film Grain** は FXAA 後の linear LDR に、フレームごとに変化する hash noise 粒子を加えます。
   Intensity は振幅を、Response は暗部へ適用する重みを制御します。
   Seed はエフェクトが有効なフレームでのみ進み、shader 定数を通じて正確に渡されます。
+
+ACES 2 の生成済みシェーダーと LUT を再生成する場合は、依存関係を復元した後、
+リポジトリルートの x64 Native Tools Command Prompt で次を実行します。
+
+```bat
+if not exist Build\Aces2 mkdir Build\Aces2
+cl /nologo /std:c++20 /EHsc /MT /I"vcpkg_installed\x64-windows-static\include" /Fo"Build\Aces2\GenerateAcesOutput.obj" /Fe"Build\Aces2\GenerateAcesOutput.exe" "Tools\Shaders\GenerateAcesOutput.cpp" /link "vcpkg_installed\x64-windows-static\lib\*.lib" bcrypt.lib gdi32.lib user32.lib
+Build\Aces2\GenerateAcesOutput.exe .
+```
+
+`Assets/Shaders/Aces2Output.hlsli` と `Source/Graphics/PostProcess/Aces2Luts.h` は同時に
+生成されるため、片方だけ編集・更新しないでください。通常のビルドでは再生成は不要です。
 
 すべての組み込みシェーダーは ShaderManager の依存関係／ホットリロード追跡に参加します。
 再ビルドでは候補 PSO をすべて構築してから、既存パイプラインを置き換えます。
@@ -626,7 +705,7 @@ b0/b1/t0/t1/b2 バインディングを使用します。カスタムシェー�
 これらは後続のエフェクト段階で扱います。コンパイル済み PSO は不変 Shader snapshot ごとに
 キャッシュされ、共有フルスクリーン頂点シェーダーの変更時にはトランザクション方式で再構築します。
 
-## PostEffect Phase 6 の深度、時間的エフェクト、カラーグレーディング、自動露出
+## PostEffect Phase 6 の深度、時間的エフェクト、自動露出
 
 被写界深度はアクティブ Camera の線形化済み Deferred 深度バッファを使います。焦点境界を
 またぐ色のにじみを抑えるため、深度 weight 付きの円盤サンプリングを行います。
@@ -638,15 +717,9 @@ Camera ごとの HDR 履歴を再投影し、深度で disocclusion を排除し
 リサイズ、カメラ切り替え、TAA 無効化でもリセットされます。Camera の near/far plane と
 projection type は不変の PostEffect snapshot に保存されます。
 
-カラーグレーディングでは、寸法が `N*N` × `N`、`N` が 16-64 の **linear 2D strip LUT** を
-使用できます。Blue が隣接する水平スライスを選択し、red と green が各スライス内を指定します。
-Runtime は非圧縮の `R8G8B8A8_UNORM` と `R16G16B16A16_FLOAT` のテクスチャデータに対応し、
-blue スライス間を補間します。LUT はトーンマッピングとカスタム After Tone Mapping エフェクト後、
-vignette と FXAA の前に適用されます。Inspector は選択したテクスチャアセットを登録し、
-Profile または Camera payload に GUID／パス参照を保存します。
-
-自動露出は、半解像度の縮小チェーンを上限付きで使って現在フレームの HDR 対数平均輝度を計算し、
-key、compensation、最小／最大値から EV を算出します。Phase 7 では明るくする速度と暗くする速度を
+自動露出は、Camera viewport 内の画素を重み付き縮小チェーンで集計し、現在フレームの HDR 対数平均輝度を計算します。
+奇数サイズや分割 viewport でも各画素を一度ずつ評価し、縮小端の画素を過大評価しません。
+この値と key、compensation、最小／最大値から EV を算出します。Phase 7 では明るくする速度と暗くする速度を
 分けた、Camera ごとの時間適応が追加されます。算出値は HDR 縮小と Bloom の後、トーンマッピング時に
 適用されます。
 
@@ -662,7 +735,7 @@ Profile 保存時にはこれらの旧 slot に中立値を書き込みます。
 `1 - exp(-speed * deltaTime)` で目標に近づけます。EV が上昇する場合は明るくする速度を、
 EV が低下する場合は暗くする速度を選びます。delta が 0 の場合、有効な履歴は固定されます。
 初回サンプルは直ちに初期化されるため、起動時に任意の露出からフェードすることはありません。
-履歴はアクティブ Camera の GameObject GUID に関連付けられ、Camera の切り替え、自動露出の停止、
+履歴はアクティブ Camera の GameObject GUID に関連付けられ、Camera の切り替え、Camera cut、自動露出の停止、
 render target の解放／リサイズ時に無効化されます。これにより readback の停滞や、別 Camera への
 古い露出の漏れを防ぎます。
 

@@ -1,0 +1,29 @@
+namespace Engine.Serialization;
+
+table PostProcessOcioTextureData {
+    dimension:ubyte;
+    width:uint;
+    height:uint;
+    depth:uint;
+    channels:uint;
+    texture_register:uint;
+    sampler_register:uint;
+    linear:bool;
+    values:[float] (required);
+}
+
+table PostProcessOcioFile {
+    version:uint = 1;
+    config_path:string (required);
+    source_space:string (required);
+    destination_space:string (required);
+    look:string (required);
+    stage:ubyte;
+    shader:[ubyte] (required);
+    textures:[PostProcessOcioTextureData] (required);
+    parameters:[float] (required);
+}
+
+root_type PostProcessOcioFile;
+file_identifier "POCI";
+file_extension "ocioasset";

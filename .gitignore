@@ -2,10 +2,17 @@
 GameEngine/
 x64/
 /Build/
+/vcpkg_installed/
 /Assets/*
 !/Assets/Shaders/
 /Assets/Shaders/*
 !/Assets/Shaders/*.hlsl
+!/Assets/Shaders/*.hlsli
+!/Assets/Shaders/OCIO/
+/Assets/Shaders/OCIO/*
+!/Assets/Shaders/OCIO/NeutralGame.ocio
+!/Assets/Shaders/OCIO/slay-04-film.cube
+!/Assets/Shaders/OCIO/OpenColorIO-LICENSE.txt
 Config/
 Log/
 *.vcxproj.user

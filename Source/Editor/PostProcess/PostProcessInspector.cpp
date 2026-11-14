@@ -2,6 +2,8 @@
 #include "Editor\PostProcess\PostProcessInspector.h"
 #include "Assets\PostProcess\PostProcessEffectAssetManager.h"
 #include "Assets\PostProcess\PostProcessProfileManager.h"
+#include "Assets\PostProcess\PostProcessOcioAsset.h"
+#include "Editor\PostProcess\OcioCompiler.h"
 #include "Components\Rendering\CameraComponent.h"
 #include "Components\Rendering\PostProcessVolumeComponent.h"
 #include "Core\GameObject\GameObject.h"
@@ -9,7 +11,6 @@
 #include "Core\System\Dialog.h"
 #include "Core\Threading\MainThreadDispatcher.h"
 #include "Core\Containers\String.h"
-#include "Graphics\Texture\TextureManager.h"
 #include <imgui.h>
 #include <algorithm>
 #include <cmath>
@@ -25,70 +26,105 @@ namespace Engine
 {
     namespace
     {
-        void applyLutToProfile(const PostProcessProfileHandle handle, const AssetGUID guid)
+        void applyOcioToProfile(const PostProcessProfileHandle handle,
+            std::shared_ptr<const PostProcessOcioAsset> asset)
         {
             auto& manager = PostProcessProfileManager::instance();
             const auto profile = manager.get(handle);
             if (!profile)
             {
-                LOG_ERROR("[PostProcessInspector] Profile was unloaded before LUT selection completed.");
+                LOG_ERROR("[OCIO] Profile was unloaded before asset selection completed.");
                 return;
             }
             auto edited = *profile;
-            auto& lut = edited.settings.colorGradingLutAsset;
-            lut.value = { guid.high, guid.low };
-            lut.overrideState = true;
+            edited.settings.ocioAsset = { std::move(asset), true };
+            edited.settings.ocioEnabled = { true, true };
             if (!manager.update(handle, std::move(edited)))
-                LOG_ERROR("[PostProcessInspector] Could not assign the selected LUT to the Profile.");
+                LOG_ERROR("[OCIO] Cannot assign the compiled asset to the Profile.");
         }
 
-        void applyLutToCamera(const ObjectGUID objectGuid, const AssetGUID guid)
+        void applyOcioToCamera(const ObjectGUID objectGuid, std::shared_ptr<const PostProcessOcioAsset> asset)
         {
-            SceneManager& scenes = SceneManager::instance();
-            GameObject* object = scenes.getActiveScene() != nullptr
-                ? scenes.getActiveScene()->find(objectGuid) : nullptr;
-            if (object == nullptr)
+            auto& scenes = SceneManager::instance();
+            GameObject* object = scenes.getActiveScene() ? scenes.getActiveScene()->find(objectGuid) : nullptr;
+            if (!object)
                 object = scenes.getPersistentScene()->find(objectGuid);
-            auto* camera = object != nullptr ? object->getComponent<CameraComponent>() : nullptr;
-            if (camera == nullptr)
+            auto* camera = object ? object->getComponent<CameraComponent>() : nullptr;
+            if (!camera)
             {
-                LOG_ERROR("[PostProcessInspector] Camera was unavailable before LUT selection completed.");
+                LOG_ERROR("[OCIO] Camera was unavailable before asset selection completed.");
                 return;
             }
-            PostProcessSettings settings = camera->getPostProcessOverrides();
-            auto& lut = settings.colorGradingLutAsset;
-            lut.value = { guid.high, guid.low };
-            lut.overrideState = true;
+            auto settings = camera->getPostProcessOverrides();
+            settings.ocioAsset = { std::move(asset), true };
+            settings.ocioEnabled = { true, true };
             if (!camera->setPostProcessOverrides(settings))
-                LOG_ERROR("[PostProcessInspector] Could not assign the selected LUT to Camera overrides.");
+                LOG_ERROR("[OCIO] Cannot assign the compiled asset to Camera overrides.");
         }
 
-        void requestColorGradingLut(const HWND owner, std::function<void(AssetGUID)> onSelected)
+        void requestOcioAsset(const HWND owner,
+            std::function<void(std::shared_ptr<const PostProcessOcioAsset>)> onSelected,
+            const std::optional<PostProcessOcioAsset>& recipe)
         {
-            MainThreadDispatcher::instance().post([owner, onSelected = std::move(onSelected)]
+            MainThreadDispatcher::instance().post([owner, onSelected = std::move(onSelected), recipe]
             {
-                static constexpr std::array filters{ FileDialogFilter{ L"Linear LUT Texture", L"*.dds;*.png;*.tga" } };
-                std::vector<std::filesystem::path> paths;
-                const auto result = Dialog::openFile(paths, L"Select Color Grading LUT",
-                    L"Assets", filters, false, owner);
-                if (result == DialogResult::Cancel)
-                    return;
-                if (result != DialogResult::Ok || paths.empty())
+                constexpr std::array assetFilters{ FileDialogFilter{ L"Compiled OCIO Asset", L"*.ocioasset" } };
+                std::filesystem::path assetPath;
+                if (recipe)
                 {
-                    LOG_ERROR("[PostProcessInspector] LUT asset dialog failed.");
-                    return;
+                    std::vector<std::filesystem::path> paths;
+                    const auto selected = Dialog::openFile(paths, L"Select OCIO Config", L"Assets",
+                        {}, false, owner);
+                    if (selected == DialogResult::Cancel)
+                        return;
+                    if (selected != DialogResult::Ok || paths.empty())
+                    {
+                        LOG_ERROR("[OCIO] Config selection failed.");
+                        return;
+                    }
+                    const auto saved = Dialog::saveFile(assetPath, L"Save Compiled OCIO Asset",
+                        L"Assets", L"ocioasset", assetFilters, owner);
+                    if (saved == DialogResult::Cancel)
+                        return;
+                    if (saved != DialogResult::Ok || assetPath.empty())
+                    {
+                        LOG_ERROR("[OCIO] Compiled asset selection failed.");
+                        return;
+                    }
+                    auto input = *recipe;
+                    const auto pathText = String::fromWide(paths.front().c_str());
+                    if (pathText.size() == 0)
+                    {
+                        LOG_ERROR("[OCIO] Cannot encode the config path.");
+                        return;
+                    }
+                    input.configPath.assign(pathText.c_str(), pathText.size());
+                    PostProcessOcioAsset compiled;
+                    if (!compilePostProcessOcio(input, compiled) || !savePostProcessOcioAsset(assetPath, compiled))
+                        return;
                 }
-                const AssetGUID guid = TextureManager::instance().registerAssetPath(paths.front());
-                if (!guid.isValid())
+                else
                 {
-                    LOG_ERROR("[PostProcessInspector] Failed to register the selected LUT texture.");
-                    return;
+                    std::vector<std::filesystem::path> paths;
+                    const auto selected = Dialog::openFile(paths, L"Select Compiled OCIO Asset",
+                        L"Assets", assetFilters, false, owner);
+                    if (selected == DialogResult::Cancel)
+                        return;
+                    if (selected != DialogResult::Ok || paths.empty())
+                    {
+                        LOG_ERROR("[OCIO] Compiled asset selection failed.");
+                        return;
+                    }
+                    assetPath = paths.front();
                 }
-                onSelected(guid);
+                auto asset = std::make_shared<PostProcessOcioAsset>();
+                if (loadPostProcessOcioAsset(assetPath, *asset))
+                    onSelected(std::move(asset));
             });
         }
 
-        bool drawSettings(PostProcessSettings& settings, const std::function<void(AssetGUID)>& onLutSelected)
+        bool drawSettings(PostProcessSettings& settings,
+            const std::function<void(std::shared_ptr<const PostProcessOcioAsset>)>& onOcioSelected)
         {
             bool changed = false;
             const auto drawSwitch = [&changed, &settings](const std::size_t index)
@@ -141,90 +177,113 @@ namespace Engine
             }
             if (ImGui::TreeNode("Exposure"))
             {
-                drawSwitch(1); drawFloats(4, 5);
-                ImGui::TreePop();
-            }
-            if (ImGui::TreeNode("Color Grading"))
-            {
-                drawSwitch(2); drawFloats(11, 16); drawColor(0); drawColor(1);
-                if (ImGui::TreeNode("Shadows"))
+                auto& manual = settings.exposureEnabled;
+                auto& automatic = settings.autoExposureEnabled;
+                bool overrideMode = manual.overrideState || automatic.overrideState;
+                ImGui::PushID("ExposureMode");
+                if (ImGui::Checkbox("##Override", &overrideMode))
                 {
-                    drawFloats(16, 20); drawColor(2);
+                    manual.overrideState = overrideMode;
+                    automatic.overrideState = overrideMode;
+                    changed = true;
+                }
+                ImGui::SameLine();
+                ImGui::BeginDisabled(!overrideMode);
+                int mode = automatic.value ? 2 : manual.value ? 1 : 0;
+                if (ImGui::Combo("Mode", &mode, "Off\0Manual\0Automatic\0"))
+                {
+                    manual.value = mode == 1;
+                    automatic.value = mode == 2;
+                    manual.overrideState = true;
+                    automatic.overrideState = true;
+                    changed = true;
+                }
+                ImGui::EndDisabled();
+                ImGui::PopID();
+                if (ImGui::TreeNode("Manual Settings"))
+                {
+                    drawFloats(4, 5);
                     ImGui::TreePop();
                 }
-                if (ImGui::TreeNode("Midtones"))
+                if (ImGui::TreeNode("Automatic Settings"))
                 {
-                    drawFloats(20, 24); drawColor(3);
-                    ImGui::TreePop();
-                }
-                if (ImGui::TreeNode("Highlights"))
-                {
-                    drawFloats(24, 28); drawColor(4);
+                    drawFloats(5, 11);
+                    ImGui::TextDisabled("Separate brighten/darken rates adapt over time.");
                     ImGui::TreePop();
                 }
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("Vignette"))
             {
-                drawSwitch(3); drawFloats(28, 31); drawColor(5);
+                drawSwitch(2); drawFloats(11, 14); drawColor(0);
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("Chromatic Aberration"))
             {
-                drawSwitch(4); drawFloats(31, 33);
+                drawSwitch(3); drawFloats(14, 16);
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("Film Grain"))
             {
-                drawSwitch(5); drawFloats(33, 35);
+                drawSwitch(4); drawFloats(16, 18);
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("FXAA"))
             {
-                drawSwitch(6); drawFloats(35, 38);
+                drawSwitch(5); drawFloats(18, 21);
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("Temporal Anti-Aliasing"))
             {
-                drawSwitch(7); drawFloats(42, 43);
+                drawSwitch(6); drawFloats(24, 25);
                 ImGui::TextDisabled("Jittered history reconstruction takes precedence over FXAA.");
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("Motion Blur"))
             {
-                drawSwitch(8); drawFloats(43, 45);
+                drawSwitch(7); drawFloats(25, 27);
                 ImGui::TextDisabled("Requires the deferred velocity buffer.");
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("Depth of Field"))
             {
-                drawSwitch(9); drawFloats(38, 41);
+                drawSwitch(8); drawFloats(21, 24);
                 ImGui::TreePop();
             }
-            if (ImGui::TreeNode("Color Grading LUT"))
+            if (ImGui::TreeNode("OpenColorIO"))
             {
-                drawSwitch(10); drawFloats(41, 42);
-                auto& lut = settings.colorGradingLutAsset;
-                changed |= ImGui::Checkbox("Override LUT Asset", &lut.overrideState);
-                ImGui::BeginDisabled(!lut.overrideState);
-                const auto path = lut.value.isValid()
-                    ? TextureManager::instance().getAssetPath(AssetGUID{ lut.value.high, lut.value.low })
-                    : std::filesystem::path{};
-                const auto pathText = String::fromWide(path.c_str());
-                ImGui::TextWrapped("%s", path.empty() ? "No LUT asset assigned." : pathText.c_str());
-                if (ImGui::Button("Select LUT Asset..."))
+                drawSwitch(10); drawFloats(27, 28);
+                auto& selected = settings.ocioAsset;
+                changed |= ImGui::Checkbox("Override OCIO Asset", &selected.overrideState);
+                if (selected.value)
                 {
-                    const auto owner = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
-                    requestColorGradingLut(owner, onLutSelected);
+                    const auto path = String::fromWide(selected.value->assetPath.c_str());
+                    ImGui::TextWrapped("%s", path.c_str());
                 }
-                ImGui::EndDisabled();
-                ImGui::TextDisabled("Use a linear 16-64 size strip: width = height squared.");
-                ImGui::TreePop();
-            }
-            if (ImGui::TreeNode("Automatic Exposure"))
-            {
-                drawSwitch(11); drawFloats(5, 11);
-                ImGui::TextDisabled("Separate brighten/darken rates adapt per Camera over time.");
+                else
+                    ImGui::TextDisabled("No compiled OCIO asset assigned.");
+                const auto owner = static_cast<HWND>(ImGui::GetMainViewport()->PlatformHandleRaw);
+                if (ImGui::Button("Open OCIO Asset..."))
+                    requestOcioAsset(owner, onOcioSelected, std::nullopt);
+                static char sourceSpace[256] = "scene_linear";
+                static char destinationSpace[256] = "scene_linear";
+                static char look[256]{};
+                static bool afterToneMapping = false;
+                ImGui::InputText("Source Color Space", sourceSpace, std::size(sourceSpace));
+                ImGui::InputText("Destination Color Space", destinationSpace, std::size(destinationSpace));
+                ImGui::InputText("Look (optional)", look, std::size(look));
+                ImGui::Checkbox("After Tone Mapping", &afterToneMapping);
+                if (ImGui::Button("Generate OCIO Asset..."))
+                {
+                    PostProcessOcioAsset recipe;
+                    recipe.sourceSpace = sourceSpace;
+                    recipe.destinationSpace = destinationSpace;
+                    recipe.look = look;
+                    recipe.description.stage = afterToneMapping
+                        ? PostProcessStage::AfterToneMapping : PostProcessStage::BeforeToneMapping;
+                    requestOcioAsset(owner, onOcioSelected, recipe);
+                }
+                ImGui::TextDisabled("Generation runs in the Editor; Runtime uses the saved artifact.");
                 ImGui::TreePop();
             }
             if (ImGui::Button("Reset Overrides"))
@@ -948,9 +1007,9 @@ namespace Engine
             bool changed = ImGui::InputText("Name", name.data(), name.size());
             if (changed)
                 edited.name = name.data();
-            changed |= drawSettings(edited.settings, [handle](const AssetGUID guid)
+            changed |= drawSettings(edited.settings, [handle](std::shared_ptr<const PostProcessOcioAsset> asset)
             {
-                applyLutToProfile(handle, guid);
+                applyOcioToProfile(handle, std::move(asset));
             });
             changed |= drawCustomEffects(edited.customEffects, handle);
             if (changed)
@@ -1011,9 +1070,9 @@ namespace Engine
             auto settings = camera.getPostProcessOverrides();
             const GameObject* const object = camera.getGameObject();
             const ObjectGUID objectGuid = object != nullptr ? object->getGUID() : ObjectGUID{};
-            if (drawSettings(settings, [objectGuid](const AssetGUID guid)
+            if (drawSettings(settings, [objectGuid](std::shared_ptr<const PostProcessOcioAsset> asset)
                 {
-                    applyLutToCamera(objectGuid, guid);
+                    applyOcioToCamera(objectGuid, std::move(asset));
                 }))
                 camera.setPostProcessOverrides(settings);
             ImGui::TreePop();

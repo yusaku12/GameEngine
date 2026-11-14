@@ -54,6 +54,30 @@ namespace Engine
         m_bytecode.clear();
     }
 
+    bool DX12Shader::loadBytecode(const std::span<const std::uint8_t> bytecode)
+    {
+        if (bytecode.empty())
+        {
+            LOG_ERROR("[Shader] Shader bytecode is empty.");
+            return false;
+        }
+        try
+        {
+            std::vector<std::uint8_t> copy(bytecode.begin(), bytecode.end());
+            m_bytecode = std::move(copy);
+            return true;
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[Shader] Cannot allocate shader bytecode.");
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[Shader] Shader bytecode exceeds available capacity.");
+        }
+        return false;
+    }
+
     D3D12_SHADER_BYTECODE DX12Shader::getBytecode() const noexcept
     {
         return D3D12_SHADER_BYTECODE{

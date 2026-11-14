@@ -46,22 +46,26 @@
     <ClInclude Include="Source\Core\System\StartupOptions.h" />
     <ClInclude Include="Source\Graphics\DirectX12\Diagnostics\FrameCapture.h" />
     <ClInclude Include="Source\Graphics\PostProcess\PostProcessPipeline.h" />
+    <ClInclude Include="Source\Graphics\PostProcess\Aces2Luts.h" />
     <ClInclude Include="Source\Graphics\PostProcess\PostProcessTargetPool.h" />
     <ClInclude Include="Source\Core\Scene\SceneClone.h" />
     <ClInclude Include="Generated\FlatBuffers\CameraComponent_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\PostProcessSettings_generated.h" />
     <ClInclude Include="Generated\FlatBuffers\PostProcessProfile_generated.h" />
+    <ClInclude Include="Generated\FlatBuffers\PostProcessOcio_generated.h" />
     <ClInclude Include="Source\Graphics\PostProcess\PostProcessSettings.h" />
     <ClInclude Include="Source\Graphics\PostProcess\PostProcessVolumeResolver.h" />
     <ClInclude Include="Source\Components\Rendering\PostProcessVolumeComponent.h" />
     <ClInclude Include="Source\Assets\PostProcess\PostProcessProfile.h" />
     <ClInclude Include="Source\Assets\PostProcess\PostProcessProfileManager.h" />
     <ClInclude Include="Source\Assets\PostProcess\PostProcessEffectAsset.h" />
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessOcioAsset.h" />
     <ClInclude Include="Source\Assets\PostProcess\PostProcessEffectAssetManager.h" />
     <ClInclude Include="Source\Assets\PostProcess\Serialization\PostProcessEffectSerializer.h" />
     <ClInclude Include="Source\Assets\PostProcess\Serialization\PostProcessProfileSerializer.h" />
     <ClInclude Include="Generated\FlatBuffers\PostProcessEffectAsset_generated.h" />
     <ClInclude Include="Source\Editor\PostProcess\PostProcessInspector.h" />
+    <ClInclude Include="Source\Editor\PostProcess\OcioCompiler.h" />
     <ClInclude Include="Source\Animation\Runtime\AnimatorInstance.h" />
     <ClInclude Include="Source\Animation\Runtime\FootIK.h" />
     <ClInclude Include="Source\Components\Animation\FootIKComponent.h" />
@@ -290,6 +294,8 @@
     <ClCompile Include="Source\Components\Rendering\PostProcessVolumeComponent.cpp" />
     <ClCompile Include="Source\Assets\PostProcess\PostProcessProfileManager.cpp" />
     <ClCompile Include="Source\Assets\PostProcess\PostProcessEffectAssetManager.cpp" />
+    <ClCompile Include="Source\Assets\PostProcess\PostProcessOcioAsset.cpp" />
+    <ClCompile Include="Source\Editor\PostProcess\OcioCompiler.cpp" />
     <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessEffectSerializer.cpp" />
     <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessProfileSerializer.cpp" />
     <ClCompile Include="Source\Editor\PostProcess\PostProcessInspector.cpp" />
@@ -414,6 +420,8 @@
     <None Include="Assets\Shaders\PostProcessExample.hlsl" />
     <None Include="Assets\Shaders\PostProcess.hlsli" />
     <None Include="Assets\Shaders\ColorOutput.hlsli" />
+    <None Include="Assets\Shaders\Aces2Output.hlsli" />
+    <None Include="Assets\Shaders\OCIO\OpenColorIO-LICENSE.txt" />
     <None Include="Assets\Shaders\DebugPrimitive.hlsl" />
     <None Include="Assets\Shaders\Occlusion.hlsl" />
     <None Include="Assets\Shaders\HiZ.hlsl" />
@@ -448,6 +456,7 @@
     <None Include="Tools\FlatBuffers\build_schema.ps1" />
     <None Include="Tools\Shaders\CompileShaders.bat" />
     <None Include="Tools\Shaders\CompileShaders.ps1" />
+    <None Include="Tools\Shaders\GenerateAcesOutput.cpp" />
     <None Include="Tools\Shaders\CleanShaderCache.bat" />
     <None Include="Tools\Build\NativeDependencies.targets" />
     <None Include="Tools\Build\Shaders.targets" />
@@ -492,6 +501,7 @@
     <IntDir>$(ProjectDir)Build\GameEngine\$(Platform)\$(Configuration)\</IntDir>
     <OutDir>$(ProjectDir)x64\$(Configuration)\</OutDir>
     <FLATBUFFERS_FLATC_EXECUTABLE Condition="'$(FLATBUFFERS_FLATC_EXECUTABLE)' == ''">$(ProjectDir)Tools\FlatBuffers\flatc.exe</FLATBUFFERS_FLATC_EXECUTABLE>
+    <OpenColorIOInstalledRoot Condition="'$(OpenColorIOInstalledRoot)' == ''">$(ProjectDir)vcpkg_installed\x64-windows-static</OpenColorIOInstalledRoot>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -501,7 +511,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;.\Library\PhysX\physx\include;.\Library\PhysX\physx\source\foundation\include;.\Library\PhysX\physx\source\common\include;.\Library\PhysX\pxshared\include;$(FBXSDKRoot)\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;.\Library\PhysX\physx\include;.\Library\PhysX\physx\source\foundation\include;.\Library\PhysX\physx\source\common\include;.\Library\PhysX\pxshared\include;$(FBXSDKRoot)\include;$(OpenColorIOInstalledRoot)\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ExternalIncludePath>$(ProjectDir)Library\PhysX\physx\include;$(ProjectDir)Library\PhysX\physx\source\foundation\include;$(ProjectDir)Library\PhysX\physx\source\common\include;$(ProjectDir)Library\PhysX\pxshared\include;%(ExternalIncludePath)</ExternalIncludePath>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
@@ -512,11 +522,11 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>PhysX_static_64.lib;PhysXExtensions_static_64.lib;PhysXCharacterKinematic_static_64.lib;PhysXCooking_static_64.lib;PhysXCommon_static_64.lib;PhysXPvdSDK_static_64.lib;PhysXFoundation_static_64.lib;ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;libfbxsdk.lib;wininet.lib;ws2_32.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>PhysX_static_64.lib;PhysXExtensions_static_64.lib;PhysXCharacterKinematic_static_64.lib;PhysXCooking_static_64.lib;PhysXCommon_static_64.lib;PhysXPvdSDK_static_64.lib;PhysXFoundation_static_64.lib;ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;libfbxsdk.lib;wininet.lib;ws2_32.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;bcrypt.lib;$(OpenColorIOInstalledRoot)\debug\lib\*.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)Build\PhysX\lib\bin\win.x86_64.vc143.mt\debug;$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration);$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Debug;$(FBXSDKRoot)\lib\x64\debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(FBXSDKRoot)\lib\x64\debug\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll"</Command>
+      <Command>copy /Y "$(FBXSDKRoot)\lib\x64\debug\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll" &amp;&amp; copy /Y "$(ProjectDir)Assets\Shaders\OCIO\OpenColorIO-LICENSE.txt" "$(TargetDir)OpenColorIO-LICENSE.txt"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -529,7 +539,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;.\Library\PhysX\physx\include;.\Library\PhysX\physx\source\foundation\include;.\Library\PhysX\physx\source\common\include;.\Library\PhysX\pxshared\include;$(FBXSDKRoot)\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Source;.\Library;.\Library\ozz-animation\include;.\Library\flatbuffers\include;.\Library\spdlog\include;.\Library\DirectXTex-main\DirectXTex;.\Library\DirectXTex-main\Common;.\Library\imgui;.\Library\imgui\backends;.\Library\ImGuizmo;.\Library\PhysX\physx\include;.\Library\PhysX\physx\source\foundation\include;.\Library\PhysX\physx\source\common\include;.\Library\PhysX\pxshared\include;$(FBXSDKRoot)\include;$(OpenColorIOInstalledRoot)\include;$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ExternalIncludePath>$(ProjectDir)Library\PhysX\physx\include;$(ProjectDir)Library\PhysX\physx\source\foundation\include;$(ProjectDir)Library\PhysX\physx\source\common\include;$(ProjectDir)Library\PhysX\pxshared\include;%(ExternalIncludePath)</ExternalIncludePath>
       <TreatWarningAsError>true</TreatWarningAsError>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
@@ -540,11 +550,11 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>PhysX_static_64.lib;PhysXExtensions_static_64.lib;PhysXCharacterKinematic_static_64.lib;PhysXCooking_static_64.lib;PhysXCommon_static_64.lib;PhysXPvdSDK_static_64.lib;PhysXFoundation_static_64.lib;ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;libfbxsdk.lib;wininet.lib;ws2_32.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>PhysX_static_64.lib;PhysXExtensions_static_64.lib;PhysXCharacterKinematic_static_64.lib;PhysXCooking_static_64.lib;PhysXCommon_static_64.lib;PhysXPvdSDK_static_64.lib;PhysXFoundation_static_64.lib;ozz_animation_offline$(OzzLibraryPostfix).lib;ozz_animation$(OzzLibraryPostfix).lib;ozz_base$(OzzLibraryPostfix).lib;libfbxsdk.lib;wininet.lib;ws2_32.lib;DirectXTex.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;bcrypt.lib;$(OpenColorIOInstalledRoot)\lib\*.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)Build\PhysX\lib\bin\win.x86_64.vc143.mt\release;$(ProjectDir)Build\ozz-animation\ozz\src\animation\offline\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\animation\runtime\$(Configuration);$(ProjectDir)Build\ozz-animation\ozz\src\base\$(Configuration);$(SolutionDir)Library\DirectXTex-main\DirectXTex\Bin\Desktop_2022_Win10\x64\Release;$(FBXSDKRoot)\lib\x64\release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(FBXSDKRoot)\lib\x64\release\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll"</Command>
+      <Command>copy /Y "$(FBXSDKRoot)\lib\x64\release\libfbxsdk.dll" "$(TargetDir)libfbxsdk.dll" &amp;&amp; copy /Y "$(ProjectDir)Assets\Shaders\OCIO\OpenColorIO-LICENSE.txt" "$(TargetDir)OpenColorIO-LICENSE.txt"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -559,6 +569,9 @@
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Tools\FlatBuffers\build_schema.ps1&quot; -Flatc &quot;$(FLATBUFFERS_FLATC_EXECUTABLE)&quot;" />
   </Target>
   <Import Project="$(ProjectDir)Tools\Build\NativeDependencies.targets" />
+  <Target Name="CheckOpenColorIO" BeforeTargets="ClCompile">
+    <Error Condition="!Exists('$(OpenColorIOInstalledRoot)\include\OpenColorIO\OpenColorIO.h')" Text="OpenColorIO is missing. Run vcpkg install --triplet x64-windows-static for this project." />
+  </Target>
   <Target Name="BuildDirectXTex" BeforeTargets="ClCompile" Condition="'$(Platform)'=='x64'">
     <MSBuild Projects="$(ProjectDir)Library\DirectXTex-main\DirectXTex\DirectXTex_Desktop_2022_Win10.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=x64;PlatformToolset=$(PlatformToolset)" RemoveProperties="IntDir;OutDir" />
   </Target>

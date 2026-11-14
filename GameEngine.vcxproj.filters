@@ -378,6 +378,12 @@
     <ClCompile Include="Source\Assets\PostProcess\PostProcessProfileManager.cpp">
       <Filter>Source\Assets\PostProcess</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Assets\PostProcess\PostProcessOcioAsset.cpp">
+      <Filter>Source\Assets\PostProcess</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\PostProcess\OcioCompiler.cpp">
+      <Filter>Source\Editor\PostProcess</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Assets\PostProcess\Serialization\PostProcessEffectSerializer.cpp">
       <Filter>Source\Assets\PostProcess\Serialization</Filter>
     </ClCompile>
@@ -800,6 +806,9 @@
     <ClInclude Include="Generated\FlatBuffers\PostProcessProfile_generated.h">
       <Filter>Generated\FlatBuffers</Filter>
     </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\PostProcessOcio_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
     <ClInclude Include="Generated\FlatBuffers\PostProcessSettings_generated.h">
       <Filter>Generated\FlatBuffers</Filter>
     </ClInclude>
@@ -925,6 +934,12 @@
     </ClInclude>
     <ClInclude Include="Source\Assets\PostProcess\PostProcessEffectAsset.h">
       <Filter>Source\Assets\PostProcess</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\PostProcess\PostProcessOcioAsset.h">
+      <Filter>Source\Assets\PostProcess</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Editor\PostProcess\OcioCompiler.h">
+      <Filter>Source\Editor\PostProcess</Filter>
     </ClInclude>
     <ClInclude Include="Source\Assets\PostProcess\PostProcessEffectAssetManager.h">
       <Filter>Source\Assets\PostProcess</Filter>
@@ -1277,6 +1292,9 @@
     <ClInclude Include="Source\Graphics\PostProcess\PostProcessPipeline.h">
       <Filter>Source\Graphics\PostProcess</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Graphics\PostProcess\Aces2Luts.h">
+      <Filter>Source\Graphics\PostProcess</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Graphics\PostProcess\PostProcessSettings.h">
       <Filter>Source\Graphics\PostProcess</Filter>
     </ClInclude>
@@ -1417,6 +1435,12 @@
     <None Include="Assets\Shaders\ColorOutput.hlsli">
       <Filter>Assets\Shaders</Filter>
     </None>
+    <None Include="Assets\Shaders\Aces2Output.hlsli">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\OCIO\OpenColorIO-LICENSE.txt">
+      <Filter>Assets\Shaders</Filter>
+    </None>
     <None Include="Assets\Shaders\DebugPrimitive.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>
@@ -1541,6 +1565,9 @@
       <Filter>Tools\Shaders</Filter>
     </None>
     <None Include="Tools\Shaders\CompileShaders.ps1">
+      <Filter>Tools\Shaders</Filter>
+    </None>
+    <None Include="Tools\Shaders\GenerateAcesOutput.cpp">
       <Filter>Tools\Shaders</Filter>
     </None>
   </ItemGroup>

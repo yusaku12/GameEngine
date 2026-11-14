@@ -2,6 +2,7 @@
 
 #include "ShaderTypes.h"
 #include "Core\CoreDefines.h"
+#include <span>
 
 namespace Engine
 {
@@ -33,6 +34,13 @@ namespace Engine
          * @return 読み込みに成功した場合は true
          */
         bool load(const DX12ShaderConfig& config);
+
+        /**
+         * @brief 埋め込み済み Shader Bytecode をコピーする。
+         * @param bytecode コンパイル済み Bytecode。
+         * @return コピーに成功した場合は true。
+         */
+        bool loadBytecode(std::span<const std::uint8_t> bytecode);
 
         /**
          * @brief 保持しているコンパイル済み Bytecode を解放する

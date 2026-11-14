@@ -65,7 +65,6 @@ $jobs = @(
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psFilmGrain"; Target = "ps_6_0"; Output = "PostProcessEffects_psFilmGrain_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psFxaa"; Target = "ps_6_0"; Output = "PostProcessEffects_psFxaa_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psDepthOfField"; Target = "ps_6_0"; Output = "PostProcessEffects_psDepthOfField_ps.cso" },
-    @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psColorGradingLut"; Target = "ps_6_0"; Output = "PostProcessEffects_psColorGradingLut_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psAutoExposureDownsample"; Target = "ps_6_0"; Output = "PostProcessEffects_psAutoExposureDownsample_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psAutoExposureAdapt"; Target = "ps_6_0"; Output = "PostProcessEffects_psAutoExposureAdapt_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psTemporalAA"; Target = "ps_6_0"; Output = "PostProcessEffects_psTemporalAA_ps.cso" },

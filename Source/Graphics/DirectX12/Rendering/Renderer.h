@@ -222,6 +222,17 @@ namespace Engine
             return m_postProcess.configure(passes);
         }
 
+        /**
+         * @brief OCIOのコンパイル済みShaderとLUTをPostEffectへ設定する。
+         * @param description 設定値。nullptrの場合はOCIOパスを解除する。
+         * @return 設定または解除に成功した場合はtrue。
+         * @thread_safety Render thread only. フレーム間で呼ぶこと。GPU完了を待機する。
+         */
+        bool setPostProcessOcio(const PostProcessOcioDescription* description)
+        {
+            return m_postProcess.configureOcio(description);
+        }
+
         /** @brief 直近のPostEffect記録統計。Render threadまたはフレーム完了後に読むこと。 */
         const PostProcessStatistics& getPostProcessStatistics() const noexcept
         {
@@ -340,7 +351,7 @@ namespace Engine
             Vector4 viewport{};
             Vector4 renderSize{};
             Vector4 backgroundColor{};
-            Vector4 clipExposureDebug{};
+            Vector4 clipAndDebug{};
         };
         static_assert(sizeof(DeferredPassConstants) == sizeof(float) * 32);
 
@@ -471,7 +482,6 @@ namespace Engine
         bool m_deferredPassRecorded = false;
         int m_deferredDebugView = 0;
         bool m_deferredRenderingEnabled = true;
-        float m_exposure = 1.0f;
         std::uint32_t m_requestedGameWidth = 0;                                                           //!< ImGui Game Viewが要求する描画幅
         std::uint32_t m_requestedGameHeight = 0;                                                          //!< ImGui Game Viewが要求する描画高さ
         RendererStatistics m_frameStatistics;                                                             //!< 直近フレームの描画統計

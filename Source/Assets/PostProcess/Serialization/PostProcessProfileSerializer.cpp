@@ -1,15 +1,14 @@
 #include "Pch.h"
 #include "Assets\PostProcess\PostProcessProfileManager.h"
 #include "Assets\PostProcess\PostProcessEffectAssetManager.h"
+#include "Assets\PostProcess\PostProcessOcioAsset.h"
 #include "Core\Containers\String.h"
 #include "Assets\PostProcess\Serialization\PostProcessProfileSerializer.h"
 #include "Assets\PostProcess\Serialization\PostProcessEffectSerializer.h"
 #include "Core\Serialization\FlatBufferReader.h"
 #include "Core\Serialization\FlatBufferWriter.h"
 #include "Core\Serialization\SerializationVersions.h"
-#include "Graphics\Texture\TextureManager.h"
 #include "Generated\FlatBuffers\PostProcessProfile_generated.h"
-#include "Core\Containers\String.h"
 #include "Core\Logging\Logger.h"
 #include "Core\Math\MathTypes.h"
 #include "Core\Math\MathFunction.h"
@@ -138,10 +137,6 @@ namespace Engine::Serialization
         const auto bloomSizeScale = toFlat(settings.bloomSizeScale);
         const auto exposureEnabled = toFlat(settings.exposureEnabled);
         const auto exposureEV = toFlat(settings.exposureEV);
-        const auto colorEnabled = toFlat(settings.colorAdjustmentsEnabled);
-        const auto contrast = toFlat(settings.contrast);
-        const auto saturation = toFlat(settings.saturation);
-        const auto colorFilter = toFlat(settings.colorFilter);
         const auto vignetteEnabled = toFlat(settings.vignetteEnabled);
         const auto vignetteIntensity = toFlat(settings.vignetteIntensity);
         const auto vignetteSmoothness = toFlat(settings.vignetteSmoothness);
@@ -164,8 +159,6 @@ namespace Engine::Serialization
         const auto legacyFogDensity = toFlat(PostProcessParameter<float>{});
         const auto legacyFogStartDistance = toFlat(PostProcessParameter<float>{});
         const auto legacyFogColor = toFlat(PostProcessParameter<Vector3>{});
-        const auto lutEnabled = toFlat(settings.colorGradingLutEnabled);
-        const auto lutIntensity = toFlat(settings.colorGradingLutIntensity);
         const auto autoExposureEnabled = toFlat(settings.autoExposureEnabled);
         const auto autoExposureKey = toFlat(settings.autoExposureKey);
         const auto autoExposureMinEV = toFlat(settings.autoExposureMinEV);
@@ -173,65 +166,39 @@ namespace Engine::Serialization
         const auto autoExposureCompensation = toFlat(settings.autoExposureCompensation);
         const auto autoExposureSpeedUp = toFlat(settings.autoExposureSpeedUp);
         const auto autoExposureSpeedDown = toFlat(settings.autoExposureSpeedDown);
-        const auto colorTemperature = toFlat(settings.colorTemperature);
-        const auto colorTint = toFlat(settings.colorTint);
-        const auto colorGamma = toFlat(settings.colorGamma);
-        const auto shadowSaturation = toFlat(settings.shadowSaturation);
-        const auto shadowContrast = toFlat(settings.shadowContrast);
-        const auto shadowGamma = toFlat(settings.shadowGamma);
-        const auto shadowGain = toFlat(settings.shadowGain);
-        const auto midtoneSaturation = toFlat(settings.midtoneSaturation);
-        const auto midtoneContrast = toFlat(settings.midtoneContrast);
-        const auto midtoneGamma = toFlat(settings.midtoneGamma);
-        const auto midtoneGain = toFlat(settings.midtoneGain);
-        const auto highlightSaturation = toFlat(settings.highlightSaturation);
-        const auto highlightContrast = toFlat(settings.highlightContrast);
-        const auto highlightGamma = toFlat(settings.highlightGamma);
-        const auto highlightGain = toFlat(settings.highlightGain);
-        const auto colorOffset = toFlat(settings.colorOffset);
-        const auto shadowColor = toFlat(settings.shadowColor);
-        const auto midtoneColor = toFlat(settings.midtoneColor);
-        const auto highlightColor = toFlat(settings.highlightColor);
         const auto chromaticAberrationEnabled = toFlat(settings.chromaticAberrationEnabled);
         const auto chromaticAberrationIntensity = toFlat(settings.chromaticAberrationIntensity);
         const auto chromaticAberrationStartOffset = toFlat(settings.chromaticAberrationStartOffset);
         const auto filmGrainEnabled = toFlat(settings.filmGrainEnabled);
         const auto filmGrainIntensity = toFlat(settings.filmGrainIntensity);
         const auto filmGrainResponse = toFlat(settings.filmGrainResponse);
-        const auto lutGuidValue = settings.colorGradingLutAsset.value;
-        std::string lutPath;
-        if (lutGuidValue.isValid())
+        const auto ocioEnabled = toFlat(settings.ocioEnabled);
+        const auto ocioIntensity = toFlat(settings.ocioIntensity);
+        std::string ocioPath;
+        if (settings.ocioAsset.value)
         {
-            const auto path = TextureManager::instance().getAssetPath(
-                AssetGUID{ lutGuidValue.high, lutGuidValue.low });
+            const auto& path = settings.ocioAsset.value->assetPath;
             const auto text = String::fromWide(path.c_str());
             if (path.empty() || text.size() == 0)
             {
-                LOG_ERROR("[PostProcess] Cannot save Color Grading LUT without a registered asset path.");
+                LOG_ERROR("[OCIO] Save the compiled asset before saving PostProcess settings.");
                 return {};
             }
-            lutPath.assign(text.c_str(), text.size());
+            ocioPath.assign(text.c_str(), text.size());
         }
-        const AssetGuid lutGuid(lutGuidValue.high, lutGuidValue.low);
-        const auto lutAsset = CreatePostProcessLutReference(builder, &lutGuid,
-            builder.CreateString(lutPath), settings.colorGradingLutAsset.overrideState);
         return CreatePostProcessSettingsData(builder, &bloomEnabled, &bloomIntensity,
-            &bloomThreshold, &bloomScatter, &exposureEnabled, &exposureEV, &colorEnabled,
-            &contrast, &saturation, &colorFilter, &vignetteEnabled, &vignetteIntensity,
+            &bloomThreshold, &bloomScatter, &exposureEnabled, &exposureEV, &vignetteEnabled, &vignetteIntensity,
             &vignetteSmoothness, &vignetteRoundness, &vignetteColor, &fxaaEnabled,
             &fxaaSubpixel, &fxaaThreshold, &fxaaMinimum, &depthOfFieldEnabled,
             &depthOfFieldFocusDistance, &depthOfFieldFocusRange, &depthOfFieldMaxBlur,
-            &legacyFogEnabled, &legacyFogDensity, &legacyFogStartDistance, &legacyFogColor, &lutEnabled,
-            &lutIntensity, lutAsset, &autoExposureEnabled, &autoExposureKey,
+            &legacyFogEnabled, &legacyFogDensity, &legacyFogStartDistance, &legacyFogColor,
+            &autoExposureEnabled, &autoExposureKey,
             &autoExposureMinEV, &autoExposureMaxEV, &autoExposureCompensation,
             &autoExposureSpeedUp, &autoExposureSpeedDown, &bloomSizeScale,
-            &colorTemperature, &colorTint, &colorGamma, &shadowSaturation, &shadowContrast,
-            &shadowGamma, &shadowGain, &midtoneSaturation, &midtoneContrast, &midtoneGamma,
-            &midtoneGain, &highlightSaturation, &highlightContrast, &highlightGamma, &highlightGain,
-            &colorOffset, &shadowColor, &midtoneColor, &highlightColor,
             &chromaticAberrationEnabled, &chromaticAberrationIntensity, &chromaticAberrationStartOffset,
             &filmGrainEnabled, &filmGrainIntensity, &filmGrainResponse, &temporalAAEnabled,
-            &temporalAAFeedback, &motionBlurEnabled, &motionBlurAmount, &motionBlurMaxVelocity);
+            &temporalAAFeedback, &motionBlurEnabled, &motionBlurAmount, &motionBlurMaxVelocity,
+            &ocioEnabled, &ocioIntensity, builder.CreateString(ocioPath), settings.ocioAsset.overrideState);
     }
 
     bool readPostProcessSettings(const PostProcessSettingsData* source, Engine::PostProcessSettings& settings)
@@ -244,10 +211,6 @@ namespace Engine::Serialization
             || !read(source->bloom_scatter(), loaded.bloomScatter)
             || !read(source->exposure_enabled(), loaded.exposureEnabled)
             || !read(source->exposure_ev(), loaded.exposureEV)
-            || !read(source->color_adjustments_enabled(), loaded.colorAdjustmentsEnabled)
-            || !read(source->contrast(), loaded.contrast)
-            || !read(source->saturation(), loaded.saturation)
-            || !read(source->color_filter(), loaded.colorFilter)
             || !read(source->vignette_enabled(), loaded.vignetteEnabled)
             || !read(source->vignette_intensity(), loaded.vignetteIntensity)
             || !read(source->vignette_smoothness(), loaded.vignetteSmoothness)
@@ -269,8 +232,6 @@ namespace Engine::Serialization
             || !readOptional(source->depth_of_field_focus_distance(), loaded.depthOfFieldFocusDistance)
             || !readOptional(source->depth_of_field_focus_range(), loaded.depthOfFieldFocusRange)
             || !readOptional(source->depth_of_field_max_blur(), loaded.depthOfFieldMaxBlur)
-            || !readOptional(source->color_grading_lut_enabled(), loaded.colorGradingLutEnabled)
-            || !readOptional(source->color_grading_lut_intensity(), loaded.colorGradingLutIntensity)
             || !readOptional(source->auto_exposure_enabled(), loaded.autoExposureEnabled)
             || !readOptional(source->auto_exposure_key(), loaded.autoExposureKey)
             || !readOptional(source->auto_exposure_min_ev(), loaded.autoExposureMinEV)
@@ -279,25 +240,6 @@ namespace Engine::Serialization
             || !readOptional(source->auto_exposure_speed_up(), loaded.autoExposureSpeedUp)
             || !readOptional(source->auto_exposure_speed_down(), loaded.autoExposureSpeedDown)
             || !readOptional(source->bloom_size_scale(), loaded.bloomSizeScale)
-            || !readOptional(source->color_temperature(), loaded.colorTemperature)
-            || !readOptional(source->color_tint(), loaded.colorTint)
-            || !readOptional(source->color_gamma(), loaded.colorGamma)
-            || !readOptional(source->shadow_saturation(), loaded.shadowSaturation)
-            || !readOptional(source->shadow_contrast(), loaded.shadowContrast)
-            || !readOptional(source->shadow_gamma(), loaded.shadowGamma)
-            || !readOptional(source->shadow_gain(), loaded.shadowGain)
-            || !readOptional(source->midtone_saturation(), loaded.midtoneSaturation)
-            || !readOptional(source->midtone_contrast(), loaded.midtoneContrast)
-            || !readOptional(source->midtone_gamma(), loaded.midtoneGamma)
-            || !readOptional(source->midtone_gain(), loaded.midtoneGain)
-            || !readOptional(source->highlight_saturation(), loaded.highlightSaturation)
-            || !readOptional(source->highlight_contrast(), loaded.highlightContrast)
-            || !readOptional(source->highlight_gamma(), loaded.highlightGamma)
-            || !readOptional(source->highlight_gain(), loaded.highlightGain)
-            || !readOptional(source->color_offset(), loaded.colorOffset)
-            || !readOptional(source->shadow_color(), loaded.shadowColor)
-            || !readOptional(source->midtone_color(), loaded.midtoneColor)
-            || !readOptional(source->highlight_color(), loaded.highlightColor)
             || !readOptional(source->chromatic_aberration_enabled(), loaded.chromaticAberrationEnabled)
             || !readOptional(source->chromatic_aberration_intensity(), loaded.chromaticAberrationIntensity)
             || !readOptional(source->chromatic_aberration_start_offset(), loaded.chromaticAberrationStartOffset)
@@ -308,37 +250,35 @@ namespace Engine::Serialization
             || !readOptional(source->temporal_aa_feedback(), loaded.temporalAAFeedback)
             || !readOptional(source->motion_blur_enabled(), loaded.motionBlurEnabled)
             || !readOptional(source->motion_blur_amount(), loaded.motionBlurAmount)
-            || !readOptional(source->motion_blur_max_velocity(), loaded.motionBlurMaxVelocity))
+            || !readOptional(source->motion_blur_max_velocity(), loaded.motionBlurMaxVelocity)
+            || !readOptional(source->ocio_enabled(), loaded.ocioEnabled)
+            || !readOptional(source->ocio_intensity(), loaded.ocioIntensity))
         {
             LOG_ERROR("[PostProcess] Serialized Phase 6 settings are invalid.");
             return false;
         }
-        if (const auto* const lut = source->color_grading_lut_asset())
+        if (const auto* path = source->ocio_asset_path())
         {
-            if (lut->guid() == nullptr || lut->path() == nullptr
-                || lut->path()->str().find('\0') != std::string::npos)
+            const std::string text = path->str();
+            if (text.find('\0') != std::string::npos)
             {
-                LOG_ERROR("[PostProcess] Serialized LUT reference is malformed.");
+                LOG_ERROR("[OCIO] Compiled asset path contains a null character.");
                 return false;
             }
-            const ObjectGUID guid{ lut->guid()->high(), lut->guid()->low() };
-            const std::string path = lut->path()->str();
-            if (guid.isValid() != !path.empty())
+            loaded.ocioAsset.overrideState = source->ocio_asset_overridden();
+            if (!text.empty())
             {
-                LOG_ERROR("[PostProcess] LUT GUID/path pair is inconsistent.");
-                return false;
-            }
-            if (guid.isValid())
-            {
-                const auto wide = String(path).toWide();
-                if (wide.empty() || !TextureManager::instance().registerAssetPath(
-                    AssetGUID{ guid.high, guid.low }, std::filesystem::path(wide)))
+                const auto wide = String(text).toWide();
+                if (wide.empty())
                 {
-                    LOG_ERROR("[PostProcess] Cannot register the serialized LUT asset path.");
+                    LOG_ERROR("[OCIO] Invalid compiled asset path encoding.");
                     return false;
                 }
+                auto asset = std::make_shared<PostProcessOcioAsset>();
+                if (!loadPostProcessOcioAsset(std::filesystem::path(wide), *asset))
+                    return false;
+                loaded.ocioAsset.value = std::move(asset);
             }
-            loaded.colorGradingLutAsset = { guid, lut->overridden() };
         }
         if (!validatePostProcessSettings(loaded))
             return false;

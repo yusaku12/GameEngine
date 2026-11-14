@@ -668,7 +668,6 @@ namespace Engine
                             "Final Lighting", "Albedo", "Normal", "Metallic", "Roughness",
                             "Material AO", "Emission", "Depth", "Shadow Map"
                         };
-                        ImGui::SliderFloat("Exposure", &m_exposure, 0.1f, 4.0f);
                         ImGui::Combo("G-Buffer View", &m_deferredDebugView,
                             DEFERRED_VIEWS, static_cast<int>(std::size(DEFERRED_VIEWS)));
                     }
@@ -748,8 +747,8 @@ namespace Engine
                 m_cameraClearMode == CameraClearMode::Skybox ? 1.0f : 0.0f, 0.0f),
             .backgroundColor = Vector4(m_cameraClearColor.x, m_cameraClearColor.y,
                 m_cameraClearColor.z, m_cameraClearColor.w),
-            .clipExposureDebug = Vector4(m_cameraNearClip, m_cameraFarClip, m_exposure,
-                static_cast<float>(std::clamp(m_deferredDebugView, 0, 8))),
+            .clipAndDebug = Vector4(m_cameraNearClip, m_cameraFarClip,
+                static_cast<float>(std::clamp(m_deferredDebugView, 0, 8)), 0.0f),
         };
         DX12CommandList& commandList = m_commandLists[frameIndex];
         if (!m_lightingBuffers[frameIndex].write(std::as_bytes(std::span(&m_lighting, 1)))
@@ -836,7 +835,7 @@ namespace Engine
                 const PostProcessImage output{ &m_gameRenderTarget, {}, m_gameRenderTargetView };
                 const PostProcessImage depth{ &m_depthBuffer, *m_depthShaderView->gpu, {} };
                 const PostProcessImage velocity{ &m_gbufferTargets[4], *m_gbufferShaderViews[4]->gpu, {} };
-                if (!m_postProcess.record(finishList, input, output, viewport, m_exposure,
+                if (!m_postProcess.record(finishList, input, output, viewport,
                     m_cameraPostProcess, &depth, &velocity))
                     return false;
                 m_postProcessRecorded = true;
