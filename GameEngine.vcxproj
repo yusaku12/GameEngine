@@ -422,6 +422,7 @@
     <None Include="Assets\Shaders\PostProcessEffects.hlsl" />
     <None Include="Assets\Shaders\Bloom.hlsl" />
     <None Include="Assets\Shaders\LightShafts.hlsl" />
+    <None Include="Assets\Shaders\AutoExposure.hlsl" />
     <None Include="Assets\Shaders\PostProcessExample.hlsl" />
     <None Include="Assets\Shaders\PostProcess.hlsli" />
     <None Include="Assets\Shaders\PostProcessCompute.hlsli" />

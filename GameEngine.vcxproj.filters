@@ -1486,6 +1486,9 @@
     <None Include="Assets\Shaders\LightShafts.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>
+    <None Include="Assets\Shaders\AutoExposure.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
     <None Include="Assets\Shaders\PostProcessExample.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>

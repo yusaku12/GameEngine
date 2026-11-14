@@ -19,12 +19,11 @@ namespace Engine
     {
         CustomComposite, Vignette,
         ChromaticAberration, FilmGrain, Fxaa,
-        DepthOfField, AutoExposureDownsample, AutoExposureAdapt, TemporalAA, MotionBlur, Count,
+        DepthOfField, AutoExposureAdapt, TemporalAA, MotionBlur, Count,
     };
     inline constexpr std::array POST_PROCESS_BUILTIN_ENTRIES{
         "psCustomComposite", "psVignette", "psChromaticAberration", "psFilmGrain",
-        "psFxaa", "psDepthOfField", "psAutoExposureDownsample",
-        "psAutoExposureAdapt", "psTemporalAA", "psMotionBlur",
+        "psFxaa", "psDepthOfField", "psAutoExposureAdapt", "psTemporalAA", "psMotionBlur",
     };
     static_assert(POST_PROCESS_BUILTIN_ENTRIES.size() == static_cast<std::size_t>(PostProcessBuiltin::Count));
     using PostProcessBuiltinShaders = std::array<std::shared_ptr<const DX12Shader>, POST_PROCESS_BUILTIN_ENTRIES.size()>;
@@ -122,7 +121,8 @@ namespace Engine
             std::shared_ptr<const DX12Shader> toneMapping, std::shared_ptr<const DX12Shader> output,
             const PostProcessBuiltinShaders& builtins, const PostProcessBloomShaders& bloom,
             std::shared_ptr<const DX12Shader> lightShafts,
-            std::shared_ptr<const DX12Shader> lightShaftsFallback);
+            std::shared_ptr<const DX12Shader> lightShaftsFallback,
+            std::shared_ptr<const DX12Shader> autoExposure);
         /** @brief パス列をSnapshotとして設定する。失敗時は既存列を保持する。GPU完了を待つ。 */
         bool configure(std::span<const PostProcessPassDescription> descriptions);
         /**
@@ -212,7 +212,7 @@ namespace Engine
             const PostProcessImage& input, const PostProcessImage& output,
             const D3D12_VIEWPORT& sourceViewport, const D3D12_VIEWPORT& targetViewport,
             std::span<const float> parameters, const PostProcessImage* secondary = nullptr,
-            const D3D12_VIEWPORT* secondaryViewport = nullptr);
+            const D3D12_VIEWPORT* secondaryViewport = nullptr, bool groupPerPixel = false);
         PostProcessImage* recordAutoExposure(DX12CommandList& commandList,
             const PostProcessImage& input, const D3D12_VIEWPORT& sourceViewport);
         bool initializeExposureHistory();
@@ -258,6 +258,7 @@ namespace Engine
         std::array<DX12GraphicsPipeline, POST_PROCESS_BUILTIN_ENTRIES.size()> m_builtins;
         std::array<DX12ComputePipeline, POST_PROCESS_BLOOM_ENTRIES.size()> m_bloom;
         DX12ComputePipeline m_lightShafts;
+        DX12ComputePipeline m_autoExposure;
         DX12GraphicsPipeline m_lightShaftsFallback;
         std::vector<std::unique_ptr<Pass>> m_passes;
         std::unordered_map<const DX12Shader*, std::unique_ptr<CustomPass>> m_customPipelines;
