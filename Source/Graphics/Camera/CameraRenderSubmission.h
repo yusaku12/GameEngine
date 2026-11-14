@@ -36,6 +36,14 @@ namespace Engine
         bool consume(RenderView& destination);
 
         /**
+         * @brief 描画時にジッターが加わらない場合、未消費Cameraの視錐台を取得する。
+         * @pre 呼び出し側は、同じsnapshotが描画に使われるようフレーム処理を同期すること。
+         * @param destination 視錐台の取得先。
+         * @return 視錐台を安全に利用できる場合はtrue。
+         */
+        bool peekUnjitteredFrustum(CameraFrustum& destination);
+
+        /**
          * @brief 未処理のCamera snapshotを破棄する。
          */
         void clear() noexcept;

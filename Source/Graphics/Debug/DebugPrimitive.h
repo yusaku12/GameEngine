@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <span>
+
 #include "Core\CoreDefines.h"
 #include "Core\Math\MathTypes.h"
 #include "Graphics\DirectX12\Pipeline\Pipeline.h"
@@ -15,12 +17,20 @@ namespace Engine
 
     /**
      * @brief 線分を一括転送して描画するデバッグプリミティブサービス。
-     * @details 描画要求は任意スレッドから提出でき、Render時に単一Vertex Bufferへ展開される。
+     * @details 描画要求は任意スレッドから提出でき、線分は一括転送、形状はインスタンシング描画する。
      * @thread_safety Draw API is thread-safe. Lifecycle and render API are render-thread only.
      */
     class DebugPrimitive
     {
     public:
+
+        /** @brief ワールド空間の線分とその色。 */
+        struct Line
+        {
+            Vector3 start;
+            Vector3 end;
+            Color color;
+        };
 
         /**
          * @brief Singletonを取得する。
@@ -36,6 +46,12 @@ namespace Engine
          * @param color 線分の色 (デフォルトは緑)
          */
         void drawLine(const Vector3& start, const Vector3& end, const Color& color = Color(0.0f, 1.0f, 0.0f, 1.0f));
+
+        /**
+         * @brief 複数の線分を一度に提出する。不正な線分はログに記録して除外する。
+         * @param lines 提出する線分。
+         */
+        void drawLines(std::span<const Line> lines);
 
         /**
          * @brief XZ平面のGridを提出する。
@@ -99,10 +115,40 @@ namespace Engine
             Color color;      //!< 頂点色
         };
 
+        struct ShapeVertex
+        {
+            Vector3 position;
+            float heightOffset;
+        };
+
+        struct ShapeInstance
+        {
+            Matrix world;
+            Color color;
+            Vector4 dimensions;
+        };
+
+        enum class ShapeKind : std::size_t
+        {
+            Sphere,
+            Box,
+            Cylinder,
+            Capsule,
+            Count
+        };
+
+        struct ShapeRange
+        {
+            std::uint32_t firstVertex = 0;
+            std::uint32_t vertexCount = 0;
+            std::uint32_t firstInstance = 0;
+            std::uint32_t instanceCount = 0;
+        };
+
         /**
          * @brief 描画要求の構造体
          */
-        struct LineRequest { Vector3 start; Vector3 end; Color color; };
+        using LineRequest = Line;
         struct GridRequest { Vector3 center; float width; float depth; float step; Color color; };
         struct SphereRequest { Matrix world; float radius; Color color; };
         struct BoxRequest { Matrix world; Vector3 extents; Color color; };
@@ -139,7 +185,7 @@ namespace Engine
             void swap(Requests& other) noexcept;
         };
 
-        //! 描画要求を頂点バッファに展開する
+        //! フレーム別バッファ数
         static constexpr std::uint32_t FRAME_COUNT = 2;
 
         //! 円弧を描画する際の分割数
@@ -167,10 +213,12 @@ namespace Engine
         /**
          * @brief パイプラインステートを構築する
          * @param vertexShader 頂点シェーダー
+         * @param shapeVertexShader インスタンシング用頂点シェーダー
          * @param pixelShader ピクセルシェーダー
          * @return 構築に成功した場合は true
          */
-        bool rebuildPipeline(const DX12Shader& vertexShader, const DX12Shader& pixelShader);
+        bool rebuildPipeline(const DX12Shader& vertexShader, const DX12Shader& shapeVertexShader,
+            const DX12Shader& pixelShader);
 
         /**
          * @brief 描画要求を消費して頂点バッファを構築し、描画する
@@ -202,9 +250,17 @@ namespace Engine
         void consumeRequests();
 
         /**
-         * @brief 描画要求を頂点バッファに展開する
+         * @brief 描画要求を線分頂点と形状インスタンスに変換する。
+         * @param frustum 描画に使用する視錐台。
+         * @return 変換に成功した場合はtrue。
          */
         bool buildVertices(const CameraFrustum& frustum);
+
+        /**
+         * @brief 再利用する形状頂点を作成してGPUへ転送する。
+         * @return 作成に成功した場合はtrue。
+         */
+        bool initializeShapeVertices();
 
         /**
          * @brief フレームインデックスに対応する頂点バッファの容量を確保する
@@ -215,6 +271,14 @@ namespace Engine
         bool ensureFrameCapacity(std::uint32_t frameIndex, std::size_t vertexCount);
 
         /**
+         * @brief 指定フレームのインスタンスバッファ容量を確保する。
+         * @param frameIndex 対象フレーム。
+         * @param instanceCount 必要なインスタンス数。
+         * @return 確保に成功した場合はtrue。
+         */
+        bool ensureInstanceCapacity(std::uint32_t frameIndex, std::size_t instanceCount);
+
+        /**
          * @brief 線分を頂点バッファに展開する
          * @param start 線分の始点
          * @param end 線分の終点
@@ -222,33 +286,22 @@ namespace Engine
          */
         void appendLine(const Vector3& start, const Vector3& end, const Color& color);
 
-        /**
-         * @brief ワールド行列を適用した線分を頂点バッファに展開する
-         * @param start 線分の始点
-         * @param end 線分の終点
-         * @param world 線分のワールド行列
-         * @param color 線分の色
-         */
-        void appendTransformedLine(const Vector3& start, const Vector3& end, const Matrix& world, const Color& color);
-
-        /**
-         * @brief 円弧を頂点バッファに展開する
-         * @param world 円弧のワールド行列
-         * @param radius 円弧の半径
-         * @param y 円弧の高さ (Y座標)
-         * @param color 円弧の色
-         */
-        void appendCircle(const Matrix& world, float radius, float y, const Color& color);
-
         DX12Device* m_device = nullptr;                            //!< 描画に使用する DirectX 12 デバイス
         const DX12Fence* m_fence = nullptr;                        //!< 描画完了を待機する Fence
         DX12GraphicsPipeline m_pipeline;                           //!< DirectX 12 グラフィックスパイプライン
+        DX12GraphicsPipeline m_shapePipeline;                      //!< インスタンシング描画用パイプライン
+        DX12UploadBuffer m_shapeVertices;                          //!< 全フレームで共有する形状頂点
         std::array<DX12UploadBuffer, FRAME_COUNT> m_vertexBuffers; //!< 頂点バッファ (Upload Heap)
+        std::array<DX12UploadBuffer, FRAME_COUNT> m_instanceBuffers; //!< フレーム別インスタンスバッファ
         std::array<std::size_t, FRAME_COUNT> m_vertexCapacities{}; //!< 頂点バッファの容量 (頂点数)
+        std::array<std::size_t, FRAME_COUNT> m_instanceCapacities{}; //!< インスタンスバッファの容量
         std::array<bool, FRAME_COUNT> m_frameUsed{};               //!< フレームインデックスに対応する頂点バッファが使用済みか
+        std::array<bool, FRAME_COUNT> m_shapeFrameUsed{};          //!< インスタンスバッファが使用済みか
+        std::array<ShapeRange, static_cast<std::size_t>(ShapeKind::Count)> m_shapeRanges{}; //!< 形状ごとの範囲
         std::mutex m_mutex;                                        //!< 描画要求のスレッドセーフなアクセス用ミューテックス
         Requests m_pending;                                        //!< 描画要求の保留リスト (任意スレッドから提出される)
         Requests m_renderRequests;                                 //!< 描画要求のレンダリング用リスト (レンダースレッドから消費される)
         std::vector<Vertex> m_vertices;                            //!< 頂点バッファに展開する頂点リスト
+        std::vector<ShapeInstance> m_instances;                    //!< 形状ごとに並べたインスタンス
     };
 } // namespace Engine

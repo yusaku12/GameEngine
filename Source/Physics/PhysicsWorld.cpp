@@ -13,6 +13,7 @@
 #include "Physics\PhysicsWorld.h"
 #include "Components\Physics\Rigidbody\RigidbodyComponent.h"
 #include "Graphics\Debug\DebugPrimitive.h"
+#include "Graphics\Debug\DebugPrimitiveCulling.h"
 
 #include <extensions/PxDefaultAllocator.h>
 #include <extensions/PxDefaultCpuDispatcher.h>
@@ -582,6 +583,7 @@ namespace Engine
         mutable std::mutex debugMutex;
         std::vector<DebugContact> debugContacts;
         mutable std::vector<DebugRay> debugRays;
+        mutable std::vector<DebugPrimitive::Line> debugLines;
         std::atomic_bool captureDebugContacts = false;
         std::atomic_bool captureDebugRays = false;
         bool simulationPending = false;
@@ -1737,7 +1739,7 @@ namespace Engine
         }
     }
 
-    void PhysicsWorld::drawDebug(const PhysicsDebugSettings& settings) const noexcept try
+    void PhysicsWorld::drawDebug(const PhysicsDebugSettings& settings, const CameraFrustum* const frustum) const noexcept try
     {
         if (m_impl == nullptr)
             return;
@@ -1750,10 +1752,14 @@ namespace Engine
         }
 
         DebugPrimitive& debug = DebugPrimitive::instance();
+        auto& debugLines = m_impl->debugLines;
+        debugLines.clear();
+        const auto appendLine = [&debugLines](const Vector3& start, const Vector3& end, const Color& color)
+            { debugLines.push_back({ start, end, color }); };
         const Color colliderColor(0.2f, 0.9f, 0.35f, 1.0f);
         const Color aabbColor(1.0f, 0.75f, 0.15f, 1.0f);
         const Color velocityColor(0.2f, 0.65f, 1.0f, 1.0f);
-        const auto appendAabb = [&debug](const PxBounds3& bounds, const Color& color)
+        const auto appendAabb = [&appendLine](const PxBounds3& bounds, const Color& color)
         {
             const Vector3 min = PhysicsConversions::fromPx(bounds.minimum);
             const Vector3 max = PhysicsConversions::fromPx(bounds.maximum);
@@ -1769,7 +1775,7 @@ namespace Engine
                 {{0, 4}}, {{1, 5}}, {{2, 6}}, {{3, 7}}
             }};
             for (const auto& edge : edges)
-                debug.drawLine(corners[edge[0]], corners[edge[1]], color);
+                appendLine(corners[edge[0]], corners[edge[1]], color);
         };
 
         for (const auto& [component, record] : m_impl->colliders)
@@ -1788,6 +1794,22 @@ namespace Engine
                 const PxGeometry& geometry = shape->getGeometry();
                 if (settings.drawColliders)
                 {
+                    if (frustum != nullptr && (geometry.getType() == PxGeometryType::eTRIANGLEMESH
+                        || geometry.getType() == PxGeometryType::eCONVEXMESH))
+                    {
+                        const PxBounds3 worldBounds = PxShapeExt::getWorldBounds(*shape, *record.actor);
+                        if (worldBounds.isValid())
+                        {
+                            const AABB bounds = makeAABB(PhysicsConversions::fromPx(worldBounds.minimum),
+                                PhysicsConversions::fromPx(worldBounds.maximum));
+                            if (DebugPrimitiveCulling::isFiniteBounds(bounds) && !isVisible(*frustum, bounds))
+                            {
+                                if (settings.drawAabbs)
+                                    appendAabb(PxShapeExt::getWorldBounds(*shape, *record.actor, 1.0f), aabbColor);
+                                continue;
+                            }
+                        }
+                    }
                     switch (geometry.getType())
                     {
                     case PxGeometryType::eBOX:
@@ -1847,9 +1869,9 @@ namespace Engine
                             const Vector3 first = getVertex(indices[0]);
                             const Vector3 second = getVertex(indices[1]);
                             const Vector3 third = getVertex(indices[2]);
-                            debug.drawLine(first, second, colliderColor);
-                            debug.drawLine(second, third, colliderColor);
-                            debug.drawLine(third, first, colliderColor);
+                            appendLine(first, second, colliderColor);
+                            appendLine(second, third, colliderColor);
+                            appendLine(third, first, colliderColor);
                         }
                         break;
                     }
@@ -1873,7 +1895,7 @@ namespace Engine
                                     mesh->getVertices()[indices[polygon.mIndexBase + vertexIndex]]);
                                 const PxVec3 secondLocal = meshGeometry.scale.transform(
                                     mesh->getVertices()[indices[polygon.mIndexBase + nextIndex]]);
-                                debug.drawLine(
+                                appendLine(
                                     PhysicsConversions::fromPx(pose.transform(firstLocal)),
                                     PhysicsConversions::fromPx(pose.transform(secondLocal)),
                                     colliderColor);
@@ -1897,7 +1919,7 @@ namespace Engine
                     const Vector3 position = PhysicsConversions::fromPx(dynamicActor->getGlobalPose().p);
                     const Vector3 velocity = PhysicsConversions::fromPx(dynamicActor->getLinearVelocity());
                     if (velocity.LengthSquared() > 0.000001f)
-                        debug.drawLine(position, position + velocity * 0.25f, velocityColor);
+                        appendLine(position, position + velocity * 0.25f, velocityColor);
                 }
             }
             if (settings.drawCenterOfMass)
@@ -1911,9 +1933,9 @@ namespace Engine
                     const Vector3 axisX = Vector3::Transform(Vector3(0.15f, 0.0f, 0.0f), rotation);
                     const Vector3 axisY = Vector3::Transform(Vector3(0.0f, 0.15f, 0.0f), rotation);
                     const Vector3 axisZ = Vector3::Transform(Vector3(0.0f, 0.0f, 0.15f), rotation);
-                    debug.drawLine(center - axisX, center + axisX, Color(1.0f, 0.2f, 0.2f, 1.0f));
-                    debug.drawLine(center - axisY, center + axisY, Color(0.2f, 1.0f, 0.2f, 1.0f));
-                    debug.drawLine(center - axisZ, center + axisZ, Color(0.2f, 0.4f, 1.0f, 1.0f));
+                    appendLine(center - axisX, center + axisX, Color(1.0f, 0.2f, 0.2f, 1.0f));
+                    appendLine(center - axisY, center + axisY, Color(0.2f, 1.0f, 0.2f, 1.0f));
+                    appendLine(center - axisZ, center + axisZ, Color(0.2f, 0.4f, 1.0f, 1.0f));
                 }
             }
         }
@@ -1951,13 +1973,13 @@ namespace Engine
             for (const Impl::DebugContact& contact : m_impl->debugContacts)
             {
                 constexpr float markerSize = 0.06f;
-                debug.drawLine(contact.point - Vector3(markerSize, 0.0f, 0.0f),
+                appendLine(contact.point - Vector3(markerSize, 0.0f, 0.0f),
                     contact.point + Vector3(markerSize, 0.0f, 0.0f), contactColor);
-                debug.drawLine(contact.point - Vector3(0.0f, markerSize, 0.0f),
+                appendLine(contact.point - Vector3(0.0f, markerSize, 0.0f),
                     contact.point + Vector3(0.0f, markerSize, 0.0f), contactColor);
-                debug.drawLine(contact.point - Vector3(0.0f, 0.0f, markerSize),
+                appendLine(contact.point - Vector3(0.0f, 0.0f, markerSize),
                     contact.point + Vector3(0.0f, 0.0f, markerSize), contactColor);
-                debug.drawLine(contact.point, contact.point + contact.normal * 0.35f, contactColor);
+                appendLine(contact.point, contact.point + contact.normal * 0.35f, contactColor);
             }
         }
 
@@ -1971,7 +1993,8 @@ namespace Engine
         }
         const Color rayColor(1.0f, 0.9f, 0.1f, 1.0f);
         for (const Impl::DebugRay& ray : rays)
-            debug.drawLine(ray.start, ray.end, rayColor);
+            appendLine(ray.start, ray.end, rayColor);
+        debug.drawLines(debugLines);
     }
     catch (const std::bad_alloc&)
     {

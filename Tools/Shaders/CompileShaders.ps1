@@ -71,6 +71,7 @@ $jobs = @(
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psMotionBlur"; Target = "ps_6_0"; Output = "PostProcessEffects_psMotionBlur_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcessEffects.hlsl"; Entry = "psLightShafts"; Target = "ps_6_0"; Output = "PostProcessEffects_psLightShafts_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "DebugPrimitive.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "DebugPrimitive_vsMain_vs.cso" },
+    @{ Source = Join-Path $ShaderRoot "DebugPrimitive.hlsl"; Entry = "vsShape"; Target = "vs_6_0"; Output = "DebugPrimitive_vsShape_vs.cso" },
     @{ Source = Join-Path $ShaderRoot "DebugPrimitive.hlsl"; Entry = "psMain"; Target = "ps_6_0"; Output = "DebugPrimitive_psMain_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "HiZ.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "HiZ_csMain_cs.cso"; Optimize = $true },
     @{ Source = Join-Path $ShaderRoot "Occlusion.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "Occlusion_csMain_cs.cso"; Optimize = $true },

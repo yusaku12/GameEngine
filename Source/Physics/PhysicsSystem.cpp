@@ -14,6 +14,7 @@
 #include "Components\Physics\Collider\SphereColliderComponent.h"
 #include "Physics\PhysicsSystem.h"
 #include "Physics\PhysicsWorld.h"
+#include "Graphics\Camera\CameraRenderSubmission.h"
 #include "Components\Physics\Rigidbody\RigidbodyComponent.h"
 #include <chrono>
 #include "Core\Logging\Logger.h"
@@ -183,7 +184,11 @@ namespace Engine
     {
         if (m_world == nullptr || !m_world->isInitialized())
             return;
-        m_world->drawDebug(getDebugSettings());
+        const PhysicsDebugSettings settings = getDebugSettings();
+        CameraFrustum frustum;
+        const bool hasFrustum = settings.enabled && settings.drawColliders
+            && CameraRenderSubmissionQueue::instance().peekUnjitteredFrustum(frustum);
+        m_world->drawDebug(settings, hasFrustum ? &frustum : nullptr);
     }
 
     void PhysicsSystem::setPaused(const bool paused) noexcept

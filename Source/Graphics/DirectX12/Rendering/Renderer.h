@@ -404,6 +404,7 @@ namespace Engine
         ShaderID m_postProcessOutputShaderID = 0;
         std::array<ShaderID, POST_PROCESS_BUILTIN_ENTRIES.size()> m_postProcessBuiltinShaderIDs{};
         ShaderID m_debugVertexShaderID = 0;                                                               //!< Debug Primitive頂点Shader ID
+        ShaderID m_debugShapeVertexShaderID = 0;                                                          //!< Debug Primitive形状頂点Shader ID
         ShaderID m_debugPixelShaderID = 0;                                                                //!< Debug Primitive Pixel Shader ID
         ShaderID m_hizShaderID = 0;                                                                       //!< Hi-Z生成Compute Shader ID
         ShaderID m_occlusionShaderID = 0;                                                                 //!< 可視判定Compute Shader ID

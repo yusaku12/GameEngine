@@ -25,6 +25,11 @@ namespace Engine
                 && std::isfinite(value.z) && std::isfinite(value.w);
         }
 
+        bool isFinite(const DebugPrimitive::Line& line) noexcept
+        {
+            return isFinite(line.start) && isFinite(line.end) && isFinite(line.color);
+        }
+
         bool isFinite(const Matrix& value) noexcept
         {
             return std::isfinite(value._11) && std::isfinite(value._12)
@@ -41,6 +46,17 @@ namespace Engine
         {
             D3D12_INPUT_ELEMENT_DESC{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, static_cast<UINT>(offsetof(DebugPrimitive::Vertex, position)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
             D3D12_INPUT_ELEMENT_DESC{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(offsetof(DebugPrimitive::Vertex, color)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        };
+        constexpr std::array SHAPE_INPUT_LAYOUT =
+        {
+            D3D12_INPUT_ELEMENT_DESC{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, static_cast<UINT>(offsetof(DebugPrimitive::ShapeVertex, position)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            D3D12_INPUT_ELEMENT_DESC{ "HEIGHTOFFSET", 0, DXGI_FORMAT_R32_FLOAT, 0, static_cast<UINT>(offsetof(DebugPrimitive::ShapeVertex, heightOffset)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            D3D12_INPUT_ELEMENT_DESC{ "INSTANCEWORLD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, static_cast<UINT>(offsetof(DebugPrimitive::ShapeInstance, world)), D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
+            D3D12_INPUT_ELEMENT_DESC{ "INSTANCEWORLD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, static_cast<UINT>(offsetof(DebugPrimitive::ShapeInstance, world) + 16), D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
+            D3D12_INPUT_ELEMENT_DESC{ "INSTANCEWORLD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, static_cast<UINT>(offsetof(DebugPrimitive::ShapeInstance, world) + 32), D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
+            D3D12_INPUT_ELEMENT_DESC{ "INSTANCEWORLD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, static_cast<UINT>(offsetof(DebugPrimitive::ShapeInstance, world) + 48), D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
+            D3D12_INPUT_ELEMENT_DESC{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, static_cast<UINT>(offsetof(DebugPrimitive::ShapeInstance, color)), D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
+            D3D12_INPUT_ELEMENT_DESC{ "DIMENSIONS", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, static_cast<UINT>(offsetof(DebugPrimitive::ShapeInstance, dimensions)), D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
         };
     }
 
@@ -88,14 +104,36 @@ namespace Engine
 
     void DebugPrimitive::drawLine(const Vector3& start, const Vector3& end, const Color& color)
     {
-        if (!isFinite(start) || !isFinite(end) || !isFinite(color))
+        const Line line{ start, end, color };
+        if (!isFinite(line))
         {
             LOG_WARNING("[DebugPrimitive] Line request contains non-finite values.");
             return;
         }
-
         const std::scoped_lock lock(m_mutex);
-        m_pending.lines.push_back({ start, end, color });
+        m_pending.lines.push_back(line);
+    }
+
+    void DebugPrimitive::drawLines(const std::span<const Line> lines)
+    {
+        bool allValid = true;
+        for (const Line& line : lines)
+        {
+            if (!isFinite(line))
+            {
+                LOG_WARNING("[DebugPrimitive] Line request contains non-finite values.");
+                allValid = false;
+            }
+        }
+        if (lines.empty())
+            return;
+        const std::scoped_lock lock(m_mutex);
+        if (allValid)
+            m_pending.lines.insert(m_pending.lines.end(), lines.begin(), lines.end());
+        else
+            for (const Line& line : lines)
+                if (isFinite(line))
+                    m_pending.lines.push_back(line);
     }
 
     void DebugPrimitive::drawGrid(const Vector3& center, const float width, const float depth, float step, const Color& color)
@@ -182,7 +220,14 @@ namespace Engine
         m_device = &device;
         m_fence = &fence;
         m_vertexCapacities.fill(0);
+        m_instanceCapacities.fill(0);
         m_frameUsed.fill(false);
+        m_shapeFrameUsed.fill(false);
+        if (!initializeShapeVertices())
+        {
+            static_cast<void>(finalize());
+            return false;
+        }
         return true;
     }
 
@@ -191,6 +236,9 @@ namespace Engine
         bool succeeded = true;
         for (DX12UploadBuffer& buffer : m_vertexBuffers)
             succeeded = buffer.finalize() && succeeded;
+        for (DX12UploadBuffer& buffer : m_instanceBuffers)
+            succeeded = buffer.finalize() && succeeded;
+        succeeded = m_shapeVertices.finalize() && succeeded;
         if (!succeeded)
         {
             LOG_ERROR("[DebugPrimitive] GPU使用完了を確認できないためFinalizeを中止します");
@@ -198,17 +246,23 @@ namespace Engine
         }
 
         m_pipeline.finalize();
+        m_shapePipeline.finalize();
         clear();
         m_renderRequests.clear();
         m_vertices.clear();
+        m_instances.clear();
         m_vertexCapacities.fill(0);
+        m_instanceCapacities.fill(0);
         m_frameUsed.fill(false);
+        m_shapeFrameUsed.fill(false);
+        m_shapeRanges = {};
         m_device = nullptr;
         m_fence = nullptr;
         return true;
     }
 
-    bool DebugPrimitive::rebuildPipeline(const DX12Shader& vertexShader, const DX12Shader& pixelShader)
+    bool DebugPrimitive::rebuildPipeline(
+        const DX12Shader& vertexShader, const DX12Shader& shapeVertexShader, const DX12Shader& pixelShader)
     {
         if (m_device == nullptr)
             return false;
@@ -233,7 +287,15 @@ namespace Engine
         if (!replacement.initialize(*m_device->get(), config))
             return false;
 
+        DX12GraphicsPipelineConfig shapeConfig = config;
+        shapeConfig.vertexShader = &shapeVertexShader;
+        shapeConfig.inputLayout = SHAPE_INPUT_LAYOUT;
+        DX12GraphicsPipeline shapeReplacement;
+        if (!shapeReplacement.initialize(*m_device->get(), shapeConfig))
+            return false;
+
         m_pipeline.swap(replacement);
+        m_shapePipeline.swap(shapeReplacement);
         return true;
     }
 
@@ -247,6 +309,7 @@ namespace Engine
         if (frameIndex >= FRAME_COUNT)
             return false;
         m_frameUsed[frameIndex] = false;
+        m_shapeFrameUsed[frameIndex] = false;
         consumeRequests();
         if (m_renderRequests.empty())
             return true;
@@ -259,37 +322,62 @@ namespace Engine
         if (!buildVertices(frustum))
             return false;
         m_renderRequests.clear();
-        if (m_vertices.empty())
+        if (m_vertices.empty() && m_instances.empty())
             return true;
-        if (!ensureFrameCapacity(frameIndex, m_vertices.size()))
-            return false;
 
         const std::size_t byteSize = m_vertices.size() * sizeof(Vertex);
+        const std::size_t instanceBytes = m_instances.size() * sizeof(ShapeInstance);
         if (byteSize > (std::numeric_limits<UINT>::max)()
-            || m_vertices.size() > (std::numeric_limits<UINT>::max)())
+            || m_vertices.size() > (std::numeric_limits<UINT>::max)()
+            || instanceBytes > (std::numeric_limits<UINT>::max)()
+            || m_instances.size() > (std::numeric_limits<UINT>::max)())
         {
-            LOG_ERROR("[DebugPrimitive] Vertex data exceeds DirectX 12 draw limits.");
+            LOG_ERROR("[DebugPrimitive] Debug geometry exceeds DirectX 12 draw limits.");
             return false;
         }
-
-        const std::span bytes(reinterpret_cast<const std::byte*>(m_vertices.data()), byteSize);
-        DX12UploadBuffer& buffer = m_vertexBuffers[frameIndex];
-        if (!buffer.write(bytes) || !m_pipeline.bind(commandList))
-            return false;
 
         ID3D12GraphicsCommandList* const nativeCommandList = commandList.getForRecording();
         if (nativeCommandList == nullptr)
             return false;
-        const D3D12_VERTEX_BUFFER_VIEW vertexBufferView{
-            .BufferLocation = buffer.getGpuVirtualAddress(),
-            .SizeInBytes = static_cast<UINT>(byteSize),
-            .StrideInBytes = sizeof(Vertex),
-        };
-        nativeCommandList->SetGraphicsRoot32BitConstants(0, 16, &viewProjection._11, 0);
         nativeCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
-        nativeCommandList->IASetVertexBuffers(0, 1, &vertexBufferView);
-        nativeCommandList->DrawInstanced(static_cast<UINT>(m_vertices.size()), 1, 0, 0);
-        m_frameUsed[frameIndex] = true;
+        if (!m_vertices.empty())
+        {
+            if (!ensureFrameCapacity(frameIndex, m_vertices.size()))
+                return false;
+            DX12UploadBuffer& buffer = m_vertexBuffers[frameIndex];
+            if (!buffer.write(std::as_bytes(std::span(m_vertices))) || !m_pipeline.bind(commandList))
+                return false;
+            const D3D12_VERTEX_BUFFER_VIEW view{
+                .BufferLocation = buffer.getGpuVirtualAddress(),
+                .SizeInBytes = static_cast<UINT>(byteSize),
+                .StrideInBytes = sizeof(Vertex),
+            };
+            nativeCommandList->SetGraphicsRoot32BitConstants(0, 16, &viewProjection._11, 0);
+            nativeCommandList->IASetVertexBuffers(0, 1, &view);
+            nativeCommandList->DrawInstanced(static_cast<UINT>(m_vertices.size()), 1, 0, 0);
+            m_frameUsed[frameIndex] = true;
+        }
+        if (!m_instances.empty())
+        {
+            if (!ensureInstanceCapacity(frameIndex, m_instances.size()))
+                return false;
+            DX12UploadBuffer& buffer = m_instanceBuffers[frameIndex];
+            if (!buffer.write(std::as_bytes(std::span(m_instances))) || !m_shapePipeline.bind(commandList))
+                return false;
+            const std::array views = {
+                D3D12_VERTEX_BUFFER_VIEW{ m_shapeVertices.getGpuVirtualAddress(),
+                    static_cast<UINT>(m_shapeVertices.getSize()), sizeof(ShapeVertex) },
+                D3D12_VERTEX_BUFFER_VIEW{ buffer.getGpuVirtualAddress(),
+                    static_cast<UINT>(instanceBytes), sizeof(ShapeInstance) },
+            };
+            nativeCommandList->SetGraphicsRoot32BitConstants(0, 16, &viewProjection._11, 0);
+            nativeCommandList->IASetVertexBuffers(0, static_cast<UINT>(views.size()), views.data());
+            for (const ShapeRange& range : m_shapeRanges)
+                if (range.instanceCount != 0)
+                    nativeCommandList->DrawInstanced(
+                        range.vertexCount, range.instanceCount, range.firstVertex, range.firstInstance);
+            m_shapeFrameUsed[frameIndex] = true;
+        }
         return true;
     }
 
@@ -297,7 +385,10 @@ namespace Engine
     {
         if (frameIndex >= FRAME_COUNT)
             return false;
-        return !m_frameUsed[frameIndex] || m_vertexBuffers[frameIndex].markUsed(fenceValue);
+        const bool linesMarked = !m_frameUsed[frameIndex] || m_vertexBuffers[frameIndex].markUsed(fenceValue);
+        const bool instancesMarked = !m_shapeFrameUsed[frameIndex]
+            || (m_instanceBuffers[frameIndex].markUsed(fenceValue) && m_shapeVertices.markUsed(fenceValue));
+        return linesMarked && instancesMarked;
     }
 
     void DebugPrimitive::consumeRequests()
@@ -310,6 +401,7 @@ namespace Engine
     bool DebugPrimitive::buildVertices(const CameraFrustum& frustum)
     {
         m_vertices.clear();
+        m_instances.clear();
         if (frustum.valid)
         {
             std::erase_if(m_renderRequests.lines, [&frustum](const LineRequest& line)
@@ -347,11 +439,7 @@ namespace Engine
                 estimate += count * verticesPerRequest;
                 return true;
             };
-        if (!addVertices(m_renderRequests.lines.size(), 2)
-            || !addVertices(m_renderRequests.spheres.size(), CURVE_SEGMENTS * 6)
-            || !addVertices(m_renderRequests.boxes.size(), 24)
-            || !addVertices(m_renderRequests.cylinders.size(), CURVE_SEGMENTS * 4 + 8)
-            || !addVertices(m_renderRequests.capsules.size(), CURVE_SEGMENTS * 12))
+        if (!addVertices(m_renderRequests.lines.size(), 2))
         {
             LOG_ERROR("[DebugPrimitive] Requested vertex count exceeds DirectX 12 draw limits.");
             return false;
@@ -377,15 +465,32 @@ namespace Engine
         try
         {
             m_vertices.reserve(estimate);
+            std::size_t instanceCount = 0;
+            for (const std::size_t count : { m_renderRequests.spheres.size(), m_renderRequests.boxes.size(),
+                m_renderRequests.cylinders.size(), m_renderRequests.capsules.size() })
+            {
+                if (count > maxVertexCount - instanceCount)
+                {
+                    LOG_ERROR("[DebugPrimitive] Requested instance count exceeds DirectX 12 draw limits.");
+                    return false;
+                }
+                instanceCount += count;
+            }
+            if (instanceCount > maxVertexCount / sizeof(ShapeInstance))
+            {
+                LOG_ERROR("[DebugPrimitive] Instance data exceeds DirectX 12 buffer limits.");
+                return false;
+            }
+            m_instances.reserve(instanceCount);
         }
         catch (const std::bad_alloc&)
         {
-            LOG_ERROR("[DebugPrimitive] Failed to allocate memory for debug vertices.");
+            LOG_ERROR("[DebugPrimitive] Failed to allocate debug geometry.");
             return false;
         }
         catch (const std::length_error&)
         {
-            LOG_ERROR("[DebugPrimitive] Debug vertex request exceeds container capacity.");
+            LOG_ERROR("[DebugPrimitive] Debug geometry exceeds container capacity.");
             return false;
         }
 
@@ -414,101 +519,145 @@ namespace Engine
             }
         }
 
+        const auto rangeFor = [this](const ShapeKind kind) -> ShapeRange&
+            { return m_shapeRanges[static_cast<std::size_t>(kind)]; };
+        const auto beginRange = [this, &rangeFor](const ShapeKind kind)
+            { rangeFor(kind).firstInstance = static_cast<std::uint32_t>(m_instances.size()); };
+        const auto endRange = [this, &rangeFor](const ShapeKind kind)
+            { rangeFor(kind).instanceCount = static_cast<std::uint32_t>(m_instances.size()) - rangeFor(kind).firstInstance; };
+        beginRange(ShapeKind::Sphere);
         for (const SphereRequest& sphere : m_renderRequests.spheres)
-        {
-            for (std::uint32_t axis = 0; axis < 3; ++axis)
-            {
-                for (std::uint32_t segment = 0; segment < CURVE_SEGMENTS; ++segment)
-                {
-                    const float angle0 = DirectX::XM_2PI * static_cast<float>(segment) / static_cast<float>(CURVE_SEGMENTS);
-                    const float angle1 = DirectX::XM_2PI * static_cast<float>(segment + 1) / static_cast<float>(CURVE_SEGMENTS);
-                    Vector3 start;
-                    Vector3 end;
-                    if (axis == 0)
-                    {
-                        start = { 0.0f, std::sin(angle0), std::cos(angle0) };
-                        end = { 0.0f, std::sin(angle1), std::cos(angle1) };
-                    }
-                    else if (axis == 1)
-                    {
-                        start = { std::sin(angle0), 0.0f, std::cos(angle0) };
-                        end = { std::sin(angle1), 0.0f, std::cos(angle1) };
-                    }
-                    else
-                    {
-                        start = { std::sin(angle0), std::cos(angle0), 0.0f };
-                        end = { std::sin(angle1), std::cos(angle1), 0.0f };
-                    }
-                    appendTransformedLine(start * sphere.radius, end * sphere.radius, sphere.world, sphere.color);
-                }
-            }
-        }
-
-        constexpr std::array<std::array<std::uint32_t, 2>, 12> boxEdges = { {
-            { 0, 1 }, { 1, 2 }, { 2, 3 }, { 3, 0 },
-            { 4, 5 }, { 5, 6 }, { 6, 7 }, { 7, 4 },
-            { 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 },
-        } };
+            m_instances.push_back({ sphere.world, sphere.color, { sphere.radius, sphere.radius, sphere.radius, 0.0f } });
+        endRange(ShapeKind::Sphere);
+        beginRange(ShapeKind::Box);
         for (const BoxRequest& box : m_renderRequests.boxes)
-        {
-            const std::array corners = {
-                Vector3(-box.extents.x, box.extents.y, -box.extents.z), Vector3(box.extents.x, box.extents.y, -box.extents.z),
-                Vector3(box.extents.x, box.extents.y, box.extents.z), Vector3(-box.extents.x, box.extents.y, box.extents.z),
-                Vector3(-box.extents.x, -box.extents.y, -box.extents.z), Vector3(box.extents.x, -box.extents.y, -box.extents.z),
-                Vector3(box.extents.x, -box.extents.y, box.extents.z), Vector3(-box.extents.x, -box.extents.y, box.extents.z),
-            };
-            for (const auto& edge : boxEdges)
-                appendTransformedLine(corners[edge[0]], corners[edge[1]], box.world, box.color);
-        }
-
+            m_instances.push_back({ box.world, box.color, { box.extents.x, box.extents.y, box.extents.z, 0.0f } });
+        endRange(ShapeKind::Box);
+        beginRange(ShapeKind::Cylinder);
         for (const CylinderRequest& cylinder : m_renderRequests.cylinders)
-        {
-            const float halfHeight = cylinder.height * 0.5f;
-            appendCircle(cylinder.world, cylinder.radius, -halfHeight, cylinder.color);
-            appendCircle(cylinder.world, cylinder.radius, halfHeight, cylinder.color);
-            for (std::uint32_t side = 0; side < 4; ++side)
-            {
-                const float angle = DirectX::XM_PIDIV2 * static_cast<float>(side);
-                const Vector3 radial(std::sin(angle) * cylinder.radius, 0.0f, std::cos(angle) * cylinder.radius);
-                appendTransformedLine(radial + Vector3(0.0f, -halfHeight, 0.0f),
-                    radial + Vector3(0.0f, halfHeight, 0.0f), cylinder.world, cylinder.color);
-            }
-        }
-
+            m_instances.push_back({ cylinder.world, cylinder.color,
+                { cylinder.radius, cylinder.height * 0.5f, cylinder.radius, 0.0f } });
+        endRange(ShapeKind::Cylinder);
+        beginRange(ShapeKind::Capsule);
         for (const CapsuleRequest& capsule : m_renderRequests.capsules)
-        {
-            appendCircle(capsule.world, capsule.radius, -capsule.halfHeight, capsule.color);
-            appendCircle(capsule.world, capsule.radius, capsule.halfHeight, capsule.color);
-            for (std::uint32_t side = 0; side < 4; ++side)
-            {
-                const float azimuth = DirectX::XM_PIDIV2 * static_cast<float>(side);
-                const Vector3 radial(std::sin(azimuth) * capsule.radius, 0.0f, std::cos(azimuth) * capsule.radius);
-                appendTransformedLine(radial + Vector3(0.0f, -capsule.halfHeight, 0.0f),
-                    radial + Vector3(0.0f, capsule.halfHeight, 0.0f), capsule.world, capsule.color);
-                for (std::uint32_t segment = 0; segment < CURVE_SEGMENTS / 4; ++segment)
-                {
-                    const float angle0 = DirectX::XM_PIDIV2 * static_cast<float>(segment) / static_cast<float>(CURVE_SEGMENTS / 4);
-                    const float angle1 = DirectX::XM_PIDIV2 * static_cast<float>(segment + 1) / static_cast<float>(CURVE_SEGMENTS / 4);
-                    const Vector3 horizontal(std::sin(azimuth), 0.0f, std::cos(azimuth));
-                    const Vector3 top0 = horizontal * (std::cos(angle0) * capsule.radius)
-                        + Vector3(0.0f, capsule.halfHeight + std::sin(angle0) * capsule.radius, 0.0f);
-                    const Vector3 top1 = horizontal * (std::cos(angle1) * capsule.radius)
-                        + Vector3(0.0f, capsule.halfHeight + std::sin(angle1) * capsule.radius, 0.0f);
-                    const Vector3 bottom0 = horizontal * (std::cos(angle0) * capsule.radius)
-                        + Vector3(0.0f, -capsule.halfHeight - std::sin(angle0) * capsule.radius, 0.0f);
-                    const Vector3 bottom1 = horizontal * (std::cos(angle1) * capsule.radius)
-                        + Vector3(0.0f, -capsule.halfHeight - std::sin(angle1) * capsule.radius, 0.0f);
-                    appendTransformedLine(top0, top1, capsule.world, capsule.color);
-                    appendTransformedLine(bottom0, bottom1, capsule.world, capsule.color);
-                }
-            }
-        }
+            m_instances.push_back({ capsule.world, capsule.color,
+                { capsule.radius, capsule.radius, capsule.radius, capsule.halfHeight } });
+        endRange(ShapeKind::Capsule);
         if (m_vertices.size() > maxVertexCount)
         {
             LOG_ERROR("[DebugPrimitive] Generated vertex count exceeds DirectX 12 draw limits.");
             return false;
         }
         return true;
+    }
+
+    bool DebugPrimitive::initializeShapeVertices()
+    {
+        std::vector<ShapeVertex> vertices;
+        try
+        {
+            vertices.reserve(512);
+            const auto appendLine = [&vertices](const Vector3& start, const Vector3& end,
+                const float startOffset = 0.0f, const float endOffset = 0.0f)
+                {
+                    vertices.push_back({ start, startOffset });
+                    vertices.push_back({ end, endOffset });
+                };
+            const auto rangeFor = [this](const ShapeKind kind) -> ShapeRange&
+                { return m_shapeRanges[static_cast<std::size_t>(kind)]; };
+            const auto beginRange = [&vertices, &rangeFor](const ShapeKind kind)
+                { rangeFor(kind).firstVertex = static_cast<std::uint32_t>(vertices.size()); };
+            const auto endRange = [&vertices, &rangeFor](const ShapeKind kind)
+                { rangeFor(kind).vertexCount = static_cast<std::uint32_t>(vertices.size()) - rangeFor(kind).firstVertex; };
+            const auto appendCircle = [&appendLine](const float y, const float offset)
+                {
+                    for (std::uint32_t segment = 0; segment < CURVE_SEGMENTS; ++segment)
+                    {
+                        const float angle0 = DirectX::XM_2PI * static_cast<float>(segment) / static_cast<float>(CURVE_SEGMENTS);
+                        const float angle1 = DirectX::XM_2PI * static_cast<float>(segment + 1) / static_cast<float>(CURVE_SEGMENTS);
+                        appendLine({ std::sin(angle0), y, std::cos(angle0) },
+                            { std::sin(angle1), y, std::cos(angle1) }, offset, offset);
+                    }
+                };
+
+            beginRange(ShapeKind::Sphere);
+            for (std::uint32_t axis = 0; axis < 3; ++axis)
+                for (std::uint32_t segment = 0; segment < CURVE_SEGMENTS; ++segment)
+                {
+                    const float angle0 = DirectX::XM_2PI * static_cast<float>(segment) / static_cast<float>(CURVE_SEGMENTS);
+                    const float angle1 = DirectX::XM_2PI * static_cast<float>(segment + 1) / static_cast<float>(CURVE_SEGMENTS);
+                    const float s0 = std::sin(angle0), c0 = std::cos(angle0);
+                    const float s1 = std::sin(angle1), c1 = std::cos(angle1);
+                    if (axis == 0)
+                        appendLine({ 0.0f, s0, c0 }, { 0.0f, s1, c1 });
+                    else if (axis == 1)
+                        appendLine({ s0, 0.0f, c0 }, { s1, 0.0f, c1 });
+                    else
+                        appendLine({ s0, c0, 0.0f }, { s1, c1, 0.0f });
+                }
+            endRange(ShapeKind::Sphere);
+
+            beginRange(ShapeKind::Box);
+            constexpr std::array<std::array<std::uint32_t, 2>, 12> boxEdges = { {
+                { 0, 1 }, { 1, 2 }, { 2, 3 }, { 3, 0 },
+                { 4, 5 }, { 5, 6 }, { 6, 7 }, { 7, 4 },
+                { 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 },
+            } };
+            const std::array corners = {
+                Vector3(-1, 1, -1), Vector3(1, 1, -1), Vector3(1, 1, 1), Vector3(-1, 1, 1),
+                Vector3(-1, -1, -1), Vector3(1, -1, -1), Vector3(1, -1, 1), Vector3(-1, -1, 1),
+            };
+            for (const auto& edge : boxEdges)
+                appendLine(corners[edge[0]], corners[edge[1]]);
+            endRange(ShapeKind::Box);
+
+            beginRange(ShapeKind::Cylinder);
+            appendCircle(-1.0f, 0.0f);
+            appendCircle(1.0f, 0.0f);
+            for (std::uint32_t side = 0; side < 4; ++side)
+            {
+                const float angle = DirectX::XM_PIDIV2 * static_cast<float>(side);
+                appendLine({ std::sin(angle), -1.0f, std::cos(angle) },
+                    { std::sin(angle), 1.0f, std::cos(angle) });
+            }
+            endRange(ShapeKind::Cylinder);
+
+            beginRange(ShapeKind::Capsule);
+            appendCircle(0.0f, -1.0f);
+            appendCircle(0.0f, 1.0f);
+            for (std::uint32_t side = 0; side < 4; ++side)
+            {
+                const float azimuth = DirectX::XM_PIDIV2 * static_cast<float>(side);
+                const Vector3 horizontal(std::sin(azimuth), 0.0f, std::cos(azimuth));
+                appendLine(horizontal, horizontal, -1.0f, 1.0f);
+                for (std::uint32_t segment = 0; segment < CURVE_SEGMENTS / 4; ++segment)
+                {
+                    const float angle0 = DirectX::XM_PIDIV2 * static_cast<float>(segment) / static_cast<float>(CURVE_SEGMENTS / 4);
+                    const float angle1 = DirectX::XM_PIDIV2 * static_cast<float>(segment + 1) / static_cast<float>(CURVE_SEGMENTS / 4);
+                    const Vector3 top0 = horizontal * std::cos(angle0) + Vector3(0.0f, std::sin(angle0), 0.0f);
+                    const Vector3 top1 = horizontal * std::cos(angle1) + Vector3(0.0f, std::sin(angle1), 0.0f);
+                    const Vector3 bottom0 = horizontal * std::cos(angle0) - Vector3(0.0f, std::sin(angle0), 0.0f);
+                    const Vector3 bottom1 = horizontal * std::cos(angle1) - Vector3(0.0f, std::sin(angle1), 0.0f);
+                    appendLine(top0, top1, 1.0f, 1.0f);
+                    appendLine(bottom0, bottom1, -1.0f, -1.0f);
+                }
+            }
+            endRange(ShapeKind::Capsule);
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[DebugPrimitive] Failed to allocate reusable shape vertices.");
+            return false;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[DebugPrimitive] Reusable shape vertices exceed container capacity.");
+            return false;
+        }
+
+        const auto bytes = std::as_bytes(std::span(vertices));
+        return m_shapeVertices.initialize(*m_device->get(), *m_fence, bytes.size())
+            && m_shapeVertices.write(bytes);
     }
 
     bool DebugPrimitive::ensureFrameCapacity(const std::uint32_t frameIndex, const std::size_t vertexCount)
@@ -526,12 +675,35 @@ namespace Engine
         }
 
         DX12UploadBuffer& buffer = m_vertexBuffers[frameIndex];
-        if (!buffer.finalize()
-            || !buffer.initialize(*m_device->get(), *m_fence, capacity * sizeof(Vertex)))
+        if (!buffer.finalize())
+            return false;
+        m_vertexCapacities[frameIndex] = 0;
+        if (!buffer.initialize(*m_device->get(), *m_fence, capacity * sizeof(Vertex)))
+            return false;
+        m_vertexCapacities[frameIndex] = capacity;
+        return true;
+    }
+
+    bool DebugPrimitive::ensureInstanceCapacity(const std::uint32_t frameIndex, const std::size_t instanceCount)
+    {
+        if (instanceCount <= m_instanceCapacities[frameIndex])
+            return true;
+        if (m_device == nullptr || m_fence == nullptr)
+            return false;
+
+        const std::size_t capacity = nextPowerOfTwo(std::max(instanceCount, std::size_t{ 256 }));
+        if (capacity == 0 || capacity > (std::numeric_limits<std::size_t>::max)() / sizeof(ShapeInstance))
         {
+            LOG_ERROR("[DebugPrimitive] Instance buffer capacity is too large.");
             return false;
         }
-        m_vertexCapacities[frameIndex] = capacity;
+        DX12UploadBuffer& buffer = m_instanceBuffers[frameIndex];
+        if (!buffer.finalize())
+            return false;
+        m_instanceCapacities[frameIndex] = 0;
+        if (!buffer.initialize(*m_device->get(), *m_fence, capacity * sizeof(ShapeInstance)))
+            return false;
+        m_instanceCapacities[frameIndex] = capacity;
         return true;
     }
 
@@ -539,23 +711,5 @@ namespace Engine
     {
         m_vertices.push_back({ start, color });
         m_vertices.push_back({ end, color });
-    }
-
-    void DebugPrimitive::appendTransformedLine(
-        const Vector3& start, const Vector3& end, const Matrix& world, const Color& color)
-    {
-        appendLine(Vector3::Transform(start, world), Vector3::Transform(end, world), color);
-    }
-
-    void DebugPrimitive::appendCircle(const Matrix& world, const float radius, const float y, const Color& color)
-    {
-        for (std::uint32_t segment = 0; segment < CURVE_SEGMENTS; ++segment)
-        {
-            const float angle0 = DirectX::XM_2PI * static_cast<float>(segment) / static_cast<float>(CURVE_SEGMENTS);
-            const float angle1 = DirectX::XM_2PI * static_cast<float>(segment + 1) / static_cast<float>(CURVE_SEGMENTS);
-            appendTransformedLine(
-                { std::sin(angle0) * radius, y, std::cos(angle0) * radius },
-                { std::sin(angle1) * radius, y, std::cos(angle1) * radius }, world, color);
-        }
     }
 } // namespace Engine

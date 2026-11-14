@@ -16,6 +16,7 @@ namespace Engine
     class PhysicsSystem;
     class RigidbodyComponent;
     class TerrainColliderComponent;
+    struct CameraFrustum;
 
     /**
      * @brief PhysXシーンをエンジン側から隔離して管理する。
@@ -48,8 +49,12 @@ namespace Engine
         /** @brief シミュレーションコールバックがキューに保存したイベントをゲームプレイ側へ通知する。 */
         void dispatchEvents() noexcept;
 
-        /** @brief 現在の物理状態のデバッグ表示を登録する。 */
-        void drawDebug(const PhysicsDebugSettings& settings) const noexcept;
+        /**
+         * @brief 現在の物理状態のデバッグ表示を登録する。
+         * @param settings デバッグ表示設定。
+         * @param frustum 同じフレームの描画視錐台。nullptrなら事前カリングしない。
+         */
+        void drawDebug(const PhysicsDebugSettings& settings, const CameraFrustum* frustum = nullptr) const noexcept;
         /** @brief 有効なボディ、シェイプ、ジョイントの数を取得する。 */
         PhysicsWorldStatistics getStatistics() const noexcept;
         /** @brief 動的ボディとコントローラーを初期姿勢に戻し、接触状態をクリアする。 */

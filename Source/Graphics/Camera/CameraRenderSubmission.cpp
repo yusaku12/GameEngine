@@ -26,6 +26,16 @@ namespace Engine
         return true;
     }
 
+    bool CameraRenderSubmissionQueue::peekUnjitteredFrustum(CameraFrustum& destination)
+    {
+        const std::scoped_lock lock(m_mutex);
+        if (!m_pending || !m_pending->frustum.valid
+            || m_pending->postProcess.settings.temporalAAEnabled.value)
+            return false;
+        destination = m_pending->frustum;
+        return true;
+    }
+
     void CameraRenderSubmissionQueue::clear() noexcept
     {
         const std::scoped_lock lock(m_mutex);

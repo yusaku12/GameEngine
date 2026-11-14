@@ -305,6 +305,10 @@ namespace Engine
             .optimize = false,
         };
         m_debugVertexShaderID = m_shaderManager.registerShader(debugVertexShaderDesc);
+        ShaderCompileDesc debugShapeVertexShaderDesc = debugVertexShaderDesc;
+        debugShapeVertexShaderDesc.outputPath = "Assets/Shaders/Compiled/DebugPrimitive_vsShape_vs.cso";
+        debugShapeVertexShaderDesc.entryPoint = "vsShape";
+        m_debugShapeVertexShaderID = m_shaderManager.registerShader(debugShapeVertexShaderDesc);
         m_debugPixelShaderID = m_shaderManager.registerShader(debugPixelShaderDesc);
         const ShaderCompileDesc hizShaderDesc{
             .sourcePath = "Assets/Shaders/HiZ.hlsl",
@@ -476,6 +480,7 @@ namespace Engine
         m_postProcessOutputShaderID = 0;
         m_postProcessBuiltinShaderIDs.fill(0);
         m_debugVertexShaderID = 0;
+        m_debugShapeVertexShaderID = 0;
         m_debugPixelShaderID = 0;
         m_occlusionShaderID = 0;
         m_hizShaderID = 0;
@@ -1510,6 +1515,7 @@ namespace Engine
         for (std::size_t index = 0; index < postProcessBuiltins.size(); ++index)
             postProcessBuiltins[index] = m_shaderManager.get(m_postProcessBuiltinShaderIDs[index]);
         const auto debugVertexShader = m_shaderManager.get(m_debugVertexShaderID);
+        const auto debugShapeVertexShader = m_shaderManager.get(m_debugShapeVertexShaderID);
         const auto debugPixelShader = m_shaderManager.get(m_debugPixelShaderID);
         const auto hizShader = m_shaderManager.get(m_hizShaderID);
         const auto occlusionShader = m_shaderManager.get(m_occlusionShaderID);
@@ -1517,7 +1523,7 @@ namespace Engine
             || !gbufferPixelShader || !gbufferAlphaTestPixelShader || !deferredVertexShader
             || !deferredLightingPixelShader || !deferredDebugPixelShader
             || !postProcessVertexShader || !postProcessToneMappingShader || !postProcessOutputShader
-            || !debugVertexShader || !debugPixelShader || !hizShader || !occlusionShader
+            || !debugVertexShader || !debugShapeVertexShader || !debugPixelShader || !hizShader || !occlusionShader
             || !modelVertexShader->isCompiled() || !modelPixelShader->isCompiled()
             || !alphaTestPixelShader->isCompiled() || !depthAlphaTestPixelShader->isCompiled()
             || !gbufferPixelShader->isCompiled() || !gbufferAlphaTestPixelShader->isCompiled()
@@ -1525,7 +1531,7 @@ namespace Engine
             || !deferredDebugPixelShader->isCompiled()
             || !postProcessVertexShader->isCompiled() || !postProcessToneMappingShader->isCompiled()
             || !postProcessOutputShader->isCompiled()
-            || !debugVertexShader->isCompiled() || !debugPixelShader->isCompiled()
+            || !debugVertexShader->isCompiled() || !debugShapeVertexShader->isCompiled() || !debugPixelShader->isCompiled()
             || !hizShader->isCompiled() || !occlusionShader->isCompiled())
         {
             LOG_ERROR("[DX12] 有効なModel Shaderがロードされていません");
@@ -1729,7 +1735,7 @@ namespace Engine
             || !nextDeferredDebugPipeline.initialize(*m_device.get(), deferredDebugConfig)
             || !DX12GpuOcclusionCulling::createPipelines(*m_device.get(), *hizShader, *occlusionShader,
                 nextHiZPipeline, nextOcclusionPipeline)
-            || !DebugPrimitive::instance().rebuildPipeline(*debugVertexShader, *debugPixelShader)
+            || !DebugPrimitive::instance().rebuildPipeline(*debugVertexShader, *debugShapeVertexShader, *debugPixelShader)
             || !m_materialGpuCache.rebuildAll()
             || !m_postProcess.rebuild(postProcessVertexShader, postProcessToneMappingShader, postProcessOutputShader, postProcessBuiltins))
         {
