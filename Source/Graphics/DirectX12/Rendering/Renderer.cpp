@@ -251,19 +251,21 @@ namespace Engine
             .optimize = false,
         };
         m_deferredVertexShaderID = m_shaderManager.registerShader(deferredVertexShaderDesc);
-        ShaderCompileDesc deferredPixelShaderDesc{
+        const ShaderCompileDesc deferredComputeShaderDesc{
             .sourcePath = "Assets/Shaders/Deferred.hlsl",
-            .outputPath = "Assets/Shaders/Compiled/Deferred_psLighting_ps.cso",
-            .entryPoint = "psLighting",
-            .stage = ShaderStage::Pixel,
+            .outputPath = "Assets/Shaders/Compiled/Deferred_csLighting_cs.cso",
+            .entryPoint = "csLighting",
+            .stage = ShaderStage::Compute,
             .shaderModel = ShaderModel::SM_6_0,
             .languageVersion = HlslLanguageVersion::Hlsl2021,
             .debug = true,
             .optimize = false,
         };
-        m_deferredLightingPixelShaderID = m_shaderManager.registerShader(deferredPixelShaderDesc);
+        m_deferredLightingComputeShaderID = m_shaderManager.registerShader(deferredComputeShaderDesc);
+        ShaderCompileDesc deferredPixelShaderDesc = deferredComputeShaderDesc;
         deferredPixelShaderDesc.outputPath = "Assets/Shaders/Compiled/Deferred_psDebug_ps.cso";
         deferredPixelShaderDesc.entryPoint = "psDebug";
+        deferredPixelShaderDesc.stage = ShaderStage::Pixel;
         m_deferredDebugPixelShaderID = m_shaderManager.registerShader(deferredPixelShaderDesc);
         ShaderCompileDesc postProcessDesc = deferredVertexShaderDesc;
         postProcessDesc.sourcePath = "Assets/Shaders/PostProcess.hlsl";
@@ -407,6 +409,12 @@ namespace Engine
                 LOG_ERROR("[Renderer] Failed to release the HDR lighting SRV descriptor.");
             m_deferredLightingShaderView.reset();
         }
+        if (m_deferredLightingUnorderedView)
+        {
+            if (!TextureManager::instance().getDescriptorHeap().release(m_deferredLightingUnorderedView->cpu.index))
+                LOG_ERROR("[Renderer] Failed to release the HDR lighting UAV descriptor.");
+            m_deferredLightingUnorderedView.reset();
+        }
         if (m_shadowSrv)
         {
             TextureManager::instance().getDescriptorHeap().release(m_shadowSrv->cpu.index);
@@ -473,7 +481,7 @@ namespace Engine
         m_gbufferPixelShaderID = 0;
         m_gbufferAlphaTestPixelShaderID = 0;
         m_deferredVertexShaderID = 0;
-        m_deferredLightingPixelShaderID = 0;
+        m_deferredLightingComputeShaderID = 0;
         m_deferredDebugPixelShaderID = 0;
         m_postProcessVertexShaderID = 0;
         m_postProcessToneMappingShaderID = 0;
@@ -1205,10 +1213,21 @@ namespace Engine
                 return false;
             }
         }
+        D3D12_FEATURE_DATA_FORMAT_SUPPORT lightingSupport{ .Format = DXGI_FORMAT_R16G16B16A16_FLOAT };
+        const HRESULT lightingSupportResult = m_device.get()->CheckFeatureSupport(
+            D3D12_FEATURE_FORMAT_SUPPORT, &lightingSupport, sizeof(lightingSupport));
+        if (FAILED(lightingSupportResult)
+            || (lightingSupport.Support1 & D3D12_FORMAT_SUPPORT1_TYPED_UNORDERED_ACCESS_VIEW) == 0
+            || (lightingSupport.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE) == 0)
+        {
+            LOG_ERROR("[Renderer] HDR lighting format lacks typed UAV store support (HRESULT: 0x{:08X}).",
+                static_cast<unsigned long>(lightingSupportResult));
+            return false;
+        }
         const auto createTarget = [&](DX12Resource& resource, const DXGI_FORMAT format,
             const DX12CpuDescriptorHandle& renderTargetView,
             const DX12DescriptorAllocation& shaderView,
-            const std::array<float, 4>& clearColor) -> bool
+            const std::array<float, 4>& clearColor, const bool unorderedAccess) -> bool
         {
             D3D12_RESOURCE_DESC description{};
             description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -1219,7 +1238,9 @@ namespace Engine
             description.Format = format;
             description.SampleDesc = { 1, 0 };
             description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-            description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+            description.Flags = unorderedAccess
+                ? D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+                : D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
             D3D12_CLEAR_VALUE clearValue{};
             clearValue.Format = format;
             std::copy(clearColor.begin(), clearColor.end(), clearValue.Color);
@@ -1262,7 +1283,7 @@ namespace Engine
             }
             if (!createTarget(m_gbufferTargets[index], formats[index],
                 m_gbufferRenderTargetViews[index], *m_gbufferShaderViews[index],
-                index == 4 ? clearVelocity : clearColor))
+                index == 4 ? clearVelocity : clearColor, false))
             {
                 LOG_ERROR("[Renderer] Failed to create G-Buffer target {}.", index);
                 return false;
@@ -1286,12 +1307,24 @@ namespace Engine
             LOG_ERROR("[Renderer] Failed to allocate HDR lighting SRV.");
             return false;
         }
+        if (!m_deferredLightingUnorderedView)
+            m_deferredLightingUnorderedView = TextureManager::instance().getDescriptorHeap().allocate();
+        if (!m_deferredLightingUnorderedView || !m_deferredLightingUnorderedView->gpu)
+        {
+            LOG_ERROR("[Renderer] Failed to allocate HDR lighting UAV.");
+            return false;
+        }
         if (!createTarget(m_deferredLightingTarget, DXGI_FORMAT_R16G16B16A16_FLOAT,
-            m_deferredLightingRenderTargetView, *m_deferredLightingShaderView, clearColor))
+            m_deferredLightingRenderTargetView, *m_deferredLightingShaderView, clearColor, true))
         {
             LOG_ERROR("[Renderer] Failed to create HDR lighting target.");
             return false;
         }
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
+        uav.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        m_device.get()->CreateUnorderedAccessView(m_deferredLightingTarget.get(), nullptr,
+            &uav, m_deferredLightingUnorderedView->cpu.native);
         return true;
     }
 
@@ -1350,10 +1383,11 @@ namespace Engine
     bool DX12Renderer::recordDeferredLighting(const std::uint32_t frameIndex)
     {
         if (frameIndex >= FRAME_COUNT || !m_deferredFrameActive
-            || m_deferredLightingShaderView == std::nullopt
+            || m_deferredLightingShaderView == std::nullopt || m_deferredLightingUnorderedView == std::nullopt
             || m_depthShaderView == std::nullopt
             || m_shadowSrv == std::nullopt
-            || !m_deferredLightingShaderView->gpu || !m_depthShaderView->gpu || !m_shadowSrv->gpu)
+            || !m_deferredLightingShaderView->gpu || !m_deferredLightingUnorderedView->gpu
+            || !m_depthShaderView->gpu || !m_shadowSrv->gpu)
         {
             LOG_ERROR("[Renderer] Deferred Lighting resources are not ready.");
             return false;
@@ -1370,11 +1404,14 @@ namespace Engine
         DX12CommandList& commandList = m_deferredLightingCommandLists[frameIndex];
         if (!commandList.begin(m_directFence))
             return false;
+        constexpr auto shaderRead = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+            | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         for (DX12Resource& target : m_gbufferTargets)
-            if (!target.transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))
+            if (!target.transition(commandList, shaderRead))
                 return false;
-        if (!m_depthBuffer.transition(commandList, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
-            || !m_deferredLightingTarget.transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET))
+        if (!m_depthBuffer.transition(commandList, shaderRead)
+            || !m_shadowMap.transition(commandList, shaderRead)
+            || !m_deferredLightingTarget.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
             return false;
 
         ID3D12GraphicsCommandList* const native = commandList.getForRecording();
@@ -1385,34 +1422,22 @@ namespace Engine
             return false;
         }
         native->SetDescriptorHeaps(1, &descriptorHeap);
-        native->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        native->OMSetRenderTargets(1, &m_deferredLightingRenderTargetView.native, FALSE, nullptr);
-        const Viewport pixelViewport = CameraUtils::toPixelViewport(m_cameraViewport,
-            Vector2(static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight)));
-        const D3D12_VIEWPORT viewport{ pixelViewport.x, pixelViewport.y,
-            pixelViewport.width, pixelViewport.height, pixelViewport.minDepth, pixelViewport.maxDepth };
-        const D3D12_RECT scissor{
-            static_cast<LONG>(std::floor(viewport.TopLeftX)),
-            static_cast<LONG>(std::floor(viewport.TopLeftY)),
-            static_cast<LONG>(std::ceil(viewport.TopLeftX + viewport.Width)),
-            static_cast<LONG>(std::ceil(viewport.TopLeftY + viewport.Height)),
-        };
-        native->RSSetViewports(1, &viewport);
-        native->RSSetScissorRects(1, &scissor);
         if (!m_deferredLightingPipeline.bind(commandList))
             return false;
 
-        native->SetGraphicsRootConstantBufferView(0, m_lightingBuffers[frameIndex].getGpuVirtualAddress());
-        native->SetGraphicsRootConstantBufferView(1, m_deferredConstantsBuffers[frameIndex].getGpuVirtualAddress());
-        native->SetGraphicsRootDescriptorTable(2, m_gbufferShaderViews[0]->gpu->native);
-        native->SetGraphicsRootDescriptorTable(3, m_gbufferShaderViews[1]->gpu->native);
-        native->SetGraphicsRootDescriptorTable(4, m_gbufferShaderViews[2]->gpu->native);
-        native->SetGraphicsRootDescriptorTable(5, m_gbufferShaderViews[3]->gpu->native);
-        native->SetGraphicsRootDescriptorTable(6, m_depthShaderView->gpu->native);
-        native->SetGraphicsRootDescriptorTable(7, m_gbufferShaderViews[0]->gpu->native);
-        native->SetGraphicsRootDescriptorTable(8, m_shadowSrv->gpu->native);
-        native->DrawInstanced(3, 1, 0, 0);
+        native->SetComputeRootConstantBufferView(0, m_lightingBuffers[frameIndex].getGpuVirtualAddress());
+        native->SetComputeRootConstantBufferView(1, m_deferredConstantsBuffers[frameIndex].getGpuVirtualAddress());
+        native->SetComputeRootDescriptorTable(2, m_gbufferShaderViews[0]->gpu->native);
+        native->SetComputeRootDescriptorTable(3, m_gbufferShaderViews[1]->gpu->native);
+        native->SetComputeRootDescriptorTable(4, m_gbufferShaderViews[2]->gpu->native);
+        native->SetComputeRootDescriptorTable(5, m_gbufferShaderViews[3]->gpu->native);
+        native->SetComputeRootDescriptorTable(6, m_depthShaderView->gpu->native);
+        native->SetComputeRootDescriptorTable(7, m_gbufferShaderViews[0]->gpu->native);
+        native->SetComputeRootDescriptorTable(8, m_shadowSrv->gpu->native);
+        native->SetComputeRootDescriptorTable(9, m_deferredLightingUnorderedView->gpu->native);
+        native->Dispatch((m_renderWidth + 7) / 8, (m_renderHeight + 7) / 8, 1);
         if (!m_depthBuffer.transition(commandList, D3D12_RESOURCE_STATE_DEPTH_WRITE)
+            || !m_deferredLightingTarget.transition(commandList, D3D12_RESOURCE_STATE_RENDER_TARGET)
             || !commandList.close())
             return false;
 
@@ -1506,7 +1531,7 @@ namespace Engine
         const auto gbufferPixelShader = m_shaderManager.get(m_gbufferPixelShaderID);
         const auto gbufferAlphaTestPixelShader = m_shaderManager.get(m_gbufferAlphaTestPixelShaderID);
         const auto deferredVertexShader = m_shaderManager.get(m_deferredVertexShaderID);
-        const auto deferredLightingPixelShader = m_shaderManager.get(m_deferredLightingPixelShaderID);
+        const auto deferredLightingComputeShader = m_shaderManager.get(m_deferredLightingComputeShaderID);
         const auto deferredDebugPixelShader = m_shaderManager.get(m_deferredDebugPixelShaderID);
         const auto postProcessVertexShader = m_shaderManager.get(m_postProcessVertexShaderID);
         const auto postProcessToneMappingShader = m_shaderManager.get(m_postProcessToneMappingShaderID);
@@ -1521,13 +1546,13 @@ namespace Engine
         const auto occlusionShader = m_shaderManager.get(m_occlusionShaderID);
         if (!modelVertexShader || !modelPixelShader || !alphaTestPixelShader || !depthAlphaTestPixelShader
             || !gbufferPixelShader || !gbufferAlphaTestPixelShader || !deferredVertexShader
-            || !deferredLightingPixelShader || !deferredDebugPixelShader
+            || !deferredLightingComputeShader || !deferredDebugPixelShader
             || !postProcessVertexShader || !postProcessToneMappingShader || !postProcessOutputShader
             || !debugVertexShader || !debugShapeVertexShader || !debugPixelShader || !hizShader || !occlusionShader
             || !modelVertexShader->isCompiled() || !modelPixelShader->isCompiled()
             || !alphaTestPixelShader->isCompiled() || !depthAlphaTestPixelShader->isCompiled()
             || !gbufferPixelShader->isCompiled() || !gbufferAlphaTestPixelShader->isCompiled()
-            || !deferredVertexShader->isCompiled() || !deferredLightingPixelShader->isCompiled()
+            || !deferredVertexShader->isCompiled() || !deferredLightingComputeShader->isCompiled()
             || !deferredDebugPixelShader->isCompiled()
             || !postProcessVertexShader->isCompiled() || !postProcessToneMappingShader->isCompiled()
             || !postProcessOutputShader->isCompiled()
@@ -1680,7 +1705,7 @@ namespace Engine
         DX12GraphicsPipeline nextGBufferModelPipeline;
         DX12GraphicsPipeline nextGBufferAlphaTestModelPipeline;
         DX12GraphicsPipeline nextDeferredTransparentModelPipeline;
-        DX12GraphicsPipeline nextDeferredLightingPipeline;
+        DX12ComputePipeline nextDeferredLightingPipeline;
         DX12GraphicsPipeline nextDeferredDebugPipeline;
         DX12ComputePipeline nextHiZPipeline;
         DX12ComputePipeline nextOcclusionPipeline;
@@ -1712,16 +1737,23 @@ namespace Engine
         std::copy(deferredTextureTables.begin(), deferredTextureTables.end(),
             deferredRootParameters.begin() + 2);
         const std::array deferredStaticSamplers{ staticSamplers[1] };
-        const DX12GraphicsPipelineConfig deferredLightingConfig{
+        const DX12GraphicsPipelineConfig deferredDebugConfig{
             .vertexShader = deferredVertexShader.get(),
-            .pixelShader = deferredLightingPixelShader.get(),
+            .pixelShader = deferredDebugPixelShader.get(),
             .rootParameters = deferredRootParameters,
             .staticSamplers = deferredStaticSamplers,
-            .renderTargetFormat = DXGI_FORMAT_R16G16B16A16_FLOAT,
+            .renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM,
         };
-        DX12GraphicsPipelineConfig deferredDebugConfig = deferredLightingConfig;
-        deferredDebugConfig.pixelShader = deferredDebugPixelShader.get();
-        deferredDebugConfig.renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+        std::array<D3D12_ROOT_PARAMETER, 10> deferredComputeParameters{};
+        std::copy(deferredRootParameters.begin(), deferredRootParameters.end(), deferredComputeParameters.begin());
+        for (auto& parameter : deferredComputeParameters)
+            parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        const D3D12_DESCRIPTOR_RANGE deferredOutputRange{
+            D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, 0 };
+        deferredComputeParameters[9].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        deferredComputeParameters[9].DescriptorTable = { 1, &deferredOutputRange };
+        std::array deferredComputeSamplers{ staticSamplers[1] };
+        deferredComputeSamplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
         if (!nextModelPipeline.initialize(*m_device.get(), opaqueModelConfig)
             || !nextAlphaTestModelPipeline.initialize(*m_device.get(), alphaTestModelConfig)
@@ -1731,7 +1763,8 @@ namespace Engine
             || !nextGBufferModelPipeline.initialize(*m_device.get(), gbufferModelConfig)
             || !nextGBufferAlphaTestModelPipeline.initialize(*m_device.get(), gbufferAlphaTestModelConfig)
             || !nextDeferredTransparentModelPipeline.initialize(*m_device.get(), deferredTransparentModelConfig)
-            || !nextDeferredLightingPipeline.initialize(*m_device.get(), deferredLightingConfig)
+            || !nextDeferredLightingPipeline.initialize(*m_device.get(), *deferredLightingComputeShader,
+                deferredComputeParameters, deferredComputeSamplers)
             || !nextDeferredDebugPipeline.initialize(*m_device.get(), deferredDebugConfig)
             || !DX12GpuOcclusionCulling::createPipelines(*m_device.get(), *hizShader, *occlusionShader,
                 nextHiZPipeline, nextOcclusionPipeline)

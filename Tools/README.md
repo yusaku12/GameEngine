@@ -307,6 +307,10 @@ Volumetric Fog が複数ある場合は最初のものだけを使用します�
 Point／Spot Light のボリュームシャドウ、Forward／透明描画への適用は未対応です。
 Unreal Engine の内部実装や画質・性能との一致を保証するものではありません。
 
+Deferred 照明、雲、フォグはフル解像度の Compute Shader で従来と同じ順序で評価します。
+低解像度化や時間的な近似は行わないため、Compute 化だけでの高速化は保証されません。
+HDR 照明ターゲットには `R16G16B16A16_FLOAT` の typed UAV store 対応が必要です。
+
 ## Sky Atmosphere
 
 GameObject に **Sky Atmosphere** を追加します。そのワールド位置が惑星の中心になります。
@@ -540,13 +544,12 @@ fence 対応プールで管理します。Forward、`Nothing` clear mode、G-Buf
 カメラエフェクトを迂回します。後処理後も UI とエディターグリッドを描画します。
 アクティブ Camera を削除すると、その PostEffect snapshot はクリアされます。
 
-- **Bloom** は畳み込み型ではなく標準的なマルチスケールピラミッド方式です。最初の
-  ダウンサンプリングでは Karis weight を使い、孤立した HDR の火花状ノイズを抑えます。
-  続いて 1/2 から 1/32 まで最大5段階の切り上げ半分縮小を行い、正規化した9タップ tent で
-  再構成します。輝度1単位のソフト閾値は scene-referred で、露出前に評価されます。
-  `-1` は全ピクセルを含めます。Size Scale はぼかし半径、Scatter は局所成分と低周波成分の
-  混合、Intensity は HDR 加算結果のスケールを制御します。ピラミッド段数によらず定数場は
-  正規化されます。
+- **Bloom** は川瀬式のマルチスケール方式です。初期パスはBT.709輝度でハードしきい値を適用し、
+  13サンプルのKarisアンチファイアフライ重みで1/2縮小します。以後は各段で分離9タップGaussian
+  ブラーをかけながら最大5段階まで切り上げ半分縮小し、正規化した2x2線形サンプルで低解像度側から
+  順にアップサンプル・加算します。最後もtentフィルターで元画像へ加算します。しきい値は露出前の
+  scene-referred BT.709輝度で評価し、`-1` は全ピクセルを含めます。Size Scale はGaussianの
+  サンプル半径、Scatter は各低解像度レベルの加算寄与、Intensity は最終HDR加算の強度を制御します。
 - **Exposure** の Mode は Off、Manual、Automatic から選びます。Manual は `exp2(EV * Weight)`、
   Automatic は測光結果から求めた EV を使います。Volume の補間中は両モードを連続的に切り替えます。
   設定値はモードとは別にオーバーライドできます。極端な EV でのオーバーフローを防ぐため、

@@ -45,9 +45,9 @@ namespace Engine
     {
         PostProcessParameter<bool> bloomEnabled; //!< Bloom switch.
         PostProcessParameter<float> bloomIntensity{ 0.0f }; //!< Additive intensity, 0-100.
-        PostProcessParameter<float> bloomThreshold{ -1.0f }; //!< Scene-linear threshold; -1 includes all pixels.
-        PostProcessParameter<float> bloomScatter{ 0.7f }; //!< Pyramid scatter, 0-1.
-        PostProcessParameter<float> bloomSizeScale{ 1.0f }; //!< Standard Bloom blur radius multiplier, 0.1-10.
+        PostProcessParameter<float> bloomThreshold{ -1.0f }; //!< Scene-linear BT.709 threshold; -1 includes all pixels.
+        PostProcessParameter<float> bloomScatter{ 0.7f }; //!< Contribution of each lower-resolution level, 0-1.
+        PostProcessParameter<float> bloomSizeScale{ 1.0f }; //!< Gaussian blur radius multiplier, 0.1-10.
         PostProcessParameter<bool> exposureEnabled; //!< Fixed exposure switch.
         PostProcessParameter<float> exposureEV{ 0.0f }; //!< Exposure in stops, -16 to 16.
         PostProcessParameter<bool> autoExposureEnabled; //!< Temporally adapted automatic exposure switch.

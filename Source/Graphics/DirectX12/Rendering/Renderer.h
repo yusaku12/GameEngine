@@ -372,6 +372,7 @@ namespace Engine
         DX12Resource m_deferredLightingTarget;                                                           //!< HDR Lighting / Transparent target
         DX12CpuDescriptorHandle m_deferredLightingRenderTargetView{};                                   //!< HDR Lighting RTV
         std::optional<DX12DescriptorAllocation> m_deferredLightingShaderView;                            //!< HDR Lighting SRV
+        std::optional<DX12DescriptorAllocation> m_deferredLightingUnorderedView;                         //!< HDR Lighting UAV
         std::optional<DX12DescriptorAllocation> m_depthShaderView;                                      //!< 深度再構築用SRV
         DX12DescriptorHeap m_dsvHeap;                                                                     //!< 深度バッファ用 DSV Heap
         DX12Resource m_depthBuffer;                                                                       //!< 画面描画用深度バッファ
@@ -397,7 +398,7 @@ namespace Engine
         ShaderID m_gbufferPixelShaderID = 0;
         ShaderID m_gbufferAlphaTestPixelShaderID = 0;
         ShaderID m_deferredVertexShaderID = 0;
-        ShaderID m_deferredLightingPixelShaderID = 0;
+        ShaderID m_deferredLightingComputeShaderID = 0;
         ShaderID m_deferredDebugPixelShaderID = 0;
         ShaderID m_postProcessVertexShaderID = 0;
         ShaderID m_postProcessToneMappingShaderID = 0;
@@ -417,7 +418,7 @@ namespace Engine
         DX12GraphicsPipeline m_gbufferModelPipeline;
         DX12GraphicsPipeline m_gbufferAlphaTestModelPipeline;
         DX12GraphicsPipeline m_deferredTransparentModelPipeline;
-        DX12GraphicsPipeline m_deferredLightingPipeline;
+        DX12ComputePipeline m_deferredLightingPipeline;
         DX12GraphicsPipeline m_deferredDebugPipeline;
         DX12ComputePipeline m_hizPipeline;                                                                //!< Hi-Z生成PSO
         DX12ComputePipeline m_occlusionPipeline;                                                          //!< 可視Instance圧縮・Indirect生成PSO

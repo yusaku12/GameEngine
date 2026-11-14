@@ -1248,59 +1248,153 @@ namespace Engine
         constexpr std::size_t MAX_LEVELS = 5;
         std::array<PostProcessImage*, MAX_LEVELS> levels{};
         std::array<D3D12_VIEWPORT, MAX_LEVELS> viewports{};
+        std::array<PostProcessImage*, MAX_LEVELS * 2 + 1> trackedTargets{};
+        const auto trackTarget = [&trackedTargets](PostProcessImage* const image)
+        {
+            for (auto& target : trackedTargets)
+            {
+                if (target == nullptr)
+                {
+                    target = image;
+                    return true;
+                }
+            }
+            return false;
+        };
+        const auto acquireTarget = [this, &trackTarget](const PostProcessTargetDescription& description)
+        {
+            auto* const image = m_targets.acquire(description);
+            if (image != nullptr && !trackTarget(image))
+            {
+                if (!m_targets.release(*image))
+                    return static_cast<PostProcessImage*>(nullptr);
+                LOG_ERROR("[PostProcess] Bloom temporary target tracking capacity exceeded.");
+                return static_cast<PostProcessImage*>(nullptr);
+            }
+            return image;
+        };
+        const auto releaseTarget = [this, &trackedTargets](const PostProcessImage& image)
+        {
+            for (auto& target : trackedTargets)
+            {
+                if (target == &image)
+                {
+                    if (!m_targets.release(image))
+                        return false;
+                    target = nullptr;
+                    return true;
+                }
+            }
+            LOG_ERROR("[PostProcess] Cannot return an untracked Bloom target.");
+            return false;
+        };
+        const auto releaseTrackedTargets = [this, &trackedTargets]
+        {
+            bool succeeded = true;
+            for (auto& target : trackedTargets)
+            {
+                if (target != nullptr)
+                {
+                    if (m_targets.release(*target))
+                        target = nullptr;
+                    else
+                        succeeded = false;
+                }
+            }
+            return succeeded;
+        };
+        const auto fail = [&releaseTrackedTargets]
+        {
+            if (!releaseTrackedTargets())
+                LOG_ERROR("[PostProcess] Cannot release all temporary Bloom targets after recording failure.");
+            return false;
+        };
         const auto& fullSize = output.resource->getDescription();
         PostProcessTargetDescription description{
             static_cast<std::uint32_t>((fullSize.Width + 1) / 2), (fullSize.Height + 1) / 2 };
-        const PostProcessImage* source = current;
-        D3D12_VIEWPORT sourceViewport = currentViewport;
         std::size_t count = 0;
+        levels[count] = acquireTarget(description);
+        if (!levels[count])
+            return fail();
+        viewports[count] = temporaryViewport(viewport, description, fullSize);
+        const std::array<float, 16> prefilterParameters{ threshold };
+        if (!draw(commandList, m_builtins[static_cast<std::size_t>(PostProcessBuiltin::BloomPrefilter)],
+            *current, *levels[count], currentViewport, viewports[count], 1, false, prefilterParameters))
+            return fail();
+        ++count;
+        ++m_statistics.effectPasses;
+
         for (; count < MAX_LEVELS; ++count)
         {
-            levels[count] = m_targets.acquire(description);
-            if (!levels[count])
-                return false;
-            viewports[count] = temporaryViewport(viewport, description, fullSize);
-            const auto slot = count == 0 ? PostProcessBuiltin::BloomPrefilter : PostProcessBuiltin::BloomDownsample;
-            const std::array<float, 16> parameters{ threshold };
-            if (!draw(commandList, m_builtins[static_cast<std::size_t>(slot)], *source, *levels[count],
-                sourceViewport, viewports[count], 1, false, parameters))
-                return false;
-            ++m_statistics.effectPasses;
-            source = levels[count];
-            sourceViewport = viewports[count];
-            if (description.width == 1 && description.height == 1)
-            {
-                ++count;
+            const auto& sourceDescription = levels[count - 1]->resource->getDescription();
+            if (sourceDescription.Width == 1 && sourceDescription.Height == 1)
                 break;
+
+            const PostProcessTargetDescription nextDescription{
+                static_cast<std::uint32_t>((sourceDescription.Width + 1) / 2),
+                (sourceDescription.Height + 1) / 2 };
+            auto* const horizontal = acquireTarget({
+                static_cast<std::uint32_t>(sourceDescription.Width),
+                sourceDescription.Height });
+            if (!horizontal)
+                return fail();
+            levels[count] = acquireTarget(nextDescription);
+            if (!levels[count])
+            {
+                if (!releaseTarget(*horizontal))
+                    return fail();
+                return fail();
             }
-            description.width = (description.width + 1) / 2;
-            description.height = (description.height + 1) / 2;
+            viewports[count] = temporaryViewport(viewport, nextDescription, fullSize);
+            const std::array<float, 16> horizontalParameters{ 0.0f, sizeScale };
+            const std::array<float, 16> verticalParameters{ 1.0f, sizeScale };
+            const bool blurred = draw(commandList,
+                m_builtins[static_cast<std::size_t>(PostProcessBuiltin::BloomDownsample)],
+                *levels[count - 1], *horizontal, viewports[count - 1], viewports[count - 1],
+                1, false, horizontalParameters)
+                && draw(commandList, m_builtins[static_cast<std::size_t>(PostProcessBuiltin::BloomDownsample)],
+                    *horizontal, *levels[count], viewports[count - 1], viewports[count],
+                    1, false, verticalParameters);
+            if (!releaseTarget(*horizontal) || !blurred)
+                return fail();
+            m_statistics.effectPasses += 2;
         }
         m_statistics.bloomLevels = static_cast<std::uint32_t>(count);
         for (std::size_t index = count - 1; index > 0; --index)
         {
             const auto& highDescription = levels[index - 1]->resource->getDescription();
-            auto* const next = m_targets.acquire({ static_cast<std::uint32_t>(highDescription.Width), highDescription.Height });
+            auto* const next = acquireTarget({
+                static_cast<std::uint32_t>(highDescription.Width), highDescription.Height });
             if (!next)
-                return false;
-            const std::array<float, 16> parameters{ scatter, sizeScale };
+                return fail();
+            const std::array<float, 16> parameters{ scatter };
             if (!draw(commandList, m_builtins[static_cast<std::size_t>(PostProcessBuiltin::BloomUpsample)],
                 *levels[index - 1], *next, viewports[index - 1], viewports[index - 1], 1, false, parameters,
-                source, &sourceViewport) || !m_targets.release(*source) || !m_targets.release(*levels[index - 1]))
-                return false;
+                levels[index], &viewports[index])
+                || !releaseTarget(*levels[index]) || !releaseTarget(*levels[index - 1]))
+                return fail();
             ++m_statistics.effectPasses;
-            source = next;
-            sourceViewport = viewports[index - 1];
+            levels[index - 1] = next;
         }
-        auto* const composite = m_targets.acquire({ static_cast<std::uint32_t>(fullSize.Width), fullSize.Height });
+        auto* const composite = acquireTarget({
+            static_cast<std::uint32_t>(fullSize.Width), fullSize.Height });
         if (!composite)
-            return false;
+            return fail();
         const std::array<float, 16> parameters{ intensity };
         if (!draw(commandList, m_builtins[static_cast<std::size_t>(PostProcessBuiltin::BloomComposite)],
-            *current, *composite, currentViewport, viewport, 1, false, parameters, source, &sourceViewport)
-            || !m_targets.release(*source) || (borrowed && !m_targets.release(*borrowed)))
-            return false;
+            *current, *composite, currentViewport, viewport, 1, false, parameters,
+            levels[0], &viewports[0])
+            || !releaseTarget(*levels[0]) || (borrowed && !m_targets.release(*borrowed)))
+            return fail();
         ++m_statistics.effectPasses;
+        for (auto& target : trackedTargets)
+        {
+            if (target == composite)
+            {
+                target = nullptr;
+                break;
+            }
+        }
         current = borrowed = composite;
         currentViewport = viewport;
         return true;

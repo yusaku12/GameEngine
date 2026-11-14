@@ -97,10 +97,12 @@ namespace Engine
          * @param device 作成先Device。
          * @param shader Compute Shader。
          * @param parameters Root SignatureのParameter。
+         * @param staticSamplers Root SignatureのStatic Sampler。
          * @return 作成成功時true。
          */
         bool initialize(ID3D12Device& device, const DX12Shader& shader,
-            std::span<const D3D12_ROOT_PARAMETER> parameters);
+            std::span<const D3D12_ROOT_PARAMETER> parameters,
+            std::span<const D3D12_STATIC_SAMPLER_DESC> staticSamplers = {});
 
         /** @brief GPU使用完了後にPipelineを解放する。 */
         void finalize();

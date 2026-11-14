@@ -187,16 +187,19 @@ namespace Engine
     }
 
     bool DX12ComputePipeline::initialize(ID3D12Device& device, const DX12Shader& shader,
-        const std::span<const D3D12_ROOT_PARAMETER> parameters)
+        const std::span<const D3D12_ROOT_PARAMETER> parameters,
+        const std::span<const D3D12_STATIC_SAMPLER_DESC> staticSamplers)
     {
         if (m_rootSignature != nullptr || m_pipelineState != nullptr || !shader.isCompiled()
-            || parameters.size() > (std::numeric_limits<UINT>::max)())
+            || parameters.size() > (std::numeric_limits<UINT>::max)()
+            || staticSamplers.size() > (std::numeric_limits<UINT>::max)())
         {
             LOG_ERROR("[DX12] Invalid compute pipeline initialization.");
             return false;
         }
         const D3D12_ROOT_SIGNATURE_DESC description{
-            static_cast<UINT>(parameters.size()), parameters.data(), 0, nullptr,
+            static_cast<UINT>(parameters.size()), parameters.data(),
+            static_cast<UINT>(staticSamplers.size()), staticSamplers.data(),
             D3D12_ROOT_SIGNATURE_FLAG_NONE };
         Microsoft::WRL::ComPtr<ID3DBlob> serialized;
         Microsoft::WRL::ComPtr<ID3DBlob> errors;

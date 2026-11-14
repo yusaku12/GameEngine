@@ -50,7 +50,7 @@ $jobs = @(
     @{ Source = Join-Path $ShaderRoot "Model.hlsl"; Entry = "psGBuffer"; Target = "ps_6_0"; Output = "Model_psGBuffer_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "Model.hlsl"; Entry = "psGBufferAlphaTest"; Target = "ps_6_0"; Output = "Model_psGBufferAlphaTest_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "Deferred.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "Deferred_vsMain_vs.cso" },
-    @{ Source = Join-Path $ShaderRoot "Deferred.hlsl"; Entry = "psLighting"; Target = "ps_6_0"; Output = "Deferred_psLighting_ps.cso" },
+    @{ Source = Join-Path $ShaderRoot "Deferred.hlsl"; Entry = "csLighting"; Target = "cs_6_0"; Output = "Deferred_csLighting_cs.cso" },
     @{ Source = Join-Path $ShaderRoot "Deferred.hlsl"; Entry = "psDebug"; Target = "ps_6_0"; Output = "Deferred_psDebug_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcess.hlsl"; Entry = "vsMain"; Target = "vs_6_0"; Output = "PostProcess_vsMain_vs.cso" },
     @{ Source = Join-Path $ShaderRoot "PostProcess.hlsl"; Entry = "psToneMapping"; Target = "ps_6_0"; Output = "PostProcess_psToneMapping_ps.cso" },

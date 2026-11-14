@@ -56,6 +56,7 @@ Texture2D<float4> materialTexture : register(t2);
 Texture2D<float4> emissionTexture : register(t3);
 Texture2D<float> depthTexture : register(t4);
 Texture2D<float> shadowTexture : register(t6);
+RWTexture2D<float4> lightingOutput : register(u0);
 SamplerComparisonState shadowSampler : register(s1);
 
 struct VertexOutput
@@ -524,9 +525,9 @@ float3 evaluateLighting(float3 position, float3 albedo, float3 normal, float3 ma
     return color + emission;
 }
 
-float4 psLighting(VertexOutput input) : SV_Target0
+float4 evaluateDeferredLighting(float2 pixelPosition)
 {
-    const int2 pixel = int2(input.position.xy);
+    const int2 pixel = int2(pixelPosition);
     const float depth = depthTexture.Load(int3(pixel, 0));
     if (!isfinite(depth) || depth < 0.0f || depth >= 1.0f)
     {
@@ -535,9 +536,9 @@ float4 psLighting(VertexOutput input) : SV_Target0
 
         float3 sky = backgroundColor.rgb;
         if (atmosphereOptions.x > 0.0f)
-            sky = evaluateAtmosphereSky(input.position.xy);
+            sky = evaluateAtmosphereSky(pixelPosition);
         float3 pointOnRay;
-        if (reconstructWorldPosition(input.position.xy, 0.5f, pointOnRay))
+        if (reconstructWorldPosition(pixelPosition, 0.5f, pointOnRay))
         {
             const float3 viewDirection = normalize(pointOnRay - cameraPosition.xyz);
             if (cloudOptions.x > 0.0f)
@@ -548,7 +549,7 @@ float4 psLighting(VertexOutput input) : SV_Target0
     }
 
     float3 position;
-    if (!reconstructWorldPosition(input.position.xy, depth, position))
+    if (!reconstructWorldPosition(pixelPosition, depth, position))
         return backgroundColor;
     const float4 packedNormal = normalTexture.Load(int3(pixel, 0));
     const float normalLength = length(packedNormal.xyz);
@@ -580,6 +581,19 @@ float4 psLighting(VertexOutput input) : SV_Target0
     if (distance > 0.0001f)
         result = applyVolumetricFog(result, offset / distance, distance);
     return float4(clamp(result, 0.0f, 65504.0f), albedo.a);
+}
+
+[numthreads(8, 8, 1)]
+void csLighting(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= (uint)renderSize.x || id.y >= (uint)renderSize.y)
+        return;
+    const float2 pixelPosition = float2(id.xy) + 0.5f;
+    // Match the rasterizer's 8-bit subpixel snapping and viewport clipping.
+    const float2 rasterOrigin = round(viewport.xy * 256.0f) / 256.0f;
+    if (any(pixelPosition < rasterOrigin) || any(id.xy >= (uint2)floor(viewport.xy + viewport.zw)))
+        return;
+    lightingOutput[id.xy] = evaluateDeferredLighting(pixelPosition);
 }
 
 float4 psDebug(VertexOutput input) : SV_Target0

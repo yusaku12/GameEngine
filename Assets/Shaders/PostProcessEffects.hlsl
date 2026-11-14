@@ -1,69 +1,83 @@
 #include "PostProcess.hlsli"
 
-float3 boxFilter(float2 pixel)
+float bloomLuminance(float3 color)
 {
-    return 0.25f * (sampleInputOffset(pixel, float2(-0.5f, -0.5f))
-        + sampleInputOffset(pixel, float2(0.5f, -0.5f))
-        + sampleInputOffset(pixel, float2(-0.5f, 0.5f))
-        + sampleInputOffset(pixel, float2(0.5f, 0.5f)));
+    return max(dot(color, float3(0.2126f, 0.7152f, 0.0722f)), 0.0f);
 }
 
-float3 karisDownsample(float2 pixel)
+float3 thresholdBloomSample(float2 pixel, float2 offset, float threshold)
 {
-    const float3 samples[4] = {
-        max(sampleInputOffset(pixel, float2(-0.5f, -0.5f)), 0.0f),
-        max(sampleInputOffset(pixel, float2(0.5f, -0.5f)), 0.0f),
-        max(sampleInputOffset(pixel, float2(-0.5f, 0.5f)), 0.0f),
-        max(sampleInputOffset(pixel, float2(0.5f, 0.5f)), 0.0f)
-    };
-    float3 color = 0.0f;
-    float weightSum = 0.0f;
-    [unroll]
-    for (uint index = 0; index < 4; ++index)
-    {
-        const float brightness = max(samples[index].r, max(samples[index].g, samples[index].b));
-        const float weight = rcp(1.0f + brightness);
-        color += samples[index] * weight;
-        weightSum += weight;
-    }
-    return color / max(weightSum, 0.00001f);
+    const float3 color = max(sampleInputOffset(pixel, offset), 0.0f);
+    return threshold < 0.0f || bloomLuminance(color) >= threshold ? color : 0.0f;
+}
+
+float3 karisAverage(float3 a, float3 b, float3 c, float3 d)
+{
+    const float wa = rcp(4.0f + bloomLuminance(a));
+    const float wb = rcp(4.0f + bloomLuminance(b));
+    const float wc = rcp(4.0f + bloomLuminance(c));
+    const float wd = rcp(4.0f + bloomLuminance(d));
+    return (a * wa + b * wb + c * wc + d * wd) / max(wa + wb + wc + wd, 0.00001f);
+}
+
+float3 bloomTent(Texture2D<float4> image, float4 imageViewport, float2 pixel)
+{
+    return 0.25f * (
+        sampleViewport(image, imageViewport, pixel, float2(-0.5f, -0.5f)).rgb
+        + sampleViewport(image, imageViewport, pixel, float2(0.5f, -0.5f)).rgb
+        + sampleViewport(image, imageViewport, pixel, float2(-0.5f, 0.5f)).rgb
+        + sampleViewport(image, imageViewport, pixel, float2(0.5f, 0.5f)).rgb);
 }
 
 float4 psBloomPrefilter(PostProcessVertex input) : SV_Target0
 {
-    const float3 color = karisDownsample(input.position.xy);
-    const float brightness = max(color.r, max(color.g, color.b));
+    const float2 pixel = input.position.xy;
     const float threshold = parameters[0].x;
-    const float contribution = threshold < 0.0f ? 1.0f : saturate(brightness - threshold);
-    return float4(min(color * contribution, 65504.0f), 1.0f);
+    const float3 center = karisAverage(
+        thresholdBloomSample(pixel, float2(-0.5f, -0.5f), threshold),
+        thresholdBloomSample(pixel, float2(0.5f, -0.5f), threshold),
+        thresholdBloomSample(pixel, float2(-0.5f, 0.5f), threshold),
+        thresholdBloomSample(pixel, float2(0.5f, 0.5f), threshold));
+    const float3 a = thresholdBloomSample(pixel, float2(-1.0f, -1.0f), threshold);
+    const float3 b = thresholdBloomSample(pixel, float2(0.0f, -1.0f), threshold);
+    const float3 c = thresholdBloomSample(pixel, float2(1.0f, -1.0f), threshold);
+    const float3 d = thresholdBloomSample(pixel, float2(-1.0f, 0.0f), threshold);
+    const float3 e = thresholdBloomSample(pixel, float2(0.0f, 0.0f), threshold);
+    const float3 f = thresholdBloomSample(pixel, float2(1.0f, 0.0f), threshold);
+    const float3 g = thresholdBloomSample(pixel, float2(-1.0f, 1.0f), threshold);
+    const float3 h = thresholdBloomSample(pixel, float2(0.0f, 1.0f), threshold);
+    const float3 i = thresholdBloomSample(pixel, float2(1.0f, 1.0f), threshold);
+    const float3 result = center * 0.5f
+        + (karisAverage(a, b, d, e) + karisAverage(c, b, e, f)
+            + karisAverage(g, d, e, h) + karisAverage(i, e, f, h)) * 0.125f;
+    return float4(min(max(result, 0.0f), 65504.0f), 1.0f);
 }
 
 float4 psBloomDownsample(PostProcessVertex input) : SV_Target0
 {
-    return float4(boxFilter(input.position.xy), 1.0f);
+    const float2 direction = parameters[0].x < 0.5f ? float2(1.0f, 0.0f) : float2(0.0f, 1.0f);
+    const float radius = max(parameters[0].y, 0.0f);
+    const float2 pixel = input.position.xy;
+    float3 result = sampleInputOffset(pixel, 0.0f) * 0.2270270270f;
+    result += (sampleInputOffset(pixel, direction * (1.3846153846f * radius))
+        + sampleInputOffset(pixel, -direction * (1.3846153846f * radius))) * 0.3162162162f;
+    result += (sampleInputOffset(pixel, direction * (3.2307692308f * radius))
+        + sampleInputOffset(pixel, -direction * (3.2307692308f * radius))) * 0.0702702703f;
+    return float4(min(max(result, 0.0f), 65504.0f), 1.0f);
 }
 
 float4 psBloomUpsample(PostProcessVertex input) : SV_Target0
 {
-    float3 low = 0.0f;
-    [unroll]
-    for (int y = -1; y <= 1; ++y)
-    {
-        [unroll]
-        for (int x = -1; x <= 1; ++x)
-        {
-            const float weight = (x == 0 ? 2.0f : 1.0f) * (y == 0 ? 2.0f : 1.0f);
-            low += weight * sampleViewport(secondaryColor, secondaryViewport, input.position.xy,
-                float2(x, y) * parameters[0].y).rgb;
-        }
-    }
-    return float4(lerp(loadInputColor(input.position.xy).rgb, low / 16.0f, parameters[0].x), 1.0f);
+    const float3 high = loadInputColor(input.position.xy).rgb;
+    const float3 low = bloomTent(secondaryColor, secondaryViewport, input.position.xy);
+    return float4(min(max(high + low * saturate(parameters[0].x), 0.0f), 65504.0f), 1.0f);
 }
 
 float4 psBloomComposite(PostProcessVertex input) : SV_Target0
 {
-    const float3 bloom = sampleViewport(secondaryColor, secondaryViewport, input.position.xy, 0).rgb;
-    return float4(min(max(loadInputColor(input.position.xy).rgb, 0.0f) + bloom * parameters[0].x, 65504.0f), 1.0f);
+    const float3 bloom = bloomTent(secondaryColor, secondaryViewport, input.position.xy);
+    return float4(min(max(loadInputColor(input.position.xy).rgb + bloom * parameters[0].x, 0.0f),
+        65504.0f), 1.0f);
 }
 
 float4 psCustomComposite(PostProcessVertex input) : SV_Target0
