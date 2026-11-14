@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include "Graphics\Lighting\CascadedShadow.h"
 #include "Components\Rendering\LightComponent.h"
 #include "Components\Rendering\SkyAtmosphereComponent.h"
 #include "Components\Rendering\VolumetricCloudComponent.h"
@@ -59,9 +60,13 @@ namespace Engine
     /** @brief Immutable frame-barrier snapshot; bounded to 32 direct lights and one directional shadow. */
     struct LightingConstants
     {
-        Matrix shadowViewProjection = Matrix::Identity;
+        std::array<Matrix, SHADOW_CASCADE_COUNT> shadowViewProjection{};
         Vector4 cameraPosition;
         Vector4 shadowOptions;
+        Vector4 shadowSplits;
+        Vector4 shadowCameraForward;
+        Vector4 shadowTexelWorld;
+        Vector4 shadowDepthScale;
         Vector4 environment = Vector4(0.15f, 0.15f, 0.15f, 0);
         std::array<GpuLight, 32> lights{};
         GpuSkyAtmosphere atmosphere;
@@ -75,7 +80,7 @@ namespace Engine
     static_assert(sizeof(GpuVolumetricCloud) == sizeof(float) * 12);
     static_assert(sizeof(GpuVolumetricFog) == sizeof(float) * 20);
     static_assert(sizeof(GpuLightShafts) == sizeof(float) * 12);
-    static_assert(sizeof(LightingConstants) == sizeof(float) * (16 + 12 + 32 * 16 + 40 + 12 + 20 + 12));
+    static_assert(sizeof(LightingConstants) == sizeof(float) * (16 * SHADOW_CASCADE_COUNT + 28 + 32 * 16 + 40 + 12 + 20 + 12));
     /**
      * @brief Builds lighting from active and persistent scenes independently of gameplay lifecycle.
      * @thread_safety Not thread-safe. Capture on GameUpdate, read only after joining that job.
@@ -87,9 +92,21 @@ namespace Engine
         static LightingFrame& instance() noexcept;
         /** @brief Captures active lights and their world transforms without allocating. */
         void capture(const Scene* active, const Scene& persistent) noexcept;
-        /** @brief Builds camera-relative, texel-stabilized directional shadow constants. */
+        /**
+         * @brief Builds camera-relative, texel-stabilized directional shadow constants.
+         * @param position Camera position in world space.
+         * @param forward Normalized camera forward direction.
+         * @param viewProjection Current camera projection, including temporal jitter.
+         * @param inverseUnjitteredViewProjection Inverse camera projection without jitter.
+         * @param unjitteredProjection Camera projection without jitter.
+         * @param nearClip Camera near plane.
+         * @param farClip Camera far plane.
+         * @param hasCameraView Whether a camera snapshot is available for shadows.
+         * @return Immutable lighting constants; shadows are disabled on invalid cascade inputs.
+         */
         LightingConstants forCamera(const Vector3& position, const Vector3& forward,
-            const Matrix& viewProjection) const noexcept;
+            const Matrix& viewProjection, const Matrix& inverseUnjitteredViewProjection, const Matrix& unjitteredProjection,
+            float nearClip, float farClip, bool hasCameraView) const noexcept;
         /** @brief True when a directional shadow is configured. */
         bool hasShadow() const noexcept { return m_shadowIndex >= 0; }
     private:

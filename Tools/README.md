@@ -1080,12 +1080,28 @@ Deferred の不透明面では、ライトが16灯以上の場合、Compute Shad
 Directional は常に対象とし、Spot は保守的に Range の範囲で判定します。透明描画と
 ボリュームフォグは従来どおり全ライトを評価します。効果は配置や GPU に依存します。
 
-**Cast Shadow** が有効な最初の Directional light が、2048x2048 の動的 shadow map を所有します。
-シーンのスケールに合わせて Shadow Distance、Shadow Bias、Normal Bias を設定してください。
-カメラ相対 projection は texel 単位で安定化され、3x3 PCF でサンプリングされます。
+**Cast Shadow** が有効な最初の Directional light は、1024x1024 の depth 配列を3枚使用する
+動的 Cascaded Shadow Map を所有します。カメラの near plane から Shadow Distance
+（カメラの far plane より遠くには伸びません）までを3分割し、近い範囲に解像度を配分します。
+透視／正射影カメラの両方に対応します。TAA jitter を除いたカメラから cascade を構築し、
+light-space の投影を texel 単位に安定化します。境界の最後の10%は隣の cascade と
+ブレンドし、最遠 cascade の最後の10%で影をフェードします。
+
+各 cascade は caster bounds を light-space の横方向に保守的に照合します。
+カメラ外の caster も影響し得る場合は描画し、深度範囲は receiver と提出された caster に
+合わせます。影を受ける不透明面、透明面、ボリュームフォグは同じ cascade と 3x3 PCF を
+使用します。**Shadow Bias** は各 receiver 範囲を基準とし、caster に合わせた深度範囲の拡張を
+補正します。**Normal Bias** は第1 cascade のワールド空間量を基準に texel 幅に応じて
+調整します。既存の Scene／Prefab は設定を保持しますが、見た目に応じた再調整が必要な場合があります。
+アニメーション bounds の通常計算が失敗した shadow caster は頂点の低速な区間評価を試します。
+この評価でも有限の bounds を保証できない場合は、誤った影を表示せずエラーを記録してフレームを失敗させます。
+Renderer Statistics には cascade ごとの送信 item／三角形数が表示されます。
+Deferred の **Shadow Map** 表示では **Shadow Cascade** で確認する配列を選択できます。
+これらのカウントは CPU 送信数であり、GPU 実行時間ではありません。
 個々の shadow caster は Model Renderer の **Cast Shadows** で制御します。Opaque と AlphaTest
 マテリアルは影を落としますが、Transparent マテリアルは落としません。Point/Spot の影、
-cascade、baked lighting には対応していません。
+baked lighting には対応していません。Cascade 数を増やすと描画負荷も増えるため、既存方式より
+軽いことは保証されません。
 
 Scene のライトが従来のハードコードされた照射方向に置き換わります。有効なライトがない Scene は、
 基本 ambient 寄与 (0.15) と emissive マテリアルのみで照らされます。既存 Scene で直接光が必要な
@@ -1610,7 +1626,7 @@ pop が生じることがあります。この段階では geomorphing、hystere
 LOD が無効な場合も含め、マテリアル／draw の準備**前**にチャンク bounds をカメラ frustum と照合します。
 視錐台の外にあるチャンクはカメラ向け color/depth item を送信しません。
 選択された color、depth pre-pass、既存 Hi-Z draw は同じ index range を使います。
-Shadow は**別の light frustum と level 0**を使います。カメラ外のチャンクも可視領域に影を落とせます。
+Shadow は**各 cascade の light-space 範囲と level 0**を使います。カメラ外のチャンクも可視領域に影を落とせます。
 カメラ LOD を変更しても shadow geometry は簡略化されません。Cast Shadows と camera layer は
 通常のエンジン動作に従います。Frustum が無効な場合は保守的にカリングを迂回します。
 

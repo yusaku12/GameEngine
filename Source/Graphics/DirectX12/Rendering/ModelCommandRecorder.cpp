@@ -106,9 +106,10 @@ namespace Engine
         native.SetDescriptorHeaps(1, &state.textureHeap);
         native.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         const RenderPassType pass = draws.front().item->pass;
-        if (pass == RenderPassType::Shadow)
+        if (isShadowPass(pass))
         {
-            native.OMSetRenderTargets(0, nullptr, FALSE, &state.shadowTarget);
+            const auto& target = state.shadowTargets[shadowCascadeIndex(pass)];
+            native.OMSetRenderTargets(0, nullptr, FALSE, &target);
             native.RSSetViewports(1, &state.shadowViewport);
             native.RSSetScissorRects(1, &state.shadowScissor);
         }

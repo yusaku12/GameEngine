@@ -16,9 +16,13 @@ struct AtmosphereSun
 
 cbuffer LightingConstants : register(b4)
 {
-    row_major float4x4 shadowViewProjection;
+    row_major float4x4 shadowViewProjection[3];
     float4 cameraPosition;
     float4 shadowOptions;
+    float4 shadowSplits;
+    float4 shadowCameraForward;
+    float4 shadowTexelWorld;
+    float4 shadowDepthScale;
     float4 environment;
     SceneLight lights[32];
     float4 atmosphereOptions;
@@ -55,9 +59,11 @@ Texture2D<float4> normalTexture : register(t1);
 Texture2D<float4> materialTexture : register(t2);
 Texture2D<float4> emissionTexture : register(t3);
 Texture2D<float> depthTexture : register(t4);
-Texture2D<float> shadowTexture : register(t6);
+Texture2DArray<float> shadowTexture : register(t6);
 RWTexture2D<float4> lightingOutput : register(u0);
 SamplerComparisonState shadowSampler : register(s1);
+
+#include "CascadedShadow.hlsli"
 
 struct VertexOutput
 {
@@ -365,26 +371,6 @@ float3 compositeCloud(float3 background, float3 viewDirection, float maximumDist
             + inScattering * (1.0f - transmittance);
     }
     return background * transmittance + radiance;
-}
-
-float shadowVisibility(float3 position, float3 normal)
-{
-    if (shadowOptions.x == 0.0f)
-        return 1.0f;
-    const float4 projected = mul(float4(position + normal * shadowOptions.z, 1.0f), shadowViewProjection);
-    if (!all(isfinite(projected)) || projected.w <= 0.00001f)
-        return 1.0f;
-    const float3 coordinate = projected.xyz / projected.w;
-    const float2 uv = coordinate.xy * float2(0.5f, -0.5f) + 0.5f;
-    if (!all(isfinite(coordinate)) || coordinate.z <= 0.0f || coordinate.z >= 1.0f
-        || any(uv < 0.0f) || any(uv > 1.0f))
-        return 1.0f;
-    float visibility = 0.0f;
-    [unroll] for (int y = -1; y <= 1; ++y)
-        [unroll] for (int x = -1; x <= 1; ++x)
-            visibility += shadowTexture.SampleCmpLevelZero(shadowSampler,
-                uv + float2(x, y) * shadowOptions.w, coordinate.z - shadowOptions.y);
-    return visibility / 9.0f;
 }
 
 float3 applyVolumetricFog(float3 background, float3 viewDirection, float maximumDistance)
@@ -697,8 +683,14 @@ float4 psDebug(VertexOutput input) : SV_Target0
         if (shadowOptions.x == 0.0f)
             return float4(1.0f, 1.0f, 1.0f, 1.0f);
         const float2 uv = (input.position.xy - viewport.xy) / max(viewport.zw, 1.0f);
-        const int2 shadowPixel = clamp(int2(uv * 2048.0f), 0, 2047);
-        const float shadowDepth = shadowTexture.Load(int3(shadowPixel, 0));
+        uint width, height, layers;
+        shadowTexture.GetDimensions(width, height, layers);
+        if (width == 0u || height == 0u || layers == 0u || !all(isfinite(uv)))
+            return float4(1.0f, 1.0f, 1.0f, 1.0f);
+        const uint2 shadowPixel = min(uint2(saturate(uv) * float2(width, height)),
+            uint2(width - 1u, height - 1u));
+        const uint cascade = min((uint)max(clipAndDebug.w, 0.0f), layers - 1u);
+        const float shadowDepth = shadowTexture.Load(int4(shadowPixel, cascade, 0));
         return float4(encodeSrgb(shadowDepth.xxx), 1.0f);
     }
     return float4(0.0f, 0.0f, 0.0f, 1.0f);

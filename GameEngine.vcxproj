@@ -33,6 +33,7 @@
     <ClInclude Include="Source\Components\Rendering\VolumetricCloudComponent.h" />
     <ClInclude Include="Source\Components\Rendering\VolumetricFogComponent.h" />
     <ClInclude Include="Source\Graphics\Lighting\LightingFrame.h" />
+    <ClInclude Include="Source\Graphics\Lighting\CascadedShadow.h" />
     <ClInclude Include="Source\Audio\AudioSystem.h" />
     <ClInclude Include="Source\UI\RuntimeUI.h" />
     <ClInclude Include="Source\Components\UI\RuntimeUIComponents.h" />
@@ -264,6 +265,7 @@
     <ClCompile Include="Source\Components\Rendering\VolumetricCloudComponent.cpp" />
     <ClCompile Include="Source\Components\Rendering\VolumetricFogComponent.cpp" />
     <ClCompile Include="Source\Graphics\Lighting\LightingFrame.cpp" />
+    <ClCompile Include="Source\Graphics\Lighting\CascadedShadow.cpp" />
     <ClCompile Include="Source\Audio\AudioSystem.cpp" />
     <ClCompile Include="Source\UI\RuntimeUI.cpp" />
     <ClCompile Include="Source\Components\UI\RuntimeUIComponents.cpp" />
