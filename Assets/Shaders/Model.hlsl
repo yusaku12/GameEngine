@@ -17,6 +17,11 @@ cbuffer SkinningConstants : register(b1)
     row_major float4x4 previousBoneMatrices[MAX_SKINNING_BONES];
 };
 
+cbuffer CachedSkinningConstants : register(b5)
+{
+    uint useCachedSkinning;
+};
+
 struct TerrainLayerConstants
 {
     float4 color;
@@ -115,6 +120,8 @@ struct VertexInput
     float2 texCoord : TEXCOORD;
     uint4 boneIndices : BLENDINDICES;
     float4 boneWeights : BLENDWEIGHT;
+    float4 cachedPreviousPosition : TEXCOORD4;
+    float cachedPositionW : TEXCOORD5;
 };
 
 struct PixelInput
@@ -146,20 +153,14 @@ row_major float3x3 getNormalMatrix(row_major float3x3 transform)
     return float3x3(cofactor0 * determinantSign, cofactor1 * determinantSign, cofactor2 * determinantSign);
 }
 
-PixelInput vsMain(VertexInput input, uint instanceID : SV_InstanceID)
+void skinVertex(uint4 indices, float4 weights, inout float4 position, inout float4 previousPosition,
+    inout float3 normal, inout float3 tangent, inout float3 bitangent)
 {
-    const ObjectConstants object = objectInstances[instanceID];
-    PixelInput output;
-    float4 localPosition = float4(input.position, 1.0f);
-    float4 previousLocalPosition = localPosition;
-    float3 localNormal = input.normal;
-    float3 localTangent = input.tangent;
-    float3 localBitangent = input.bitangent;
-    const float totalWeight = dot(input.boneWeights, 1.0f);
+    const float totalWeight = dot(weights, 1.0f);
     if (totalWeight > 0.00001f)
     {
-        const float4 normalizedWeights = input.boneWeights / totalWeight;
-        const uint4 boneIndices = min(input.boneIndices, MAX_SKINNING_BONES - 1);
+        const float4 normalizedWeights = weights / totalWeight;
+        const uint4 boneIndices = min(indices, MAX_SKINNING_BONES - 1);
         const row_major float4x4 skinMatrix = boneMatrices[boneIndices.x] * normalizedWeights.x
             + boneMatrices[boneIndices.y] * normalizedWeights.y
             + boneMatrices[boneIndices.z] * normalizedWeights.z
@@ -172,11 +173,32 @@ PixelInput vsMain(VertexInput input, uint instanceID : SV_InstanceID)
             + (float3x3)boneNormalMatrices[boneIndices.y] * normalizedWeights.y
             + (float3x3)boneNormalMatrices[boneIndices.z] * normalizedWeights.z
             + (float3x3)boneNormalMatrices[boneIndices.w] * normalizedWeights.w;
-        localPosition = mul(localPosition, skinMatrix);
-        previousLocalPosition = mul(previousLocalPosition, previousSkinMatrix);
-        localNormal = normalize(mul(localNormal, skinNormalMatrix));
-        localTangent = normalize(mul(localTangent, (float3x3)skinMatrix));
-        localBitangent = normalize(mul(localBitangent, (float3x3)skinMatrix));
+        position = mul(position, skinMatrix);
+        previousPosition = mul(previousPosition, previousSkinMatrix);
+        normal = normalize(mul(normal, skinNormalMatrix));
+        tangent = normalize(mul(tangent, (float3x3)skinMatrix));
+        bitangent = normalize(mul(bitangent, (float3x3)skinMatrix));
+    }
+}
+
+PixelInput vsMain(VertexInput input, uint instanceID : SV_InstanceID)
+{
+    const ObjectConstants object = objectInstances[instanceID];
+    PixelInput output;
+    float4 localPosition = float4(input.position, 1.0f);
+    float4 previousLocalPosition = localPosition;
+    float3 localNormal = input.normal;
+    float3 localTangent = input.tangent;
+    float3 localBitangent = input.bitangent;
+    if (useCachedSkinning != 0)
+    {
+        localPosition.w = input.cachedPositionW;
+        previousLocalPosition = input.cachedPreviousPosition;
+    }
+    else
+    {
+        skinVertex(input.boneIndices, input.boneWeights, localPosition, previousLocalPosition,
+            localNormal, localTangent, localBitangent);
     }
     output.position = mul(localPosition, object.worldViewProjection);
     output.currentNdc = output.position.xy / max(output.position.w, 0.00001f);
@@ -193,6 +215,44 @@ PixelInput vsMain(VertexInput input, uint instanceID : SV_InstanceID)
     output.tangent = normalize(mul(localTangent, worldMatrix));
     output.bitangent = normalize(mul(localBitangent, worldMatrix));
     return output;
+}
+
+ByteAddressBuffer skinningInput : register(t20);
+RWByteAddressBuffer skinningOutput : register(u0);
+cbuffer SkinningDispatchConstants : register(b6)
+{
+    uint skinningVertexCount;
+    uint skinningGroupsX;
+};
+
+[numthreads(64, 1, 1)]
+void csSkinning(uint3 group : SV_GroupID, uint threadIndex : SV_GroupIndex)
+{
+    const uint vertex = (group.y * skinningGroupsX + group.x) * 64 + threadIndex;
+    if (vertex >= skinningVertexCount)
+        return;
+
+    const uint source = vertex * 96;
+    const uint destination = vertex * 116;
+    [unroll] for (uint offset = 48; offset < 96; offset += 16)
+        skinningOutput.Store4(destination + offset, skinningInput.Load4(source + offset));
+
+    float4 position = float4(asfloat(skinningInput.Load3(source)), 1.0f);
+    float4 previousPosition = position;
+    float3 normal = asfloat(skinningInput.Load3(source + 12));
+    float3 tangent = asfloat(skinningInput.Load3(source + 24));
+    float3 bitangent = asfloat(skinningInput.Load3(source + 36));
+    const uint2 packedIndices = skinningInput.Load2(source + 72);
+    const uint4 indices = uint4(packedIndices.x & 0xffff, packedIndices.x >> 16,
+        packedIndices.y & 0xffff, packedIndices.y >> 16);
+    const float4 weights = asfloat(skinningInput.Load4(source + 80));
+    skinVertex(indices, weights, position, previousPosition, normal, tangent, bitangent);
+    skinningOutput.Store3(destination, asuint(position.xyz));
+    skinningOutput.Store3(destination + 12, asuint(normal));
+    skinningOutput.Store3(destination + 24, asuint(tangent));
+    skinningOutput.Store3(destination + 36, asuint(bitangent));
+    skinningOutput.Store4(destination + 96, asuint(previousPosition));
+    skinningOutput.Store(destination + 112, asuint(position.w));
 }
 
 float shadowVisibility(float3 position, float3 normal)

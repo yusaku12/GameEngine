@@ -136,6 +136,7 @@ namespace Engine
 
         const DX12GraphicsPipeline* pipeline = nullptr;
         const D3D12_VERTEX_BUFFER_VIEW* vertices = nullptr;
+        const D3D12_VERTEX_BUFFER_VIEW* cachedSkinning = nullptr;
         const D3D12_INDEX_BUFFER_VIEW* indices = nullptr;
         D3D12_GPU_VIRTUAL_ADDRESS material = 0;
         D3D12_GPU_VIRTUAL_ADDRESS bones = 0;
@@ -153,10 +154,13 @@ namespace Engine
                 bones = 0;
                 ++context.statistics.psoSwitchCount;
             }
-            if (vertices != item.vertexBuffer)
+            if (vertices != draw.vertices || cachedSkinning != draw.cachedSkinning)
             {
-                native.IASetVertexBuffers(0, 1, item.vertexBuffer);
-                vertices = item.vertexBuffer;
+                const std::array views{ *draw.vertices,
+                    draw.cachedSkinning != nullptr ? *draw.cachedSkinning : *draw.vertices };
+                native.IASetVertexBuffers(0, static_cast<UINT>(views.size()), views.data());
+                vertices = draw.vertices;
+                cachedSkinning = draw.cachedSkinning;
                 ++context.statistics.vertexBufferSwitchCount;
             }
             if (indices != item.indexBuffer)
@@ -183,6 +187,8 @@ namespace Engine
                 bones = draw.bones;
             }
             native.SetGraphicsRootShaderResourceView(0, draw.instances);
+            native.SetGraphicsRoot32BitConstant(11 + TERRAIN_LAYER_TEXTURE_COUNT,
+                draw.cachedSkinning != nullptr ? 1u : 0u, 0);
             const MaterialParameterValues& properties = item.materialProperties.getValues();
             native.SetGraphicsRoot32BitConstants(8, 16, &properties.baseColor.x, 0);
             const std::uint32_t mask = item.materialProperties.getOverrideMask();

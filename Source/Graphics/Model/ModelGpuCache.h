@@ -20,6 +20,7 @@ namespace Engine
         D3D12_INDEX_BUFFER_VIEW indexBufferView{};   //!< インデックスBuffer View
         Matrix nodeTransform = Matrix::Identity;     //!< Model RootからMesh Nodeまでの累積変換
         SkinningBounds skinningBounds;              //!< 不変頂点から構築したボーン影響範囲
+        bool hasSkinWeights = false;                 //!< 0以外のBone Weightを含むか
     };
 
     /**

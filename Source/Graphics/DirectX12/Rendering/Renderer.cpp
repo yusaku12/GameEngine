@@ -20,6 +20,19 @@ namespace Engine
 {
     namespace
     {
+        struct CachedSkinningVertex
+        {
+            ModelVertex vertex;
+            Vector4 previousPosition;
+            float positionW;
+        };
+        static_assert(sizeof(ModelVertex) == 96 && offsetof(ModelVertex, position) == 0
+            && offsetof(ModelVertex, normal) == 12
+            && offsetof(ModelVertex, tangent) == 24 && offsetof(ModelVertex, bitangent) == 36
+            && offsetof(ModelVertex, boneIndices) == 72 && offsetof(ModelVertex, boneWeights) == 80);
+        static_assert(offsetof(CachedSkinningVertex, previousPosition) == 96
+            && offsetof(CachedSkinningVertex, positionW) == 112 && sizeof(CachedSkinningVertex) == 116);
+
         /**
          * @brief モデル頂点の入力レイアウト
          * @details
@@ -41,6 +54,8 @@ namespace Engine
             D3D12_INPUT_ELEMENT_DESC{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, texCoord)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
             D3D12_INPUT_ELEMENT_DESC{ "BLENDINDICES", 0, DXGI_FORMAT_R16G16B16A16_UINT, 0, static_cast<UINT>(offsetof(ModelVertex, boneIndices)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
             D3D12_INPUT_ELEMENT_DESC{ "BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(offsetof(ModelVertex, boneWeights)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            D3D12_INPUT_ELEMENT_DESC{ "TEXCOORD", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            D3D12_INPUT_ELEMENT_DESC{ "TEXCOORD", 5, DXGI_FORMAT_R32_FLOAT, 1, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         };
 
         bool colorsEqual(const Color& left, const Color& right) noexcept
@@ -224,6 +239,11 @@ namespace Engine
             .optimize = false,
         };
         m_modelVertexShaderID = m_shaderManager.registerShader(modelVertexShaderDesc);
+        ShaderCompileDesc skinningComputeShaderDesc = modelVertexShaderDesc;
+        skinningComputeShaderDesc.outputPath = "Assets/Shaders/Compiled/Model_csSkinning_cs.cso";
+        skinningComputeShaderDesc.entryPoint = "csSkinning";
+        skinningComputeShaderDesc.stage = ShaderStage::Compute;
+        m_skinningComputeShaderID = m_shaderManager.registerShader(skinningComputeShaderDesc);
         m_modelPixelShaderID = m_shaderManager.registerShader(modelPixelShaderDesc);
         ShaderCompileDesc alphaTestPixelShaderDesc = modelPixelShaderDesc;
         alphaTestPixelShaderDesc.outputPath = "Assets/Shaders/Compiled/Model_psAlphaTest_ps.cso";
@@ -444,6 +464,9 @@ namespace Engine
             frameBuffers.clear();
         }
         m_skinningPaletteBufferCursors.fill(0);
+        for (auto& frameBuffers : m_cachedSkinningBuffers)
+            frameBuffers.clear();
+        m_cachedSkinningBufferCursors.fill(0);
         for (DX12UploadBuffer& buffer : m_modelInstanceBuffers)
             if (!buffer.finalize())
                 return false;
@@ -471,10 +494,12 @@ namespace Engine
         m_depthOnlyModelPipeline.finalize();
         m_depthAlphaTestModelPipeline.finalize();
         m_modelPipeline.finalize();
+        m_skinningPipeline.finalize();
         m_occlusionPipeline.finalize();
         m_hizPipeline.finalize();
         m_shaderManager.shutdown();
         m_modelVertexShaderID = 0;
+        m_skinningComputeShaderID = 0;
         m_modelPixelShaderID = 0;
         m_alphaTestPixelShaderID = 0;
         m_depthAlphaTestPixelShaderID = 0;
@@ -1525,6 +1550,7 @@ namespace Engine
     bool DX12Renderer::rebuildGraphicsPipelines()
     {
         const auto modelVertexShader = m_shaderManager.get(m_modelVertexShaderID);
+        const auto skinningComputeShader = m_shaderManager.get(m_skinningComputeShaderID);
         const auto modelPixelShader = m_shaderManager.get(m_modelPixelShaderID);
         const auto alphaTestPixelShader = m_shaderManager.get(m_alphaTestPixelShaderID);
         const auto depthAlphaTestPixelShader = m_shaderManager.get(m_depthAlphaTestPixelShaderID);
@@ -1544,12 +1570,12 @@ namespace Engine
         const auto debugPixelShader = m_shaderManager.get(m_debugPixelShaderID);
         const auto hizShader = m_shaderManager.get(m_hizShaderID);
         const auto occlusionShader = m_shaderManager.get(m_occlusionShaderID);
-        if (!modelVertexShader || !modelPixelShader || !alphaTestPixelShader || !depthAlphaTestPixelShader
+        if (!modelVertexShader || !skinningComputeShader || !modelPixelShader || !alphaTestPixelShader || !depthAlphaTestPixelShader
             || !gbufferPixelShader || !gbufferAlphaTestPixelShader || !deferredVertexShader
             || !deferredLightingComputeShader || !deferredDebugPixelShader
             || !postProcessVertexShader || !postProcessToneMappingShader || !postProcessOutputShader
             || !debugVertexShader || !debugShapeVertexShader || !debugPixelShader || !hizShader || !occlusionShader
-            || !modelVertexShader->isCompiled() || !modelPixelShader->isCompiled()
+            || !modelVertexShader->isCompiled() || !skinningComputeShader->isCompiled() || !modelPixelShader->isCompiled()
             || !alphaTestPixelShader->isCompiled() || !depthAlphaTestPixelShader->isCompiled()
             || !gbufferPixelShader->isCompiled() || !gbufferAlphaTestPixelShader->isCompiled()
             || !deferredVertexShader->isCompiled() || !deferredLightingComputeShader->isCompiled()
@@ -1612,7 +1638,7 @@ namespace Engine
         shadowTable.DescriptorTable = { 1, &shadowRange };
         shadowTable.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         std::array<D3D12_DESCRIPTOR_RANGE, TERRAIN_LAYER_TEXTURE_COUNT> terrainRanges{};
-        std::array<D3D12_ROOT_PARAMETER, 11 + TERRAIN_LAYER_TEXTURE_COUNT> rootParameters = {
+        std::array<D3D12_ROOT_PARAMETER, 12 + TERRAIN_LAYER_TEXTURE_COUNT> rootParameters = {
             objectConstants, bonePalette, materialConstants,
             textureTables[0], textureTables[1], textureTables[2], textureTables[3], textureTables[4],
             materialProperties, lighting, shadowTable,
@@ -1629,6 +1655,10 @@ namespace Engine
             parameter.DescriptorTable = { 1, &range };
             parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         }
+        auto& cachedSkinningFlag = rootParameters[11 + TERRAIN_LAYER_TEXTURE_COUNT];
+        cachedSkinningFlag.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        cachedSkinningFlag.Constants = { 5, 0, 1 };
+        cachedSkinningFlag.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
         const std::array staticSamplers = {
             D3D12_STATIC_SAMPLER_DESC{
                 .Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR,
@@ -1709,6 +1739,17 @@ namespace Engine
         DX12GraphicsPipeline nextDeferredDebugPipeline;
         DX12ComputePipeline nextHiZPipeline;
         DX12ComputePipeline nextOcclusionPipeline;
+        DX12ComputePipeline nextSkinningPipeline;
+
+        std::array<D3D12_ROOT_PARAMETER, 4> skinningParameters{};
+        skinningParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+        skinningParameters[0].Descriptor.ShaderRegister = 20;
+        skinningParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
+        skinningParameters[1].Descriptor.ShaderRegister = 0;
+        skinningParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        skinningParameters[2].Descriptor.ShaderRegister = 1;
+        skinningParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        skinningParameters[3].Constants = { 6, 0, 2 };
 
         D3D12_ROOT_PARAMETER deferredLightingConstants{};
         deferredLightingConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -1763,6 +1804,7 @@ namespace Engine
             || !nextGBufferModelPipeline.initialize(*m_device.get(), gbufferModelConfig)
             || !nextGBufferAlphaTestModelPipeline.initialize(*m_device.get(), gbufferAlphaTestModelConfig)
             || !nextDeferredTransparentModelPipeline.initialize(*m_device.get(), deferredTransparentModelConfig)
+            || !nextSkinningPipeline.initialize(*m_device.get(), *skinningComputeShader, skinningParameters)
             || !nextDeferredLightingPipeline.initialize(*m_device.get(), *deferredLightingComputeShader,
                 deferredComputeParameters, deferredComputeSamplers)
             || !nextDeferredDebugPipeline.initialize(*m_device.get(), deferredDebugConfig)
@@ -1775,6 +1817,7 @@ namespace Engine
             return false;
         }
         m_modelPipeline.swap(nextModelPipeline);
+        m_skinningPipeline.swap(nextSkinningPipeline);
         m_alphaTestModelPipeline.swap(nextAlphaTestModelPipeline);
         m_transparentModelPipeline.swap(nextTransparentModelPipeline);
         m_depthOnlyModelPipeline.swap(nextDepthOnlyModelPipeline);
@@ -1962,6 +2005,7 @@ namespace Engine
                                 .surfaceType = gpuMaterial->source->renderState.surfaceType,
                                 .materialProperties = submission.materialProperties,
                                 .textureID = gpuMaterial->baseColorTexture.index,
+                                .hasSkinWeights = gpuMesh->hasSkinWeights,
                                 .skinningPalette = submission.skinningPalette,
                                 .bonePaletteBuffer = &gpuModel->bonePaletteBuffer,
                                 .meshID = static_cast<std::uint32_t>(meshIndex),
@@ -2050,6 +2094,8 @@ namespace Engine
             if (!prepareModelDraws(frameIndex))
                 return false;
         }
+        if (!recordSkinning(commandList, frameIndex))
+            return false;
         const bool hasShadow = std::any_of(m_preparedModelDraws.begin(), m_preparedModelDraws.end(),
             [](const DX12PreparedModelDraw& draw) { return draw.item->pass == RenderPassType::Shadow; });
         if (m_shadowViewProjection.has_value())
@@ -2175,6 +2221,12 @@ namespace Engine
         m_preparedModelDraws.clear();
         m_currentObjectWorldMatrices.clear();
         m_currentSkinningPalettes.clear();
+        if (frameIndex >= FRAME_COUNT)
+        {
+            LOG_ERROR("[Renderer] Invalid skinning frame index {}.", frameIndex);
+            return false;
+        }
+        m_cachedSkinningBufferCursors[frameIndex] = 0;
         const bool motionBlurHistory = m_deferredFrameActive && m_cameraPostProcess.enabled
             && m_cameraPostProcess.weight > 0 && m_cameraPostProcess.effects.motionBlur > 0
             && m_cameraPostProcess.settings.motionBlurEnabled.value
@@ -2233,6 +2285,8 @@ namespace Engine
         TextureManager& textureManager = TextureManager::instance();
         std::unordered_map<const SkinningPaletteSnapshot*,
             std::unordered_map<std::uint32_t, DX12UploadBuffer*>> uploadedPalettes;
+        std::unordered_map<D3D12_GPU_VIRTUAL_ADDRESS,
+            std::unordered_map<D3D12_GPU_VIRTUAL_ADDRESS, CachedSkinningBuffer*>> skinnedMeshes;
         MaterialHandle currentMaterial;
         std::shared_ptr<const MaterialAsset> currentMaterialSnapshot;
         D3D12_GPU_VIRTUAL_ADDRESS materialAddress = 0;
@@ -2336,6 +2390,71 @@ namespace Engine
                 LOG_ERROR("[Renderer] Invalid resolved GPU bindings for draw {}.", itemIndex);
                 return false;
             }
+            const D3D12_VERTEX_BUFFER_VIEW* vertices = item.vertexBuffer;
+            const D3D12_VERTEX_BUFFER_VIEW* cachedSkinning = nullptr;
+            if (item.hasSkinWeights)
+            {
+                if (vertices == nullptr || vertices->BufferLocation == 0
+                    || vertices->StrideInBytes != sizeof(ModelVertex)
+                    || vertices->SizeInBytes == 0 || vertices->SizeInBytes % sizeof(ModelVertex) != 0)
+                {
+                    LOG_ERROR("[Renderer] Invalid source vertex buffer for skinning draw {}.", itemIndex);
+                    return false;
+                }
+                auto& byPalette = skinnedMeshes[vertices->BufferLocation];
+                const auto paletteAddress = bonePalette->getGpuVirtualAddress();
+                CachedSkinningBuffer* cached = nullptr;
+                if (const auto found = byPalette.find(paletteAddress); found != byPalette.end())
+                {
+                    cached = found->second;
+                }
+                else
+                {
+                    const std::uint64_t vertexCount = vertices->SizeInBytes / sizeof(ModelVertex);
+                    const std::uint64_t size = vertexCount * sizeof(CachedSkinningVertex);
+                    if (size > (std::numeric_limits<UINT>::max)())
+                    {
+                        LOG_ERROR("[Renderer] Skinned vertex buffer exceeds DirectX 12 view limits.");
+                        return false;
+                    }
+                    auto& buffers = m_cachedSkinningBuffers[frameIndex];
+                    const std::size_t index = m_cachedSkinningBufferCursors[frameIndex];
+                    if (index == buffers.size())
+                        buffers.push_back(std::make_unique<CachedSkinningBuffer>());
+                    cached = buffers[index].get();
+                    if (cached->resource.get() == nullptr || cached->resource.getDescription().Width < size)
+                    {
+                        D3D12_RESOURCE_DESC description{};
+                        description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+                        description.Width = size;
+                        description.Height = 1;
+                        description.DepthOrArraySize = 1;
+                        description.MipLevels = 1;
+                        description.SampleDesc = { 1, 0 };
+                        description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+                        description.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+                        if (!cached->resource.initialize(*m_device.get(), {
+                            .description = description,
+                            .initialState = D3D12_RESOURCE_STATE_COMMON }))
+                        {
+                            LOG_ERROR("[Renderer] Failed to allocate a skinned vertex buffer.");
+                            return false;
+                        }
+                    }
+                    const auto address = cached->resource.get()->GetGPUVirtualAddress();
+                    cached->vertices = { address, static_cast<UINT>(size), sizeof(CachedSkinningVertex) };
+                    cached->extra = { address + offsetof(CachedSkinningVertex, previousPosition),
+                        static_cast<UINT>(size - offsetof(CachedSkinningVertex, previousPosition)),
+                        sizeof(CachedSkinningVertex) };
+                    cached->source = vertices->BufferLocation;
+                    cached->palette = paletteAddress;
+                    cached->vertexCount = static_cast<std::uint32_t>(vertexCount);
+                    ++m_cachedSkinningBufferCursors[frameIndex];
+                    byPalette.emplace(paletteAddress, cached);
+                }
+                vertices = &cached->vertices;
+                cachedSkinning = &cached->extra;
+            }
             m_preparedModelDraws.push_back({
                 .item = &item,
                 .pipeline = requiredPipeline,
@@ -2344,10 +2463,39 @@ namespace Engine
                 .instances = instanceBuffer.getGpuVirtualAddress() + itemIndex * sizeof(ModelInstanceConstants),
                 .material = materialAddress,
                 .bones = bonePalette->getGpuVirtualAddress(),
+                .vertices = vertices,
+                .cachedSkinning = cachedSkinning,
                 .textures = textures,
                 .terrainTextures = terrainTextures,
                 });
             itemIndex += batchSize;
+        }
+        return true;
+    }
+
+    bool DX12Renderer::recordSkinning(DX12CommandList& commandList, const std::uint32_t frameIndex)
+    {
+        const std::size_t count = m_cachedSkinningBufferCursors[frameIndex];
+        if (count == 0)
+            return true;
+        if (!m_skinningPipeline.bind(commandList))
+            return false;
+        ID3D12GraphicsCommandList& native = *commandList.getForRecording();
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            CachedSkinningBuffer& buffer = *m_cachedSkinningBuffers[frameIndex][index];
+            if (!buffer.resource.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+                return false;
+            const std::uint32_t groups = (buffer.vertexCount + 63) / 64;
+            const std::uint32_t groupsX = std::min(groups, 65535u);
+            const std::uint32_t constants[]{ buffer.vertexCount, groupsX };
+            native.SetComputeRootShaderResourceView(0, buffer.source);
+            native.SetComputeRootUnorderedAccessView(1, buffer.resource.get()->GetGPUVirtualAddress());
+            native.SetComputeRootConstantBufferView(2, buffer.palette);
+            native.SetComputeRoot32BitConstants(3, 2, constants, 0);
+            native.Dispatch(groupsX, (groups + groupsX - 1) / groupsX, 1);
+            if (!buffer.resource.transition(commandList, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER))
+                return false;
         }
         return true;
     }

@@ -269,6 +269,9 @@ namespace Engine
          */
         bool prepareModelDraws(std::uint32_t frameIndex);
 
+        /** @brief 準備済みのアニメーションメッシュを描画前に一度だけスキニングする。 */
+        bool recordSkinning(DX12CommandList& commandList, std::uint32_t frameIndex);
+
         /**
          * @brief 描画領域に対応する深度バッファとDSVを作成する。
          * @param width 深度バッファ幅
@@ -392,6 +395,7 @@ namespace Engine
         std::array<DX12CommandList, FRAME_COUNT> m_presentationLists;
         ShaderManager m_shaderManager;                                                                    //!< Shader のロード・キャッシュ・Hot Reload 管理
         ShaderID m_modelVertexShaderID = 0;                                                               //!< Model頂点Shader ID
+        ShaderID m_skinningComputeShaderID = 0;                                                          //!< Skinning Compute Shader ID
         ShaderID m_modelPixelShaderID = 0;                                                                //!< Model Pixel Shader ID
         ShaderID m_alphaTestPixelShaderID = 0;                                                            //!< Alpha Test Pixel Shader ID
         ShaderID m_depthAlphaTestPixelShaderID = 0;                                                       //!< Depth Alpha Test Pixel Shader ID
@@ -411,6 +415,7 @@ namespace Engine
         ShaderID m_occlusionShaderID = 0;                                                                 //!< 可視判定Compute Shader ID
         bool m_psoRebuildPending = false;                                                                 //!< Shader 更新に伴う Graphics PSO 再生成要求フラグ
         DX12GraphicsPipeline m_modelPipeline;                                                             //!< Model描画用Graphics PSO
+        DX12ComputePipeline m_skinningPipeline;                                                            //!< Skinning Compute PSO
         DX12GraphicsPipeline m_alphaTestModelPipeline;                                                    //!< Alpha Test Model描画用Graphics PSO
         DX12GraphicsPipeline m_transparentModelPipeline;                                                  //!< 透明Model描画用Graphics PSO
         DX12GraphicsPipeline m_depthOnlyModelPipeline;                                                    //!< Opaque Depth/Shadow描画用Graphics PSO
@@ -436,6 +441,17 @@ namespace Engine
         std::vector<AnimatedMeshBounds> m_animatedMeshBounds;                                              //!< 現在SubmissionのPose Bounds。容量を再利用する
         std::array<std::vector<std::unique_ptr<DX12UploadBuffer>>, FRAME_COUNT> m_skinningPaletteBuffers; //!< Frame間で容量を再利用するSkinning Palette Buffer
         std::array<std::size_t, FRAME_COUNT> m_skinningPaletteBufferCursors{};                            //!< Frame間で容量を再利用するSkinning Palette Bufferのカーソル
+        struct CachedSkinningBuffer
+        {
+            DX12Resource resource;
+            D3D12_VERTEX_BUFFER_VIEW vertices{};
+            D3D12_VERTEX_BUFFER_VIEW extra{};
+            D3D12_GPU_VIRTUAL_ADDRESS source = 0;
+            D3D12_GPU_VIRTUAL_ADDRESS palette = 0;
+            std::uint32_t vertexCount = 0;
+        };
+        std::array<std::vector<std::unique_ptr<CachedSkinningBuffer>>, FRAME_COUNT> m_cachedSkinningBuffers;
+        std::array<std::size_t, FRAME_COUNT> m_cachedSkinningBufferCursors{};
         std::array<DX12UploadBuffer, FRAME_COUNT> m_modelInstanceBuffers;                                 //!< Fence完了後に再利用するInstance Buffer
         std::vector<ModelInstanceConstants> m_modelInstanceConstants;                                     //!< CPU側のInstance転送データ。容量を再利用する
         std::unordered_map<std::uint64_t, Matrix> m_previousObjectWorldMatrices;

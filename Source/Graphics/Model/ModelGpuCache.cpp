@@ -202,6 +202,11 @@ namespace Engine
             }
 
             auto mesh = std::make_unique<ModelGpuMesh>();
+            mesh->hasSkinWeights = std::any_of(vertices.begin(), vertices.end(), [](const ModelVertex& vertex)
+                {
+                    return vertex.boneWeights.x != 0.0f || vertex.boneWeights.y != 0.0f
+                        || vertex.boneWeights.z != 0.0f || vertex.boneWeights.w != 0.0f;
+                });
             if (!mesh->skinningBounds.initialize(vertices))
                 LOG_WARNING("[ModelGpuCache] Animated bounds unavailable for mesh '{}'; animated culling will be bypassed.",
                     sourceMesh.name);

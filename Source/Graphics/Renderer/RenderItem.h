@@ -45,6 +45,7 @@ namespace Engine
         MaterialSurfaceType surfaceType = MaterialSurfaceType::Opaque;  //!< 明示的なSurface分類
         MaterialPropertyBlock materialProperties;                       //!< Draw単位の数値Parameter Override
         std::uint32_t textureID = 0;                                    //!< 主Texture識別子
+        bool hasSkinWeights = false;                                    //!< メッシュがBone Weightを含むか
         std::shared_ptr<const SkinningPaletteSnapshot> skinningPalette; //!< Animation済みPalette Snapshot
         const DX12UploadBuffer* bonePaletteBuffer = nullptr;            //!< Bind PoseまたはAnimation済みBone行列Buffer
         std::uint32_t meshID = 0;                                       //!< Mesh識別子
