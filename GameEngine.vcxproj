@@ -19,6 +19,7 @@
     <ClInclude Include="Source\Terrain\Geometry\TerrainLod.h" />
     <ClInclude Include="Source\Terrain\Generation\TerrainBuild.h" />
     <ClInclude Include="Source\Terrain\Generation\TerrainGpuNoise.h" />
+    <ClInclude Include="Source\Terrain\Generation\TerrainGpuMesh.h" />
     <ClInclude Include="Source\Terrain\Generation\TerrainErosion.h" />
     <ClInclude Include="Source\Terrain\Vegetation\TerrainVegetation.h" />
     <ClInclude Include="Source\Terrain\Generation\TerrainGeneration.h" />
@@ -251,6 +252,7 @@
     <ClCompile Include="Source\Terrain\Geometry\TerrainLod.cpp" />
     <ClCompile Include="Source\Terrain\Generation\TerrainBuild.cpp" />
     <ClCompile Include="Source\Terrain\Generation\TerrainGpuNoise.cpp" />
+    <ClCompile Include="Source\Terrain\Generation\TerrainGpuMesh.cpp" />
     <ClCompile Include="Source\Terrain\Generation\TerrainErosion.cpp" />
     <ClCompile Include="Source\Terrain\Vegetation\TerrainVegetation.cpp" />
     <ClCompile Include="Source\Terrain\Generation\TerrainGeneration.cpp" />
@@ -427,6 +429,7 @@
     <None Include="Assets\Shaders\Occlusion.hlsl" />
     <None Include="Assets\Shaders\HiZ.hlsl" />
     <None Include="Assets\Shaders\TerrainNoise.hlsl" />
+    <None Include="Assets\Shaders\TerrainMesh.hlsl" />
     <None Include="Schemas\FlatBuffers\Common.fbs" />
     <None Include="Schemas\FlatBuffers\CameraComponent.fbs" />
     <None Include="Schemas\FlatBuffers\PostProcessSettings.fbs" />

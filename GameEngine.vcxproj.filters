@@ -726,6 +726,9 @@
     <ClCompile Include="Source\Terrain\Generation\TerrainGpuNoise.cpp">
       <Filter>Source\Terrain\Generation</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Terrain\Generation\TerrainGpuMesh.cpp">
+      <Filter>Source\Terrain\Generation</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Terrain\Generation\TerrainNoise.cpp">
       <Filter>Source\Terrain\Generation</Filter>
     </ClCompile>
@@ -1406,6 +1409,9 @@
     <ClInclude Include="Source\Terrain\Generation\TerrainGpuNoise.h">
       <Filter>Source\Terrain\Generation</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Terrain\Generation\TerrainGpuMesh.h">
+      <Filter>Source\Terrain\Generation</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Terrain\Generation\TerrainNoise.h">
       <Filter>Source\Terrain\Generation</Filter>
     </ClInclude>
@@ -1472,6 +1478,9 @@
       <Filter>Assets\Shaders</Filter>
     </None>
     <None Include="Assets\Shaders\TerrainNoise.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\TerrainMesh.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>
     <None Include="Schemas\FlatBuffers\AnimationClip.fbs">
