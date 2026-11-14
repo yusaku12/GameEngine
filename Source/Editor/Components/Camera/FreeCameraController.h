@@ -21,7 +21,7 @@ namespace Engine
          */
         FreeCameraController() noexcept;
 
-        /** @brief Updates editor navigation without executing a gameplay lifecycle. */
+        /** @brief Updates editor/debug camera navigation without executing a gameplay lifecycle. */
         void updateEditor(float deltaTime);
         bool copyConfigurationTo(Component& destination) const override;
 

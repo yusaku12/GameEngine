@@ -223,7 +223,8 @@ namespace Engine
         InputManager& input = InputManager::instance();
         const bool acceptsInput = windowFocused
             && (m_mode == ExecutionMode::Runtime || m_gameViewFocused)
-            && (m_state != PlayState::Paused || m_stepThisFrame);
+            && (m_state != PlayState::Paused || m_stepThisFrame
+                || (m_mode == ExecutionMode::Editor && m_gameViewFocused));
         input.setWindowFocused(acceptsInput);
         input.update();
     }
@@ -232,6 +233,20 @@ namespace Engine
     {
         SceneManager& manager = SceneManager::instance();
         TimeManager& time = TimeManager::instance();
+        const auto updateDebugCamera = [this, &time]
+        {
+            if (m_mode != ExecutionMode::Editor || !m_gameViewFocused)
+                return;
+
+            if (CameraComponent* camera = CameraManager::instance().getActiveCamera())
+            {
+                if (auto* controller = camera->getGameObject()->getComponent<FreeCameraController>();
+                    controller != nullptr && controller->isEnabled())
+                {
+                    controller->updateEditor(time.unscaledDeltaTime());
+                }
+            }
+        };
         RuntimeUI::instance().processInput(m_state == PlayState::Playing);
         if (m_state == PlayState::Playing || m_stepThisFrame)
         {
@@ -247,20 +262,13 @@ namespace Engine
                     PhysicsSystem::instance().update(time.fixedDeltaTime());
                 time.consumeFixedUpdate();
             }
+            updateDebugCamera();
             manager.lateUpdate(time.deltaTime());
             manager.processDestroyQueue();
         }
         else
         {
-            if (m_state == PlayState::Editing && m_gameViewFocused)
-            {
-                if (CameraComponent* camera = CameraManager::instance().getActiveCamera())
-                {
-                    if (auto* controller = camera->getGameObject()->getComponent<FreeCameraController>();
-                        controller != nullptr && controller->isEnabled())
-                        controller->updateEditor(time.unscaledDeltaTime());
-                }
-            }
+            updateDebugCamera();
             CameraManager::instance().shutdown();
             const float animationDeltaTime = m_state == PlayState::Editing
                 ? time.unscaledDeltaTime() : 0.0f;
