@@ -469,7 +469,7 @@ float3 applyVolumetricFog(float3 background, float3 viewDirection, float maximum
 }
 
 float3 evaluateLighting(float3 position, float3 albedo, float3 normal, float3 material,
-    float3 emission)
+    float3 emission, uint lightMask)
 {
     const float metallic = saturate(material.x);
     const float roughness = saturate(material.y);
@@ -480,8 +480,10 @@ float3 evaluateLighting(float3 position, float3 albedo, float3 normal, float3 ma
     const float roughnessSquared = pow(max(roughness, 0.04f), 4.0f);
     float3 color = albedo * environment.rgb * occlusion;
 
-    for (uint index = 0; index < min((uint)environment.w, 32u); ++index)
+    while (lightMask != 0u)
     {
+        const uint index = firstbitlow(lightMask);
+        lightMask &= lightMask - 1u;
         const SceneLight light = lights[index];
         float3 direction = -light.directionInner.xyz;
         float attenuation = 1.0f;
@@ -525,7 +527,7 @@ float3 evaluateLighting(float3 position, float3 albedo, float3 normal, float3 ma
     return color + emission;
 }
 
-float4 evaluateDeferredLighting(float2 pixelPosition)
+float4 evaluateDeferredLighting(float2 pixelPosition, uint lightMask)
 {
     const int2 pixel = int2(pixelPosition);
     const float depth = depthTexture.Load(int3(pixel, 0));
@@ -559,7 +561,7 @@ float4 evaluateDeferredLighting(float2 pixelPosition)
     const float4 albedo = albedoTexture.Load(int3(pixel, 0));
     const float4 material = materialTexture.Load(int3(pixel, 0));
     const float3 emission = emissionTexture.Load(int3(pixel, 0)).rgb;
-    float3 result = evaluateLighting(position, albedo.rgb, normal, material.rgb, emission);
+    float3 result = evaluateLighting(position, albedo.rgb, normal, material.rgb, emission, lightMask);
     if (atmosphereOptions.x > 0.0f)
     {
         const float3 worldOffset = position - cameraPosition.xyz;
@@ -583,17 +585,77 @@ float4 evaluateDeferredLighting(float2 pixelPosition)
     return float4(clamp(result, 0.0f, 65504.0f), albedo.a);
 }
 
-[numthreads(8, 8, 1)]
-void csLighting(uint3 id : SV_DispatchThreadID)
+groupshared float3 tileMinimum[64];
+groupshared float3 tileMaximum[64];
+groupshared uint tileLightMask;
+
+bool isDeferredPixel(uint2 pixel)
 {
-    if (id.x >= (uint)renderSize.x || id.y >= (uint)renderSize.y)
-        return;
-    const float2 pixelPosition = float2(id.xy) + 0.5f;
+    const float2 pixelPosition = float2(pixel) + 0.5f;
     // Match the rasterizer's 8-bit subpixel snapping and viewport clipping.
     const float2 rasterOrigin = round(viewport.xy * 256.0f) / 256.0f;
-    if (any(pixelPosition < rasterOrigin) || any(id.xy >= (uint2)floor(viewport.xy + viewport.zw)))
+    return all(pixel < (uint2)renderSize.xy) && all(pixelPosition >= rasterOrigin)
+        && all(pixel < (uint2)floor(viewport.xy + viewport.zw));
+}
+
+[numthreads(8, 8, 1)]
+void csLighting(uint3 id : SV_DispatchThreadID, uint lane : SV_GroupIndex)
+{
+    const bool activePixel = isDeferredPixel(id.xy);
+    const uint lightCount = min((uint)environment.w, 32u);
+    uint lightMask = lightCount == 32u ? 0xffffffffu : (1u << lightCount) - 1u;
+    if (lightCount >= 16u)
+    {
+        // All lanes, including pixels outside the viewport, must reach every group barrier.
+        float3 position = 0.0f;
+        bool surface = false;
+        if (activePixel)
+        {
+            const float depth = depthTexture.Load(int3(id.xy, 0));
+            surface = isfinite(depth) && depth >= 0.0f && depth < 1.0f
+                && reconstructWorldPosition(float2(id.xy) + 0.5f, depth, position);
+        }
+        tileMinimum[lane] = surface ? position : 3.402823466e+38f;
+        tileMaximum[lane] = surface ? position : -3.402823466e+38f;
+        if (lane == 0u)
+            tileLightMask = 0u;
+        GroupMemoryBarrierWithGroupSync();
+
+        [unroll]
+        for (uint stride = 32u; stride > 0u; stride >>= 1u)
+        {
+            if (lane < stride)
+            {
+                tileMinimum[lane] = min(tileMinimum[lane], tileMinimum[lane + stride]);
+                tileMaximum[lane] = max(tileMaximum[lane], tileMaximum[lane + stride]);
+            }
+            GroupMemoryBarrierWithGroupSync();
+        }
+
+        if (lane < lightCount && all(tileMinimum[0] <= tileMaximum[0]))
+        {
+            const SceneLight light = lights[lane];
+            bool intersects = true;
+            if (light.positionKind.w != 0.0f && all(isfinite(light.positionKind.xyz))
+                && isfinite(light.colorRange.w))
+            {
+                const float3 extent = max(abs(tileMinimum[0]), abs(tileMaximum[0]));
+                // Expand the range conservatively to account for world-space rounding.
+                const float3 tolerance = max(max(extent, abs(light.positionKind.xyz)) * 0.000001f, 0.00001f);
+                const float3 radius = max(light.colorRange.w, 0.0f) + tolerance;
+                intersects = all(light.positionKind.xyz >= tileMinimum[0] - radius)
+                    && all(light.positionKind.xyz <= tileMaximum[0] + radius);
+            }
+            if (intersects)
+                InterlockedOr(tileLightMask, 1u << lane);
+        }
+        GroupMemoryBarrierWithGroupSync();
+        lightMask = tileLightMask;
+    }
+
+    if (!activePixel)
         return;
-    lightingOutput[id.xy] = evaluateDeferredLighting(pixelPosition);
+    lightingOutput[id.xy] = evaluateDeferredLighting(float2(id.xy) + 0.5f, lightMask);
 }
 
 float4 psDebug(VertexOutput input) : SV_Target0
