@@ -409,6 +409,8 @@ namespace Engine
         ShaderID m_postProcessOutputShaderID = 0;
         std::array<ShaderID, POST_PROCESS_BUILTIN_ENTRIES.size()> m_postProcessBuiltinShaderIDs{};
         std::array<ShaderID, POST_PROCESS_BLOOM_ENTRIES.size()> m_postProcessBloomShaderIDs{};
+        ShaderID m_lightShaftsComputeShaderID = 0;
+        ShaderID m_lightShaftsFallbackShaderID = 0;
         ShaderID m_debugVertexShaderID = 0;                                                               //!< Debug Primitive頂点Shader ID
         ShaderID m_debugShapeVertexShaderID = 0;                                                          //!< Debug Primitive形状頂点Shader ID
         ShaderID m_debugPixelShaderID = 0;                                                                //!< Debug Primitive Pixel Shader ID

@@ -1,4 +1,5 @@
 #include "PostProcess.hlsli"
+#include "PostProcessNoise.hlsli"
 
 float4 psCustomComposite(PostProcessVertex input) : SV_Target0
 {
@@ -30,14 +31,6 @@ float4 psChromaticAberration(PostProcessVertex input) : SV_Target0
     const float red = sampleInputOffset(input.position.xy, offset).r;
     const float blue = sampleInputOffset(input.position.xy, -offset).b;
     return float4(red, center.g, blue, 1.0f);
-}
-
-float grainNoise(uint2 pixel, uint frame)
-{
-    uint value = pixel.x * 1973u + pixel.y * 9277u + frame * 26699u + 0x68bc21ebu;
-    value = (value << 13u) ^ value;
-    value = value * (value * value * 15731u + 789221u) + 1376312589u;
-    return float(value & 0x7fffffffu) / 1073741824.0f - 1.0f;
 }
 
 float4 psFilmGrain(PostProcessVertex input) : SV_Target0
@@ -199,54 +192,6 @@ float4 psMotionBlur(PostProcessVertex input) : SV_Target0
         }
     }
     return float4(accumulated / weightSum, 1.0f);
-}
-
-float3 prefilterLightShafts(float3 color, float threshold)
-{
-    const float luminance = dot(color, float3(0.2126f, 0.7152f, 0.0722f));
-    const float knee = max(threshold * 0.5f, 0.0001f);
-    float softContribution = clamp(luminance - threshold + knee, 0.0f, 2.0f * knee);
-    softContribution = softContribution * softContribution / (4.0f * knee);
-    const float contribution = saturate(max(luminance - threshold, softContribution));
-    return color * (contribution / max(luminance, 0.0001f));
-}
-
-float4 psLightShafts(PostProcessVertex input) : SV_Target0
-{
-    static const uint SAMPLE_COUNT = 64;
-    const float2 pixel = input.position.xy;
-    const float2 uv = (pixel - targetViewport.xy) / targetViewport.zw;
-    const float2 sourcePosition = parameters[0].xy;
-    const float2 stepVector = (sourcePosition - uv) * (0.95f / SAMPLE_COUNT);
-    const float threshold = parameters[0].w;
-    // Vary the radial sample phase per pixel to prevent concentric tap bands.
-    float2 sampleUv = uv + stepVector * (grainNoise(uint2(pixel), 0u) * 0.5f);
-    float3 accumulated = 0.0f;
-    float illuminationDecay = 1.0f;
-    [loop]
-    for (uint index = 0; index < SAMPLE_COUNT; ++index)
-    {
-        sampleUv += stepVector;
-        const bool insideViewport = all(sampleUv >= 0.0f) && all(sampleUv <= 1.0f);
-        if (insideViewport)
-        {
-            const float2 samplePixel = targetViewport.xy + sampleUv * targetViewport.zw;
-            const float3 sampleColor = max(sampleViewport(inputColor, sourceViewport, samplePixel, 0).rgb, 0.0f);
-            const float3 brightColor = prefilterLightShafts(sampleColor, threshold);
-            float visibility = 1.0f;
-            if (parameters[2].x > 0.5f)
-            {
-                const float depth = sampleViewport(secondaryColor, secondaryViewport, samplePixel, 0).r;
-                const float depthEdgeWidth = max(fwidth(depth) * 2.0f, 0.000001f);
-                const float skyVisibility = smoothstep(1.0f - depthEdgeWidth, 1.0f, depth);
-                visibility = lerp(1.0f - saturate(parameters[1].w), 1.0f, skyVisibility);
-            }
-            accumulated += brightColor * (visibility * illuminationDecay);
-        }
-        illuminationDecay *= 0.98f;
-    }
-    const float3 shaftColor = accumulated * (parameters[0].z / SAMPLE_COUNT) * parameters[1].rgb;
-    return float4(min(max(loadInputColor(pixel).rgb + shaftColor, 0.0f), 65504.0f), 1.0f);
 }
 
 float4 psTemporalAA(PostProcessVertex input) : SV_Target0

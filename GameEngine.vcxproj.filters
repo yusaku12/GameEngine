@@ -1471,10 +1471,19 @@
     <None Include="Assets\Shaders\PostProcess.hlsli">
       <Filter>Assets\Shaders</Filter>
     </None>
+    <None Include="Assets\Shaders\PostProcessCompute.hlsli">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\PostProcessNoise.hlsli">
+      <Filter>Assets\Shaders</Filter>
+    </None>
     <None Include="Assets\Shaders\PostProcessEffects.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>
     <None Include="Assets\Shaders\Bloom.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="Assets\Shaders\LightShafts.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>
     <None Include="Assets\Shaders\PostProcessExample.hlsl">
