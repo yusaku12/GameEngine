@@ -1,4 +1,5 @@
 ﻿#include "Pch.h"
+#include "Terrain\Generation\TerrainGpuMesh.h"
 #include "Terrain\Generation\TerrainGpuNoise.h"
 #include "Terrain\Generation\TerrainGeneration.h"
 #include "Terrain\Geometry\TerrainLod.h"
@@ -358,7 +359,8 @@ namespace Engine
             rollbackInitialization();
             return false;
         }
-        if (!TerrainGpuNoise::instance().initialize(*m_device.get()))
+        if (!TerrainGpuNoise::instance().initialize(*m_device.get())
+            || !TerrainGpuMesh::instance().initialize(*m_device.get()))
         {
             rollbackInitialization();
             return false;
@@ -376,6 +378,8 @@ namespace Engine
     bool DX12Renderer::finalize()
     {
         TerrainGenerationQueue::instance().shutdown();
+        if (!TerrainGpuMesh::instance().shutdown())
+            return false;
         if (!TerrainGpuNoise::instance().shutdown())
             return false;
         if (m_lastSubmittedFenceValue != 0 && !m_directFence.waitOnCpu(m_lastSubmittedFenceValue))

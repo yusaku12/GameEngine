@@ -55,7 +55,7 @@ namespace Engine
      * @brief One dedicated terrain worker shared across components; never executes on a frame/job waiter.
      * @thread_safety submit/applyCompleted/shutdown must run serially at an owner-thread frame barrier.
      * Workers never access live components, resource managers, render resources or PhysX actors.
-     * Explicit GPU noise uses only TerrainGpuNoise's independent queue/resources; join before renderer shutdown.
+     * GPU noise and mesh generation use independent compute resources; join before renderer shutdown.
      */
     class TerrainGenerationQueue final
     {
@@ -64,7 +64,7 @@ namespace Engine
         static TerrainGenerationQueue& instance();
         ~TerrainGenerationQueue();
         /**
-         * @brief Queues an independent CPU build; logs and returns null on allocation/thread startup failure.
+         * @brief Queues an independent terrain build; logs and returns null on allocation/thread startup failure.
          * @param request Validated/resolved input snapshot.
          * @param apply Owner-thread callback, returning whether transactional application succeeded.
          * @return Cancellable task. Owner must cancel before any callback capture is destroyed.

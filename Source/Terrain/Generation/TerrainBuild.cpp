@@ -1,6 +1,7 @@
 #include "Pch.h"
 #include "Terrain\Generation\TerrainBuild.h"
 #include "Physics\PhysicsMeshAsset.h"
+#include "Terrain\Generation\TerrainGpuMesh.h"
 #include "Terrain\Generation\TerrainGpuNoise.h"
 #include "Core\Logging\Logger.h"
 #include "Core\Math\MathTypes.h"
@@ -115,9 +116,19 @@ namespace Engine
         if (request.applyErosion && (!enter(TerrainGenerationStage::Erosion)
             || !erodeTerrain(request.heightmap, request.erosion, request.heightmap, cancelled)))
             return false;
-        if (!enter(TerrainGenerationStage::Mesh) || !buildTerrainModel(request.heightmap, request.mesh, prepared.model)
-            || !enter(TerrainGenerationStage::Layers) || !applyTerrainLayerWeights(request.heightmap, request.material, prepared.model)
-            || !enter(TerrainGenerationStage::Chunks) || !partitionTerrainModel(prepared.model,
+        if (!enter(TerrainGenerationStage::Mesh))
+            return false;
+        if (TerrainGpuMesh::instance().isInitialized())
+        {
+            if (!TerrainGpuMesh::instance().generate(request.heightmap, request.mesh, request.material,
+                prepared.model, cancelled, stage))
+                return false;
+        }
+        else if (!buildTerrainModel(request.heightmap, request.mesh, prepared.model)
+            || !enter(TerrainGenerationStage::Layers)
+            || !applyTerrainLayerWeights(request.heightmap, request.material, prepared.model))
+            return false;
+        if (!enter(TerrainGenerationStage::Chunks) || !partitionTerrainModel(prepared.model,
                 request.heightmap.width(), request.heightmap.height(), request.chunks, prepared.chunks)
             || !enter(TerrainGenerationStage::Collision))
             return false;

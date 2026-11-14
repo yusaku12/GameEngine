@@ -76,7 +76,8 @@ $jobs = @(
     @{ Source = Join-Path $ShaderRoot "DebugPrimitive.hlsl"; Entry = "psMain"; Target = "ps_6_0"; Output = "DebugPrimitive_psMain_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "HiZ.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "HiZ_csMain_cs.cso"; Optimize = $true },
     @{ Source = Join-Path $ShaderRoot "Occlusion.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "Occlusion_csMain_cs.cso"; Optimize = $true },
-    @{ Source = Join-Path $ShaderRoot "TerrainNoise.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "TerrainNoise_csMain_cs.cso"; Optimize = $true; WarningsAsErrors = $true }
+    @{ Source = Join-Path $ShaderRoot "TerrainNoise.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "TerrainNoise_csMain_cs.cso"; Optimize = $true; WarningsAsErrors = $true },
+    @{ Source = Join-Path $ShaderRoot "TerrainMesh.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "TerrainMesh_csMain_cs.cso"; Optimize = $true; WarningsAsErrors = $true }
 )
 
 $outputs = @()

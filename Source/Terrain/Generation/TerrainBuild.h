@@ -75,7 +75,9 @@ namespace Engine
      * @param stage Optional atomic progress stage.
      * @return False on logged failure or explicit cancellation; no live terrain is modified.
      * @thread_safety Independent requests/results may be built concurrently while PhysX is initialized.
-     * GPU noise additionally requires an initialized TerrainGpuNoise backend; only the caller waits for its compute fence.
+     * GPU noise additionally requires an initialized TerrainGpuNoise backend. When initialized, TerrainGpuMesh
+     * builds the grid on the GPU; before renderer initialization the CPU implementation is used. Only the caller
+     * waits for the compute fences.
      */
     bool buildTerrain(TerrainBuildRequest request, TerrainBuildResult& result,
         const std::atomic<bool>* cancelled = nullptr, std::atomic<TerrainGenerationStage>* stage = nullptr);
