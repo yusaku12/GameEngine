@@ -1068,6 +1068,28 @@ Root Motion 差分を確定し、Snapshot の最終公開だけを IK 後へ遅�
 Scene/Prefab と Play 複製は専用 payload v1 で設定だけを保持し、接地状態は保存しません。
 自動接地設定は後方互換の追加フィールドで、旧 payload も既定の自動判定が有効になります。
 
+## Look At（ozz-animation）
+
+Animator と同じ GameObject に **Look At** を追加し、注視方向を持つ **End joint** と、
+その祖先の **Root joint** を選択します。同じジョイントを選ぶと単一ジョイントを補正します。
+二つの間のすべての親ジョイントが対象です。**Target (world)** はワールド座標の注視点で、
+ゲームからは `setTarget(position)` で毎フレーム更新できます。対象 GameObject への参照は
+保持しないため、追跡する場合はそのワールド位置を渡してください。
+
+**Forward** は End のローカル前方向、**Up** は各ジョイントのローカル上方向です。
+互いに直交する単位軸をリグに合わせて設定し、**Eye offset** は End ローカル座標の
+注視開始位置を指定します。**Weight** は全体の補正率、**Joint weight** は末端から
+祖先へ補正を分配する割合です。最も祖先のジョイントには全体 Weight を適用します。
+ワールド +Y を姿勢の上方向として使用するため、注視方向が真上・真下付近では回転面が
+不安定になり得ます。ターゲットが近すぎてオフセットから到達不能な場合や不正なリグは
+ログと Inspector に通知し、補正を適用しません。ワールド変換は正の均等スケールで
+shear がないことが必要です。
+
+全 Animator と Root Motion の処理後、Foot IK の後に Look At を評価し、成功した補正を
+まとめて一度だけ描画用スナップショットに公開します。未補正姿勢や Root Motion は
+変更せず、毎フレームの補正は累積しません。Look At が失敗した場合でも正常な Foot IK は
+維持されます。編集プレビューにも適用し、Scene/Prefab と Play 複製には設定を保存します。
+
 # Light と Directional Shadow
 
 GameObject を作成し、Inspector で **Light** を追加します。Directional、Point、Spot のいずれかを

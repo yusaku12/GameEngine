@@ -1,6 +1,7 @@
 ﻿#include "Pch.h"
 #include "Animation\Runtime\AnimatorInstance.h"
 #include "Animation\Runtime\FootIK.h"
+#include "Animation\Runtime\LookAt.h"
 #include <ozz/animation/runtime/blending_job.h>
 #include <ozz/animation/runtime/local_to_model_job.h>
 #include <ozz/base/maths/simd_math.h>
@@ -245,6 +246,8 @@ namespace Engine
         m_modelMatrices.resize(static_cast<std::size_t>(jointCount));
         m_ikLocalTransforms.resize(m_localTransforms.size());
         m_ikModelMatrices.resize(m_modelMatrices.size());
+        m_lookAtLocalTransforms.resize(m_localTransforms.size());
+        m_lookAtModelMatrices.resize(m_modelMatrices.size());
         m_bindPoseCorrections.resize(static_cast<std::size_t>(jointCount));
         ozz::animation::LocalToModelJob restPoseJob;
         restPoseJob.skeleton = &m_skeleton->skeleton;
@@ -405,6 +408,8 @@ namespace Engine
         m_modelMatrices.resize(static_cast<std::size_t>(jointCount));
         m_ikLocalTransforms.resize(m_localTransforms.size());
         m_ikModelMatrices.resize(m_modelMatrices.size());
+        m_lookAtLocalTransforms.resize(m_localTransforms.size());
+        m_lookAtModelMatrices.resize(m_modelMatrices.size());
         m_bindPoseCorrections.resize(static_cast<std::size_t>(jointCount));
         ozz::animation::LocalToModelJob restPoseJob;
         restPoseJob.skeleton = &m_skeleton->skeleton;
@@ -452,6 +457,8 @@ namespace Engine
         m_modelMatrices.clear();
         m_ikLocalTransforms.clear();
         m_ikModelMatrices.clear();
+        m_lookAtLocalTransforms.clear();
+        m_lookAtModelMatrices.clear();
         m_bindPoseCorrections.clear();
         m_blendedTransforms.clear();
         m_localTransforms.clear();
@@ -1156,7 +1163,7 @@ namespace Engine
     }
 
     bool AnimatorInstance::applyFootIK(const std::span<const FootIKTarget> targets,
-        const Vector3& pelvisOffset, const Matrix& world)
+        const Vector3& pelvisOffset, const Matrix& world, const bool publishSnapshot)
     {
         Matrix removal;
         Transform transform;
@@ -1192,7 +1199,41 @@ namespace Engine
         if (!solveFootIK(m_skeleton->skeleton, std::span(modelTargets).first(targets.size()),
             Vector3::TransformNormal(pelvisOffset, inverse), m_ikLocalTransforms, m_ikModelMatrices, modelUp))
             return false;
-        return publishPose(m_ikModelMatrices);
+        return !publishSnapshot || publishPose(m_ikModelMatrices);
+    }
+
+    bool AnimatorInstance::applyLookAt(const std::span<const int> chain, const LookAtTarget& target,
+        const Matrix& world, const bool useFootIK)
+    {
+        Matrix removal;
+        Transform transform;
+        if (!m_skeleton || !getPoseRemoval(removal) || !isFinite(world)
+            || !Transform::tryFromMatrix(removal * world, transform))
+        {
+            LOG_ERROR("[LookAt] Missing animation or invalid model-to-world transform.");
+            return false;
+        }
+        const Vector3 scale = transform.getScale();
+        if (scale.x <= 0.0f || std::abs(scale.y - scale.x) > scale.x * 1.0e-4f
+            || std::abs(scale.z - scale.x) > scale.x * 1.0e-4f)
+        {
+            LOG_ERROR("[LookAt] Model-to-world transform requires positive uniform scale without shear.");
+            return false;
+        }
+        const Matrix inverse = (removal * world).Invert();
+        LookAtTarget modelTarget = target;
+        modelTarget.position = Vector3::Transform(target.position, inverse);
+        modelTarget.pole = Vector3::TransformNormal(Vector3::UnitY, inverse);
+        modelTarget.pole.Normalize();
+        const auto& sourceLocals = useFootIK ? m_ikLocalTransforms : m_localTransforms;
+        const auto& sourceModels = useFootIK ? m_ikModelMatrices : m_modelMatrices;
+        std::copy(sourceLocals.begin(), sourceLocals.end(), m_lookAtLocalTransforms.begin());
+        std::copy(sourceModels.begin(), sourceModels.end(), m_lookAtModelMatrices.begin());
+        if (!solveLookAt(m_skeleton->skeleton, chain, modelTarget, m_lookAtLocalTransforms, m_lookAtModelMatrices))
+            return false;
+        m_ikLocalTransforms.swap(m_lookAtLocalTransforms);
+        m_ikModelMatrices.swap(m_lookAtModelMatrices);
+        return true;
     }
 
     bool AnimatorInstance::publishPose(const std::span<const ozz::math::Float4x4> models, const bool publishSnapshot)

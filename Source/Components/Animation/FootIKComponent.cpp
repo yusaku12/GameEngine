@@ -260,7 +260,7 @@ namespace Engine
         desiredPelvis = m_settings.pelvisCorrection
             ? (std::max)(desiredPelvis, -m_settings.maxPelvisOffset) : 0.0f;
         m_pelvisOffset += (desiredPelvis - m_pelvisOffset) * blend;
-        if (!animator.applyFootIK(std::span(targets).first(count), Vector3::UnitY * m_pelvisOffset, world))
+        if (!animator.applyFootIK(std::span(targets).first(count), Vector3::UnitY * m_pelvisOffset, world, false))
             return fail("IK evaluation failed. Check rig axes and positive uniform object scale.");
         m_status.clear();
         m_errorLogged = false;

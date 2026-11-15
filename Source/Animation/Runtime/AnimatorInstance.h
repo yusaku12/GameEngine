@@ -14,6 +14,7 @@
 namespace Engine
 {
     struct FootIKTarget;
+    struct LookAtTarget;
 
     /**
      * @brief GameObjectごとのController状態とozz評価Bufferを所有する。
@@ -211,12 +212,20 @@ namespace Engine
             Vector3& direction) const;
 
         /**
-         * @brief Publish visual IK without changing sampled animation or extracted root motion.
+         * @brief Solve visual IK without changing sampled animation or extracted root motion.
          * @param targets World-space ankle targets and rig axes.
          * @param pelvisOffset World-space visual displacement. Does not move the GameObject.
+         * @param publishSnapshot Publish immediately unless composing another visual IK pass.
          * @thread_safety Must run after animation jobs join, with exclusive instance access.
          */
-        bool applyFootIK(std::span<const FootIKTarget> targets, const Vector3& pelvisOffset, const Matrix& world);
+        bool applyFootIK(std::span<const FootIKTarget> targets, const Vector3& pelvisOffset,
+            const Matrix& world, bool publishSnapshot = true);
+
+        /** @brief Apply LookAt to a temporary pose and retain it only on success. */
+        bool applyLookAt(std::span<const int> chain, const LookAtTarget& target, const Matrix& world,
+            bool useFootIK);
+        /** @brief Publish the latest successful visual IK pose. */
+        bool publishIKPose() { return publishPose(m_ikModelMatrices); }
 
     private:
 
@@ -376,6 +385,8 @@ namespace Engine
         std::vector<ozz::math::Float4x4> m_modelMatrices;                        //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。
         std::vector<ozz::math::SoaTransform> m_ikLocalTransforms;
         std::vector<ozz::math::Float4x4> m_ikModelMatrices;
+        std::vector<ozz::math::SoaTransform> m_lookAtLocalTransforms;
+        std::vector<ozz::math::Float4x4> m_lookAtModelMatrices;
         std::vector<Matrix> m_bindPoseCorrections;                               //!< Import時の逆バインド行列とOzzレスト姿勢の差分補正。
         std::array<std::shared_ptr<SkinningPaletteSnapshot>, 3> m_snapshotRing;  //!< Ring Bufferとして保持するPalette Snapshot。Game threadが評価中のSnapshotとRender threadが参照中のSnapshotを分離する。
         std::shared_ptr<const SkinningPaletteSnapshot> m_publishedSnapshot;      //!< Render threadが参照中のPalette Snapshot。Game threadはこのSnapshotを更新しない。

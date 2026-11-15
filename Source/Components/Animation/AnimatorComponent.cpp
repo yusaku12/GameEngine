@@ -3,6 +3,7 @@
 #include "Generated\FlatBuffers\AnimatorComponent_generated.h"
 #include "Components\Animation\AnimatorComponent.h"
 #include "Components\Animation\FootIKComponent.h"
+#include "Components\Animation\LookAtComponent.h"
 #include "Assets\Animation\AnimationAssetManager.h"
 #include "Assets\Model\ModelManager.h"
 #include "Components\Rendering\ModelRendererComponent.h"
@@ -690,8 +691,8 @@ namespace Engine
         m_evaluationErrorLogged = false;
         m_evaluationPending = false;
         m_rootMotionPending = false;
-        m_footIKPending = false;
-        m_footIKRequested = false;
+        m_visualIKPending = false;
+        m_visualIKRequested = false;
         m_rootMotionErrorLogged = false;
     }
 
@@ -739,8 +740,8 @@ namespace Engine
     {
         m_evaluationPending = false;
         m_rootMotionPending = false;
-        m_footIKPending = false;
-        m_footIKRequested = false;
+        m_visualIKPending = false;
+        m_visualIKRequested = false;
 
         if (m_startupPending && !prepareStartup())
             return;
@@ -769,7 +770,8 @@ namespace Engine
             return;
         const auto* object = getGameObject();
         const auto* footIK = object ? object->getComponent<FootIKComponent>() : nullptr;
-        m_footIKRequested = footIK && footIK->isEnabled();
+        const auto* lookAt = object ? object->getComponent<LookAtComponent>() : nullptr;
+        m_visualIKRequested = (footIK && footIK->isEnabled()) || (lookAt && lookAt->isEnabled());
         m_evaluationPending = true;
     }
 
@@ -779,8 +781,8 @@ namespace Engine
             return;
 
         m_evaluationPending = false;
-        const bool succeeded = m_instance.update(deltaTime, !m_footIKRequested);
-        m_footIKPending = succeeded && m_footIKRequested;
+        const bool succeeded = m_instance.update(deltaTime, !m_visualIKRequested);
+        m_visualIKPending = succeeded && m_visualIKRequested;
         m_rootMotionPending = succeeded && m_applyRootMotion
             && m_instance.getRootMotionDelta() != Matrix::Identity;
         if (!succeeded && !m_evaluationErrorLogged)
@@ -866,18 +868,20 @@ namespace Engine
         m_rootMotionErrorLogged = false;
     }
 
-    void AnimatorComponent::applyPendingFootIK(const float deltaTime)
+    void AnimatorComponent::applyPendingVisualIK(const float deltaTime)
     {
-        if (!std::exchange(m_footIKPending, false))
+        if (!std::exchange(m_visualIKPending, false))
             return;
         GameObject* const object = getGameObject();
         if (!object || object->isDestroyRequested() || !object->isActiveInHierarchy() || !isEnabled())
             return;
-        if (auto* footIK = object->getComponent<FootIKComponent>(); footIK && footIK->isEnabled()
-            && footIK->evaluate(m_instance, deltaTime))
-            return;
-        if (!m_instance.publishCurrentPose())
-            LOG_ERROR("[FootIK] Could not publish the uncorrected animation pose after IK was unavailable.");
+        bool corrected = false;
+        if (auto* footIK = object->getComponent<FootIKComponent>(); footIK && footIK->isEnabled())
+            corrected = footIK->evaluate(m_instance, deltaTime);
+        if (auto* lookAt = object->getComponent<LookAtComponent>(); lookAt && lookAt->isEnabled())
+            corrected = lookAt->evaluate(m_instance, corrected) || corrected;
+        if (!(corrected ? m_instance.publishIKPose() : m_instance.publishCurrentPose()))
+            LOG_ERROR("[Animator] Could not publish the animation pose after IK evaluation.");
     }
 
     void AnimatorComponent::onImGui()

@@ -377,7 +377,7 @@ namespace Engine
         for (AnimatorComponent* const animator : m_animatorsToUpdate)
             animator->applyPendingRootMotion(deltaTime);
         for (AnimatorComponent* const animator : m_animatorsToUpdate)
-            animator->applyPendingFootIK(deltaTime);
+            animator->applyPendingVisualIK(deltaTime);
         m_animatorsToUpdate.clear();
     }
 
@@ -479,7 +479,7 @@ namespace Engine
                 {
                     animator->preparePendingUpdate();
                     animator->evaluatePendingUpdate(animationDeltaTime);
-                    animator->applyPendingFootIK(animationDeltaTime);
+                    animator->applyPendingVisualIK(animationDeltaTime);
                 }
             }
         }

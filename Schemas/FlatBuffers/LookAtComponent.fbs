@@ -1,0 +1,17 @@
+include "Common.fbs";
+
+namespace Engine.Serialization;
+
+table LookAtComponentPayload {
+    end_joint:string (required);
+    root_joint:string (required);
+    target:Vec3;
+    forward:Vec3;
+    up:Vec3;
+    offset:Vec3;
+    weight:float = 1;
+    joint_weight:float = 0.5;
+}
+
+root_type LookAtComponentPayload;
+file_identifier "GLAT";
