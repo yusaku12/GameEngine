@@ -33,7 +33,7 @@ namespace Engine
     /** @brief Deferred検証表示。FinalLighting以外はPostEffectを迂回する。 */
     enum class DeferredDebugView
     {
-        FinalLighting, Albedo, Normal, Metallic, Roughness, MaterialAO, Emission, Depth, ShadowMap,
+        FinalLighting, Albedo, Normal, Metallic, Roughness, MaterialAO, Emission, Depth, ShadowMap, Specular,
     };
 
     /**

@@ -105,7 +105,7 @@ namespace Engine::Serialization
         const auto data = CreateMaterialAssetData(builder, &guid, builder.CreateString(material.name), &shaderGuid,
             renderState, &baseColor, material.metallic, material.roughness, &emissiveColor,
             material.emissiveIntensity, material.normalScale, material.occlusionStrength, material.alphaCutoff,
-            textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS, terrain);
+            textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS, terrain, material.specular);
         const auto header = CreateFileHeader(builder, CURRENT_SCHEMA_VERSION, CURRENT_MATERIAL_VERSION, 0);
         FinishMaterialFileBuffer(builder, CreateMaterialFile(builder, header, data));
         return FlatBufferWriter{}.saveAtomic(path,
@@ -153,6 +153,7 @@ namespace Engine::Serialization
             source->emissive_color()->z());
         if (!isFinite(baseColor) || !isFinite(emissiveColor)
             || !std::isfinite(source->metallic()) || !std::isfinite(source->roughness())
+            || !std::isfinite(source->specular())
             || !std::isfinite(source->emissive_intensity()) || !std::isfinite(source->normal_scale())
             || !std::isfinite(source->occlusion_strength()) || !std::isfinite(source->alpha_cutoff()))
         {
@@ -165,6 +166,7 @@ namespace Engine::Serialization
         loaded.baseColor = baseColor;
         loaded.metallic = source->metallic();
         loaded.roughness = source->roughness();
+        loaded.specular = source->specular();
         loaded.emissiveColor = emissiveColor;
         loaded.emissiveIntensity = source->emissive_intensity();
         loaded.normalScale = source->normal_scale();

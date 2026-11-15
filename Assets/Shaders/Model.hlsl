@@ -38,7 +38,8 @@ cbuffer MaterialConstants : register(b2)
     float3 emissiveColor;
     float occlusionStrength;
     float alphaCutoff;
-    float3 materialPadding;
+    float specular;
+    float2 materialPadding;
     float4 terrainOptions;
     TerrainLayerConstants terrainLayers[4];
 };
@@ -53,7 +54,8 @@ cbuffer MaterialProperties : register(b3)
     float3 propertyEmissiveColor;
     float propertyOcclusionStrength;
     float propertyAlphaCutoff;
-    float3 propertyPadding;
+    float propertySpecular;
+    float2 propertyPadding;
     uint propertyOverrideMask;
 };
 
@@ -65,6 +67,7 @@ static const uint PROPERTY_EMISSIVE_INTENSITY = 1u << 4;
 static const uint PROPERTY_NORMAL_SCALE = 1u << 5;
 static const uint PROPERTY_OCCLUSION_STRENGTH = 1u << 6;
 static const uint PROPERTY_ALPHA_CUTOFF = 1u << 7;
+static const uint PROPERTY_SPECULAR = 1u << 8;
 
 Texture2D<float4> baseColorTexture : register(t0);
 Texture2D<float4> normalTexture : register(t1);
@@ -266,6 +269,7 @@ struct SurfaceSample
     float4 albedo;
     float metallic;
     float roughness;
+    float specular;
     float3 tangentNormal;
 };
 
@@ -300,6 +304,7 @@ SurfaceSample sampleSurface(PixelInput input)
         surface.albedo = float4(0, 0, 0, 1);
         surface.metallic = 0;
         surface.roughness = 0;
+        surface.specular = 0.5f;
         surface.tangentNormal = 0;
         accumulateTerrainLayer(0, terrainBase0, terrainNormal0, terrainMr0, input.texCoord, weights.x, surface);
         accumulateTerrainLayer(1, terrainBase1, terrainNormal1, terrainMr1, input.texCoord, weights.y, surface);
@@ -310,11 +315,13 @@ SurfaceSample sampleSurface(PixelInput input)
     }
     const float resolvedMetallic = (propertyOverrideMask & PROPERTY_METALLIC) != 0 ? propertyMetallic : metallic;
     const float resolvedRoughness = (propertyOverrideMask & PROPERTY_ROUGHNESS) != 0 ? propertyRoughness : roughness;
+    const float resolvedSpecular = (propertyOverrideMask & PROPERTY_SPECULAR) != 0 ? propertySpecular : specular;
     const float resolvedNormalScale = (propertyOverrideMask & PROPERTY_NORMAL_SCALE) != 0 ? propertyNormalScale : normalScale;
     surface.albedo = input.color * baseColorTexture.Sample(linearSampler, input.texCoord);
     const float4 mr = metallicRoughnessTexture.Sample(linearSampler, input.texCoord);
     surface.metallic = saturate(resolvedMetallic * mr.b);
     surface.roughness = saturate(resolvedRoughness * mr.g);
+    surface.specular = saturate(resolvedSpecular);
     surface.tangentNormal = normalTexture.Sample(linearSampler, input.texCoord).xyz * 2 - 1;
     surface.tangentNormal.xy *= resolvedNormalScale;
     return surface;
@@ -330,6 +337,7 @@ float4 psMain(PixelInput input) : SV_TARGET
     const float4 albedo = surface.albedo;
     const float metallicValue = surface.metallic;
     const float roughnessValue = surface.roughness;
+    const float specularValue = surface.specular;
     const float3x3 tangentBasis = float3x3(normalize(input.tangent), normalize(input.bitangent), normalize(input.normal));
     const float3 normal = normalize(mul(surface.tangentNormal, tangentBasis));
     const float aoSample = ambientOcclusionTexture.Sample(linearSampler, input.texCoord).r;
@@ -337,7 +345,8 @@ float4 psMain(PixelInput input) : SV_TARGET
     float3 color = albedo.rgb * environment.rgb * occlusion;
     float3 viewDirection = cameraPosition.xyz - input.worldPosition;
     viewDirection /= max(length(viewDirection), 0.0001f);
-    const float3 f0 = lerp(0.04f.xxx, albedo.rgb, metallicValue);
+    const float dielectricF0 = 0.08f * specularValue;
+    const float3 f0 = lerp(dielectricF0.xxx, albedo.rgb, metallicValue);
     const float roughnessSquared = pow(max(roughnessValue, 0.04f), 4);
     for (uint index = 0; index < min((uint)environment.w, 32u); ++index)
     {
@@ -406,6 +415,7 @@ GBufferOutput psGBuffer(PixelInput input)
     const float4 albedo = surface.albedo;
     const float metallicValue = surface.metallic;
     const float roughnessValue = surface.roughness;
+    const float specularValue = surface.specular;
     const float3x3 tangentBasis = float3x3(normalize(input.tangent), normalize(input.bitangent), normalize(input.normal));
     const float3 normal = normalize(mul(surface.tangentNormal, tangentBasis));
     const float aoSample = ambientOcclusionTexture.Sample(linearSampler, input.texCoord).r;
@@ -416,7 +426,7 @@ GBufferOutput psGBuffer(PixelInput input)
     GBufferOutput output;
     output.albedo = albedo;
     output.normal = float4(normal, 1.0f);
-    output.material = float4(metallicValue, roughnessValue, occlusion, 1.0f);
+    output.material = float4(metallicValue, roughnessValue, occlusion, specularValue);
     output.emission = float4(emission, 1.0f);
     output.velocity = float4(
         (input.previousNdc.x - input.currentNdc.x) * 0.5f,

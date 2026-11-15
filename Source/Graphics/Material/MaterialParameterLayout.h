@@ -32,10 +32,12 @@ namespace Engine
         Vector3 emissiveColor = Vector3::Zero; //!< Emissive Color (RGB)
         float occlusionStrength = 1.0f;        //!< Occlusion Strength
         float alphaCutoff = 0.5f;              //!< Alpha Cutoff
-        std::array<float, 3> padding{};        //!< Padding for alignment
+        float specular = 0.5f;                 //!< Dielectric Specular
+        std::array<float, 2> padding{};        //!< Padding for alignment
     };
 
     static_assert(sizeof(MaterialParameterValues) == 64);
+    static_assert(offsetof(MaterialParameterValues, specular) == 52);
 
     /**
      * @brief Shader Parameterの固定Layout要素。
@@ -73,6 +75,7 @@ namespace Engine
         inline constexpr MaterialParameterID NormalScale = makeMaterialParameterID("NormalScale");
         inline constexpr MaterialParameterID OcclusionStrength = makeMaterialParameterID("OcclusionStrength");
         inline constexpr MaterialParameterID AlphaCutoff = makeMaterialParameterID("AlphaCutoff");
+        inline constexpr MaterialParameterID Specular = makeMaterialParameterID("Specular");
     }
 
     /**
@@ -96,6 +99,7 @@ namespace Engine
                 MaterialParameterDescriptor{ MaterialParameters::NormalScale, "Normal Scale", MaterialParameterType::Float, offsetof(MaterialParameterValues, normalScale), sizeof(float), 0.0f, 2.0f },
                 MaterialParameterDescriptor{ MaterialParameters::OcclusionStrength, "Occlusion Strength", MaterialParameterType::Float, offsetof(MaterialParameterValues, occlusionStrength), sizeof(float), 0.0f, 1.0f },
                 MaterialParameterDescriptor{ MaterialParameters::AlphaCutoff, "Alpha Cutoff", MaterialParameterType::Float, offsetof(MaterialParameterValues, alphaCutoff), sizeof(float), 0.0f, 1.0f },
+                MaterialParameterDescriptor{ MaterialParameters::Specular, "Specular", MaterialParameterType::Float, offsetof(MaterialParameterValues, specular), sizeof(float), 0.0f, 1.0f },
             };
             return descriptors;
         }

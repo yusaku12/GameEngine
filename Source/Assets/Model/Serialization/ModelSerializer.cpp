@@ -76,7 +76,8 @@ namespace Engine::Serialization
             return CreateMaterialAssetData(builder, &guid, builder.CreateString(material.name), &shaderGuid,
                 renderState, &baseColor, material.metallic, material.roughness, &emissiveColor,
                 material.emissiveIntensity, material.normalScale, material.occlusionStrength,
-                material.alphaCutoff, textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS, terrain);
+                material.alphaCutoff, textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS, terrain,
+                material.specular);
         }
 
         bool readEmbeddedMaterial(const MaterialAssetData* source, Engine::MaterialAsset& material,
@@ -91,6 +92,7 @@ namespace Engine::Serialization
                 || source->render_state() == nullptr || source->base_color() == nullptr
                 || source->emissive_color() == nullptr || source->textures() == nullptr
                 || !std::isfinite(source->metallic()) || !std::isfinite(source->roughness())
+                || !std::isfinite(source->specular())
                 || !std::isfinite(source->emissive_intensity()) || !std::isfinite(source->normal_scale())
                 || !std::isfinite(source->occlusion_strength()) || !std::isfinite(source->alpha_cutoff()))
                 return false;
@@ -120,6 +122,7 @@ namespace Engine::Serialization
             material.baseColor = baseColor;
             material.metallic = source->metallic();
             material.roughness = source->roughness();
+            material.specular = source->specular();
             material.emissiveColor = emissiveColor;
             material.emissiveIntensity = source->emissive_intensity();
             material.normalScale = source->normal_scale();

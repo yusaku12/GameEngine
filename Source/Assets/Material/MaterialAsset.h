@@ -51,6 +51,7 @@ namespace Engine
         Vector4 baseColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f); //!< 基本色
         float metallic = 0.0f;                               //!< 金属度
         float roughness = 1.0f;                              //!< 粗さ
+        float specular = 0.5f;                               //!< 非金属の鏡面反射強度
         Vector3 emissiveColor = Vector3::Zero;               //!< エミッシブカラー
         float emissiveIntensity = 0.0f;                      //!< エミッシブ強度
         float normalScale = 1.0f;                            //!< 法線マップのスケール

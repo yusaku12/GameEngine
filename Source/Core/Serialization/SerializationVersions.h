@@ -17,7 +17,7 @@ namespace Engine::Serialization
     inline constexpr std::uint32_t CURRENT_STATE_MACHINE_ASSET_VERSION = 1;
     inline constexpr std::uint32_t CURRENT_STATE_MACHINE_COMPONENT_VERSION = 1;
     inline constexpr std::uint32_t CURRENT_FOOT_IK_COMPONENT_VERSION = 1;
-    inline constexpr std::uint32_t CURRENT_MATERIAL_VERSION = 3;                           //!< 現在のMaterialバージョン
+    inline constexpr std::uint32_t CURRENT_MATERIAL_VERSION = 4;                           //!< 現在のMaterialバージョン
     inline constexpr std::uint32_t MINIMUM_SUPPORTED_MATERIAL_VERSION = 1;                 //!< サポートされている最小のMaterialバージョン
     inline constexpr std::uint32_t MINIMUM_SUPPORTED_ANIMATOR_COMPONENT_VERSION = 1;       //!< サポートされている最小のAnimator Component payloadバージョン
     inline constexpr std::uint32_t CURRENT_ANIMATOR_COMPONENT_VERSION = 5;                 //!< 現在のAnimator Component payloadバージョン

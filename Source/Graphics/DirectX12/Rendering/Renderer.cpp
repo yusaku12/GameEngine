@@ -739,7 +739,7 @@ namespace Engine
                     {
                         static constexpr const char* DEFERRED_VIEWS[] = {
                             "Final Lighting", "Albedo", "Normal", "Metallic", "Roughness",
-                            "Material AO", "Emission", "Depth", "Shadow Map"
+                            "Material AO", "Emission", "Depth", "Shadow Map", "Specular"
                         };
                         ImGui::Combo("G-Buffer View", &m_deferredDebugView,
                             DEFERRED_VIEWS, static_cast<int>(std::size(DEFERRED_VIEWS)));
@@ -828,7 +828,7 @@ namespace Engine
             .backgroundColor = Vector4(m_cameraClearColor.x, m_cameraClearColor.y,
                 m_cameraClearColor.z, m_cameraClearColor.w),
             .clipAndDebug = Vector4(m_cameraNearClip, m_cameraFarClip,
-                static_cast<float>(std::clamp(m_deferredDebugView, 0, 8)),
+                static_cast<float>(std::clamp(m_deferredDebugView, 0, 9)),
                 static_cast<float>(std::clamp(m_shadowDebugCascade, 0, static_cast<int>(SHADOW_CASCADE_COUNT) - 1))),
         };
         DX12CommandList& commandList = m_commandLists[frameIndex];
@@ -1586,7 +1586,7 @@ namespace Engine
     bool DX12Renderer::setDeferredDebugView(const DeferredDebugView view)
     {
         const int value = static_cast<int>(view);
-        if (value < 0 || value > static_cast<int>(DeferredDebugView::ShadowMap))
+        if (value < 0 || value > static_cast<int>(DeferredDebugView::Specular))
         {
             LOG_ERROR("[Renderer] Invalid Deferred debug view {}.", value);
             return false;

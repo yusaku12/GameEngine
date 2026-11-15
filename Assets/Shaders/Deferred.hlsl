@@ -454,15 +454,17 @@ float3 applyVolumetricFog(float3 background, float3 viewDirection, float maximum
     return min(max(background * (1.0f - opacity) + inScattering * radianceScale, 0.0f), 65504.0f);
 }
 
-float3 evaluateLighting(float3 position, float3 albedo, float3 normal, float3 material,
+float3 evaluateLighting(float3 position, float3 albedo, float3 normal, float4 material,
     float3 emission, uint lightMask)
 {
     const float metallic = saturate(material.x);
     const float roughness = saturate(material.y);
     const float occlusion = saturate(material.z);
+    const float specularValue = saturate(material.w);
     const float3 viewOffset = cameraPosition.xyz - position;
     const float3 viewDirection = viewOffset / max(length(viewOffset), 0.0001f);
-    const float3 f0 = lerp(0.04f.xxx, albedo, metallic);
+    const float dielectricF0 = 0.08f * specularValue;
+    const float3 f0 = lerp(dielectricF0.xxx, albedo, metallic);
     const float roughnessSquared = pow(max(roughness, 0.04f), 4.0f);
     float3 color = albedo * environment.rgb * occlusion;
 
@@ -547,7 +549,7 @@ float4 evaluateDeferredLighting(float2 pixelPosition, uint lightMask)
     const float4 albedo = albedoTexture.Load(int3(pixel, 0));
     const float4 material = materialTexture.Load(int3(pixel, 0));
     const float3 emission = emissionTexture.Load(int3(pixel, 0)).rgb;
-    float3 result = evaluateLighting(position, albedo.rgb, normal, material.rgb, emission, lightMask);
+    float3 result = evaluateLighting(position, albedo.rgb, normal, material, emission, lightMask);
     if (atmosphereOptions.x > 0.0f)
     {
         const float3 worldOffset = position - cameraPosition.xyz;
@@ -677,6 +679,11 @@ float4 psDebug(VertexOutput input) : SV_Target0
         const float linearDepth = nearClip * farClip / max(farClip - depth * (farClip - nearClip), 0.0001f);
         const float visibleDepth = saturate(linearDepth / farClip);
         return float4(encodeSrgb(visibleDepth.xxx), 1.0f);
+    }
+    if (debugView == 9u)
+    {
+        const float specular = materialTexture.Load(int3(pixel, 0)).w;
+        return float4(encodeSrgb(specular.xxx), 1.0f);
     }
     if (debugView == 8u)
     {

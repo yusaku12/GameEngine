@@ -70,6 +70,7 @@ table MaterialAssetData {
     shader_keywords:[string];
     keyword_mask:uint;
     terrain:TerrainMaterialData;
+    specular:float = 0.5;
 }
 
 table MaterialFile {

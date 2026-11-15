@@ -31,6 +31,7 @@ namespace Engine
         else if (id == MaterialParameters::NormalScale) { m_values.normalScale = value; m_overrideMask |= bit(5); }
         else if (id == MaterialParameters::OcclusionStrength) { m_values.occlusionStrength = value; m_overrideMask |= bit(6); }
         else if (id == MaterialParameters::AlphaCutoff) { m_values.alphaCutoff = value; m_overrideMask |= bit(7); }
+        else if (id == MaterialParameters::Specular) { m_values.specular = value; m_overrideMask |= bit(8); }
         else return false;
         return true;
     }
@@ -78,5 +79,6 @@ namespace Engine
         if (m_overrideMask & bit(5)) material.normalScale = m_values.normalScale;
         if (m_overrideMask & bit(6)) material.occlusionStrength = m_values.occlusionStrength;
         if (m_overrideMask & bit(7)) material.alphaCutoff = m_values.alphaCutoff;
+        if (m_overrideMask & bit(8)) material.specular = m_values.specular;
     }
 } // namespace Engine

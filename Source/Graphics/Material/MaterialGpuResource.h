@@ -15,7 +15,7 @@ namespace Engine
         Vector4 parameters = Vector4(0, 1, 1, 1);
     };
 
-    /** @brief Standard property layout remains an unchanged 64-byte prefix. */
+    /** @brief Standard property layout remains 64 bytes for the HLSL constant-buffer layout. */
     struct MaterialConstantData
     {
         MaterialParameterValues standard;

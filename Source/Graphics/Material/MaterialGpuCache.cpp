@@ -283,6 +283,7 @@ namespace Engine
             .emissiveColor = resource->source->emissiveColor,
             .occlusionStrength = resource->source->occlusionStrength,
             .alphaCutoff = resource->source->alphaCutoff,
+            .specular = resource->source->specular,
         };
         if (resource->source->terrain && resource->source->terrain->enabled)
         {

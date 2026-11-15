@@ -1458,12 +1458,17 @@ Scene/Prefab/Play の複製は独立した handle を持ちますが、テクス
 キュー済みの不変なジオメトリ／マテリアル snapshot と GPU fence は、再生成や component 破棄後も、
 最初の GPU upload 前を含めて有効です。Forward と Deferred は同じサーフェスサンプリング処理を使います。
 
+標準 Material は **Base Color**、**Metallic**、**Roughness**、**Specular** を持ち、いずれも
+`[0,1]` の値です。Specular の既定値 `0.5` は非金属の F0 `0.04` に対応し、
+Metallic が1の場合は Base Color が F0 になります。既存 Material の Specular は読み込み時に
+`0.5` として扱われ、Terrain レイヤーの PBR 設定は従来どおり Metallic／Roughness を使います。
+
 Terrain payload version 3 で全レイヤー設定を追加しました。レイヤーデータのない version 1 と2は、
 従来の見た目を維持するためレイヤー無効で読み込みます。Version 3 のマテリアルデータが無効な場合、
-失敗時に既存 Terrain を保持します。Material/model asset version 3 も任意の Terrain 拡張に対応し、
-version 1 と2も引き続き読み込めます。Terrain component の保存 version は後述の version 4 に
-更新されますが、material/model asset version は変更されません。標準マテリアルの property layout と
-override block も変更されません。
+失敗時に既存 Terrain を保持します。Material asset version 4 は Specular を追加し、version 1～3 では既定値 `0.5` を使います。
+Model asset version 3 は任意の Terrain 拡張に対応し、version 1 と2も引き続き読み込めます。
+Terrain component の保存 version は後述の version 4 に更新されます。標準マテリアルの
+property layout は64 bytesを維持し、Specular の override を追加します。
 
 ## サーフェスクエリと PhysX 衝突判定 (Phase 4)
 
