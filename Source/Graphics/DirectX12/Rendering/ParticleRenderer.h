@@ -70,15 +70,19 @@ namespace Engine
         bool markSubmitted(std::uint32_t frameIndex, std::uint64_t fenceValue);
 
     private:
-        struct Vertex
+        struct QuadInstance
         {
-            Vector3 position;
-            Vector4 color;
-            Vector2 uv;
-            Vector4 uvBounds;
-            Vector2 uvOffset;
-            Vector4 nextUvBounds;
+            Vector3 origin;
+            std::uint32_t isBand = 0;
+            Vector3 rightOrEnd;
             float frameBlend = 0.0f;
+            Vector3 upOrStartSide;
+            Vector3 endSide = Vector3::Zero;
+            Vector2 uvOffset = Vector2::Zero;
+            Vector4 color;
+            Vector4 endColor = Vector4::Zero;
+            Vector4 uvBounds = Vector4(0, 0, 1, 1);
+            Vector4 nextUvBounds = Vector4(0, 0, 1, 1);
         };
         struct MeshData;
         struct RetiredGpuBuffer
@@ -98,7 +102,6 @@ namespace Engine
         };
         struct DrawBatch
         {
-            std::uint32_t firstVertex = 0;
             std::uint32_t vertexCount = 0;
             D3D12_GPU_DESCRIPTOR_HANDLE texture{};
             ParticleBlendMode blendMode = ParticleBlendMode::Alpha;
@@ -157,10 +160,11 @@ namespace Engine
             const MeshData* mesh = nullptr;
         };
         static constexpr std::uint32_t FRAME_COUNT = 2;
-        static constexpr std::size_t INITIAL_VERTEX_CAPACITY = 4096;
         static constexpr std::size_t MAX_RENDER_VERTICES = 1048576;
+        static constexpr std::uint32_t QUAD_VERTEX_COUNT = 6;
+        static constexpr std::size_t MAX_QUAD_INSTANCES = MAX_RENDER_VERTICES / QUAD_VERTEX_COUNT;
 
-        bool ensureVertexCapacity(std::uint32_t frameIndex, std::size_t vertexCount);
+        bool ensureQuadInstanceCapacity(std::uint32_t frameIndex, std::size_t instanceCount);
         bool ensureMeshInstanceCapacity(std::uint32_t frameIndex, std::size_t instanceCount);
         bool ensureSceneCopy(std::uint32_t frameIndex, const DX12Resource& source);
         bool ensureGpuEmitterBuffer(GpuEmitterState& state, std::uint32_t capacity);
@@ -178,15 +182,15 @@ namespace Engine
         std::array<DX12GraphicsPipeline, BLEND_MODE_COUNT> m_deferredGpuPipelines;
         DX12ComputePipeline m_gpuSimulationPipeline;
         std::array<DX12CommandList, FRAME_COUNT> m_commandLists;
-        std::array<DX12UploadBuffer, FRAME_COUNT> m_vertexBuffers;
+        std::array<DX12UploadBuffer, FRAME_COUNT> m_quadInstanceBuffers;
         std::array<DX12UploadBuffer, FRAME_COUNT> m_meshInstanceBuffers;
         std::array<DX12Resource, FRAME_COUNT> m_sceneCopies;
         std::array<std::optional<DX12DescriptorAllocation>, FRAME_COUNT> m_sceneCopyViews;
-        std::array<std::size_t, FRAME_COUNT> m_vertexCapacities{};
+        std::array<std::size_t, FRAME_COUNT> m_quadInstanceCapacities{};
         std::array<std::size_t, FRAME_COUNT> m_meshInstanceCapacities{};
         std::array<std::vector<const MeshData*>, FRAME_COUNT> m_usedMeshes;
         std::array<bool, FRAME_COUNT> m_frameRecorded{};
-        std::array<bool, FRAME_COUNT> m_frameUsesVertexBuffer{};
+        std::array<bool, FRAME_COUNT> m_frameUsesQuadInstanceBuffer{};
         std::array<bool, FRAME_COUNT> m_frameUsesMeshInstanceBuffer{};
         std::array<std::vector<std::uint64_t>, FRAME_COUNT> m_frameGpuEmitterIds;
         std::vector<ParticleRenderParticle> m_particles;
@@ -195,7 +199,7 @@ namespace Engine
         std::vector<ParticleGpuEmitterSubmission> m_gpuEmitterSubmissions;
         std::vector<std::uint64_t> m_removedGpuEmitters;
         std::vector<DrawItem> m_drawItems;
-        std::vector<Vertex> m_vertices;
+        std::vector<QuadInstance> m_quadInstances;
         std::vector<MeshInstance> m_meshInstances;
         std::vector<DrawBatch> m_batches;
         std::vector<ResolvedVisual> m_resolvedVisuals;

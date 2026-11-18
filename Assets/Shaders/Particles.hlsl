@@ -190,16 +190,22 @@ cbuffer GpuParticleDraw : register(b7)
 
 StructuredBuffer<GpuParticleState> gpuParticles : register(t6);
 
-struct VertexInput
+struct QuadInstance
 {
-    float3 position : POSITION;
-    float4 color : COLOR;
-    float2 uv : TEXCOORD;
-    float4 uvBounds : TEXCOORD1;
-    float2 uvOffset : TEXCOORD2;
-    float4 nextUvBounds : TEXCOORD3;
-    float frameBlend : TEXCOORD4;
+    float3 origin;
+    uint isBand;
+    float3 rightOrEnd;
+    float frameBlend;
+    float3 upOrStartSide;
+    float3 endSide;
+    float2 uvOffset;
+    float4 color;
+    float4 endColor;
+    float4 uvBounds;
+    float4 nextUvBounds;
 };
+
+StructuredBuffer<QuadInstance> quadInstances : register(t7);
 
 struct PixelInput
 {
@@ -292,16 +298,38 @@ float4 psGpu(PixelInput input) : SV_TARGET
     return color;
 }
 
-PixelInput vsMain(VertexInput input)
+PixelInput vsMain(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
 {
+    static const uint cornerIndices[6] = { 0, 1, 2, 2, 1, 3 };
+    const uint corner = cornerIndices[vertexId];
+    const bool positiveSide = (corner & 1u) != 0;
+    const bool upperOrEnd = corner >= 2u;
+    const float sideSign = positiveSide ? 1.0f : -1.0f;
+    const QuadInstance instance = quadInstances[instanceId];
     PixelInput output;
-    output.position = mul(float4(input.position, 1.0f), viewProjection);
-    output.color = input.color;
-    output.uv = input.uv;
-    output.uvBounds = input.uvBounds;
-    output.uvOffset = input.uvOffset;
-    output.nextUvBounds = input.nextUvBounds;
-    output.frameBlend = input.frameBlend;
+    float3 position;
+    if (instance.isBand != 0)
+    {
+        const float3 center = upperOrEnd ? instance.rightOrEnd : instance.origin;
+        const float3 side = upperOrEnd ? instance.endSide : instance.upOrStartSide;
+        position = center + side * sideSign;
+        output.color = upperOrEnd ? instance.endColor : instance.color;
+        output.uv = float2(positiveSide ? 1.0f : 0.0f, upperOrEnd ? 1.0f : 0.0f);
+    }
+    else
+    {
+        position = instance.origin + instance.rightOrEnd * sideSign
+            + instance.upOrStartSide * (upperOrEnd ? 1.0f : -1.0f);
+        output.color = instance.color;
+        output.uv = float2(positiveSide ? instance.uvBounds.z : instance.uvBounds.x,
+            upperOrEnd ? instance.uvBounds.y : instance.uvBounds.w);
+    }
+    output.position = all(isfinite(position))
+        ? mul(float4(position, 1.0f), viewProjection) : float4(2.0f, 2.0f, 2.0f, 1.0f);
+    output.uvBounds = instance.uvBounds;
+    output.uvOffset = instance.uvOffset;
+    output.nextUvBounds = instance.nextUvBounds;
+    output.frameBlend = instance.frameBlend;
     return output;
 }
 

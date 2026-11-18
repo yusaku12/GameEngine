@@ -113,10 +113,10 @@ namespace Engine
 
         m_device = &device;
         m_fence = &fence;
-        m_vertexCapacities.fill(0);
+        m_quadInstanceCapacities.fill(0);
         m_meshInstanceCapacities.fill(0);
         m_frameRecorded.fill(false);
-        m_frameUsesVertexBuffer.fill(false);
+        m_frameUsesQuadInstanceBuffer.fill(false);
         m_frameUsesMeshInstanceBuffer.fill(false);
         for (DX12CommandList& commandList : m_commandLists)
         {
@@ -132,7 +132,7 @@ namespace Engine
     bool ParticleRenderer::finalize()
     {
         bool succeeded = true;
-        for (DX12UploadBuffer& buffer : m_vertexBuffers)
+        for (DX12UploadBuffer& buffer : m_quadInstanceBuffers)
             succeeded = buffer.finalize() && succeeded;
         for (DX12UploadBuffer& buffer : m_meshInstanceBuffers)
             succeeded = buffer.finalize() && succeeded;
@@ -197,12 +197,12 @@ namespace Engine
                     retired.resource->finalize();
         }
         m_gpuEmitterStates.clear();
-        m_vertexCapacities.fill(0);
+        m_quadInstanceCapacities.fill(0);
         m_meshInstanceCapacities.fill(0);
         for (auto& usedMeshes : m_usedMeshes)
             usedMeshes.clear();
         m_frameRecorded.fill(false);
-        m_frameUsesVertexBuffer.fill(false);
+        m_frameUsesQuadInstanceBuffer.fill(false);
         m_frameUsesMeshInstanceBuffer.fill(false);
         m_particles.clear();
         m_trails.clear();
@@ -210,7 +210,7 @@ namespace Engine
         m_gpuEmitterSubmissions.clear();
         m_removedGpuEmitters.clear();
         m_drawItems.clear();
-        m_vertices.clear();
+        m_quadInstances.clear();
         m_meshInstances.clear();
         m_batches.clear();
         m_resolvedVisuals.clear();
@@ -242,22 +242,12 @@ namespace Engine
             return false;
         }
 
-        constexpr std::array inputLayout{
-            D3D12_INPUT_ELEMENT_DESC{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,
-                0, static_cast<UINT>(offsetof(Vertex, position)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            D3D12_INPUT_ELEMENT_DESC{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT,
-                0, static_cast<UINT>(offsetof(Vertex, color)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            D3D12_INPUT_ELEMENT_DESC{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,
-                0, static_cast<UINT>(offsetof(Vertex, uv)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            D3D12_INPUT_ELEMENT_DESC{ "TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT,
-                0, static_cast<UINT>(offsetof(Vertex, uvBounds)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            D3D12_INPUT_ELEMENT_DESC{ "TEXCOORD", 2, DXGI_FORMAT_R32G32_FLOAT,
-                0, static_cast<UINT>(offsetof(Vertex, uvOffset)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            D3D12_INPUT_ELEMENT_DESC{ "TEXCOORD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT,
-                0, static_cast<UINT>(offsetof(Vertex, nextUvBounds)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            D3D12_INPUT_ELEMENT_DESC{ "TEXCOORD", 4, DXGI_FORMAT_R32_FLOAT,
-                0, static_cast<UINT>(offsetof(Vertex, frameBlend)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        };
+        static_assert(sizeof(QuadInstance) == 128 && offsetof(QuadInstance, isBand) == 12
+            && offsetof(QuadInstance, rightOrEnd) == 16 && offsetof(QuadInstance, frameBlend) == 28
+            && offsetof(QuadInstance, upOrStartSide) == 32 && offsetof(QuadInstance, endSide) == 44
+            && offsetof(QuadInstance, uvOffset) == 56 && offsetof(QuadInstance, color) == 64
+            && offsetof(QuadInstance, endColor) == 80 && offsetof(QuadInstance, uvBounds) == 96
+            && offsetof(QuadInstance, nextUvBounds) == 112);
         constexpr std::array meshInputLayout{
             D3D12_INPUT_ELEMENT_DESC{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,
                 0, static_cast<UINT>(offsetof(MeshVertex, position)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -350,9 +340,13 @@ namespace Engine
         refractionConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         refractionConstants.Constants = { 5, 0, 1 };
         refractionConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        D3D12_ROOT_PARAMETER quadInstanceBuffer{};
+        quadInstanceBuffer.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+        quadInstanceBuffer.Descriptor.ShaderRegister = 7;
+        quadInstanceBuffer.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
         const std::array rootParameters{ viewProjectionConstants, textureTable, appearanceConstants,
             depthTable, depthConstants, softConstants, auxiliaryTables[0], auxiliaryTables[1],
-            auxiliaryTables[2], distortionConstants, sceneTable, refractionConstants };
+            auxiliaryTables[2], distortionConstants, sceneTable, refractionConstants, quadInstanceBuffer };
         D3D12_STATIC_SAMPLER_DESC sampler{};
         sampler.Filter = D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT;
         sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -366,7 +360,7 @@ namespace Engine
         const DX12GraphicsPipelineConfig config{
             .vertexShader = &vertexShader,
             .pixelShader = &pixelShader,
-            .inputLayout = inputLayout,
+            .inputLayout = {},
             .rootParameters = rootParameters,
             .staticSamplers = samplers,
             .depthStencilFormat = DXGI_FORMAT_D32_FLOAT,
@@ -377,6 +371,7 @@ namespace Engine
         DX12GraphicsPipelineConfig meshConfig = config;
         meshConfig.vertexShader = &meshVertexShader;
         meshConfig.inputLayout = meshInputLayout;
+        meshConfig.rootParameters = std::span(rootParameters).first(rootParameters.size() - 1);
 
         D3D12_ROOT_PARAMETER gpuTextureTable = textureTable;
         D3D12_ROOT_PARAMETER gpuParticleBuffer{};
@@ -507,7 +502,7 @@ namespace Engine
         }
 
         m_frameRecorded[frameIndex] = false;
-        m_frameUsesVertexBuffer[frameIndex] = false;
+        m_frameUsesQuadInstanceBuffer[frameIndex] = false;
         m_frameUsesMeshInstanceBuffer[frameIndex] = false;
         m_usedMeshes[frameIndex].clear();
         m_frameGpuEmitterIds[frameIndex].clear();
@@ -704,17 +699,17 @@ namespace Engine
             }
             std::sort(m_drawItems.begin(), m_drawItems.end(),
                 [](const DrawItem& left, const DrawItem& rightItem) { return left.depth > rightItem.depth; });
-            m_vertices.clear();
-            m_vertices.reserve(totalPrimitives * 6);
+            m_quadInstances.clear();
+            m_quadInstances.reserve(std::min(totalPrimitives, MAX_QUAD_INSTANCES));
         }
         catch (const std::bad_alloc&)
         {
-            LOG_ERROR("[ParticleEffect] Failed to allocate billboard vertices.");
+            LOG_ERROR("[ParticleEffect] Failed to allocate draw items or quad instances.");
             return false;
         }
         catch (const std::length_error&)
         {
-            LOG_ERROR("[ParticleEffect] Billboard vertex count exceeds the maximum capacity.");
+            LOG_ERROR("[ParticleEffect] Draw item or quad instance count exceeds the maximum capacity.");
             return false;
         }
 
@@ -729,7 +724,22 @@ namespace Engine
         m_batches.clear();
         m_resolvedVisuals.clear();
         m_meshInstances.clear();
-        std::size_t vertexIndex = 0;
+        const auto appendBand = [this, texture = whiteInfo->srv](const ParticleBlendMode blendMode,
+            const Vector3& start, const Vector3& end, const Vector3& startSide, const Vector3& endSide,
+            const Vector4& startColor, const Vector4& endColor)
+        {
+            constexpr std::uint32_t bandAppearance = 2;
+            if (m_batches.empty() || m_batches.back().mesh != nullptr
+                || m_batches.back().appearance != bandAppearance
+                || m_batches.back().blendMode != blendMode)
+            {
+                m_batches.push_back({ .texture = texture, .blendMode = blendMode,
+                    .appearance = bandAppearance, .firstInstance = static_cast<std::uint32_t>(m_quadInstances.size()) });
+            }
+            m_quadInstances.push_back({ .origin = start, .isBand = 1, .rightOrEnd = end,
+                .upOrStartSide = startSide, .endSide = endSide, .color = startColor, .endColor = endColor });
+            ++m_batches.back().instanceCount;
+        };
         m_renderedParticles = 0;
         m_renderedTrails = 0;
         m_renderedRibbons = 0;
@@ -739,7 +749,7 @@ namespace Engine
             {
                 if (draw.kind == DrawItem::Kind::Trail)
                 {
-                    if (vertexIndex > MAX_RENDER_VERTICES - 6)
+                    if (m_quadInstances.size() >= MAX_QUAD_INSTANCES)
                     {
                         LOG_ERROR("[ParticleEffect] Particle vertex budget of {} was exceeded.", MAX_RENDER_VERTICES);
                         return false;
@@ -765,32 +775,13 @@ namespace Engine
                     };
                     const Vector3 startSide = sideFor(startTangent) * (trail.startWidth * 0.5f);
                     const Vector3 endSide = sideFor(endTangent) * (trail.endWidth * 0.5f);
-                    const Vector3 corners[] = {
-                        trail.start - startSide, trail.start + startSide,
-                        trail.end - endSide, trail.end + endSide,
-                    };
-                    if (!std::all_of(std::begin(corners), std::end(corners),
-                        [](const Vector3& corner) { return isFinite(corner); }))
+                    if (!isFinite(startSide) || !isFinite(endSide))
                     {
-                        LOG_ERROR("[ParticleEffect] Trail vertex position is invalid.");
+                        LOG_ERROR("[ParticleEffect] Trail side vector is invalid.");
                         return false;
                     }
-                    constexpr std::uint32_t appearance = 2;
-                    if (m_batches.empty() || m_batches.back().texture.ptr != whiteInfo->srv.ptr
-                        || m_batches.back().blendMode != trail.blendMode || m_batches.back().appearance != appearance
-                        || m_batches.back().softDistance != 0.0f || m_batches.back().textureFlags != 0
-                        || m_batches.back().uvDistortion != 0.0f || m_batches.back().refractionPixels != 0.0f)
-                        m_batches.push_back({ static_cast<std::uint32_t>(vertexIndex), 0,
-                            whiteInfo->srv, trail.blendMode, appearance });
-                    constexpr std::array<std::size_t, 6> cornerIndices{ 0, 1, 2, 2, 1, 3 };
-                    constexpr Vector2 uv[] = { Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1) };
-                    for (const std::size_t cornerIndex : cornerIndices)
-                    {
-                        m_vertices.push_back({ corners[cornerIndex],
-                            cornerIndex < 2 ? trail.startColor : trail.endColor, uv[cornerIndex] });
-                        ++vertexIndex;
-                    }
-                    m_batches.back().vertexCount += 6;
+                    appendBand(trail.blendMode, trail.start, trail.end, startSide, endSide,
+                        trail.startColor, trail.endColor);
                     ++m_renderedTrails;
                     continue;
                 }
@@ -798,7 +789,7 @@ namespace Engine
                 {
                     const ParticleRenderRibbon& ribbon = m_ribbons[draw.index];
                     const std::size_t segmentCount = ribbon.points.size() - 1;
-                    if (segmentCount > (MAX_RENDER_VERTICES - std::min(vertexIndex, MAX_RENDER_VERTICES)) / 6)
+                    if (segmentCount > MAX_QUAD_INSTANCES - m_quadInstances.size())
                     {
                         LOG_ERROR("[ParticleEffect] Ribbon vertex budget of {} was exceeded.", MAX_RENDER_VERTICES);
                         return false;
@@ -827,42 +818,13 @@ namespace Engine
                             side /= std::sqrt(sideLengthSquared);
                         sides[index] = side * (ribbon.points[index].width * 0.5f);
                     }
-                    constexpr std::uint32_t appearance = 2;
-                    if (m_batches.empty() || m_batches.back().texture.ptr != whiteInfo->srv.ptr
-                        || m_batches.back().blendMode != ribbon.blendMode
-                        || m_batches.back().appearance != appearance
-                        || m_batches.back().softDistance != 0.0f || m_batches.back().textureFlags != 0
-                        || m_batches.back().uvDistortion != 0.0f || m_batches.back().refractionPixels != 0.0f)
-                        m_batches.push_back({ static_cast<std::uint32_t>(vertexIndex), 0,
-                            whiteInfo->srv, ribbon.blendMode, appearance });
-                    constexpr std::array<std::size_t, 6> cornerIndices{ 0, 1, 2, 2, 1, 3 };
-                    constexpr Vector2 uv[] = {
-                        Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)
-                    };
                     for (std::size_t segment = 0; segment < segmentCount; ++segment)
                     {
                         const auto& start = ribbon.points[segment];
                         const auto& end = ribbon.points[segment + 1];
-                        const Vector3 corners[] = {
-                            start.position - sides[segment], start.position + sides[segment],
-                            end.position - sides[segment + 1], end.position + sides[segment + 1]
-                        };
-                        if (!std::all_of(std::begin(corners), std::end(corners),
-                            [](const Vector3& corner) { return isFinite(corner); }))
-                        {
-                            LOG_ERROR("[ParticleEffect] Ribbon vertex position is invalid.");
-                            return false;
-                        }
-                        for (const std::size_t cornerIndex : cornerIndices)
-                        {
-                            const bool isStart = cornerIndex < 2;
-                            m_vertices.push_back({ corners[cornerIndex],
-                                isStart ? start.color : end.color, uv[cornerIndex],
-                                Vector4(0, 0, 1, 1), Vector2::Zero, Vector4(0, 0, 1, 1), 0.0f });
-                        }
+                        appendBand(ribbon.blendMode, start.position, end.position,
+                            sides[segment], sides[segment + 1], start.color, end.color);
                     }
-                    vertexIndex += segmentCount * 6;
-                    m_batches.back().vertexCount += static_cast<std::uint32_t>(segmentCount * 6);
                     ++m_renderedRibbons;
                     continue;
                 }
@@ -959,8 +921,9 @@ namespace Engine
                         m_batches.back().auxiliaryTextures.end(), resolved->auxiliaryTextures.begin(),
                         [](auto a, auto b) { return a.ptr == b.ptr; }))
                 {
-                    DrawBatch batch{ static_cast<std::uint32_t>(vertexIndex), 0,
-                        resolved->texture, blendMode, appearance, softDistance };
+                    DrawBatch batch{ .texture = resolved->texture, .blendMode = blendMode,
+                        .appearance = appearance, .softDistance = softDistance,
+                        .firstInstance = static_cast<std::uint32_t>(m_quadInstances.size()) };
                     batch.auxiliaryTextures = resolved->auxiliaryTextures;
                     batch.textureFlags = resolved->textureFlags;
                     batch.uvDistortion = uvDistortion;
@@ -973,7 +936,6 @@ namespace Engine
                             LOG_ERROR("[ParticleEffect] Mesh vertex count exceeds DirectX 12 draw limits.");
                             return false;
                         }
-                        batch.firstVertex = 0;
                         batch.vertexCount = static_cast<std::uint32_t>(batch.mesh->vertices.size());
                         batch.firstInstance = static_cast<std::uint32_t>(m_meshInstances.size());
                     }
@@ -1035,16 +997,9 @@ namespace Engine
                     * (particle.size * particle.sizeScale.x * 0.5f);
                 const Vector3 rotatedUp = (particleUp * cosine - particleRight * sine)
                     * (particle.size * particle.sizeScale.y * heightScale * 0.5f);
-                const Vector3 corners[] = {
-                    particle.position - rotatedRight - rotatedUp,
-                    particle.position + rotatedRight - rotatedUp,
-                    particle.position - rotatedRight + rotatedUp,
-                    particle.position + rotatedRight + rotatedUp,
-                };
-                if (!std::all_of(std::begin(corners), std::end(corners),
-                    [](const Vector3& corner) { return isFinite(corner); }))
+                if (!isFinite(rotatedRight) || !isFinite(rotatedUp))
                 {
-                    LOG_ERROR("[ParticleEffect] Billboard vertex position is invalid.");
+                    LOG_ERROR("[ParticleEffect] Particle quad basis is invalid.");
                     return false;
                 }
                 Vector2 uvMin = resolved->textured ? particle.uvMin : Vector2::Zero;
@@ -1058,10 +1013,9 @@ namespace Engine
                     uvMin += inset;
                     uvMax -= inset;
                 }
-                const Vector2 uv[] = {
-                    Vector2(uvMin.x, uvMax.y), Vector2(uvMax.x, uvMax.y),
-                    Vector2(uvMin.x, uvMin.y), Vector2(uvMax.x, uvMin.y),
-                };
+                const Vector4 bounds(uvMin.x, uvMin.y, uvMax.x, uvMax.y);
+                const Vector4 nextBounds(particle.nextUvMin.x, particle.nextUvMin.y,
+                    particle.nextUvMax.x, particle.nextUvMax.y);
                 if (resolved->mesh)
                 {
                     if (resolved->mesh->vertexBuffer == nullptr
@@ -1073,9 +1027,6 @@ namespace Engine
                     }
                     Vector3 normal = particleRight.Cross(particleUp);
                     normal.Normalize();
-                    const Vector4 bounds(uvMin.x, uvMin.y, uvMax.x, uvMax.y);
-                    const Vector4 nextBounds(particle.nextUvMin.x, particle.nextUvMin.y,
-                        particle.nextUvMax.x, particle.nextUvMax.y);
                     MeshInstance instance{ particle.position, rotatedRight * 2.0f, rotatedUp * 2.0f,
                         normal * particle.size, particle.color, bounds, particle.uvOffset, nextBounds,
                         particle.frameBlend, 0.0f };
@@ -1094,21 +1045,16 @@ namespace Engine
                     ++m_renderedParticles;
                     continue;
                 }
-                if (vertexIndex > MAX_RENDER_VERTICES - 6)
+                if (m_quadInstances.size() >= MAX_QUAD_INSTANCES)
                 {
                     LOG_ERROR("[ParticleEffect] Particle vertex budget of {} was exceeded.", MAX_RENDER_VERTICES);
                     return false;
                 }
-                constexpr std::array<std::size_t, 6> cornerIndices{ 0, 1, 2, 2, 1, 3 };
-                for (const std::size_t cornerIndex : cornerIndices)
-                {
-                    m_vertices.push_back({ corners[cornerIndex], particle.color, uv[cornerIndex],
-                        Vector4(uvMin.x, uvMin.y, uvMax.x, uvMax.y), particle.uvOffset,
-                        Vector4(particle.nextUvMin.x, particle.nextUvMin.y,
-                            particle.nextUvMax.x, particle.nextUvMax.y), particle.frameBlend });
-                    ++vertexIndex;
-                }
-                m_batches.back().vertexCount += 6;
+                m_quadInstances.push_back({ .origin = particle.position, .rightOrEnd = rotatedRight,
+                    .frameBlend = particle.frameBlend, .upOrStartSide = rotatedUp,
+                    .uvOffset = particle.uvOffset, .color = particle.color,
+                    .uvBounds = bounds, .nextUvBounds = nextBounds });
+                ++m_batches.back().instanceCount;
                 ++m_renderedParticles;
             }
         }
@@ -1122,8 +1068,7 @@ namespace Engine
             LOG_ERROR("[ParticleEffect] Particle draw batches exceed the maximum capacity.");
             return false;
         }
-        m_vertices.resize(vertexIndex);
-        if (m_vertices.empty() && m_meshInstances.empty() && m_gpuEmitterSubmissions.empty())
+        if (m_quadInstances.empty() && m_meshInstances.empty() && m_gpuEmitterSubmissions.empty())
             return true;
 
         const bool usesSoftParticles = std::any_of(m_batches.begin(), m_batches.end(),
@@ -1153,7 +1098,7 @@ namespace Engine
             LOG_ERROR("[ParticleEffect] Refraction requires a valid scene color target.");
             return false;
         }
-        if ((!m_vertices.empty() && !ensureVertexCapacity(frameIndex, m_vertices.size()))
+        if ((!m_quadInstances.empty() && !ensureQuadInstanceCapacity(frameIndex, m_quadInstances.size()))
             || (!m_meshInstances.empty() && !ensureMeshInstanceCapacity(frameIndex, m_meshInstances.size())))
             return false;
         try
@@ -1171,17 +1116,17 @@ namespace Engine
             return false;
         }
         DX12CommandList& commandList = m_commandLists[frameIndex];
-        DX12UploadBuffer& vertexBuffer = m_vertexBuffers[frameIndex];
-        const auto vertexBytes = std::as_bytes(std::span<const Vertex>(m_vertices));
+        DX12UploadBuffer& quadInstanceBuffer = m_quadInstanceBuffers[frameIndex];
+        const auto quadInstanceBytes = std::as_bytes(std::span<const QuadInstance>(m_quadInstances));
         const auto meshInstanceBytes = std::as_bytes(std::span<const MeshInstance>(m_meshInstances));
         if (!commandList.begin(*m_fence)
-            || (!vertexBytes.empty() && !vertexBuffer.write(vertexBytes))
+            || (!quadInstanceBytes.empty() && !quadInstanceBuffer.write(quadInstanceBytes))
             || (!meshInstanceBytes.empty() && !m_meshInstanceBuffers[frameIndex].write(meshInstanceBytes)))
         {
             LOG_ERROR("[ParticleEffect] Failed to prepare particle draw resources.");
             return false;
         }
-        m_frameUsesVertexBuffer[frameIndex] = !vertexBytes.empty();
+        m_frameUsesQuadInstanceBuffer[frameIndex] = !quadInstanceBytes.empty();
         m_frameUsesMeshInstanceBuffer[frameIndex] = !meshInstanceBytes.empty();
         if (usesRefraction && !ensureSceneCopy(frameIndex, *sceneColor))
             return false;
@@ -1231,11 +1176,6 @@ namespace Engine
         native->RSSetViewports(1, &viewport);
         native->RSSetScissorRects(1, &scissor);
         native->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        const D3D12_VERTEX_BUFFER_VIEW vertexView{
-            .BufferLocation = vertexBuffer.getGpuVirtualAddress(),
-            .SizeInBytes = static_cast<UINT>(vertexBytes.size()),
-            .StrideInBytes = sizeof(Vertex),
-        };
         native->SetDescriptorHeaps(1, &heap);
         if (!m_gpuEmitterSubmissions.empty())
         {
@@ -1344,8 +1284,10 @@ namespace Engine
             }
             else
             {
-                native->IASetVertexBuffers(0, 1, &vertexView);
-                native->DrawInstanced(batch.vertexCount, 1, batch.firstVertex, 0);
+                const auto instanceAddress = quadInstanceBuffer.getGpuVirtualAddress()
+                    + static_cast<std::uint64_t>(batch.firstInstance) * sizeof(QuadInstance);
+                native->SetGraphicsRootShaderResourceView(12, instanceAddress);
+                native->DrawInstanced(QUAD_VERTEX_COUNT, batch.instanceCount, 0, 0);
             }
         }
         if (enabled)
@@ -1428,8 +1370,8 @@ namespace Engine
         if (!m_frameRecorded[frameIndex])
             return true;
         bool succeeded = m_commandLists[frameIndex].markSubmitted(fenceValue);
-        if (m_frameUsesVertexBuffer[frameIndex])
-            succeeded = m_vertexBuffers[frameIndex].markUsed(fenceValue) && succeeded;
+        if (m_frameUsesQuadInstanceBuffer[frameIndex])
+            succeeded = m_quadInstanceBuffers[frameIndex].markUsed(fenceValue) && succeeded;
         if (m_frameUsesMeshInstanceBuffer[frameIndex])
             succeeded = m_meshInstanceBuffers[frameIndex].markUsed(fenceValue) && succeeded;
         for (const MeshData* mesh : m_usedMeshes[frameIndex])
@@ -1707,35 +1649,27 @@ namespace Engine
         return true;
     }
 
-    bool ParticleRenderer::ensureVertexCapacity(const std::uint32_t frameIndex, const std::size_t vertexCount)
+    bool ParticleRenderer::ensureQuadInstanceCapacity(
+        const std::uint32_t frameIndex, const std::size_t instanceCount)
     {
-        if (frameIndex >= FRAME_COUNT || vertexCount == 0
-            || vertexCount > (std::numeric_limits<std::size_t>::max)() / sizeof(Vertex))
+        if (frameIndex >= FRAME_COUNT || instanceCount == 0 || instanceCount > MAX_QUAD_INSTANCES)
         {
-            LOG_ERROR("[ParticleEffect] Invalid particle vertex buffer size.");
+            LOG_ERROR("[ParticleEffect] Invalid quad instance buffer size.");
             return false;
         }
-        if (vertexCount <= m_vertexCapacities[frameIndex])
+        if (instanceCount <= m_quadInstanceCapacities[frameIndex])
             return true;
         if (m_device == nullptr || m_device->get() == nullptr || m_fence == nullptr)
             return false;
 
-        std::size_t capacity = INITIAL_VERTEX_CAPACITY;
-        while (capacity < vertexCount)
-        {
-            if (capacity > (std::numeric_limits<std::size_t>::max)() / 2)
-            {
-                LOG_ERROR("[ParticleEffect] Particle vertex buffer capacity overflow.");
-                return false;
-            }
-            capacity *= 2;
-        }
-        if (!m_vertexBuffers[frameIndex].finalize())
+        const std::size_t capacity = std::min(MAX_QUAD_INSTANCES,
+            std::max(std::size_t{ 1024 }, std::bit_ceil(instanceCount)));
+        if (!m_quadInstanceBuffers[frameIndex].finalize())
             return false;
-        m_vertexCapacities[frameIndex] = 0;
-        if (!m_vertexBuffers[frameIndex].initialize(*m_device->get(), *m_fence, capacity * sizeof(Vertex)))
+        m_quadInstanceCapacities[frameIndex] = 0;
+        if (!m_quadInstanceBuffers[frameIndex].initialize(*m_device->get(), *m_fence, capacity * sizeof(QuadInstance)))
             return false;
-        m_vertexCapacities[frameIndex] = capacity;
+        m_quadInstanceCapacities[frameIndex] = capacity;
         return true;
     }
 
@@ -1757,7 +1691,7 @@ namespace Engine
             return false;
         }
 
-        std::size_t capacity = INITIAL_VERTEX_CAPACITY;
+        std::size_t capacity = 4096;
         while (capacity < instanceCount)
         {
             if (capacity > (std::numeric_limits<std::size_t>::max)() / 2)
