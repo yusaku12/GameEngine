@@ -100,8 +100,17 @@ namespace Engine
         };
         struct GpuEmitterState
         {
+            struct CurveVersion
+            {
+                std::vector<std::uint32_t> words;
+                std::uint32_t slotReferences = 0;
+            };
             std::unique_ptr<GpuEmitterBuffers> buffers;
             std::vector<RetiredGpuBuffer> retiredBuffers;
+            std::vector<CurveVersion> curveVersions;
+            std::vector<std::uint32_t> slotCurveVersions;
+            std::vector<std::uint32_t> packedCurves;
+            std::uint32_t birthCurveVersion = 0;
             std::uint32_t capacity = 0;
             std::uint32_t particleLimit = 0;
             std::uint64_t lastFenceValue = 0;
@@ -179,6 +188,8 @@ namespace Engine
         bool ensureSceneCopy(std::uint32_t frameIndex, const DX12Resource& source);
         bool ensureGpuEmitterBuffers(GpuEmitterState& state, std::uint32_t capacity);
         bool ensureGpuTrailBuffer(GpuEmitterState& state);
+        bool prepareGpuCurves(std::uint32_t frameIndex);
+        bool updateGpuCurves(GpuEmitterState& state, const ParticleGpuEmitterSubmission& emitter);
         bool resolveTexture(const std::filesystem::path& path, TextureColorSpace colorSpace,
             D3D12_GPU_DESCRIPTOR_HANDLE& texture, std::uint32_t* width = nullptr, std::uint32_t* height = nullptr);
         const MeshData* resolveMesh(const std::filesystem::path& path);
@@ -249,7 +260,10 @@ namespace Engine
         std::array<DX12CommandList, FRAME_COUNT> m_commandLists;
         std::array<DX12UploadBuffer, FRAME_COUNT> m_quadInstanceBuffers;
         std::array<DX12UploadBuffer, FRAME_COUNT> m_meshInstanceBuffers;
-        std::array<DX12UploadBuffer, FRAME_COUNT> m_gpuTrailSettings;
+        std::array<DX12UploadBuffer, FRAME_COUNT> m_gpuSimulationSettings;
+        std::array<DX12UploadBuffer, FRAME_COUNT> m_gpuCurveSettings;
+        std::vector<std::uint32_t> m_curveBirthScratch;
+        std::vector<std::uint64_t> m_curveUploadOffsets;
         std::array<DX12Resource, FRAME_COUNT> m_sceneCopies;
         std::array<std::optional<DX12DescriptorAllocation>, FRAME_COUNT> m_sceneCopyViews;
         std::array<std::size_t, FRAME_COUNT> m_quadInstanceCapacities{};

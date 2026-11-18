@@ -18,6 +18,10 @@ namespace Engine
         constexpr std::uint32_t MAX_GPU_PARTICLES = 4096;
         constexpr std::uint32_t GPU_TRAIL_POINTS = 16;
         constexpr std::uint32_t GPU_TRAIL_STRIDE = 32 + (GPU_TRAIL_POINTS + 1) * 32;
+        constexpr std::uint32_t GPU_CURVE_SETS = 4;
+        // Each set starts with a smooth flag and ten (key offset, count) descriptors.
+        constexpr std::uint32_t GPU_CURVE_SET_WORDS = 11;
+        constexpr std::uint32_t GPU_CURVE_TRACK_KEYS = 32;
         // csCompact uses one group of 128 lanes with up to 32 slots per lane.
         static_assert(MAX_GPU_PARTICLES <= 128 * 32);
         // The Trail free-list pass has 64 lanes and uses two masks of 32 slots per lane.
@@ -73,10 +77,9 @@ namespace Engine
         {
             std::array<std::uint32_t, 4> header;
             Vector4 cameraRightWorldScale;
-            Vector4 cameraUpScaleX;
-            Vector4 sizeScale;
+            Vector4 cameraUp;
         };
-        static_assert(sizeof(GpuParticleDrawConstants) == 16 * sizeof(std::uint32_t));
+        static_assert(sizeof(GpuParticleDrawConstants) == 12 * sizeof(std::uint32_t));
 
         struct GpuParticleState
         {
@@ -86,15 +89,21 @@ namespace Engine
             Vector4 endColor;
             Vector4 sizeRotation;
             std::array<std::uint32_t, 4> randomData;
+            Vector4 evaluatedColor;
+            Vector4 evaluatedSize;
+            Vector4 evaluatedVelocity;
         };
-        static_assert(sizeof(GpuParticleState) == 96);
+        static_assert(sizeof(GpuParticleState) == 144);
 
-        struct GpuTrailConstants
+        struct GpuSimulationSettings
         {
-            Matrix world;
-            Vector4 settings;
+            Matrix trailWorld;
+            Vector4 trailSettings;
+            std::uint32_t curveVersion;
+            std::uint32_t curveSetCount;
+            Vector2 birthSizeScale;
         };
-        static_assert(sizeof(GpuTrailConstants) == 80);
+        static_assert(sizeof(GpuSimulationSettings) == 96);
 
     }
 
@@ -144,7 +153,9 @@ namespace Engine
             succeeded = buffer.finalize() && succeeded;
         for (DX12UploadBuffer& buffer : m_meshInstanceBuffers)
             succeeded = buffer.finalize() && succeeded;
-        for (auto& buffer : m_gpuTrailSettings)
+        for (auto& buffer : m_gpuSimulationSettings)
+            succeeded = buffer.finalize() && succeeded;
+        for (auto& buffer : m_gpuCurveSettings)
             succeeded = buffer.finalize() && succeeded;
         for (auto& frame : m_sortedFrames)
         {
@@ -213,6 +224,8 @@ namespace Engine
         m_sortedStaging = {};
         m_gpuDrawSignature.Reset();
         m_gpuEmitterStates.clear();
+        m_curveBirthScratch.clear();
+        m_curveUploadOffsets.clear();
         m_quadInstanceCapacities.fill(0);
         m_meshInstanceCapacities.fill(0);
         for (auto& usedMeshes : m_usedMeshes)
@@ -402,7 +415,7 @@ namespace Engine
         gpuWorldConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
         D3D12_ROOT_PARAMETER gpuDrawConstants{};
         gpuDrawConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        gpuDrawConstants.Constants = { 7, 0, 16 };
+        gpuDrawConstants.Constants = { 7, 0, 12 };
         gpuDrawConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
         D3D12_ROOT_PARAMETER gpuDrawData = gpuParticleBuffer;
         gpuDrawData.Descriptor.ShaderRegister = 8;
@@ -435,8 +448,11 @@ namespace Engine
         D3D12_ROOT_PARAMETER gpuTrailConstants{};
         gpuTrailConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         gpuTrailConstants.Descriptor.ShaderRegister = 13;
+        D3D12_ROOT_PARAMETER gpuCurveInput{};
+        gpuCurveInput.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+        gpuCurveInput.Descriptor.ShaderRegister = 15;
         const std::array gpuSimulationParameters{ gpuSimulationConstants, gpuSimulationBuffer,
-            gpuTrailOutput, gpuTrailConstants };
+            gpuTrailOutput, gpuTrailConstants, gpuCurveInput };
         if (!gpuSimulation.initialize(*m_device->get(), simulationShader, gpuSimulationParameters))
         {
             LOG_ERROR("[ParticleEffect] Failed to build the particle simulation compute pipeline.");
@@ -1266,17 +1282,31 @@ namespace Engine
         native->RSSetScissorRects(1, &scissor);
         native->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         native->SetDescriptorHeaps(1, &heap);
+        struct CurveRecordingGuard
+        {
+            std::span<const ParticleGpuEmitterSubmission> submissions;
+            decltype(m_gpuEmitterStates)& states;
+            bool committed = false;
+
+            ~CurveRecordingGuard()
+            {
+                if (!committed)
+                    for (const auto& emitter : submissions)
+                        states.find(emitter.id)->second->needsClear = true;
+            }
+        } curveRecording{ m_gpuEmitterSubmissions, m_gpuEmitterStates };
         if (!m_gpuEmitterSubmissions.empty())
         {
-            if (!m_gpuSimulationPipeline.bind(commandList))
+            if (!prepareGpuCurves(frameIndex) || !m_gpuSimulationPipeline.bind(commandList))
                 return false;
-            auto& trailUpload = m_gpuTrailSettings[frameIndex];
+            auto& settingsUpload = m_gpuSimulationSettings[frameIndex];
             constexpr auto alignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
             const auto required = std::bit_ceil(static_cast<std::uint64_t>(m_gpuEmitterSubmissions.size()) * alignment);
-            if (trailUpload.getSize() < required && (!trailUpload.finalize()
-                || !trailUpload.initialize(*m_device->get(), *m_fence, required)))
+            if (settingsUpload.getSize() < required && (!settingsUpload.finalize()
+                || !settingsUpload.initialize(*m_device->get(), *m_fence, required)))
                 return false;
-            std::uint64_t trailOffset = 0;
+            std::uint64_t settingsOffset = 0;
+            std::size_t emitterIndex = 0;
             for (const ParticleGpuEmitterSubmission& emitter : m_gpuEmitterSubmissions)
             {
                 GpuEmitterState& state = *m_gpuEmitterStates.at(emitter.id);
@@ -1284,10 +1314,12 @@ namespace Engine
                 auto& trails = state.buffers->trails;
                 if (!particles.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
                     return false;
-                const GpuTrailConstants trailConstants{ emitter.worldMatrix,
+                const GpuSimulationSettings gpuSettings{ emitter.worldMatrix,
                     Vector4(emitter.settings.trailLifetime, emitter.settings.trailWidth, emitter.settings.trailMinDistance,
-                        static_cast<float>(emitter.settings.blendMode)) };
-                if (!trailUpload.write(std::as_bytes(std::span(&trailConstants, 1)), trailOffset)
+                        static_cast<float>(emitter.settings.blendMode)),
+                    state.birthCurveVersion, 1u + static_cast<std::uint32_t>(emitter.settings.curveVariants.size()),
+                    emitter.settings.initialSizeScale };
+                if (!settingsUpload.write(std::as_bytes(std::span(&gpuSettings, 1)), settingsOffset)
                     || (trails.get() && !trails.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)))
                     return false;
                 GpuSimulationConstants constants{
@@ -1318,7 +1350,9 @@ namespace Engine
                 native->SetComputeRoot32BitConstants(0, 52, &constants, 0);
                 native->SetComputeRootUnorderedAccessView(1, particles.get()->GetGPUVirtualAddress());
                 native->SetComputeRootUnorderedAccessView(2, (trails.get() ? trails.get() : particles.get())->GetGPUVirtualAddress());
-                native->SetComputeRootConstantBufferView(3, trailUpload.getGpuVirtualAddress() + trailOffset);
+                native->SetComputeRootConstantBufferView(3, settingsUpload.getGpuVirtualAddress() + settingsOffset);
+                native->SetComputeRootShaderResourceView(4,
+                    m_gpuCurveSettings[frameIndex].getGpuVirtualAddress() + m_curveUploadOffsets[emitterIndex++]);
                 if (trails.get())
                 {
                     constexpr std::uint32_t ageTrailPass = 2;
@@ -1334,7 +1368,7 @@ namespace Engine
                 if (!particles.transition(commandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
                     || (trails.get() && !trails.transition(commandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)))
                     return false;
-                trailOffset += alignment;
+                settingsOffset += alignment;
                 state.needsClear = false;
                 state.needsTrailClear = false;
                 m_frameGpuEmitterIds[frameIndex].push_back(emitter.id);
@@ -1473,14 +1507,13 @@ namespace Engine
                         { 0u, 1u, emitter.settings.flipbookColumns,
                             emitter.settings.flipbookRows },
                         Vector4(right.x, right.y, right.z, worldScale),
-                        Vector4(up.x, up.y, up.z, emitter.settings.initialSizeScale.x),
-                        Vector4(0.0f, emitter.settings.initialSizeScale.y, 0.0f, 0.0f),
+                        Vector4(up.x, up.y, up.z, 0.0f),
                     };
                     native->SetGraphicsRootDescriptorTable(1, texture);
                     native->SetGraphicsRoot32BitConstants(2, 1, &appearance, 0);
                     native->SetGraphicsRootShaderResourceView(3, buffers.particles.get()->GetGPUVirtualAddress());
                     native->SetGraphicsRoot32BitConstants(4, 16, &emitter.worldMatrix._11, 0);
-                    native->SetGraphicsRoot32BitConstants(5, 16, &drawConstants, 0);
+                    native->SetGraphicsRoot32BitConstants(5, 12, &drawConstants, 0);
                     native->SetGraphicsRootShaderResourceView(6, buffers.drawData.get()->GetGPUVirtualAddress());
                     native->ExecuteIndirect(m_gpuDrawSignature.Get(), 1, buffers.drawData.get(), 0, nullptr, 0);
                     ++m_gpuEmitterDrawCount;
@@ -1499,6 +1532,7 @@ namespace Engine
             LOG_ERROR("[ParticleEffect] Failed to close particle command list.");
             return false;
         }
+        curveRecording.committed = true;
         m_frameRecorded[frameIndex] = true;
         return true;
     }
@@ -1526,7 +1560,10 @@ namespace Engine
         if (m_frameUsesSort[frameIndex])
             succeeded = m_sortedFrames[frameIndex].upload.markUsed(fenceValue) && succeeded;
         if (!m_frameGpuEmitterIds[frameIndex].empty())
-            succeeded = m_gpuTrailSettings[frameIndex].markUsed(fenceValue) && succeeded;
+        {
+            succeeded = m_gpuSimulationSettings[frameIndex].markUsed(fenceValue) && succeeded;
+            succeeded = m_gpuCurveSettings[frameIndex].markUsed(fenceValue) && succeeded;
+        }
         for (const MeshData* mesh : m_usedMeshes[frameIndex])
             succeeded = mesh->vertexBuffer->markUsed(fenceValue) && succeeded;
         for (const std::uint64_t id : m_frameGpuEmitterIds[frameIndex])
@@ -1791,6 +1828,171 @@ namespace Engine
         m_frameUsesSort[frameIndex] = true;
         m_batches.clear();
         ++m_gpuEmitterDrawCount;
+        return true;
+    }
+
+    bool ParticleRenderer::updateGpuCurves(GpuEmitterState& state, const ParticleGpuEmitterSubmission& emitter)
+    {
+        const auto& settings = emitter.settings;
+        bool repack = emitter.clear || state.needsClear;
+        if (repack)
+        {
+            state.slotCurveVersions.clear();
+            state.curveVersions.clear();
+            state.birthCurveVersion = 0;
+        }
+        if (emitter.spawnCount != 0)
+        {
+            if (settings.curveVariants.size() >= GPU_CURVE_SETS)
+                return false;
+            auto& words = m_curveBirthScratch;
+            words.assign(GPU_CURVE_SETS * GPU_CURVE_SET_WORDS, 0);
+            const auto packSet = [&](const ParticleLifetimeCurves& curves, const std::size_t set)
+            {
+                std::size_t descriptor = set * GPU_CURVE_SET_WORDS;
+                words[descriptor++] = curves.smooth ? 1u : 0u;
+                const auto packTrack = [&](const auto& keys)
+                {
+                    if (keys.size() > GPU_CURVE_TRACK_KEYS)
+                        return false;
+                    const auto track = descriptor++;
+                    if (keys.empty())
+                        return true;
+                    words[track] = (static_cast<std::uint32_t>(words.size()) << 8)
+                        | static_cast<std::uint32_t>(keys.size());
+                    for (const auto& key : keys)
+                    {
+                        words.push_back(std::bit_cast<std::uint32_t>(key.time));
+                        using Value = std::remove_cvref_t<decltype(key.value)>;
+                        if constexpr (std::is_same_v<Value, float>)
+                            words.insert(words.end(), { std::bit_cast<std::uint32_t>(key.value), 0, 0, 0 });
+                        else
+                        {
+                            words.push_back(std::bit_cast<std::uint32_t>(key.value.x));
+                            words.push_back(std::bit_cast<std::uint32_t>(key.value.y));
+                            words.push_back(std::bit_cast<std::uint32_t>(key.value.z));
+                            if constexpr (std::is_same_v<Value, Vector4>)
+                                words.push_back(std::bit_cast<std::uint32_t>(key.value.w));
+                            else
+                                words.push_back(0);
+                        }
+                    }
+                    return true;
+                };
+                return packTrack(curves.color) && packTrack(curves.size) && packTrack(curves.width)
+                    && packTrack(curves.height) && packTrack(curves.speed) && packTrack(curves.angularSpeed)
+                    && packTrack(curves.acceleration) && packTrack(curves.velocity)
+                    && packTrack(curves.gravity) && packTrack(curves.drag);
+            };
+            if (!packSet(settings.curves, 0))
+                return false;
+            for (std::size_t i = 0; i < settings.curveVariants.size(); ++i)
+                if (!packSet(settings.curveVariants[i], i + 1))
+                    return false;
+
+            const auto slotFor = [&](const std::uint32_t offset)
+            {
+                return (emitter.spawnCursor + offset) % settings.maxParticles;
+            };
+            const bool hasKeys = words.size() > GPU_CURVE_SETS * GPU_CURVE_SET_WORDS;
+            if (hasKeys && state.slotCurveVersions.empty())
+                state.slotCurveVersions.resize(settings.maxParticles);
+            // Only births overwrite a slot. Keeping dead slots' references until reuse avoids a GPU readback.
+            if (!state.slotCurveVersions.empty())
+                for (std::uint32_t i = 0; i < emitter.spawnCount; ++i)
+                {
+                    const auto previous = state.slotCurveVersions[slotFor(i)];
+                    if (previous != 0 && --state.curveVersions[previous - 1].slotReferences == 0)
+                        repack = true;
+                }
+            if (!hasKeys)
+                state.birthCurveVersion = 0;
+            else if (state.birthCurveVersion == 0 || state.curveVersions[state.birthCurveVersion - 1].words != words)
+            {
+                auto version = std::find_if(state.curveVersions.begin(), state.curveVersions.end(),
+                    [&words](const auto& candidate) { return candidate.words == words; });
+                if (version == state.curveVersions.end())
+                {
+                    version = std::find_if(state.curveVersions.begin(), state.curveVersions.end(),
+                        [](const auto& candidate) { return candidate.slotReferences == 0; });
+                    if (version == state.curveVersions.end())
+                    {
+                        state.curveVersions.emplace_back();
+                        version = std::prev(state.curveVersions.end());
+                    }
+                    version->words.assign(words.begin(), words.end());
+                    repack = true;
+                }
+                state.birthCurveVersion = 1u + static_cast<std::uint32_t>(version - state.curveVersions.begin());
+            }
+            if (state.birthCurveVersion != 0)
+                state.curveVersions[state.birthCurveVersion - 1].slotReferences += emitter.spawnCount;
+            if (!state.slotCurveVersions.empty())
+                for (std::uint32_t i = 0; i < emitter.spawnCount; ++i)
+                    state.slotCurveVersions[slotFor(i)] = state.birthCurveVersion;
+        }
+        if (repack)
+        {
+            auto& packed = state.packedCurves;
+            packed.assign(state.curveVersions.size(), 0);
+            for (std::size_t i = 0; i < state.curveVersions.size(); ++i)
+            {
+                auto& version = state.curveVersions[i];
+                if (version.slotReferences == 0)
+                {
+                    version.words.clear();
+                    continue;
+                }
+                packed[i] = static_cast<std::uint32_t>(packed.size());
+                packed.insert(packed.end(), version.words.begin(), version.words.end());
+            }
+        }
+        return true;
+    }
+
+    bool ParticleRenderer::prepareGpuCurves(const std::uint32_t frameIndex)
+    {
+        auto& upload = m_gpuCurveSettings[frameIndex];
+        // Keep a fence-protected copy per frame so edits never overwrite inputs of an in-flight dispatch.
+        std::uint64_t bytes = 16; // Valid binding for emitters with no curve data.
+        try
+        {
+            m_curveUploadOffsets.clear();
+            m_curveUploadOffsets.reserve(m_gpuEmitterSubmissions.size());
+            for (const auto& emitter : m_gpuEmitterSubmissions)
+            {
+                auto& state = *m_gpuEmitterStates.at(emitter.id);
+                if (!updateGpuCurves(state, emitter))
+                {
+                    LOG_ERROR("[ParticleEffect] GPU lifetime curves exceeded the supported key or set limit.");
+                    return false;
+                }
+                m_curveUploadOffsets.push_back(state.packedCurves.empty() ? 0 : bytes);
+                bytes += (state.packedCurves.size() * sizeof(std::uint32_t) + 15) & ~std::uint64_t{15};
+            }
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[ParticleEffect] Failed to stage GPU lifetime curve versions.");
+            return false;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[ParticleEffect] GPU lifetime curve staging exceeded capacity.");
+            return false;
+        }
+        if (upload.getSize() < bytes && (!upload.finalize()
+            || !upload.initialize(*m_device->get(), *m_fence, std::bit_ceil(bytes))))
+        {
+            LOG_ERROR("[ParticleEffect] Failed to allocate GPU lifetime curve input.");
+            return false;
+        }
+        for (std::size_t i = 0; i < m_gpuEmitterSubmissions.size(); ++i)
+        {
+            const auto& packed = m_gpuEmitterStates.at(m_gpuEmitterSubmissions[i].id)->packedCurves;
+            if (!packed.empty() && !upload.write(std::as_bytes(std::span(packed)), m_curveUploadOffsets[i]))
+                return false;
+        }
         return true;
     }
 

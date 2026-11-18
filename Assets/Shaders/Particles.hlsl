@@ -46,16 +46,23 @@ struct GpuParticleState
     float4 startColor;
     float4 endColor;
     float4 sizeRotation;
-    uint4 randomData;
+    uint4 randomData; // Flipbook seed, Trail slot + 1, curve version + 1, curve set
+    float4 evaluatedColor;
+    float4 evaluatedSize; // size, width, height, birth width scale
+    float4 evaluatedVelocity; // effective local velocity, birth height scale
 };
 
+static const uint gpuParticleStride = 144;
 RWStructuredBuffer<GpuParticleState> simulationParticles : register(u0);
 RWByteAddressBuffer simulationTrails : register(u4);
+ByteAddressBuffer lifetimeCurves : register(t15);
 
-cbuffer GpuTrailSettings : register(b13)
+cbuffer GpuSimulationSettings : register(b13)
 {
     row_major float4x4 trailWorld;
     float4 trailSettings; // lifetime, width, minimum distance, blend mode
+    uint2 curveBirth; // version + 1, number of sets
+    float2 birthSizeScale;
 };
 
 static const uint trailPointCapacity = 16;
@@ -104,6 +111,97 @@ uint hashRandom(inout uint state)
 float randomUnit(inout uint state)
 {
     return (hashRandom(state) >> 8) * (1.0f / 16777216.0f);
+}
+
+static const uint curveColor = 0, curveSize = 1, curveWidth = 2, curveHeight = 3;
+static const uint curveSpeed = 4, curveAngularSpeed = 5, curveAcceleration = 6;
+static const uint curveVelocity = 7, curveGravity = 8, curveDrag = 9;
+static const uint curveSetWords = 11;
+static const uint curveKeyWords = 5;
+
+struct LifetimeCurveSet
+{
+    uint baseWord, setWord;
+    bool smooth;
+};
+
+LifetimeCurveSet loadLifetimeCurveSet(uint2 selection)
+{
+    LifetimeCurveSet set = (LifetimeCurveSet)0;
+    if (selection.x != 0)
+    {
+        set.baseWord = lifetimeCurves.Load((selection.x - 1) * 4);
+        set.setWord = set.baseWord + selection.y * curveSetWords;
+        set.smooth = lifetimeCurves.Load(set.setWord * 4) != 0;
+    }
+    return set;
+}
+
+float4 sampleLifetimeCurve(LifetimeCurveSet set, uint track, float age, float4 fallback)
+{
+    if (set.setWord == 0)
+        return fallback;
+    const uint descriptor = lifetimeCurves.Load((set.setWord + 1 + track) * 4);
+    const uint count = descriptor & 255;
+    if (count == 0)
+        return fallback;
+    const uint first = (set.baseWord + (descriptor >> 8)) * 4;
+    const uint stride = curveKeyWords * 4;
+    uint lo = 0, hi = count - 1;
+    if (age <= asfloat(lifetimeCurves.Load(first)) || count == 1)
+        return asfloat(lifetimeCurves.Load4(first + 4));
+    if (age >= asfloat(lifetimeCurves.Load(first + hi * stride)))
+        return asfloat(lifetimeCurves.Load4(first + hi * stride + 4));
+    while (hi - lo > 1)
+    {
+        const uint mid = (lo + hi) / 2;
+        if (age < asfloat(lifetimeCurves.Load(first + mid * stride)))
+            hi = mid;
+        else
+            lo = mid;
+    }
+    const uint a = first + lo * stride;
+    const uint b = first + hi * stride;
+    const float lower = asfloat(lifetimeCurves.Load(a));
+    const float upper = asfloat(lifetimeCurves.Load(b));
+    const float t = saturate((age - lower) / (upper - lower));
+    return lerp(asfloat(lifetimeCurves.Load4(a + 4)), asfloat(lifetimeCurves.Load4(b + 4)),
+        set.smooth ? t * t * (3.0f - 2.0f * t) : t);
+}
+
+void evaluateParticleAppearance(inout GpuParticleState particle, LifetimeCurveSet curves)
+{
+    const float age = saturate(particle.positionAge.w / particle.velocityLifetime.w);
+    particle.evaluatedColor = sampleLifetimeCurve(curves, curveColor, age, lerp(particle.startColor, particle.endColor, age));
+    particle.evaluatedSize.xyz = float3(
+        sampleLifetimeCurve(curves, curveSize, age, lerp(particle.sizeRotation.x, particle.sizeRotation.y, age)).x,
+        sampleLifetimeCurve(curves, curveWidth, age, 1.0f).x * particle.evaluatedSize.w,
+        sampleLifetimeCurve(curves, curveHeight, age, 1.0f).x * particle.evaluatedVelocity.w);
+    particle.evaluatedVelocity.xyz = (particle.velocityLifetime.xyz
+        + sampleLifetimeCurve(curves, curveVelocity, age, 0.0f).xyz)
+        * sampleLifetimeCurve(curves, curveSpeed, age, 1.0f).x;
+}
+
+void integrateParticle(inout GpuParticleState particle, LifetimeCurveSet curves, float delta)
+{
+    // Match the CPU's integration step for curved motion without changing the existing emission schedule.
+    while (delta > 0.0f)
+    {
+        const float step = curves.setWord != 0 ? min(delta, 1.0f / 60.0f) : delta;
+        const float age = saturate((particle.positionAge.w + step * 0.5f) / particle.velocityLifetime.w);
+        const float gravity = sampleLifetimeCurve(curves, curveGravity, age, 1.0f).x;
+        const float drag = sampleLifetimeCurve(curves, curveDrag, age, 1.0f).x;
+        const float3 acceleration = sampleLifetimeCurve(curves, curveAcceleration, age, 0.0f).xyz;
+        const float3 velocity = sampleLifetimeCurve(curves, curveVelocity, age, 0.0f).xyz;
+        const float speed = sampleLifetimeCurve(curves, curveSpeed, age, 1.0f).x;
+        const float angularSpeed = sampleLifetimeCurve(curves, curveAngularSpeed, age, 1.0f).x;
+        particle.velocityLifetime.xyz += (simulationGravityDrag.xyz * gravity + acceleration) * step;
+        particle.velocityLifetime.xyz *= exp(-simulationGravityDrag.w * drag * step);
+        particle.positionAge.xyz += (particle.velocityLifetime.xyz + velocity) * (step * speed);
+        particle.sizeRotation.z += particle.sizeRotation.w * angularSpeed * step;
+        particle.positionAge.w += step;
+        delta -= step;
+    }
 }
 
 float3 randomDirection(inout uint state)
@@ -231,10 +329,9 @@ void ageTrailsAndBuildFreeList(uint lane)
 
 GpuTrailPoint particleTrailPoint(GpuParticleState particle)
 {
-    const float age = saturate(particle.positionAge.w / particle.velocityLifetime.w);
     GpuTrailPoint tip;
     tip.positionAge = float4(mul(float4(particle.positionAge.xyz, 1.0f), trailWorld).xyz, 0.0f);
-    tip.color = lerp(particle.startColor, particle.endColor, age);
+    tip.color = particle.evaluatedColor;
     return tip;
 }
 
@@ -319,7 +416,13 @@ void csSimulate(uint3 dispatchThreadId : SV_DispatchThreadID)
         particle.sizeRotation = float4(randomSize, simulationSizeRange.y,
             lerp(simulationRotation.x, simulationRotation.y, randomUnit(randomState)),
             lerp(simulationRotation.z, simulationRotation.w, randomUnit(randomState)));
-        particle.randomData = uint4(hashRandom(randomState), 0, 0, 0);
+        const uint flipbookRandom = hashRandom(randomState);
+        const uint selectedSet = curveBirth.x != 0
+            ? min((uint)(randomUnit(randomState) * curveBirth.y), curveBirth.y - 1) : 0;
+        particle.randomData = uint4(flipbookRandom, 0, curveBirth.x, selectedSet);
+        particle.evaluatedSize.w = birthSizeScale.x;
+        particle.evaluatedVelocity.w = birthSizeScale.y;
+        evaluateParticleAppearance(particle, loadLifetimeCurveSet(particle.randomData.zw));
         if (hasTrails && simulationFlags.z != 0)
         {
             particle.randomData.y = allocateTrail(simulationHeader.x);
@@ -348,15 +451,15 @@ void csSimulate(uint3 dispatchThreadId : SV_DispatchThreadID)
     if (particle.positionAge.w >= 0.0f)
     {
         const float timeUntilDeath = max(0.0f, particle.velocityLifetime.w - particle.positionAge.w);
-        particle.positionAge.w += simulationTiming.y;
-        const bool expired = particle.positionAge.w >= particle.velocityLifetime.w;
+        const float endAge = particle.positionAge.w + simulationTiming.y;
+        const bool expired = endAge >= particle.velocityLifetime.w;
         const float step = expired ? min(timeUntilDeath, simulationTiming.y) : simulationTiming.y;
         if (!expired || hasAttachedTrail)
         {
-            particle.velocityLifetime.xyz += simulationGravityDrag.xyz * step;
-            particle.velocityLifetime.xyz *= exp(-simulationGravityDrag.w * step);
-            particle.positionAge.xyz += particle.velocityLifetime.xyz * step;
-            particle.sizeRotation.z += particle.sizeRotation.w * step;
+            const LifetimeCurveSet curves = loadLifetimeCurveSet(particle.randomData.zw);
+            integrateParticle(particle, curves, step);
+            particle.positionAge.w = expired ? particle.velocityLifetime.w : endAge;
+            evaluateParticleAppearance(particle, curves);
         }
         if (hasAttachedTrail && simulationTiming.y > 0.0f)
         {
@@ -387,8 +490,7 @@ cbuffer GpuParticleDraw : register(b7)
 {
     uint4 gpuDrawHeader;
     float4 gpuCameraRightWorldScale;
-    float4 gpuCameraUpScaleX;
-    float4 gpuSizeScale;
+    float4 gpuCameraUp;
 };
 
 StructuredBuffer<GpuParticleState> gpuParticles : register(t6);
@@ -480,22 +582,26 @@ PixelInput vsGpu(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
     PixelInput output = (PixelInput)0;
     const uint slot = compactDrawData.Load(drawArgumentBytes + instanceId * 4u);
     const GpuParticleState particle = gpuParticles[slot];
+    if (!all(particle.evaluatedSize.xyz > 0) || !all(isfinite(particle.evaluatedSize.xyz))
+        || particle.evaluatedColor.a <= 0 || !all(isfinite(particle.evaluatedColor)))
+        return output;
     const float life = particle.velocityLifetime.w;
     const float normalizedAge = saturate(particle.positionAge.w / life);
     const float2 corner = corners[vertexId % 6];
     const float cosine = cos(particle.sizeRotation.z);
     const float sine = sin(particle.sizeRotation.z);
-    const float2 rotated = float2(corner.x * cosine - corner.y * sine,
-        corner.x * sine + corner.y * cosine);
+    const float2 scaledCorner = corner * particle.evaluatedSize.yz;
+    const float2 rotated = float2(scaledCorner.x * cosine - scaledCorner.y * sine,
+        scaledCorner.x * sine + scaledCorner.y * cosine);
     float3 center = particle.positionAge.xyz;
     if (gpuDrawHeader.y != 0)
         center = mul(float4(center, 1.0f), gpuWorld).xyz;
-    const float size = lerp(particle.sizeRotation.x, particle.sizeRotation.y, normalizedAge)
+    const float size = particle.evaluatedSize.x
         * (gpuDrawHeader.y != 0 ? gpuCameraRightWorldScale.w : 1.0f);
-    const float3 position = center + gpuCameraRightWorldScale.xyz * rotated.x * size * gpuCameraUpScaleX.w
-        + gpuCameraUpScaleX.xyz * rotated.y * size * gpuSizeScale.y;
+    const float3 position = center + (gpuCameraRightWorldScale.xyz * rotated.x
+        + gpuCameraUp.xyz * rotated.y) * size;
     output.position = mul(float4(position, 1.0f), viewProjection);
-    output.color = lerp(particle.startColor, particle.endColor, normalizedAge);
+    output.color = particle.evaluatedColor;
     const uint frameCount = gpuDrawHeader.z * gpuDrawHeader.w;
     const uint frame = min((uint)(normalizedAge * frameCount), frameCount - 1);
     const float2 cell = float2(1.0f / gpuDrawHeader.z, 1.0f / gpuDrawHeader.w);
@@ -993,7 +1099,10 @@ PixelInput vsSorted(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
         band.uvBounds = band.nextUvBounds = float4(0, 0, 1, 1);
         return expandQuad(vertex, band);
     }
-    const GpuParticleState particle = particleGeometry.Load<GpuParticleState>(index * 96);
+    const GpuParticleState particle = particleGeometry.Load<GpuParticleState>(index * gpuParticleStride);
+    if (!all(particle.evaluatedSize.xyz > 0) || !all(isfinite(particle.evaluatedSize.xyz))
+        || particle.evaluatedColor.a <= 0 || !all(isfinite(particle.evaluatedColor)))
+        return (PixelInput)0;
     const ParticleEmitterDraw emitter = particleEmitters[particleSelection.w];
     const float age = saturate(particle.positionAge.w / particle.velocityLifetime.w);
     const float3 forward = particleForward.xyz;
@@ -1003,7 +1112,7 @@ PixelInput vsSorted(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
     const uint orientation = (uint)emitter.orientation.w;
     if (orientation == 1 || orientation == 5)
     {
-        const float3 velocity = mul(float4(particle.velocityLifetime.xyz, 0.0f), emitter.world).xyz;
+        const float3 velocity = mul(float4(particle.evaluatedVelocity.xyz, 0.0f), emitter.world).xyz;
         const float3 projected = velocity - forward * dot(velocity, forward);
         if (dot(projected, projected) > 1e-8f)
         {
@@ -1025,14 +1134,14 @@ PixelInput vsSorted(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
         right = directionOr(cross(fallback, normal), particleRight.xyz);
         up = normalize(cross(normal, right));
     }
-    const float size = lerp(particle.sizeRotation.x, particle.sizeRotation.y, age) * emitter.sizeScale.z * 0.5f;
+    const float size = particle.evaluatedSize.x * emitter.sizeScale.z * 0.5f;
     float sine, cosine;
     sincos(particle.sizeRotation.z, sine, cosine);
     QuadInstance quad = (QuadInstance)0;
     quad.origin = mul(float4(particle.positionAge.xyz, 1.0f), emitter.world).xyz;
-    quad.rightOrEnd = (right * cosine + up * sine) * size * emitter.sizeScale.x;
-    quad.upOrStartSide = (up * cosine - right * sine) * size * emitter.sizeScale.y * stretch;
-    quad.color = lerp(particle.startColor, particle.endColor, age);
+    quad.rightOrEnd = (right * cosine + up * sine) * size * particle.evaluatedSize.y;
+    quad.upOrStartSide = (up * cosine - right * sine) * size * particle.evaluatedSize.z * stretch;
+    quad.color = particle.evaluatedColor;
     quad.uvOffset = frac(particle.positionAge.w * emitter.scrollTiming.xy);
     if ((particleMaterials[particleSelection.z].appearance & 255) == 1)
     {
