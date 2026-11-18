@@ -208,8 +208,8 @@ namespace Engine
 
     const char* ParticleRenderSubmissionQueue::gpuSimulationFallbackReason(const ParticleEffectSettings& settings) const noexcept
     {
-        if (settings.trailEnabled || !settings.meshPath.empty())
-            return "GPU simulation does not support Trails or Mesh particles.";
+        if (!settings.meshPath.empty())
+            return "GPU simulation does not support Mesh particles.";
         if (!settings.localSpace)
             return "GPU simulation currently requires Local Space.";
         if (settings.burstCount != 0 || !settings.bursts.empty() || !settings.emissionRateKeys.empty()
@@ -222,7 +222,7 @@ namespace Engine
             || !curves.acceleration.empty() || !curves.velocity.empty() || !curves.gravity.empty()
             || !curves.drag.empty() || !settings.curveVariants.empty())
             return "GPU simulation does not support lifetime curves or curve sets.";
-        if (!gpuSortingSupported() && (settings.blendMode != ParticleBlendMode::Additive
+        if (!gpuSortingSupported() && (settings.trailEnabled || settings.blendMode != ParticleBlendMode::Additive
             || settings.orientation != ParticleOrientation::Camera
             || settings.softDistance > 0.0f || settings.refractionPixels != 0.0f
             || !settings.secondaryTexturePath.empty() || !settings.maskTexturePath.empty()

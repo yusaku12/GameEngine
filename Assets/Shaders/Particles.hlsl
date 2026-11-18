@@ -50,6 +50,28 @@ struct GpuParticleState
 };
 
 RWStructuredBuffer<GpuParticleState> simulationParticles : register(u0);
+RWByteAddressBuffer simulationTrails : register(u4);
+
+cbuffer GpuTrailSettings : register(b13)
+{
+    row_major float4x4 trailWorld;
+    float4 trailSettings; // lifetime, width, minimum distance, blend mode
+};
+
+static const uint trailPointCapacity = 16;
+static const uint trailPointBytes = 32;
+static const uint trailHeaderBytes = 32;
+static const uint trailStride = trailHeaderBytes + (trailPointCapacity + 1) * trailPointBytes;
+static const uint trailReset = 1u;
+static const uint trailAgePass = 2u;
+
+struct GpuTrailPoint { float4 positionAge; float4 color; };
+struct GpuTrailHeader
+{
+    uint first, count, attached, blend;
+    float lifetime, width, minDistance;
+    uint padding;
+};
 
 cbuffer GpuSimulation : register(b0)
 {
@@ -92,20 +114,166 @@ float3 randomDirection(inout uint state)
     return float3(radial * cos(angle), radial * sin(angle), z);
 }
 
+uint trailPointAddress(uint base, uint index)
+{
+    return base + trailHeaderBytes + index * trailPointBytes;
+}
+
+void appendTrailPoint(uint base, inout GpuTrailHeader header, GpuTrailPoint samplePoint)
+{
+    if (header.count == trailPointCapacity)
+    {
+        header.first = (header.first + 1) % trailPointCapacity;
+        --header.count;
+    }
+    simulationTrails.Store<GpuTrailPoint>(trailPointAddress(base,
+        (header.first + header.count++) % trailPointCapacity), samplePoint);
+}
+
+void advanceTrail(uint base, inout GpuTrailHeader header, float delta)
+{
+    if (delta <= 0.0f)
+        return;
+    for (uint i = 0; i < header.count; ++i)
+    {
+        const uint address = trailPointAddress(base, (header.first + i) % trailPointCapacity) + 12;
+        simulationTrails.Store(address, asuint(asfloat(simulationTrails.Load(address)) + delta));
+    }
+    while (header.count != 0 && asfloat(simulationTrails.Load(
+        trailPointAddress(base, header.first) + 12)) >= header.lifetime)
+    {
+        header.first = (header.first + 1) % trailPointCapacity;
+        --header.count;
+    }
+}
+
+void updateTrail(uint base, inout GpuTrailHeader header, GpuTrailPoint tip, bool detach)
+{
+    if (header.count == 0)
+        appendTrailPoint(base, header, tip);
+    else
+    {
+        const uint lastAddress = trailPointAddress(base, (header.first + header.count - 1) % trailPointCapacity);
+        const GpuTrailPoint last = simulationTrails.Load<GpuTrailPoint>(lastAddress);
+        const float3 movement = tip.positionAge.xyz - last.positionAge.xyz;
+        const float distanceSquared = dot(movement, movement);
+        if (distanceSquared > 1e-10f && (detach || distanceSquared >= header.minDistance * header.minDistance))
+            appendTrailPoint(base, header, tip);
+        else if (detach)
+            simulationTrails.Store<GpuTrailPoint>(lastAddress, tip);
+    }
+    simulationTrails.Store<GpuTrailPoint>(trailPointAddress(base, trailPointCapacity), tip);
+    header.attached = detach ? 0u : 1u;
+}
+
+uint allocateTrail(uint capacity)
+{
+    const uint list = capacity * trailStride;
+    uint index;
+    simulationTrails.InterlockedAdd(list, 1, index);
+    return index < simulationTrails.Load(list + 4)
+        ? simulationTrails.Load(list + 8 + index * 4) + 1 : 0;
+}
+
+groupshared uint trailPrefix[64];
+
+void ageTrailsAndBuildFreeList(uint lane)
+{
+    const uint capacity = simulationHeader.x;
+    const uint list = capacity * trailStride;
+    const uint chunk = (capacity + 63) / 64;
+    const uint begin = lane * chunk;
+    const uint end = min(begin + chunk, capacity);
+    const bool reset = simulationHeader.y != 0 || (simulationFlags.w & trailReset) != 0;
+    uint2 freeMask = 0;
+    for (uint index = begin; index < end; ++index)
+    {
+        const uint base = index * trailStride;
+        GpuTrailHeader header = (GpuTrailHeader)0;
+        if (!reset)
+        {
+            header = simulationTrails.Load<GpuTrailHeader>(base);
+            advanceTrail(base, header, simulationTiming.y);
+        }
+        if (header.attached == 0 && header.count == 0)
+        {
+            const uint bit = index - begin;
+            freeMask[bit / 32] |= 1u << (bit % 32);
+        }
+        simulationTrails.Store<GpuTrailHeader>(base, header);
+    }
+
+    const uint freeCount = countbits(freeMask.x) + countbits(freeMask.y);
+    trailPrefix[lane] = freeCount;
+    GroupMemoryBarrierWithGroupSync();
+    [unroll]
+    for (uint stride = 1; stride < 64; stride <<= 1)
+    {
+        const uint previous = lane >= stride ? trailPrefix[lane - stride] : 0u;
+        GroupMemoryBarrierWithGroupSync();
+        trailPrefix[lane] += previous;
+        GroupMemoryBarrierWithGroupSync();
+    }
+    uint destination = trailPrefix[lane] - freeCount;
+    for (uint word = 0; word < 2; ++word)
+    {
+        uint mask = freeMask[word];
+        while (mask != 0)
+        {
+            simulationTrails.Store(list + 8 + destination++ * 4,
+                begin + word * 32 + (uint)firstbitlow(mask));
+            mask &= mask - 1;
+        }
+    }
+    if (lane == 63)
+        simulationTrails.Store2(list, uint2(0, trailPrefix[lane]));
+}
+
+GpuTrailPoint particleTrailPoint(GpuParticleState particle)
+{
+    const float age = saturate(particle.positionAge.w / particle.velocityLifetime.w);
+    GpuTrailPoint tip;
+    tip.positionAge = float4(mul(float4(particle.positionAge.xyz, 1.0f), trailWorld).xyz, 0.0f);
+    tip.color = lerp(particle.startColor, particle.endColor, age);
+    return tip;
+}
+
 [numthreads(64, 1, 1)]
 void csSimulate(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     const uint index = dispatchThreadId.x;
+    if ((simulationFlags.w & trailAgePass) != 0)
+    {
+        ageTrailsAndBuildFreeList(index);
+        return;
+    }
     if (index >= simulationHeader.x)
         return;
-
+    const bool hasTrails = simulationFlags.y != 0;
     GpuParticleState particle = simulationParticles[index];
     if (simulationHeader.y != 0)
+    {
         particle.positionAge.w = -1.0f;
+        particle.randomData.y = 0;
+    }
+    const bool hasAttachedTrail = hasTrails && particle.randomData.y != 0;
+    const uint trailBase = hasAttachedTrail ? (particle.randomData.y - 1) * trailStride : 0;
     const uint spawnOffset = (index + simulationHeader.x - simulationHeader.z)
         % simulationHeader.x;
     if (spawnOffset < simulationHeader.w)
     {
+        if (hasAttachedTrail)
+        {
+            GpuTrailHeader trail = simulationTrails.Load<GpuTrailHeader>(trailBase);
+            GpuTrailPoint oldTip = simulationTrails.Load<GpuTrailPoint>(
+                trailPointAddress(trailBase, trailPointCapacity));
+            oldTip.positionAge.w += simulationTiming.y;
+            if (oldTip.positionAge.w < trail.lifetime)
+                updateTrail(trailBase, trail, oldTip, true);
+            else
+                trail.attached = 0;
+            simulationTrails.Store<GpuTrailHeader>(trailBase, trail);
+        }
         uint randomState = asuint(simulationTiming.x) ^ (index * 0x9e3779b9u);
         const float3 sphereDirection = randomDirection(randomState);
         float3 position = 0.0f;
@@ -152,6 +320,21 @@ void csSimulate(uint3 dispatchThreadId : SV_DispatchThreadID)
             lerp(simulationRotation.x, simulationRotation.y, randomUnit(randomState)),
             lerp(simulationRotation.z, simulationRotation.w, randomUnit(randomState)));
         particle.randomData = uint4(hashRandom(randomState), 0, 0, 0);
+        if (hasTrails && simulationFlags.z != 0)
+        {
+            particle.randomData.y = allocateTrail(simulationHeader.x);
+            if (particle.randomData.y != 0)
+            {
+                const uint base = (particle.randomData.y - 1) * trailStride;
+                GpuTrailHeader trail = (GpuTrailHeader)0;
+                trail.blend = (uint)trailSettings.w;
+                trail.lifetime = trailSettings.x;
+                trail.width = trailSettings.y;
+                trail.minDistance = trailSettings.z;
+                updateTrail(base, trail, particleTrailPoint(particle), false);
+                simulationTrails.Store<GpuTrailHeader>(base, trail);
+            }
+        }
         simulationParticles[index] = particle;
         return;
     }
@@ -162,19 +345,37 @@ void csSimulate(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    if (particle.positionAge.w < 0.0f)
-        return;
-    particle.positionAge.w += simulationTiming.y;
-    if (particle.positionAge.w >= particle.velocityLifetime.w)
-        particle.positionAge.w = -1.0f;
-    else
+    if (particle.positionAge.w >= 0.0f)
     {
-        particle.velocityLifetime.xyz += simulationGravityDrag.xyz * simulationTiming.y;
-        particle.velocityLifetime.xyz *= exp(-simulationGravityDrag.w * simulationTiming.y);
-        particle.positionAge.xyz += particle.velocityLifetime.xyz * simulationTiming.y;
-        particle.sizeRotation.z += particle.sizeRotation.w * simulationTiming.y;
+        const float timeUntilDeath = max(0.0f, particle.velocityLifetime.w - particle.positionAge.w);
+        particle.positionAge.w += simulationTiming.y;
+        const bool expired = particle.positionAge.w >= particle.velocityLifetime.w;
+        const float step = expired ? min(timeUntilDeath, simulationTiming.y) : simulationTiming.y;
+        if (!expired || hasAttachedTrail)
+        {
+            particle.velocityLifetime.xyz += simulationGravityDrag.xyz * step;
+            particle.velocityLifetime.xyz *= exp(-simulationGravityDrag.w * step);
+            particle.positionAge.xyz += particle.velocityLifetime.xyz * step;
+            particle.sizeRotation.z += particle.sizeRotation.w * step;
+        }
+        if (hasAttachedTrail && simulationTiming.y > 0.0f)
+        {
+            GpuTrailHeader trail = simulationTrails.Load<GpuTrailHeader>(trailBase);
+            GpuTrailPoint tip = particleTrailPoint(particle);
+            tip.positionAge.w = simulationTiming.y - step;
+            if (tip.positionAge.w < trail.lifetime && all(isfinite(tip.positionAge)))
+                updateTrail(trailBase, trail, tip, expired);
+            else if (expired)
+                trail.attached = 0;
+            simulationTrails.Store<GpuTrailHeader>(trailBase, trail);
+        }
+        if (expired)
+        {
+            particle.positionAge.w = -1.0f;
+            particle.randomData.y = 0;
+        }
+        simulationParticles[index] = particle;
     }
-    simulationParticles[index] = particle;
 }
 
 cbuffer GpuParticleView : register(b6)
@@ -533,6 +734,7 @@ StructuredBuffer<ParticleMeshInstance> particleMeshInstances : register(t10);
 StructuredBuffer<ParticleMaterial> particleMaterials : register(t11);
 StructuredBuffer<ParticleEmitterDraw> particleEmitters : register(t12);
 StructuredBuffer<ParticleFrame> particleFrames : register(t13);
+ByteAddressBuffer sortTrails : register(t14);
 Texture2D sortedTextures[] : register(t0, space1);
 
 cbuffer ParticleSortConstants : register(b11)
@@ -542,6 +744,56 @@ cbuffer ParticleSortConstants : register(b11)
 };
 RWStructuredBuffer<ParticleCommand> particleCommands : register(u2);
 RWByteAddressBuffer particleCommandCount : register(u3);
+
+struct TrailSegment
+{
+    GpuTrailPoint previous, start, end, next;
+    float width, lifetime;
+    uint blend;
+};
+
+GpuTrailPoint readTrailPoint(ByteAddressBuffer geometry, uint base, GpuTrailHeader header, uint index,
+    uint tipIndex = 0xffffffffu)
+{
+    const uint slot = index == tipIndex ? trailPointCapacity : (header.first + index) % trailPointCapacity;
+    return geometry.Load<GpuTrailPoint>(trailPointAddress(base, slot));
+}
+
+bool readTrailSegment(ByteAddressBuffer geometry, uint index, out TrailSegment segment)
+{
+    segment = (TrailSegment)0;
+    const uint base = (index / trailPointCapacity) * trailStride;
+    const uint offset = index % trailPointCapacity;
+    const GpuTrailHeader header = geometry.Load<GpuTrailHeader>(base);
+    uint count = header.count;
+    if (count == 0 || offset + 1 > count)
+        return false;
+    uint tipIndex = 0xffffffffu;
+    if (header.attached != 0)
+    {
+        const GpuTrailPoint tip = geometry.Load<GpuTrailPoint>(trailPointAddress(base, trailPointCapacity));
+        const GpuTrailPoint last = readTrailPoint(geometry, base, header, count - 1);
+        const float3 movement = tip.positionAge.xyz - last.positionAge.xyz;
+        if (dot(movement, movement) <= 1e-10f)
+            tipIndex = count - 1;
+        else
+            tipIndex = count++;
+    }
+    if (offset + 1 >= count)
+        return false;
+    segment.start = readTrailPoint(geometry, base, header, offset, tipIndex);
+    segment.end = readTrailPoint(geometry, base, header, offset + 1, tipIndex);
+    const uint previous = offset == 0 ? 0 : offset - 1;
+    const uint next = min(offset + 2, count - 1);
+    segment.previous = readTrailPoint(geometry, base, header, previous, tipIndex);
+    segment.next = readTrailPoint(geometry, base, header, next, tipIndex);
+    segment.width = header.width;
+    segment.lifetime = header.lifetime;
+    segment.blend = header.blend;
+    const float3 delta = segment.end.positionAge.xyz - segment.start.positionAge.xyz;
+    return dot(delta, delta) > 1e-10f && all(isfinite(delta))
+        && (segment.start.color.a > 0.0f || segment.end.color.a > 0.0f);
+}
 
 bool fartherFirst(ParticleCommand a, ParticleCommand b)
 {
@@ -605,6 +857,25 @@ void csSortParticles(uint index : SV_DispatchThreadID)
         }
         particleCommandCount.Store(0, lo);
     }
+    else if (sortParameters.x == 4)
+    {
+        ParticleCommand command = (ParticleCommand)0;
+        const uint destination = index + sortParameters.z;
+        command.ordinal = destination;
+        TrailSegment segment;
+        if (readTrailSegment(sortTrails, index, segment))
+        {
+            const float3 center = segment.start.positionAge.xyz * 0.5f + segment.end.positionAge.xyz * 0.5f;
+            command.depth = dot(center - particleEye.xyz, particleForward.xyz);
+            if (isfinite(command.depth))
+            {
+                command.geometry = sortGeometry.xy;
+                command.selection = uint4(index, 3u, sortParameters.w + segment.blend, 0u);
+                command.draw = uint4(6u, 1u, 0u, 0u);
+            }
+        }
+        particleCommands[destination] = command;
+    }
     else
         particleCommands[index + sortParameters.z] = (ParticleCommand)0;
 }
@@ -613,6 +884,16 @@ float3 directionOr(float3 value, float3 fallback)
 {
     const float squared = dot(value, value);
     return squared < 1e-8f || !isfinite(squared) ? fallback : value * rsqrt(squared);
+}
+
+float3 trailSide(float3 tangent)
+{
+    const float scale = max(abs(tangent.x), max(abs(tangent.y), abs(tangent.z)));
+    if (scale < 1e-10f || !isfinite(scale))
+        return particleRight.xyz;
+    const float3 side = cross(tangent / scale, particleForward.xyz);
+    const float lengthSquared = dot(side, side);
+    return lengthSquared < 1e-10f ? particleRight.xyz : side * rsqrt(lengthSquared);
 }
 
 float3 sampleParticleFlipbook(ParticleEmitterDraw emitter, float age, float normalizedAge, uint seed)
@@ -692,6 +973,25 @@ PixelInput vsSorted(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
         input.nextUvBounds = mesh.nextUvBounds;
         input.frameBlend = mesh.blend;
         return vsMesh(input);
+    }
+    if (particleSelection.y == 3)
+    {
+        TrailSegment segment;
+        readTrailSegment(particleGeometry, index, segment);
+        const float startFade = saturate(1.0f - segment.start.positionAge.w / segment.lifetime);
+        const float endFade = saturate(1.0f - segment.end.positionAge.w / segment.lifetime);
+        QuadInstance band = (QuadInstance)0;
+        band.isBand = 1;
+        band.origin = segment.start.positionAge.xyz;
+        band.rightOrEnd = segment.end.positionAge.xyz;
+        band.upOrStartSide = trailSide(band.rightOrEnd - segment.previous.positionAge.xyz)
+            * (segment.width * startFade * 0.5f);
+        band.endSide = trailSide(segment.next.positionAge.xyz - band.origin)
+            * (segment.width * endFade * 0.5f);
+        band.color = float4(segment.start.color.rgb, segment.start.color.a * startFade);
+        band.endColor = float4(segment.end.color.rgb, segment.end.color.a * endFade);
+        band.uvBounds = band.nextUvBounds = float4(0, 0, 1, 1);
+        return expandQuad(vertex, band);
     }
     const GpuParticleState particle = particleGeometry.Load<GpuParticleState>(index * 96);
     const ParticleEmitterDraw emitter = particleEmitters[particleSelection.w];

@@ -1707,9 +1707,6 @@ namespace Engine
                     m_emissionElapsed = std::fmod(m_emissionElapsed, duration);
                 else if (m_emissionElapsed >= duration)
                     m_emitting = false;
-                if (count != 0)
-                    m_gpuLiveTimeRemaining = std::max(m_gpuLiveTimeRemaining,
-                        static_cast<double>(m_settings.lifetimeMax));
             }
         }
 
@@ -1718,7 +1715,8 @@ namespace Engine
                 m_gpuLiveTimeRemaining - static_cast<double>(m_gpuPendingDeltaTime));
         if (m_gpuPendingSpawnCount != 0)
             m_gpuLiveTimeRemaining = std::max(m_gpuLiveTimeRemaining,
-                static_cast<double>(m_settings.lifetimeMax));
+                static_cast<double>(m_settings.lifetimeMax)
+                    + (m_settings.trailEnabled ? static_cast<double>(m_settings.trailLifetime) : 0.0));
         m_gpuPendingSeed = nextRandom();
     }
 

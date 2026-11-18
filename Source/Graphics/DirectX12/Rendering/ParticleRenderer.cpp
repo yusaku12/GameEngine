@@ -16,8 +16,12 @@ namespace Engine
     namespace
     {
         constexpr std::uint32_t MAX_GPU_PARTICLES = 4096;
+        constexpr std::uint32_t GPU_TRAIL_POINTS = 16;
+        constexpr std::uint32_t GPU_TRAIL_STRIDE = 32 + (GPU_TRAIL_POINTS + 1) * 32;
         // csCompact uses one group of 128 lanes with up to 32 slots per lane.
         static_assert(MAX_GPU_PARTICLES <= 128 * 32);
+        // The Trail free-list pass has 64 lanes and uses two masks of 32 slots per lane.
+        static_assert(MAX_GPU_PARTICLES <= 64 * 64);
         static_assert(sizeof(D3D12_DRAW_ARGUMENTS) == 16);
         constexpr D3D12_RESOURCE_STATES GPU_DRAW_DATA_READ_STATE =
             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
@@ -85,6 +89,13 @@ namespace Engine
         };
         static_assert(sizeof(GpuParticleState) == 96);
 
+        struct GpuTrailConstants
+        {
+            Matrix world;
+            Vector4 settings;
+        };
+        static_assert(sizeof(GpuTrailConstants) == 80);
+
     }
 
     bool ParticleRenderer::initialize(DX12Device& device, const DX12Fence& fence)
@@ -132,6 +143,8 @@ namespace Engine
         for (DX12UploadBuffer& buffer : m_quadInstanceBuffers)
             succeeded = buffer.finalize() && succeeded;
         for (DX12UploadBuffer& buffer : m_meshInstanceBuffers)
+            succeeded = buffer.finalize() && succeeded;
+        for (auto& buffer : m_gpuTrailSettings)
             succeeded = buffer.finalize() && succeeded;
         for (auto& frame : m_sortedFrames)
         {
@@ -417,7 +430,13 @@ namespace Engine
         D3D12_ROOT_PARAMETER gpuSimulationBuffer{};
         gpuSimulationBuffer.ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
         gpuSimulationBuffer.Descriptor.ShaderRegister = 0;
-        const std::array gpuSimulationParameters{ gpuSimulationConstants, gpuSimulationBuffer };
+        D3D12_ROOT_PARAMETER gpuTrailOutput = gpuSimulationBuffer;
+        gpuTrailOutput.Descriptor.ShaderRegister = 4;
+        D3D12_ROOT_PARAMETER gpuTrailConstants{};
+        gpuTrailConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        gpuTrailConstants.Descriptor.ShaderRegister = 13;
+        const std::array gpuSimulationParameters{ gpuSimulationConstants, gpuSimulationBuffer,
+            gpuTrailOutput, gpuTrailConstants };
         if (!gpuSimulation.initialize(*m_device->get(), simulationShader, gpuSimulationParameters))
         {
             LOG_ERROR("[ParticleEffect] Failed to build the particle simulation compute pipeline.");
@@ -467,7 +486,7 @@ namespace Engine
             const auto uav = D3D12_ROOT_PARAMETER_TYPE_UAV;
             const std::array sortRoots{ constants(11, 8), constants(10, 16),
                 rootDescriptor(srv, 6), rootDescriptor(srv, 8), rootDescriptor(srv, 12),
-                rootDescriptor(uav, 2), rootDescriptor(uav, 3) };
+                rootDescriptor(uav, 2), rootDescriptor(uav, 3), rootDescriptor(srv, 14) };
             if (!sortPipeline.initialize(*m_device->get(), sortShader, sortRoots))
                 return false;
 
@@ -713,7 +732,8 @@ namespace Engine
                 state.particleLimit = emitter.settings.maxParticles;
                 state.needsClear = true;
             }
-            if (!ensureGpuEmitterBuffers(state, emitter.settings.maxParticles))
+            if (!ensureGpuEmitterBuffers(state, emitter.settings.maxParticles)
+                || (emitter.settings.trailEnabled && !ensureGpuTrailBuffer(state)))
                 return false;
         }
         for (const ParticleRenderParticle& particle : m_particles)
@@ -1250,11 +1270,25 @@ namespace Engine
         {
             if (!m_gpuSimulationPipeline.bind(commandList))
                 return false;
+            auto& trailUpload = m_gpuTrailSettings[frameIndex];
+            constexpr auto alignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+            const auto required = std::bit_ceil(static_cast<std::uint64_t>(m_gpuEmitterSubmissions.size()) * alignment);
+            if (trailUpload.getSize() < required && (!trailUpload.finalize()
+                || !trailUpload.initialize(*m_device->get(), *m_fence, required)))
+                return false;
+            std::uint64_t trailOffset = 0;
             for (const ParticleGpuEmitterSubmission& emitter : m_gpuEmitterSubmissions)
             {
                 GpuEmitterState& state = *m_gpuEmitterStates.at(emitter.id);
                 auto& particles = state.buffers->particles;
+                auto& trails = state.buffers->trails;
                 if (!particles.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+                    return false;
+                const GpuTrailConstants trailConstants{ emitter.worldMatrix,
+                    Vector4(emitter.settings.trailLifetime, emitter.settings.trailWidth, emitter.settings.trailMinDistance,
+                        static_cast<float>(emitter.settings.blendMode)) };
+                if (!trailUpload.write(std::as_bytes(std::span(&trailConstants, 1)), trailOffset)
+                    || (trails.get() && !trails.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)))
                     return false;
                 GpuSimulationConstants constants{
                     { emitter.settings.maxParticles, (emitter.clear || state.needsClear) ? 1u : 0u,
@@ -1278,14 +1312,31 @@ namespace Engine
                     emitter.settings.initialColorMax,
                     Vector4(emitter.settings.initialRotationMin, emitter.settings.initialRotationMax,
                         emitter.settings.angularVelocityMin, emitter.settings.angularVelocityMax),
-                    { emitter.settings.randomInitial ? 1u : 0u, 0u, 0u, 0u },
+                    { emitter.settings.randomInitial ? 1u : 0u, trails.get() ? 1u : 0u,
+                        emitter.settings.trailEnabled ? 1u : 0u, state.needsTrailClear ? 1u : 0u },
                 };
                 native->SetComputeRoot32BitConstants(0, 52, &constants, 0);
                 native->SetComputeRootUnorderedAccessView(1, particles.get()->GetGPUVirtualAddress());
+                native->SetComputeRootUnorderedAccessView(2, (trails.get() ? trails.get() : particles.get())->GetGPUVirtualAddress());
+                native->SetComputeRootConstantBufferView(3, trailUpload.getGpuVirtualAddress() + trailOffset);
+                if (trails.get())
+                {
+                    constexpr std::uint32_t ageTrailPass = 2;
+                    native->SetComputeRoot32BitConstant(0, constants.flags[3] | ageTrailPass, 51);
+                    native->Dispatch(1, 1, 1);
+                    D3D12_RESOURCE_BARRIER trailBarrier{};
+                    trailBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                    trailBarrier.UAV.pResource = trails.get();
+                    native->ResourceBarrier(1, &trailBarrier);
+                    native->SetComputeRoot32BitConstant(0, constants.flags[3], 51);
+                }
                 native->Dispatch((emitter.settings.maxParticles + 63) / 64, 1, 1);
-                if (!particles.transition(commandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE))
+                if (!particles.transition(commandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+                    || (trails.get() && !trails.transition(commandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)))
                     return false;
+                trailOffset += alignment;
                 state.needsClear = false;
+                state.needsTrailClear = false;
                 m_frameGpuEmitterIds[frameIndex].push_back(emitter.id);
             }
             if (enabled)
@@ -1474,6 +1525,8 @@ namespace Engine
             succeeded = m_meshInstanceBuffers[frameIndex].markUsed(fenceValue) && succeeded;
         if (m_frameUsesSort[frameIndex])
             succeeded = m_sortedFrames[frameIndex].upload.markUsed(fenceValue) && succeeded;
+        if (!m_frameGpuEmitterIds[frameIndex].empty())
+            succeeded = m_gpuTrailSettings[frameIndex].markUsed(fenceValue) && succeeded;
         for (const MeshData* mesh : m_usedMeshes[frameIndex])
             succeeded = mesh->vertexBuffer->markUsed(fenceValue) && succeeded;
         for (const std::uint64_t id : m_frameGpuEmitterIds[frameIndex])
@@ -1553,8 +1606,6 @@ namespace Engine
                     valid = resolveTexture(*paths[index], index == 0 ? TextureColorSpace::SRGB : TextureColorSpace::Linear,
                         batch.auxiliaryTextures[index]) && valid;
                 }
-                if (!valid)
-                    continue;
                 batch.uvDistortion = settings.uvDistortion;
                 batch.refractionPixels = settings.refractionPixels;
                 const auto& world = emitter.worldMatrix;
@@ -1588,10 +1639,19 @@ namespace Engine
                         settings.flipbookLoopCount },
                     { sequenceOffset, static_cast<std::uint32_t>(frames.size()) - sequenceOffset,
                         settings.flipbookRandomStartFrame ? 1u : 0u, settings.flipbookFrameBlending ? 1u : 0u } });
-                ranges.push_back({ m_gpuEmitterStates.at(emitter.id)->buffers.get(), settings.maxParticles, count,
-                    static_cast<std::uint32_t>(materials.size()) });
+                const auto* buffers = m_gpuEmitterStates.at(emitter.id)->buffers.get();
+                ranges.push_back({ buffers, valid ? settings.maxParticles : 0u, count,
+                    static_cast<std::uint32_t>(materials.size()), count + (valid ? settings.maxParticles : 0u),
+                    static_cast<std::uint32_t>(materials.size() + 1) });
                 materials.push_back(materialFor(batch));
-                count += settings.maxParticles;
+                count += ranges.back().count;
+                if (buffers->trails.get())
+                {
+                    for (std::size_t mode = 0; mode < BLEND_MODE_COUNT; ++mode)
+                        materials.push_back(materialFor({ .texture = white, .blendMode = static_cast<ParticleBlendMode>(mode),
+                            .appearance = 2 }));
+                    count += settings.maxParticles * GPU_TRAIL_POINTS;
+                }
             }
         }
         catch (const std::bad_alloc&)
@@ -1662,6 +1722,7 @@ namespace Engine
         native.SetComputeRootShaderResourceView(4, emitterBytes.empty() ? uploadAddress : uploadAddress + emittersOffset);
         native.SetComputeRootUnorderedAccessView(5, frame.commands.get()->GetGPUVirtualAddress());
         native.SetComputeRootUnorderedAccessView(6, frame.count.get()->GetGPUVirtualAddress());
+        native.SetComputeRootShaderResourceView(7, uploadAddress);
         const auto dispatch = [&](const std::array<std::uint32_t, 4>& parameters,
             const std::array<std::uint32_t, 4>& geometry = {})
         {
@@ -1682,8 +1743,17 @@ namespace Engine
             const auto address = range.buffers->particles.get()->GetGPUVirtualAddress();
             native.SetComputeRootShaderResourceView(2, address);
             native.SetComputeRootShaderResourceView(3, range.buffers->drawData.get()->GetGPUVirtualAddress());
-            dispatch({ 0, range.count, range.offset, range.material },
-                { static_cast<std::uint32_t>(address), static_cast<std::uint32_t>(address >> 32), index, 0 });
+            if (range.count != 0)
+                dispatch({ 0, range.count, range.offset, range.material },
+                    { static_cast<std::uint32_t>(address), static_cast<std::uint32_t>(address >> 32), index, 0 });
+            if (range.buffers->trails.get())
+            {
+                const auto trailAddress = range.buffers->trails.get()->GetGPUVirtualAddress();
+                native.SetComputeRootShaderResourceView(7, trailAddress);
+                dispatch({ 4, m_gpuEmitterSubmissions[index].settings.maxParticles * GPU_TRAIL_POINTS,
+                    range.trailOffset, range.trailMaterial },
+                    { static_cast<std::uint32_t>(trailAddress), static_cast<std::uint32_t>(trailAddress >> 32), 0, 0 });
+            }
         }
         if (capacity > count)
             dispatch({ 3, capacity - count, count, 0 });
@@ -1796,6 +1866,24 @@ namespace Engine
         }
         state.buffers = std::move(replacement);
         state.capacity = capacity;
+        return true;
+    }
+
+    bool ParticleRenderer::ensureGpuTrailBuffer(GpuEmitterState& state)
+    {
+        auto& trails = state.buffers->trails;
+        if (trails.get())
+            return true;
+        auto description = state.buffers->particles.getDescription();
+        description.Width = static_cast<std::uint64_t>(state.capacity) * (GPU_TRAIL_STRIDE + sizeof(std::uint32_t))
+            + 2 * sizeof(std::uint32_t);
+        if (!trails.initialize(*m_device->get(), { .description = description,
+            .initialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS }))
+        {
+            LOG_ERROR("[ParticleEffect] Failed to allocate GPU trail history.");
+            return false;
+        }
+        state.needsTrailClear = true;
         return true;
     }
 
