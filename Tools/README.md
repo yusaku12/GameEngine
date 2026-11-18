@@ -401,14 +401,16 @@ Play 中の **Discard Runtime Settings** は選択した Component の設定を�
 Simulation Backend は CPU／GPU を選択できます。GPU 対応設定では、粒子の生成・更新・寿命切れ判定を
 Compute Shader で行い、状態を GPU バッファに保持して Billboard を描画します。粒子状態の CPU 読み戻しは
 行いません。Emitter の連続発生スケジュールと乱数 seed の準備は CPU 側で行います。
-GPU は更新後に生存スロットだけを元の順序で一覧化し、その件数を間接描画へ渡します。
-生存粒子がない場合は頂点を処理しません。Inspector の描画提出数には生存数 0 の間接描画も含まれ、
-粒子インスタンス数は CPU シミュレーション分のみ表示します。
-GPU は通常の Play 中に利用でき、Editor Preview は CPU シミュレーションです。GPU は固定レートの連続発生、
-Additive、Local Space、カメラ向き Billboard、通常の寿命 Flipbook 再生に対応します。Mesh／Trail、非 Additive、
-World Space、他の向き、Soft Particle／Refraction／補助テクスチャ、UV Scroll、Burst／Emission Rate Keys、
-Delay／Prewarm／距離発生／速度継承、Lifetime Curves、拡張 Flipbook を使う設定では CPU にフォールバックし、
-Inspector に理由を表示します。
+GPU は更新後に生存スロットを一覧化します。Direct3D 12 のリソースバインディング Tier 2 以上では、全 GPU エミッターの
+生存粒子と CPU 粒子（Mesh を含む）、Trail／Ribbon／Beam／Lightning を同じ奥行き順に GPU で並べ、
+間接描画で奥から合成します。生存数と描画順の CPU 読み戻しはありません。GPU エミッターの提出がないフレームは、
+従来どおり CPU が描画順を決めます。Inspector の描画提出数には空の間接描画も含まれ、粒子インスタンス数は CPU 分のみです。
+
+GPU シミュレーションは通常の Play 中に利用できます。Tier 2 以上では、Billboard の全描画方向（速度による伸長を含む）、
+全合成モード、深度による境界のフェード、屈折、補助テクスチャ、UV スクロール、拡張 Flipbook に対応します。
+Tier 1 では従来の GPU 描画（Additive、カメラ向き、基本の寿命 Flipbook）を維持し、それ以外の描画設定は CPU にフォールバックします。
+Editor Preview、Mesh／Trail 履歴、World Space、Burst／発生率カーブ、遅延／事前再生／距離発生／速度継承、
+寿命カーブは引き続き CPU シミュレーションです。非対応設定では Inspector に理由を表示します。
 CPU は Burst／連続発生、球・箱・円盤の発生形状、方向と Spread、速度、Lifetime、Gravity、Drag、
 色／サイズ補間、Local／World Space を設定できます。Deferred では HDR ライティング後かつトーンマッピング前、
 Forward ではシーン描画中に

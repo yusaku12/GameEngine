@@ -58,38 +58,7 @@ namespace Engine
         {
             if (editorPreview)
                 return "Editor preview uses the CPU simulator.";
-            if (settings.blendMode != ParticleBlendMode::Additive)
-                return "GPU simulation currently requires Additive blending.";
-            if (settings.trailEnabled || !settings.meshPath.empty())
-                return "GPU simulation does not support Trails or Mesh particles.";
-            if (!settings.localSpace)
-                return "GPU simulation currently requires Local Space.";
-            if (settings.orientation != ParticleOrientation::Camera)
-                return "GPU simulation currently supports camera-facing billboards only.";
-            if (settings.softDistance > 0.0f || settings.refractionPixels != 0.0f
-                || !settings.secondaryTexturePath.empty() || !settings.maskTexturePath.empty()
-                || !settings.distortionTexturePath.empty() || settings.uvDistortion != 0.0f)
-                return "GPU simulation does not support soft particles, refraction, or auxiliary textures.";
-            if (!settings.bursts.empty() || !settings.emissionRateKeys.empty()
-                || settings.startDelay > 0.0f || settings.prewarm
-                || settings.distancePerParticle > 0.0f || settings.inheritVelocity > 0.0f)
-                return "GPU simulation does not support scheduled/distance emission, delay, or prewarm.";
-            if (settings.uvScroll != Vector2::Zero)
-                return "GPU simulation does not support UV scrolling.";
-            const auto hasCurves = [](const ParticleLifetimeCurves& curves)
-            {
-                return curves.smooth || !curves.color.empty() || !curves.size.empty() || !curves.speed.empty()
-                    || !curves.angularSpeed.empty() || !curves.width.empty() || !curves.height.empty()
-                    || !curves.acceleration.empty() || !curves.velocity.empty()
-                    || !curves.gravity.empty() || !curves.drag.empty();
-            };
-            if (hasCurves(settings.curves) || !settings.curveVariants.empty())
-                return "GPU simulation does not support lifetime curves or curve sets.";
-            if (settings.flipbookPlayback != ParticleFlipbookPlayback::Lifetime
-                || settings.flipbookLoopCount != 1 || settings.flipbookRandomStartFrame
-                || settings.flipbookFrameBlending)
-                return "GPU simulation supports lifetime Flipbook playback without random start or blending.";
-            return nullptr;
+            return ParticleRenderSubmissionQueue::instance().gpuSimulationFallbackReason(settings);
         }
 
         template<typename Key>

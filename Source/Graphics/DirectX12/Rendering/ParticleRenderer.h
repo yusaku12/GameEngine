@@ -49,7 +49,8 @@ namespace Engine
         bool rebuildPipeline(const DX12Shader& vertexShader, const DX12Shader& meshVertexShader,
             const DX12Shader& pixelShader, const DX12Shader& gpuVertexShader,
             const DX12Shader& gpuPixelShader, const DX12Shader& simulationShader,
-            const DX12Shader& compactionShader);
+            const DX12Shader& compactionShader, const DX12Shader& sortShader,
+            const DX12Shader& sortedVertexShader, const DX12Shader& sortedPixelShader);
         /** @brief Records the current particle snapshot into the selected scene color target. */
         bool record(std::uint32_t frameIndex, const Matrix& viewProjection, const Matrix& inverseView,
             const Vector3& cameraPosition, const Vector3& cameraForward,
@@ -120,6 +121,7 @@ namespace Engine
             const MeshData* mesh = nullptr;
             std::uint32_t firstInstance = 0;
             std::uint32_t instanceCount = 0;
+            float depth = 0.0f;
         };
         struct DrawItem
         {
@@ -174,8 +176,59 @@ namespace Engine
         bool ensureMeshInstanceCapacity(std::uint32_t frameIndex, std::size_t instanceCount);
         bool ensureSceneCopy(std::uint32_t frameIndex, const DX12Resource& source);
         bool ensureGpuEmitterBuffers(GpuEmitterState& state, std::uint32_t capacity);
-        bool resolveGpuTexture(const std::filesystem::path& path, D3D12_GPU_DESCRIPTOR_HANDLE& texture);
+        bool resolveTexture(const std::filesystem::path& path, TextureColorSpace colorSpace,
+            D3D12_GPU_DESCRIPTOR_HANDLE& texture, std::uint32_t* width = nullptr, std::uint32_t* height = nullptr);
         const MeshData* resolveMesh(const std::filesystem::path& path);
+
+        struct SortedFrame
+        {
+            DX12UploadBuffer upload;
+            DX12Resource commands;
+            DX12Resource count;
+        };
+        struct ParticleCommand
+        {
+            std::uint64_t geometry;
+            std::array<std::uint32_t, 4> selection;
+            D3D12_DRAW_ARGUMENTS draw;
+            float depth;
+            std::uint32_t ordinal;
+        };
+        struct ParticleMaterial
+        {
+            std::array<std::uint32_t, 4> textures;
+            std::uint32_t appearance;
+            float softness, distortion, refraction;
+        };
+        struct ParticleEmitterDraw
+        {
+            Matrix world;
+            Vector4 sizeScale, orientation, scrollTiming, atlasInset;
+            std::array<std::uint32_t, 4> flipbook, sequence;
+        };
+        struct SortedEmitterRange
+        {
+            const GpuEmitterBuffers* buffers;
+            std::uint32_t count, offset, material;
+        };
+        struct SortedFlipbookFrame { std::uint32_t cell; float duration; };
+        struct SortedStaging
+        {
+            std::vector<ParticleCommand> commands;
+            std::vector<ParticleMaterial> materials;
+            std::vector<ParticleEmitterDraw> emitters;
+            std::vector<SortedEmitterRange> ranges;
+            std::vector<SortedFlipbookFrame> frames;
+        };
+        bool recordSorted(std::uint32_t frameIndex, DXGI_FORMAT format, const Matrix& viewProjection,
+            std::span<const std::byte> depthConstants, const std::array<Vector4, 4>& camera,
+            D3D12_GPU_DESCRIPTOR_HANDLE white, D3D12_GPU_DESCRIPTOR_HANDLE depth, D3D12_GPU_DESCRIPTOR_HANDLE scene);
+        DX12ComputePipeline m_sortPipeline;
+        std::array<DX12GraphicsPipeline, 2> m_sortedPipelines;
+        std::array<Microsoft::WRL::ComPtr<ID3D12CommandSignature>, 2> m_sortedSignatures;
+        std::array<SortedFrame, FRAME_COUNT> m_sortedFrames;
+        std::array<bool, FRAME_COUNT> m_frameUsesSort{};
+        SortedStaging m_sortedStaging;
 
         DX12Device* m_device = nullptr;
         const DX12Fence* m_fence = nullptr;

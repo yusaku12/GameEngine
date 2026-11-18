@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include "Core\CoreDefines.h"
 #include "Core\Math\MathTypes.h"
 #include "Assets\Effects\ParticleEffectAsset.h"
@@ -127,6 +129,13 @@ namespace Engine
 
         static ParticleRenderSubmissionQueue& instance() noexcept;
 
+        /** @brief Publishes whether the renderer supports globally sorted GPU particles. */
+        void setGpuSortingSupported(bool supported) noexcept { m_gpuSortingSupported.store(supported); }
+        /** @brief Returns the GPU particle sorting capability available to simulation. */
+        bool gpuSortingSupported() const noexcept { return m_gpuSortingSupported.load(); }
+        /** @brief Returns why the emitter cannot use GPU simulation, or nullptr if supported. */
+        const char* gpuSimulationFallbackReason(const ParticleEffectSettings& settings) const noexcept;
+
         GE_DISABLE_COPY_AND_MOVE(ParticleRenderSubmissionQueue);
 
         /** @brief Atomically appends validated particle and trail snapshots. */
@@ -165,6 +174,7 @@ namespace Engine
         ~ParticleRenderSubmissionQueue() = default;
 
         std::mutex m_mutex;
+        std::atomic<bool> m_gpuSortingSupported{ false };
         std::vector<ParticleRenderParticle> m_pending;
         std::vector<ParticleRenderTrailSegment> m_pendingTrails;
         std::vector<ParticleRenderRibbon> m_pendingRibbons;

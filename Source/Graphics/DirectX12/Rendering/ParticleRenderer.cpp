@@ -81,31 +81,10 @@ namespace Engine
             Vector4 startColor;
             Vector4 endColor;
             Vector4 sizeRotation;
+            std::array<std::uint32_t, 4> randomData;
         };
-        static_assert(sizeof(GpuParticleState) == 80);
+        static_assert(sizeof(GpuParticleState) == 96);
 
-        bool supportsGpuSimulation(const ParticleEffectSettings& settings) noexcept
-        {
-            return settings.simulationBackend == ParticleSimulationBackend::GPU
-                && settings.localSpace && settings.blendMode == ParticleBlendMode::Additive
-                && settings.orientation == ParticleOrientation::Camera && !settings.trailEnabled
-                && settings.meshPath.empty() && settings.softDistance == 0.0f
-                && settings.refractionPixels == 0.0f && settings.secondaryTexturePath.empty()
-                && settings.maskTexturePath.empty() && settings.distortionTexturePath.empty()
-                && settings.uvDistortion == 0.0f && settings.uvScroll == Vector2::Zero
-                && settings.bursts.empty() && settings.emissionRateKeys.empty()
-                && settings.startDelay == 0.0f && !settings.prewarm
-                && settings.distancePerParticle == 0.0f && settings.inheritVelocity == 0.0f
-                && settings.curves.color.empty() && settings.curves.size.empty()
-                && settings.curves.speed.empty() && settings.curves.angularSpeed.empty()
-                && settings.curves.width.empty() && settings.curves.height.empty()
-                && !settings.curves.smooth && settings.curves.acceleration.empty()
-                && settings.curves.velocity.empty() && settings.curves.gravity.empty()
-                && settings.curves.drag.empty() && settings.curveVariants.empty()
-                && settings.flipbookPlayback == ParticleFlipbookPlayback::Lifetime
-                && settings.flipbookLoopCount == 1 && !settings.flipbookRandomStartFrame
-                && !settings.flipbookFrameBlending;
-        }
     }
 
     bool ParticleRenderer::initialize(DX12Device& device, const DX12Fence& fence)
@@ -154,6 +133,13 @@ namespace Engine
             succeeded = buffer.finalize() && succeeded;
         for (DX12UploadBuffer& buffer : m_meshInstanceBuffers)
             succeeded = buffer.finalize() && succeeded;
+        for (auto& frame : m_sortedFrames)
+        {
+            if (!frame.upload.finalize())
+                return false;
+            frame.commands.finalize();
+            frame.count.finalize();
+        }
         if (m_fence != nullptr)
         {
             for (const auto& [id, state] : m_gpuEmitterStates)
@@ -206,6 +192,12 @@ namespace Engine
             pipeline.finalize();
         m_gpuSimulationPipeline.finalize();
         m_gpuCompactionPipeline.finalize();
+        m_sortPipeline.finalize();
+        for (auto& pipeline : m_sortedPipelines)
+            pipeline.finalize();
+        for (auto& signature : m_sortedSignatures)
+            signature.Reset();
+        m_sortedStaging = {};
         m_gpuDrawSignature.Reset();
         m_gpuEmitterStates.clear();
         m_quadInstanceCapacities.fill(0);
@@ -238,6 +230,7 @@ namespace Engine
         m_frameNumber = 0;
         m_device = nullptr;
         m_fence = nullptr;
+        ParticleRenderSubmissionQueue::instance().setGpuSortingSupported(false);
         ParticleRenderSubmissionQueue::instance().clear();
         return succeeded;
     }
@@ -245,7 +238,8 @@ namespace Engine
     bool ParticleRenderer::rebuildPipeline(const DX12Shader& vertexShader,
         const DX12Shader& meshVertexShader, const DX12Shader& pixelShader,
         const DX12Shader& gpuVertexShader, const DX12Shader& gpuPixelShader,
-        const DX12Shader& simulationShader, const DX12Shader& compactionShader)
+        const DX12Shader& simulationShader, const DX12Shader& compactionShader,
+        const DX12Shader& sortShader, const DX12Shader& sortedVertexShader, const DX12Shader& sortedPixelShader)
     {
         if (m_device == nullptr || m_device->get() == nullptr)
         {
@@ -447,6 +441,77 @@ namespace Engine
             return false;
         }
 
+        DX12ComputePipeline sortPipeline;
+        std::array<DX12GraphicsPipeline, 2> sortedPipelines;
+        std::array<Microsoft::WRL::ComPtr<ID3D12CommandSignature>, 2> sortedSignatures;
+        const bool supportsSorting = m_device->getCapabilities().resourceBindingTier >= D3D12_RESOURCE_BINDING_TIER_2;
+        if (supportsSorting)
+        {
+            const auto rootDescriptor = [](const D3D12_ROOT_PARAMETER_TYPE type, const UINT shaderRegister,
+                const D3D12_SHADER_VISIBILITY visibility = D3D12_SHADER_VISIBILITY_ALL)
+            {
+                D3D12_ROOT_PARAMETER parameter{};
+                parameter.ParameterType = type;
+                parameter.Descriptor.ShaderRegister = shaderRegister;
+                parameter.ShaderVisibility = visibility;
+                return parameter;
+            };
+            const auto constants = [](const UINT shaderRegister, const UINT count)
+            {
+                D3D12_ROOT_PARAMETER parameter{};
+                parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+                parameter.Constants = { shaderRegister, 0, count };
+                return parameter;
+            };
+            const auto srv = D3D12_ROOT_PARAMETER_TYPE_SRV;
+            const auto uav = D3D12_ROOT_PARAMETER_TYPE_UAV;
+            const std::array sortRoots{ constants(11, 8), constants(10, 16),
+                rootDescriptor(srv, 6), rootDescriptor(srv, 8), rootDescriptor(srv, 12),
+                rootDescriptor(uav, 2), rootDescriptor(uav, 3) };
+            if (!sortPipeline.initialize(*m_device->get(), sortShader, sortRoots))
+                return false;
+
+            const D3D12_DESCRIPTOR_RANGE sortedTextureRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, UINT_MAX, 0, 1, 0 };
+            D3D12_ROOT_PARAMETER sortedTextureTable = textureTable;
+            sortedTextureTable.DescriptorTable.pDescriptorRanges = &sortedTextureRange;
+            const std::array sortedRoots{ viewProjectionConstants, depthTable, sceneTable,
+                rootDescriptor(D3D12_ROOT_PARAMETER_TYPE_CBV, 2, D3D12_SHADER_VISIBILITY_PIXEL),
+                sortedTextureTable, constants(10, 16), rootDescriptor(srv, 9, D3D12_SHADER_VISIBILITY_VERTEX),
+                constants(9, 4), rootDescriptor(srv, 10), rootDescriptor(srv, 11),
+                rootDescriptor(srv, 12), rootDescriptor(srv, 13), constants(12, 1) };
+            DX12GraphicsPipelineConfig sortedConfig = config;
+            sortedConfig.vertexShader = &sortedVertexShader;
+            sortedConfig.pixelShader = &sortedPixelShader;
+            sortedConfig.rootParameters = sortedRoots;
+            sortedConfig.overrideBlend = true;
+            // Both channels use source + destination * factor; the shader selects the material's equation.
+            sortedConfig.blendOverride = { TRUE, FALSE, D3D12_BLEND_ONE, D3D12_BLEND_SRC1_COLOR,
+                D3D12_BLEND_OP_ADD, D3D12_BLEND_ONE, D3D12_BLEND_SRC1_ALPHA, D3D12_BLEND_OP_ADD,
+                D3D12_LOGIC_OP_NOOP, D3D12_COLOR_WRITE_ENABLE_ALL };
+            std::array<D3D12_INDIRECT_ARGUMENT_DESC, 3> arguments{};
+            arguments[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_SHADER_RESOURCE_VIEW;
+            arguments[0].ShaderResourceView.RootParameterIndex = 6;
+            arguments[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
+            arguments[1].Constant = { 7, 0, 4 };
+            arguments[2].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
+            const D3D12_COMMAND_SIGNATURE_DESC signature{ sizeof(ParticleCommand),
+                static_cast<UINT>(arguments.size()), arguments.data(), 0 };
+            for (std::size_t index = 0; index < sortedPipelines.size(); ++index)
+            {
+                sortedConfig.renderTargetFormat = index == 0 ? DXGI_FORMAT_R8G8B8A8_UNORM : DXGI_FORMAT_R16G16B16A16_FLOAT;
+                if (!sortedPipelines[index].initialize(*m_device->get(), sortedConfig))
+                    return false;
+                const HRESULT result = m_device->get()->CreateCommandSignature(&signature,
+                    sortedPipelines[index].getRootSignature(), IID_PPV_ARGS(&sortedSignatures[index]));
+                if (FAILED(result))
+                {
+                    LOG_ERROR("[ParticleEffect] Failed to create the sorted indirect draw signature (HRESULT: 0x{:08X}).",
+                        static_cast<unsigned long>(result));
+                    return false;
+                }
+            }
+        }
+
         DX12GraphicsPipelineConfig forwardConfig = config;
         forwardConfig.renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
         DX12GraphicsPipelineConfig deferredConfig = config;
@@ -516,6 +581,11 @@ namespace Engine
         }
         m_gpuSimulationPipeline.swap(gpuSimulation);
         m_gpuCompactionPipeline.swap(gpuCompaction);
+        m_sortPipeline.swap(sortPipeline);
+        for (std::size_t index = 0; index < m_sortedPipelines.size(); ++index)
+            m_sortedPipelines[index].swap(sortedPipelines[index]);
+        m_sortedSignatures.swap(sortedSignatures);
+        ParticleRenderSubmissionQueue::instance().setGpuSortingSupported(supportsSorting);
         return true;
     }
 
@@ -535,13 +605,17 @@ namespace Engine
         m_frameRecorded[frameIndex] = false;
         m_frameUsesQuadInstanceBuffer[frameIndex] = false;
         m_frameUsesMeshInstanceBuffer[frameIndex] = false;
+        m_frameUsesSort[frameIndex] = false;
         m_usedMeshes[frameIndex].clear();
         m_frameGpuEmitterIds[frameIndex].clear();
         m_gpuEmitterDrawCount = 0;
         m_renderedParticles = 0;
         ++m_frameNumber;
-        ParticleRenderSubmissionQueue::instance().consume(m_particles, m_trails, m_ribbons,
+        auto& submissions = ParticleRenderSubmissionQueue::instance();
+        submissions.consume(m_particles, m_trails, m_ribbons,
             m_gpuEmitterSubmissions, m_removedGpuEmitters);
+        const bool supportsSorting = m_sortedSignatures[0] != nullptr;
+        const bool sorted = enabled && supportsSorting && !m_gpuEmitterSubmissions.empty();
         for (const std::uint64_t id : m_removedGpuEmitters)
         {
             const auto state = m_gpuEmitterStates.find(id);
@@ -550,7 +624,7 @@ namespace Engine
         }
         for (const ParticleGpuEmitterSubmission& emitter : m_gpuEmitterSubmissions)
         {
-            if (!supportsGpuSimulation(emitter.settings)
+            if (submissions.gpuSimulationFallbackReason(emitter.settings) != nullptr
                 || emitter.settings.maxParticles > MAX_GPU_PARTICLES)
             {
                 LOG_ERROR("[ParticleEffect] Unsupported settings reached the GPU particle renderer.");
@@ -726,8 +800,9 @@ namespace Engine
                 m_drawItems[m_particles.size() + m_trails.size() + index] =
                     { index, depth, DrawItem::Kind::Ribbon };
             }
-            std::sort(m_drawItems.begin(), m_drawItems.end(),
-                [](const DrawItem& left, const DrawItem& rightItem) { return left.depth > rightItem.depth; });
+            if (!sorted)
+                std::sort(m_drawItems.begin(), m_drawItems.end(),
+                    [](const DrawItem& left, const DrawItem& rightItem) { return left.depth > rightItem.depth; });
             m_quadInstances.clear();
             m_quadInstances.reserve(std::min(totalPrimitives, MAX_QUAD_INSTANCES));
         }
@@ -753,17 +828,18 @@ namespace Engine
         m_batches.clear();
         m_resolvedVisuals.clear();
         m_meshInstances.clear();
-        const auto appendBand = [this, texture = whiteInfo->srv](const ParticleBlendMode blendMode,
+        const auto appendBand = [this, sorted, texture = whiteInfo->srv](const ParticleBlendMode blendMode, const float depth,
             const Vector3& start, const Vector3& end, const Vector3& startSide, const Vector3& endSide,
             const Vector4& startColor, const Vector4& endColor)
         {
             constexpr std::uint32_t bandAppearance = 2;
             if (m_batches.empty() || m_batches.back().mesh != nullptr
                 || m_batches.back().appearance != bandAppearance
-                || m_batches.back().blendMode != blendMode)
+                || m_batches.back().blendMode != blendMode || (sorted && m_batches.back().depth != depth))
             {
                 m_batches.push_back({ .texture = texture, .blendMode = blendMode,
-                    .appearance = bandAppearance, .firstInstance = static_cast<std::uint32_t>(m_quadInstances.size()) });
+                    .appearance = bandAppearance, .firstInstance = static_cast<std::uint32_t>(m_quadInstances.size()),
+                    .depth = depth });
             }
             m_quadInstances.push_back({ .origin = start, .isBand = 1, .rightOrEnd = end,
                 .upOrStartSide = startSide, .endSide = endSide, .color = startColor, .endColor = endColor });
@@ -809,7 +885,7 @@ namespace Engine
                         LOG_ERROR("[ParticleEffect] Trail side vector is invalid.");
                         return false;
                     }
-                    appendBand(trail.blendMode, trail.start, trail.end, startSide, endSide,
+                    appendBand(trail.blendMode, draw.depth, trail.start, trail.end, startSide, endSide,
                         trail.startColor, trail.endColor);
                     ++m_renderedTrails;
                     continue;
@@ -851,7 +927,7 @@ namespace Engine
                     {
                         const auto& start = ribbon.points[segment];
                         const auto& end = ribbon.points[segment + 1];
-                        appendBand(ribbon.blendMode, start.position, end.position,
+                        appendBand(ribbon.blendMode, draw.depth, start.position, end.position,
                             sides[segment], sides[segment + 1], start.color, end.color);
                     }
                     ++m_renderedRibbons;
@@ -865,47 +941,6 @@ namespace Engine
                 {
                     ResolvedVisual item{ visual, whiteInfo->srv, 1, 1, false, true };
                     item.auxiliaryTextures.fill(whiteInfo->srv);
-                    const auto resolveTexture = [&](const std::filesystem::path& path, const TextureColorSpace colorSpace,
-                        D3D12_GPU_DESCRIPTOR_HANDLE& output, std::uint32_t* width, std::uint32_t* height)
-                    {
-                        if (path.empty())
-                            return true;
-                        const bool srgb = colorSpace == TextureColorSpace::SRGB;
-                        const auto kind = srgb ? ParticleResourceKind::ColorTexture : ParticleResourceKind::LinearTexture;
-                        auto& failures = m_failedTextures[srgb ? 0 : 1];
-                        const auto failed = failures.find(path);
-                        if (failed == failures.end() || m_frameNumber - failed->second >= 120)
-                        {
-                            TextureHandle handle;
-                            auto& cache = srgb ? m_textureCache : m_linearTextureCache;
-                            if (const auto cached = cache.find(path); cached != cache.end())
-                                handle = cached->second;
-                            if (!textureManager.get(handle))
-                            {
-                                TextureLoadDesc desc;
-                                desc.colorSpace = colorSpace;
-                                desc.generateMips = false;
-                                handle = textureManager.load(path, desc);
-                            }
-                            const Texture* const texture = textureManager.get(handle);
-                            const TextureResourceInfo* const info = texture ? texture->getResourceInfo() : nullptr;
-                            if (info && info->type == TextureType::Texture2D && info->width && info->height)
-                            {
-                                output = info->srv;
-                                if (width) *width = info->width;
-                                if (height) *height = info->height;
-                                cache[path] = handle;
-                                failures.erase(path);
-                                ParticleRenderSubmissionQueue::instance().setResourceFailed(path, kind, false);
-                                return true;
-                            }
-                            LOG_ERROR("[ParticleEffect] Particle texture could not be loaded as a 2D texture: {}",
-                                String::fromWide(path.c_str()).c_str());
-                            failures[path] = m_frameNumber;
-                        }
-                        ParticleRenderSubmissionQueue::instance().setResourceFailed(path, kind, true);
-                        return false;
-                    };
                     if (visual)
                     {
                         if (!visual->meshPath.empty())
@@ -939,7 +974,8 @@ namespace Engine
                 const float softDistance = visual ? visual->softDistance : 0.0f;
                 const float uvDistortion = visual ? visual->uvDistortion : 0.0f;
                 const float refractionPixels = visual ? visual->refractionPixels : 0.0f;
-                if (m_batches.empty() || m_batches.back().texture.ptr != resolved->texture.ptr
+                if (m_batches.empty() || (sorted && m_batches.back().depth != draw.depth)
+                    || m_batches.back().texture.ptr != resolved->texture.ptr
                     || m_batches.back().blendMode != blendMode || m_batches.back().appearance != appearance
                     || m_batches.back().softDistance != softDistance
                     || m_batches.back().textureFlags != resolved->textureFlags
@@ -952,7 +988,7 @@ namespace Engine
                 {
                     DrawBatch batch{ .texture = resolved->texture, .blendMode = blendMode,
                         .appearance = appearance, .softDistance = softDistance,
-                        .firstInstance = static_cast<std::uint32_t>(m_quadInstances.size()) };
+                        .firstInstance = static_cast<std::uint32_t>(m_quadInstances.size()), .depth = draw.depth };
                     batch.auxiliaryTextures = resolved->auxiliaryTextures;
                     batch.textureFlags = resolved->textureFlags;
                     batch.uvDistortion = uvDistortion;
@@ -1101,9 +1137,13 @@ namespace Engine
             return true;
 
         const bool usesSoftParticles = std::any_of(m_batches.begin(), m_batches.end(),
-            [](const DrawBatch& batch) { return batch.softDistance > 0.0f; });
+            [](const DrawBatch& batch) { return batch.softDistance > 0.0f; })
+            || (sorted && std::any_of(m_gpuEmitterSubmissions.begin(), m_gpuEmitterSubmissions.end(),
+                [](const auto& emitter) { return emitter.settings.softDistance > 0.0f; }));
         const bool usesRefraction = std::any_of(m_batches.begin(), m_batches.end(),
-            [](const DrawBatch& batch) { return batch.refractionPixels != 0.0f; });
+            [](const DrawBatch& batch) { return batch.refractionPixels != 0.0f; })
+            || (sorted && std::any_of(m_gpuEmitterSubmissions.begin(), m_gpuEmitterSubmissions.end(),
+                [](const auto& emitter) { return emitter.settings.refractionPixels != 0.0f; }));
         if (usesSoftParticles && (!sceneDepth || !sceneDepth->resource || !sceneDepth->resource->get()
             || sceneDepth->resource->getCurrentState() != D3D12_RESOURCE_STATE_DEPTH_WRITE
             || sceneDepth->readOnlyDsv.ptr == 0 || sceneDepth->srv.ptr == 0
@@ -1280,108 +1320,120 @@ namespace Engine
             Vector4(normalizedCameraForward.x, normalizedCameraForward.y, normalizedCameraForward.z, 0),
         };
         static_assert(sizeof(DepthConstants) == 28 * sizeof(float));
-        const DX12GraphicsPipeline* boundPipeline = nullptr;
-        for (const DrawBatch& batch : m_batches)
+        if (sorted)
         {
-            const std::size_t blendIndex = static_cast<std::size_t>(batch.blendMode);
-            const bool meshBatch = batch.mesh != nullptr;
-            const DX12GraphicsPipeline* const pipeline = meshBatch
-                ? (targetFormat == DXGI_FORMAT_R16G16B16A16_FLOAT
-                    ? &m_deferredMeshPipelines[blendIndex] : &m_forwardMeshPipelines[blendIndex])
-                : (targetFormat == DXGI_FORMAT_R16G16B16A16_FLOAT
-                    ? &m_deferredPipelines[blendIndex] : &m_forwardPipelines[blendIndex]);
-            if (pipeline != boundPipeline)
-            {
-                if (!pipeline->bind(commandList))
-                    return false;
-                native->SetGraphicsRoot32BitConstants(0, 16, &viewProjection._11, 0);
-                native->SetGraphicsRootDescriptorTable(3, usesSoftParticles ? sceneDepth->srv : whiteInfo->srv);
-                native->SetGraphicsRoot32BitConstants(4, 28, &depthConstants, 0);
-                native->SetGraphicsRootDescriptorTable(10, usesRefraction
-                    ? m_sceneCopyViews[frameIndex]->gpu->native : whiteInfo->srv);
-                boundPipeline = pipeline;
-            }
-            native->SetGraphicsRootDescriptorTable(1, batch.texture);
-            const std::uint32_t appearance = batch.appearance | (static_cast<std::uint32_t>(batch.blendMode) << 8)
-                | (batch.textureFlags << 16);
-            native->SetGraphicsRoot32BitConstants(2, 1, &appearance, 0);
-            native->SetGraphicsRoot32BitConstants(5, 1, &batch.softDistance, 0);
-            for (std::size_t index = 0; index < batch.auxiliaryTextures.size(); ++index)
-                native->SetGraphicsRootDescriptorTable(static_cast<UINT>(6 + index),
-                    batch.auxiliaryTextures[index].ptr ? batch.auxiliaryTextures[index] : whiteInfo->srv);
-            native->SetGraphicsRoot32BitConstants(9, 1, &batch.uvDistortion, 0);
-            native->SetGraphicsRoot32BitConstants(11, 1, &batch.refractionPixels, 0);
-            if (meshBatch)
-            {
-                if (!batch.mesh->vertexBuffer || batch.instanceCount == 0)
-                {
-                    LOG_ERROR("[ParticleEffect] Mesh particle batch has no geometry or instances.");
-                    return false;
-                }
-                const auto meshBytes = batch.mesh->vertices.size() * sizeof(MeshVertex);
-                const D3D12_VERTEX_BUFFER_VIEW meshViews[]{
-                    { batch.mesh->vertexBuffer->getGpuVirtualAddress(),
-                        static_cast<UINT>(meshBytes), sizeof(MeshVertex) },
-                    { m_meshInstanceBuffers[frameIndex].getGpuVirtualAddress(),
-                        static_cast<UINT>(meshInstanceBytes.size()), sizeof(MeshInstance) },
-                };
-                native->IASetVertexBuffers(0, 2, meshViews);
-                native->DrawInstanced(batch.vertexCount, batch.instanceCount, 0, batch.firstInstance);
-            }
-            else
-            {
-                const auto instanceAddress = quadInstanceBuffer.getGpuVirtualAddress()
-                    + static_cast<std::uint64_t>(batch.firstInstance) * sizeof(QuadInstance);
-                native->SetGraphicsRootShaderResourceView(12, instanceAddress);
-                native->DrawInstanced(QUAD_VERTEX_COUNT, batch.instanceCount, 0, 0);
-            }
+            const std::array camera{ Vector4(right.x, right.y, right.z, 0), Vector4(up.x, up.y, up.z, 0),
+                depthConstants.forward, Vector4(cameraPosition.x, cameraPosition.y, cameraPosition.z, 0) };
+            if (!recordSorted(frameIndex, targetFormat, viewProjection, std::as_bytes(std::span(&depthConstants, 1)),
+                camera, whiteInfo->srv, usesSoftParticles ? sceneDepth->srv : whiteInfo->srv,
+                usesRefraction ? m_sceneCopyViews[frameIndex]->gpu->native : whiteInfo->srv))
+                return false;
         }
-        if (enabled)
+        else
         {
-            const DX12GraphicsPipeline* boundGpuPipeline = nullptr;
-            for (const ParticleGpuEmitterSubmission& emitter : m_gpuEmitterSubmissions)
+            const DX12GraphicsPipeline* boundPipeline = nullptr;
+            for (const DrawBatch& batch : m_batches)
             {
-                const GpuEmitterBuffers& buffers = *m_gpuEmitterStates.at(emitter.id)->buffers;
-                D3D12_GPU_DESCRIPTOR_HANDLE texture = whiteInfo->srv;
-                if (!resolveGpuTexture(emitter.settings.texturePath, texture))
-                    continue;
-                const std::size_t blendIndex = static_cast<std::size_t>(emitter.settings.blendMode);
-                const DX12GraphicsPipeline* const pipeline = targetFormat == DXGI_FORMAT_R16G16B16A16_FLOAT
-                    ? &m_deferredGpuPipelines[blendIndex] : &m_forwardGpuPipelines[blendIndex];
-                if (pipeline != boundGpuPipeline)
+                const std::size_t blendIndex = static_cast<std::size_t>(batch.blendMode);
+                const bool meshBatch = batch.mesh != nullptr;
+                const DX12GraphicsPipeline* const pipeline = meshBatch
+                    ? (targetFormat == DXGI_FORMAT_R16G16B16A16_FLOAT
+                        ? &m_deferredMeshPipelines[blendIndex] : &m_forwardMeshPipelines[blendIndex])
+                    : (targetFormat == DXGI_FORMAT_R16G16B16A16_FLOAT
+                        ? &m_deferredPipelines[blendIndex] : &m_forwardPipelines[blendIndex]);
+                if (pipeline != boundPipeline)
                 {
                     if (!pipeline->bind(commandList))
                         return false;
                     native->SetGraphicsRoot32BitConstants(0, 16, &viewProjection._11, 0);
-                    boundGpuPipeline = pipeline;
+                    native->SetGraphicsRootDescriptorTable(3, usesSoftParticles ? sceneDepth->srv : whiteInfo->srv);
+                    native->SetGraphicsRoot32BitConstants(4, 28, &depthConstants, 0);
+                    native->SetGraphicsRootDescriptorTable(10, usesRefraction
+                        ? m_sceneCopyViews[frameIndex]->gpu->native : whiteInfo->srv);
+                    boundPipeline = pipeline;
                 }
-                const std::uint32_t appearance = (emitter.settings.texturePath.empty() ? 0u : 1u)
-                    | (static_cast<std::uint32_t>(emitter.settings.blendMode) << 8);
-                const auto& world = emitter.worldMatrix;
-                const Vector3 scaleX(world._11, world._12, world._13);
-                const Vector3 scaleY(world._21, world._22, world._23);
-                const Vector3 scaleZ(world._31, world._32, world._33);
-                const float worldScale = std::max({ scaleX.Length(), scaleY.Length(), scaleZ.Length() });
-                if (!std::isfinite(worldScale))
-                {
-                    LOG_ERROR("[ParticleEffect] GPU emitter world scale is invalid.");
-                    return false;
-                }
-                const GpuParticleDrawConstants drawConstants{
-                    { 0u, 1u, emitter.settings.flipbookColumns,
-                        emitter.settings.flipbookRows },
-                    Vector4(right.x, right.y, right.z, worldScale),
-                    Vector4(up.x, up.y, up.z, emitter.settings.initialSizeScale.x),
-                    Vector4(0.0f, emitter.settings.initialSizeScale.y, 0.0f, 0.0f),
-                };
-                native->SetGraphicsRootDescriptorTable(1, texture);
+                native->SetGraphicsRootDescriptorTable(1, batch.texture);
+                const std::uint32_t appearance = batch.appearance | (static_cast<std::uint32_t>(batch.blendMode) << 8)
+                    | (batch.textureFlags << 16);
                 native->SetGraphicsRoot32BitConstants(2, 1, &appearance, 0);
-                native->SetGraphicsRootShaderResourceView(3, buffers.particles.get()->GetGPUVirtualAddress());
-                native->SetGraphicsRoot32BitConstants(4, 16, &emitter.worldMatrix._11, 0);
-                native->SetGraphicsRoot32BitConstants(5, 16, &drawConstants, 0);
-                native->SetGraphicsRootShaderResourceView(6, buffers.drawData.get()->GetGPUVirtualAddress());
-                native->ExecuteIndirect(m_gpuDrawSignature.Get(), 1, buffers.drawData.get(), 0, nullptr, 0);
-                ++m_gpuEmitterDrawCount;
+                native->SetGraphicsRoot32BitConstants(5, 1, &batch.softDistance, 0);
+                for (std::size_t index = 0; index < batch.auxiliaryTextures.size(); ++index)
+                    native->SetGraphicsRootDescriptorTable(static_cast<UINT>(6 + index),
+                        batch.auxiliaryTextures[index].ptr ? batch.auxiliaryTextures[index] : whiteInfo->srv);
+                native->SetGraphicsRoot32BitConstants(9, 1, &batch.uvDistortion, 0);
+                native->SetGraphicsRoot32BitConstants(11, 1, &batch.refractionPixels, 0);
+                if (meshBatch)
+                {
+                    if (!batch.mesh->vertexBuffer || batch.instanceCount == 0)
+                    {
+                        LOG_ERROR("[ParticleEffect] Mesh particle batch has no geometry or instances.");
+                        return false;
+                    }
+                    const auto meshBytes = batch.mesh->vertices.size() * sizeof(MeshVertex);
+                    const D3D12_VERTEX_BUFFER_VIEW meshViews[]{
+                        { batch.mesh->vertexBuffer->getGpuVirtualAddress(),
+                            static_cast<UINT>(meshBytes), sizeof(MeshVertex) },
+                        { m_meshInstanceBuffers[frameIndex].getGpuVirtualAddress(),
+                            static_cast<UINT>(meshInstanceBytes.size()), sizeof(MeshInstance) },
+                    };
+                    native->IASetVertexBuffers(0, 2, meshViews);
+                    native->DrawInstanced(batch.vertexCount, batch.instanceCount, 0, batch.firstInstance);
+                }
+                else
+                {
+                    const auto instanceAddress = quadInstanceBuffer.getGpuVirtualAddress()
+                        + static_cast<std::uint64_t>(batch.firstInstance) * sizeof(QuadInstance);
+                    native->SetGraphicsRootShaderResourceView(12, instanceAddress);
+                    native->DrawInstanced(QUAD_VERTEX_COUNT, batch.instanceCount, 0, 0);
+                }
+            }
+            if (enabled)
+            {
+                const DX12GraphicsPipeline* boundGpuPipeline = nullptr;
+                for (const ParticleGpuEmitterSubmission& emitter : m_gpuEmitterSubmissions)
+                {
+                    const GpuEmitterBuffers& buffers = *m_gpuEmitterStates.at(emitter.id)->buffers;
+                    D3D12_GPU_DESCRIPTOR_HANDLE texture = whiteInfo->srv;
+                    if (!resolveTexture(emitter.settings.texturePath, TextureColorSpace::SRGB, texture))
+                        continue;
+                    const std::size_t blendIndex = static_cast<std::size_t>(emitter.settings.blendMode);
+                    const DX12GraphicsPipeline* const pipeline = targetFormat == DXGI_FORMAT_R16G16B16A16_FLOAT
+                        ? &m_deferredGpuPipelines[blendIndex] : &m_forwardGpuPipelines[blendIndex];
+                    if (pipeline != boundGpuPipeline)
+                    {
+                        if (!pipeline->bind(commandList))
+                            return false;
+                        native->SetGraphicsRoot32BitConstants(0, 16, &viewProjection._11, 0);
+                        boundGpuPipeline = pipeline;
+                    }
+                    const std::uint32_t appearance = (emitter.settings.texturePath.empty() ? 0u : 1u)
+                        | (static_cast<std::uint32_t>(emitter.settings.blendMode) << 8);
+                    const auto& world = emitter.worldMatrix;
+                    const Vector3 scaleX(world._11, world._12, world._13);
+                    const Vector3 scaleY(world._21, world._22, world._23);
+                    const Vector3 scaleZ(world._31, world._32, world._33);
+                    const float worldScale = std::max({ scaleX.Length(), scaleY.Length(), scaleZ.Length() });
+                    if (!std::isfinite(worldScale))
+                    {
+                        LOG_ERROR("[ParticleEffect] GPU emitter world scale is invalid.");
+                        return false;
+                    }
+                    const GpuParticleDrawConstants drawConstants{
+                        { 0u, 1u, emitter.settings.flipbookColumns,
+                            emitter.settings.flipbookRows },
+                        Vector4(right.x, right.y, right.z, worldScale),
+                        Vector4(up.x, up.y, up.z, emitter.settings.initialSizeScale.x),
+                        Vector4(0.0f, emitter.settings.initialSizeScale.y, 0.0f, 0.0f),
+                    };
+                    native->SetGraphicsRootDescriptorTable(1, texture);
+                    native->SetGraphicsRoot32BitConstants(2, 1, &appearance, 0);
+                    native->SetGraphicsRootShaderResourceView(3, buffers.particles.get()->GetGPUVirtualAddress());
+                    native->SetGraphicsRoot32BitConstants(4, 16, &emitter.worldMatrix._11, 0);
+                    native->SetGraphicsRoot32BitConstants(5, 16, &drawConstants, 0);
+                    native->SetGraphicsRootShaderResourceView(6, buffers.drawData.get()->GetGPUVirtualAddress());
+                    native->ExecuteIndirect(m_gpuDrawSignature.Get(), 1, buffers.drawData.get(), 0, nullptr, 0);
+                    ++m_gpuEmitterDrawCount;
+                }
             }
         }
         if (usesSoftParticles)
@@ -1420,6 +1472,8 @@ namespace Engine
             succeeded = m_quadInstanceBuffers[frameIndex].markUsed(fenceValue) && succeeded;
         if (m_frameUsesMeshInstanceBuffer[frameIndex])
             succeeded = m_meshInstanceBuffers[frameIndex].markUsed(fenceValue) && succeeded;
+        if (m_frameUsesSort[frameIndex])
+            succeeded = m_sortedFrames[frameIndex].upload.markUsed(fenceValue) && succeeded;
         for (const MeshData* mesh : m_usedMeshes[frameIndex])
             succeeded = mesh->vertexBuffer->markUsed(fenceValue) && succeeded;
         for (const std::uint64_t id : m_frameGpuEmitterIds[frameIndex])
@@ -1429,6 +1483,245 @@ namespace Engine
                 state->second->lastFenceValue = fenceValue;
         }
         return succeeded;
+    }
+
+    bool ParticleRenderer::recordSorted(const std::uint32_t frameIndex, const DXGI_FORMAT format,
+        const Matrix& viewProjection, const std::span<const std::byte> depthConstants,
+        const std::array<Vector4, 4>& camera, const D3D12_GPU_DESCRIPTOR_HANDLE white,
+        const D3D12_GPU_DESCRIPTOR_HANDLE depth, const D3D12_GPU_DESCRIPTOR_HANDLE scene)
+    {
+        // The signature consumes the first 40 bytes. Compute uses the remaining bytes as the stable sort key.
+        static_assert(sizeof(ParticleCommand) == 48 && offsetof(ParticleCommand, draw) == 24
+            && offsetof(ParticleCommand, selection) == 8 && offsetof(ParticleCommand, depth) == 40);
+        static_assert(sizeof(ParticleMaterial) == 32 && sizeof(ParticleEmitterDraw) == 160
+            && sizeof(MeshVertex) == 20 && sizeof(SortedFlipbookFrame) == 8);
+        auto& frame = m_sortedFrames[frameIndex];
+        auto& list = m_commandLists[frameIndex];
+        auto& native = *list.getForRecording();
+        auto& device = *m_device->get();
+        auto& heap = TextureManager::instance().getDescriptorHeap();
+        const auto heapStart = heap.get()->GetGPUDescriptorHandleForHeapStart();
+        const auto increment = device.GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        const auto descriptorIndex = [&](const D3D12_GPU_DESCRIPTOR_HANDLE handle)
+        {
+            return static_cast<std::uint32_t>(((handle.ptr ? handle.ptr : white.ptr) - heapStart.ptr) / increment);
+        };
+        const auto materialFor = [&](const DrawBatch& batch) -> ParticleMaterial
+        {
+            return { { descriptorIndex(batch.texture), descriptorIndex(batch.auxiliaryTextures[0]),
+                descriptorIndex(batch.auxiliaryTextures[1]), descriptorIndex(batch.auxiliaryTextures[2]) },
+                batch.appearance | (static_cast<std::uint32_t>(batch.blendMode) << 8) | (batch.textureFlags << 16),
+                batch.softDistance, batch.uvDistortion, batch.refractionPixels };
+        };
+        auto& [commands, materials, emitters, ranges, frames] = m_sortedStaging;
+        commands.clear();
+        materials.clear();
+        emitters.clear();
+        ranges.clear();
+        frames.clear();
+        auto count = static_cast<std::uint32_t>(m_batches.size());
+        try
+        {
+            commands.reserve(count);
+            materials.reserve(count + m_gpuEmitterSubmissions.size());
+            emitters.reserve(m_gpuEmitterSubmissions.size());
+            ranges.reserve(m_gpuEmitterSubmissions.size());
+            for (const DrawBatch& batch : m_batches)
+            {
+                const auto ordinal = static_cast<std::uint32_t>(commands.size());
+                const auto geometry = batch.mesh ? batch.mesh->vertexBuffer->getGpuVirtualAddress()
+                    : m_quadInstanceBuffers[frameIndex].getGpuVirtualAddress();
+                commands.push_back({ geometry, { batch.firstInstance, batch.mesh ? 1u : 0u, ordinal, 0 },
+                    { batch.mesh ? batch.vertexCount : QUAD_VERTEX_COUNT, batch.instanceCount, 0, 0 },
+                    batch.depth, ordinal });
+                materials.push_back(materialFor(batch));
+            }
+            for (const ParticleGpuEmitterSubmission& emitter : m_gpuEmitterSubmissions)
+            {
+                const auto& settings = emitter.settings;
+                DrawBatch batch{ .texture = white, .blendMode = settings.blendMode,
+                    .appearance = settings.texturePath.empty() ? 0u : 1u, .softDistance = settings.softDistance };
+                batch.auxiliaryTextures.fill(white);
+                std::uint32_t width = 1, height = 1;
+                bool valid = resolveTexture(settings.texturePath, TextureColorSpace::SRGB, batch.texture, &width, &height);
+                const std::array paths{ &settings.secondaryTexturePath, &settings.maskTexturePath,
+                    &settings.distortionTexturePath };
+                for (std::size_t index = 0; index < paths.size(); ++index)
+                {
+                    if (!paths[index]->empty())
+                        batch.textureFlags |= 1u << index;
+                    valid = resolveTexture(*paths[index], index == 0 ? TextureColorSpace::SRGB : TextureColorSpace::Linear,
+                        batch.auxiliaryTextures[index]) && valid;
+                }
+                if (!valid)
+                    continue;
+                batch.uvDistortion = settings.uvDistortion;
+                batch.refractionPixels = settings.refractionPixels;
+                const auto& world = emitter.worldMatrix;
+                const float worldScale = std::max({ Vector3(world._11, world._12, world._13).Length(),
+                    Vector3(world._21, world._22, world._23).Length(), Vector3(world._31, world._32, world._33).Length() });
+                if (!std::isfinite(worldScale))
+                {
+                    LOG_ERROR("[ParticleEffect] GPU emitter world scale is invalid.");
+                    return false;
+                }
+                const auto sequenceOffset = static_cast<std::uint32_t>(frames.size());
+                double duration = 0.0;
+                if (settings.flipbookPlayback == ParticleFlipbookPlayback::Custom)
+                    for (const auto& frameDescription : settings.flipbookFrames)
+                    {
+                        frames.push_back({ frameDescription.frame, frameDescription.duration });
+                        duration += frameDescription.duration;
+                    }
+                const Vector4 atlasInset = settings.texturePath.empty() ? Vector4::Zero : Vector4(
+                    std::min(0.5f / static_cast<float>(width), 0.5f / static_cast<float>(settings.flipbookColumns)),
+                    std::min(0.5f / static_cast<float>(height), 0.5f / static_cast<float>(settings.flipbookRows)),
+                    0.0f, 0.0f);
+                emitters.push_back({ world, Vector4(settings.initialSizeScale.x, settings.initialSizeScale.y,
+                    worldScale, settings.stretchBySpeed),
+                    Vector4(settings.orientationDirection.x, settings.orientationDirection.y, settings.orientationDirection.z,
+                        static_cast<float>(settings.orientation)),
+                    Vector4(settings.uvScroll.x, settings.uvScroll.y, settings.flipbookFramesPerSecond,
+                        static_cast<float>(duration)),
+                    atlasInset,
+                    { settings.flipbookColumns, settings.flipbookRows, static_cast<std::uint32_t>(settings.flipbookPlayback),
+                        settings.flipbookLoopCount },
+                    { sequenceOffset, static_cast<std::uint32_t>(frames.size()) - sequenceOffset,
+                        settings.flipbookRandomStartFrame ? 1u : 0u, settings.flipbookFrameBlending ? 1u : 0u } });
+                ranges.push_back({ m_gpuEmitterStates.at(emitter.id)->buffers.get(), settings.maxParticles, count,
+                    static_cast<std::uint32_t>(materials.size()) });
+                materials.push_back(materialFor(batch));
+                count += settings.maxParticles;
+            }
+        }
+        catch (const std::bad_alloc&)
+        {
+            LOG_ERROR("[ParticleEffect] Failed to allocate staging data for sorted particles.");
+            return false;
+        }
+        catch (const std::length_error&)
+        {
+            LOG_ERROR("[ParticleEffect] Sorted particle staging data exceeds capacity.");
+            return false;
+        }
+        if (count == 0)
+            return true;
+
+        constexpr std::uint32_t sortThreads = 128;
+        const std::uint32_t capacity = std::bit_ceil(count);
+        const auto commandBytes = std::as_bytes(std::span(commands));
+        const auto materialBytes = std::as_bytes(std::span(materials));
+        const auto emitterBytes = std::as_bytes(std::span(emitters));
+        const auto frameBytes = std::as_bytes(std::span(frames));
+        constexpr std::uint64_t materialsOffset = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        const auto align16 = [](const std::uint64_t bytes) { return (bytes + 15) & ~std::uint64_t{15}; };
+        const auto emittersOffset = align16(materialsOffset + materialBytes.size());
+        const auto framesOffset = align16(emittersOffset + emitterBytes.size());
+        const auto commandsOffset = align16(framesOffset + frameBytes.size());
+        const auto uploadSize = std::bit_ceil(commandsOffset + commandBytes.size());
+        if (frame.upload.getSize() < uploadSize && (!frame.upload.finalize()
+            || !frame.upload.initialize(device, *m_fence, uploadSize)))
+            return false;
+        const auto initializeUav = [&](DX12Resource& buffer, const std::uint64_t bytes)
+        {
+            if (buffer.get() && buffer.getDescription().Width >= bytes)
+                return true;
+            buffer.finalize();
+            D3D12_RESOURCE_DESC description{};
+            description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+            description.Width = bytes;
+            description.Height = description.DepthOrArraySize = description.MipLevels = 1;
+            description.SampleDesc.Count = 1;
+            description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+            description.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+            return buffer.initialize(device, { .description = description,
+                .initialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS });
+        };
+        if (!initializeUav(frame.commands, static_cast<std::uint64_t>(capacity) * sizeof(ParticleCommand))
+            || !initializeUav(frame.count, sizeof(std::uint32_t))
+            || !frame.upload.write(depthConstants)
+            || !frame.upload.write(materialBytes, materialsOffset)
+            || (!emitterBytes.empty() && !frame.upload.write(emitterBytes, emittersOffset))
+            || (!frameBytes.empty() && !frame.upload.write(frameBytes, framesOffset))
+            || (!commandBytes.empty() && !frame.upload.write(commandBytes, commandsOffset)))
+            return false;
+        const auto uploadAddress = frame.upload.getGpuVirtualAddress();
+        if (!commandBytes.empty())
+        {
+            if (!frame.commands.transition(list, D3D12_RESOURCE_STATE_COPY_DEST))
+                return false;
+            native.CopyBufferRegion(frame.commands.get(), 0, frame.upload.get(), commandsOffset, commandBytes.size());
+        }
+        if (!frame.commands.transition(list, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+            || !frame.count.transition(list, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+            || !m_sortPipeline.bind(list))
+            return false;
+        native.SetComputeRoot32BitConstants(1, 16, camera.data(), 0);
+        native.SetComputeRootShaderResourceView(2, uploadAddress);
+        native.SetComputeRootShaderResourceView(3, uploadAddress);
+        native.SetComputeRootShaderResourceView(4, emitterBytes.empty() ? uploadAddress : uploadAddress + emittersOffset);
+        native.SetComputeRootUnorderedAccessView(5, frame.commands.get()->GetGPUVirtualAddress());
+        native.SetComputeRootUnorderedAccessView(6, frame.count.get()->GetGPUVirtualAddress());
+        const auto dispatch = [&](const std::array<std::uint32_t, 4>& parameters,
+            const std::array<std::uint32_t, 4>& geometry = {})
+        {
+            native.SetComputeRoot32BitConstants(0, 4, parameters.data(), 0);
+            native.SetComputeRoot32BitConstants(0, 4, geometry.data(), 4);
+            native.Dispatch((parameters[1] + sortThreads - 1) / sortThreads, 1, 1);
+        };
+        const auto orderCommandWrites = [&]()
+        {
+            D3D12_RESOURCE_BARRIER barrier{};
+            barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+            barrier.UAV.pResource = frame.commands.get();
+            native.ResourceBarrier(1, &barrier);
+        };
+        for (std::uint32_t index = 0; index < ranges.size(); ++index)
+        {
+            const auto& range = ranges[index];
+            const auto address = range.buffers->particles.get()->GetGPUVirtualAddress();
+            native.SetComputeRootShaderResourceView(2, address);
+            native.SetComputeRootShaderResourceView(3, range.buffers->drawData.get()->GetGPUVirtualAddress());
+            dispatch({ 0, range.count, range.offset, range.material },
+                { static_cast<std::uint32_t>(address), static_cast<std::uint32_t>(address >> 32), index, 0 });
+        }
+        if (capacity > count)
+            dispatch({ 3, capacity - count, count, 0 });
+        orderCommandWrites();
+        for (std::uint32_t span = 2; span <= capacity; span *= 2)
+            for (std::uint32_t stride = span / 2; stride != 0; stride /= 2)
+            {
+                dispatch({ 1, capacity, stride, span });
+                orderCommandWrites();
+            }
+        const std::array<std::uint32_t, 8> countParameters{ 2, capacity };
+        native.SetComputeRoot32BitConstants(0, 8, countParameters.data(), 0);
+        native.Dispatch(1, 1, 1);
+        if (!frame.commands.transition(list, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT)
+            || !frame.count.transition(list, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT))
+            return false;
+
+        const std::size_t pipeline = format == DXGI_FORMAT_R8G8B8A8_UNORM ? 0 : 1;
+        if (!m_sortedPipelines[pipeline].bind(list))
+            return false;
+        native.SetGraphicsRoot32BitConstants(0, 16, &viewProjection._11, 0);
+        native.SetGraphicsRootDescriptorTable(1, depth);
+        native.SetGraphicsRootDescriptorTable(2, scene);
+        native.SetGraphicsRootConstantBufferView(3, uploadAddress);
+        native.SetGraphicsRootDescriptorTable(4, heapStart);
+        native.SetGraphicsRoot32BitConstants(5, 16, camera.data(), 0);
+        const auto meshAddress = m_meshInstances.empty() ? uploadAddress
+            : m_meshInstanceBuffers[frameIndex].getGpuVirtualAddress();
+        native.SetGraphicsRootShaderResourceView(8, meshAddress);
+        native.SetGraphicsRootShaderResourceView(9, uploadAddress + materialsOffset);
+        native.SetGraphicsRootShaderResourceView(10, emitterBytes.empty() ? uploadAddress : uploadAddress + emittersOffset);
+        native.SetGraphicsRootShaderResourceView(11, frameBytes.empty() ? uploadAddress : uploadAddress + framesOffset);
+        native.SetGraphicsRoot32BitConstant(12, pipeline == 0 ? 1u : 0u, 0);
+        native.ExecuteIndirect(m_sortedSignatures[pipeline].Get(), capacity, frame.commands.get(), 0, frame.count.get(), 0);
+        m_frameUsesSort[frameIndex] = true;
+        m_batches.clear();
+        ++m_gpuEmitterDrawCount;
+        return true;
     }
 
     bool ParticleRenderer::ensureGpuEmitterBuffers(GpuEmitterState& state, const std::uint32_t requestedCapacity)
@@ -1506,24 +1799,28 @@ namespace Engine
         return true;
     }
 
-    bool ParticleRenderer::resolveGpuTexture(
-        const std::filesystem::path& path, D3D12_GPU_DESCRIPTOR_HANDLE& texture)
+    bool ParticleRenderer::resolveTexture(const std::filesystem::path& path, const TextureColorSpace colorSpace,
+        D3D12_GPU_DESCRIPTOR_HANDLE& texture, std::uint32_t* const width, std::uint32_t* const height)
     {
         if (path.empty())
             return true;
-        const auto failed = m_failedTextures[0].find(path);
-        if (failed != m_failedTextures[0].end() && m_frameNumber - failed->second < 120)
+        const bool srgb = colorSpace == TextureColorSpace::SRGB;
+        const auto kind = srgb ? ParticleResourceKind::ColorTexture : ParticleResourceKind::LinearTexture;
+        auto& failures = m_failedTextures[srgb ? 0 : 1];
+        auto& cache = srgb ? m_textureCache : m_linearTextureCache;
+        const auto failed = failures.find(path);
+        if (failed != failures.end() && m_frameNumber - failed->second < 120)
         {
-            ParticleRenderSubmissionQueue::instance().setResourceFailed(path, ParticleResourceKind::ColorTexture, true);
+            ParticleRenderSubmissionQueue::instance().setResourceFailed(path, kind, true);
             return false;
         }
-        auto cacheEntry = m_textureCache.find(path);
-        TextureHandle handle = cacheEntry == m_textureCache.end() ? TextureHandle{} : cacheEntry->second;
+        const auto cacheEntry = cache.find(path);
+        TextureHandle handle = cacheEntry == cache.end() ? TextureHandle{} : cacheEntry->second;
         auto& manager = TextureManager::instance();
         if (!manager.get(handle))
         {
             TextureLoadDesc description;
-            description.colorSpace = TextureColorSpace::SRGB;
+            description.colorSpace = colorSpace;
             description.generateMips = false;
             handle = manager.load(path, description);
         }
@@ -1531,16 +1828,18 @@ namespace Engine
         const TextureResourceInfo* const info = loaded ? loaded->getResourceInfo() : nullptr;
         if (info == nullptr || info->type != TextureType::Texture2D || info->width == 0 || info->height == 0)
         {
-            LOG_ERROR("[ParticleEffect] GPU particle texture could not be loaded as a 2D texture: {}",
+            LOG_ERROR("[ParticleEffect] Particle texture could not be loaded as a 2D texture: {}",
                 String::fromWide(path.c_str()).c_str());
-            m_failedTextures[0][path] = m_frameNumber;
-            ParticleRenderSubmissionQueue::instance().setResourceFailed(path, ParticleResourceKind::ColorTexture, true);
+            failures[path] = m_frameNumber;
+            ParticleRenderSubmissionQueue::instance().setResourceFailed(path, kind, true);
             return false;
         }
         texture = info->srv;
-        m_textureCache[path] = handle;
-        m_failedTextures[0].erase(path);
-        ParticleRenderSubmissionQueue::instance().setResourceFailed(path, ParticleResourceKind::ColorTexture, false);
+        if (width) *width = info->width;
+        if (height) *height = info->height;
+        cache[path] = handle;
+        failures.erase(path);
+        ParticleRenderSubmissionQueue::instance().setResourceFailed(path, kind, false);
         return true;
     }
 

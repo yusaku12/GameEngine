@@ -206,6 +206,33 @@ namespace Engine
         return true;
     }
 
+    const char* ParticleRenderSubmissionQueue::gpuSimulationFallbackReason(const ParticleEffectSettings& settings) const noexcept
+    {
+        if (settings.trailEnabled || !settings.meshPath.empty())
+            return "GPU simulation does not support Trails or Mesh particles.";
+        if (!settings.localSpace)
+            return "GPU simulation currently requires Local Space.";
+        if (settings.burstCount != 0 || !settings.bursts.empty() || !settings.emissionRateKeys.empty()
+            || settings.startDelay > 0.0f || settings.prewarm
+            || settings.distancePerParticle > 0.0f || settings.inheritVelocity > 0.0f)
+            return "GPU simulation does not support bursts, scheduled/distance emission, velocity inheritance, delay, or prewarm.";
+        const auto& curves = settings.curves;
+        if (curves.smooth || !curves.color.empty() || !curves.size.empty() || !curves.speed.empty()
+            || !curves.angularSpeed.empty() || !curves.width.empty() || !curves.height.empty()
+            || !curves.acceleration.empty() || !curves.velocity.empty() || !curves.gravity.empty()
+            || !curves.drag.empty() || !settings.curveVariants.empty())
+            return "GPU simulation does not support lifetime curves or curve sets.";
+        if (!gpuSortingSupported() && (settings.blendMode != ParticleBlendMode::Additive
+            || settings.orientation != ParticleOrientation::Camera
+            || settings.softDistance > 0.0f || settings.refractionPixels != 0.0f
+            || !settings.secondaryTexturePath.empty() || !settings.maskTexturePath.empty()
+            || !settings.distortionTexturePath.empty() || settings.uvDistortion != 0.0f
+            || settings.uvScroll != Vector2::Zero || settings.flipbookPlayback != ParticleFlipbookPlayback::Lifetime
+            || settings.flipbookLoopCount != 1 || settings.flipbookRandomStartFrame || settings.flipbookFrameBlending))
+            return "Advanced GPU particle rendering requires Direct3D 12 Resource Binding Tier 2.";
+        return nullptr;
+    }
+
     bool ParticleRenderSubmissionQueue::submitGpuEmitter(const ParticleGpuEmitterSubmission& emitter)
     {
         if (emitter.id == 0 || emitter.settings.simulationBackend != ParticleSimulationBackend::GPU

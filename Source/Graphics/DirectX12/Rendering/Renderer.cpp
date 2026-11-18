@@ -381,6 +381,17 @@ namespace Engine
         particleShaderDesc.entryPoint = "csCompact";
         particleShaderDesc.outputPath = "Assets/Shaders/Compiled/Particles_csCompact_cs.cso";
         m_particleCompactionShaderID = m_shaderManager.registerShader(particleShaderDesc);
+        particleShaderDesc.entryPoint = "csSortParticles";
+        particleShaderDesc.outputPath = "Assets/Shaders/Compiled/Particles_csSortParticles_cs.cso";
+        m_particleSortShaderID = m_shaderManager.registerShader(particleShaderDesc);
+        particleShaderDesc.stage = ShaderStage::Vertex;
+        particleShaderDesc.entryPoint = "vsSorted";
+        particleShaderDesc.outputPath = "Assets/Shaders/Compiled/Particles_vsSorted_vs.cso";
+        m_particleSortedVertexShaderID = m_shaderManager.registerShader(particleShaderDesc);
+        particleShaderDesc.stage = ShaderStage::Pixel;
+        particleShaderDesc.entryPoint = "psSorted";
+        particleShaderDesc.outputPath = "Assets/Shaders/Compiled/Particles_psSorted_ps.cso";
+        m_particleSortedPixelShaderID = m_shaderManager.registerShader(particleShaderDesc);
         const ShaderCompileDesc hizShaderDesc{
             .sourcePath = "Assets/Shaders/HiZ.hlsl",
             .outputPath = "Assets/Shaders/Compiled/HiZ_csMain_cs.cso",
@@ -583,6 +594,9 @@ namespace Engine
         m_particleGpuPixelShaderID = 0;
         m_particleSimulationShaderID = 0;
         m_particleCompactionShaderID = 0;
+        m_particleSortShaderID = 0;
+        m_particleSortedVertexShaderID = 0;
+        m_particleSortedPixelShaderID = 0;
         m_occlusionShaderID = 0;
         m_hizShaderID = 0;
         m_psoRebuildPending = false;
@@ -1704,6 +1718,9 @@ namespace Engine
         const auto particleGpuPixelShader = m_shaderManager.get(m_particleGpuPixelShaderID);
         const auto particleSimulationShader = m_shaderManager.get(m_particleSimulationShaderID);
         const auto particleCompactionShader = m_shaderManager.get(m_particleCompactionShaderID);
+        const auto particleSortShader = m_shaderManager.get(m_particleSortShaderID);
+        const auto particleSortedVertexShader = m_shaderManager.get(m_particleSortedVertexShaderID);
+        const auto particleSortedPixelShader = m_shaderManager.get(m_particleSortedPixelShaderID);
         const auto hizShader = m_shaderManager.get(m_hizShaderID);
         const auto occlusionShader = m_shaderManager.get(m_occlusionShaderID);
         if (!modelVertexShader || !skinningComputeShader || !modelPixelShader || !alphaTestPixelShader || !depthAlphaTestPixelShader
@@ -1713,6 +1730,7 @@ namespace Engine
             || !debugVertexShader || !debugShapeVertexShader || !debugPixelShader
             || !particleVertexShader || !particleMeshVertexShader || !particlePixelShader
             || !particleGpuVertexShader || !particleGpuPixelShader || !particleSimulationShader || !particleCompactionShader
+            || !particleSortShader || !particleSortedVertexShader || !particleSortedPixelShader
             || !hizShader || !occlusionShader
             || !modelVertexShader->isCompiled() || !skinningComputeShader->isCompiled() || !modelPixelShader->isCompiled()
             || !alphaTestPixelShader->isCompiled() || !depthAlphaTestPixelShader->isCompiled()
@@ -1726,6 +1744,8 @@ namespace Engine
             || !particlePixelShader->isCompiled() || !particleGpuVertexShader->isCompiled()
             || !particleGpuPixelShader->isCompiled() || !particleSimulationShader->isCompiled()
             || !particleCompactionShader->isCompiled()
+            || !particleSortShader->isCompiled() || !particleSortedVertexShader->isCompiled()
+            || !particleSortedPixelShader->isCompiled()
             || !hizShader->isCompiled() || !occlusionShader->isCompiled())
         {
             LOG_ERROR("[DX12] 有効なModel Shaderがロードされていません");
@@ -1957,7 +1977,8 @@ namespace Engine
             || !m_materialGpuCache.rebuildAll()
             || !m_particleRenderer.rebuildPipeline(
                 *particleVertexShader, *particleMeshVertexShader, *particlePixelShader,
-                *particleGpuVertexShader, *particleGpuPixelShader, *particleSimulationShader, *particleCompactionShader)
+                *particleGpuVertexShader, *particleGpuPixelShader, *particleSimulationShader, *particleCompactionShader,
+                *particleSortShader, *particleSortedVertexShader, *particleSortedPixelShader)
             || !m_postProcess.rebuild(postProcessVertexShader, postProcessToneMappingShader, postProcessOutputShader,
                 postProcessBuiltins, postProcessBloom, lightShaftsComputeShader, lightShaftsFallbackShader,
                 autoExposureComputeShader))

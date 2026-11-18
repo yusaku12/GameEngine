@@ -79,6 +79,8 @@ namespace Engine
          * @return 非所有の PSO 参照。未初期化時は nullptr
          */
         ID3D12PipelineState* get() const noexcept { return m_pipelineState.Get(); }
+        /** @brief Returns the root signature for indirect command signature creation. */
+        ID3D12RootSignature* getRootSignature() const noexcept { return m_rootSignature.Get(); }
 
     private:
 

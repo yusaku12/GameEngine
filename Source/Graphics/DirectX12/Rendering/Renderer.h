@@ -419,6 +419,9 @@ namespace Engine
         ShaderID m_particleGpuPixelShaderID = 0;
         ShaderID m_particleSimulationShaderID = 0;
         ShaderID m_particleCompactionShaderID = 0;
+        ShaderID m_particleSortShaderID = 0;
+        ShaderID m_particleSortedVertexShaderID = 0;
+        ShaderID m_particleSortedPixelShaderID = 0;
         ShaderID m_hizShaderID = 0;                                                                       //!< Hi-Z生成Compute Shader ID
         ShaderID m_occlusionShaderID = 0;                                                                 //!< 可視判定Compute Shader ID
         bool m_psoRebuildPending = false;                                                                 //!< Shader 更新に伴う Graphics PSO 再生成要求フラグ

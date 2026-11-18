@@ -46,6 +46,7 @@ struct GpuParticleState
     float4 startColor;
     float4 endColor;
     float4 sizeRotation;
+    uint4 randomData;
 };
 
 RWStructuredBuffer<GpuParticleState> simulationParticles : register(u0);
@@ -150,6 +151,7 @@ void csSimulate(uint3 dispatchThreadId : SV_DispatchThreadID)
         particle.sizeRotation = float4(randomSize, simulationSizeRange.y,
             lerp(simulationRotation.x, simulationRotation.y, randomUnit(randomState)),
             lerp(simulationRotation.z, simulationRotation.w, randomUnit(randomState)));
+        particle.randomData = uint4(hashRandom(randomState), 0, 0, 0);
         simulationParticles[index] = particle;
         return;
     }
@@ -339,14 +341,13 @@ float4 psGpu(PixelInput input) : SV_TARGET
     return color;
 }
 
-PixelInput vsMain(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
+PixelInput expandQuad(uint vertexId, QuadInstance instance)
 {
     static const uint cornerIndices[6] = { 0, 1, 2, 2, 1, 3 };
     const uint corner = cornerIndices[vertexId];
     const bool positiveSide = (corner & 1u) != 0;
     const bool upperOrEnd = corner >= 2u;
     const float sideSign = positiveSide ? 1.0f : -1.0f;
-    const QuadInstance instance = quadInstances[instanceId];
     PixelInput output;
     float3 position;
     if (instance.isBand != 0)
@@ -374,6 +375,11 @@ PixelInput vsMain(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
     return output;
 }
 
+PixelInput vsMain(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
+{
+    return expandQuad(vertexId, quadInstances[instanceId]);
+}
+
 PixelInput vsMesh(MeshVertexInput input)
 {
     PixelInput output;
@@ -391,11 +397,11 @@ PixelInput vsMesh(MeshVertexInput input)
     return output;
 }
 
-float4 psMain(PixelInput input) : SV_TARGET
+float4 shadeParticle(PixelInput input, uint packedAppearance, float softness, float distortionStrength,
+    float refractionStrength, Texture2D primary, Texture2D secondary, Texture2D mask, Texture2D distortionMap)
 {
-    const uint kind = appearance & 255;
-    const uint blendMode = (appearance >> 8) & 255;
-    const uint textureFlags = appearance >> 16;
+    const uint kind = packedAppearance & 255;
+    const uint textureFlags = packedAppearance >> 16;
     const float2 extent = input.uvBounds.zw - input.uvBounds.xy;
     float2 localUv = float2(
         extent.x > 0.0f ? (input.uv.x - input.uvBounds.x) / extent.x : 0.5f,
@@ -403,9 +409,9 @@ float4 psMain(PixelInput input) : SV_TARGET
     float2 offset = input.uvOffset;
     float2 distortion = localUv * 2.0f - 1.0f;
     if ((textureFlags & 4) != 0)
-        distortion = distortionTexture.Sample(particleSampler, frac(localUv + offset)).rg * 2.0f - 1.0f;
-    if ((textureFlags & 4) != 0 && uvDistortion != 0.0f)
-        offset += distortion * uvDistortion;
+        distortion = distortionMap.Sample(particleSampler, frac(localUv + offset)).rg * 2.0f - 1.0f;
+    if ((textureFlags & 4) != 0 && distortionStrength != 0.0f)
+        offset += distortion * distortionStrength;
     if (any(offset != 0.0f))
         localUv = frac(localUv + offset);
     else
@@ -416,8 +422,8 @@ float4 psMain(PixelInput input) : SV_TARGET
         const float2 uv = input.uvBounds.xy + localUv * extent;
         const float2 nextExtent = input.nextUvBounds.zw - input.nextUvBounds.xy;
         const float2 nextUv = input.nextUvBounds.xy + localUv * nextExtent;
-        color *= lerp(particleTexture.Sample(particleSampler, uv),
-            particleTexture.Sample(particleSampler, nextUv), input.frameBlend);
+        color *= lerp(primary.Sample(particleSampler, uv),
+            primary.Sample(particleSampler, nextUv), input.frameBlend);
     }
     else if (kind == 0)
     {
@@ -425,18 +431,18 @@ float4 psMain(PixelInput input) : SV_TARGET
         color.a *= 1.0f - smoothstep(0.35f, 1.0f, length(centeredUv));
     }
     if ((textureFlags & 1) != 0)
-        color *= secondaryTexture.Sample(particleSampler, localUv);
+        color *= secondary.Sample(particleSampler, localUv);
     if ((textureFlags & 2) != 0)
-        color.a *= maskTexture.Sample(particleSampler, localUv).r;
-    if (refractionPixels != 0.0f)
+        color.a *= mask.Sample(particleSampler, localUv).r;
+    if (refractionStrength != 0.0f)
     {
         uint width, height;
         sceneColor.GetDimensions(width, height);
-        const float2 pixel = clamp(input.position.xy + distortion * refractionPixels,
+        const float2 pixel = clamp(input.position.xy + distortion * refractionStrength,
             depthViewport.xy + 0.5f, depthViewport.xy + depthViewport.zw - 0.5f);
         color.rgb *= sceneColor.Sample(particleSampler, pixel / float2(width, height)).rgb;
     }
-    if (softDistance > 0.0f)
+    if (softness > 0.0f)
     {
         const float2 ndc = float2(
             (input.position.x - depthViewport.x) / depthViewport.z * 2.0f - 1.0f,
@@ -448,12 +454,336 @@ float4 psMain(PixelInput input) : SV_TARGET
         if (abs(sceneH.w) > 1e-8f && abs(particleH.w) > 1e-8f)
         {
             const float distance = dot(sceneH.xyz / sceneH.w - particleH.xyz / particleH.w, cameraForward.xyz);
-            color.a *= saturate(distance / softDistance);
+            color.a *= saturate(distance / softness);
         }
     }
+    return color;
+}
+
+float4 psMain(PixelInput input) : SV_TARGET
+{
+    float4 color = shadeParticle(input, appearance, softDistance, uvDistortion, refractionPixels,
+        particleTexture, secondaryTexture, maskTexture, distortionTexture);
+    const uint blendMode = (appearance >> 8) & 255;
     if (blendMode == 2 || blendMode == 4)
         color.rgb *= color.a;
     else if (blendMode == 3)
         color.rgb = lerp(1.0f, color.rgb, color.a);
     return color;
+}
+
+// Indirect layout: root SRV address, four root constants, DRAW arguments, sort metadata.
+struct ParticleCommand
+{
+    uint2 geometry;
+    uint4 selection;
+    uint4 draw;
+    float depth;
+    uint ordinal;
+};
+
+struct ParticleMaterial
+{
+    uint4 textures;
+    uint appearance;
+    float softness;
+    float distortion;
+    float refraction;
+};
+
+struct ParticleEmitterDraw
+{
+    row_major float4x4 world;
+    float4 sizeScale;
+    float4 orientation;
+    float4 scrollTiming;
+    float4 atlasInset;
+    uint4 flipbook;
+    uint4 sequence;
+};
+
+struct ParticleMeshInstance
+{
+    float3 position;
+    float3 right;
+    float3 up;
+    float3 normal;
+    float4 color;
+    float4 uvBounds;
+    float2 uvOffset;
+    float4 nextUvBounds;
+    float blend;
+    float padding;
+};
+
+struct ParticleMeshVertex { float3 position; float2 uv; };
+struct ParticleFrame { uint cell; float duration; };
+
+cbuffer ParticleSelection : register(b9) { uint4 particleSelection; };
+cbuffer ParticleCamera : register(b10)
+{
+    float4 particleRight;
+    float4 particleUp;
+    float4 particleForward;
+    float4 particleEye;
+};
+cbuffer ParticleTarget : register(b12) { uint particleTargetUnorm; };
+ByteAddressBuffer particleGeometry : register(t9);
+StructuredBuffer<ParticleMeshInstance> particleMeshInstances : register(t10);
+StructuredBuffer<ParticleMaterial> particleMaterials : register(t11);
+StructuredBuffer<ParticleEmitterDraw> particleEmitters : register(t12);
+StructuredBuffer<ParticleFrame> particleFrames : register(t13);
+Texture2D sortedTextures[] : register(t0, space1);
+
+cbuffer ParticleSortConstants : register(b11)
+{
+    uint4 sortParameters; // mode, count, offset/stride, material/span
+    uint4 sortGeometry;   // GPU address in xy, emitter in z
+};
+RWStructuredBuffer<ParticleCommand> particleCommands : register(u2);
+RWByteAddressBuffer particleCommandCount : register(u3);
+
+bool fartherFirst(ParticleCommand a, ParticleCommand b)
+{
+    if ((a.draw.y != 0) != (b.draw.y != 0))
+        return a.draw.y != 0;
+    return a.depth == b.depth ? a.ordinal < b.ordinal : a.depth > b.depth;
+}
+
+[numthreads(128, 1, 1)]
+void csSortParticles(uint index : SV_DispatchThreadID)
+{
+    if (index >= sortParameters.y)
+        return;
+    if (sortParameters.x == 0)
+    {
+        const uint destination = index + sortParameters.z;
+        ParticleCommand command = (ParticleCommand)0;
+        command.ordinal = destination;
+        if (index < compactDrawData.Load(4))
+        {
+            const uint slot = compactDrawData.Load(drawArgumentBytes + index * 4);
+            const GpuParticleState particle = gpuParticles[slot];
+            const float3 center = mul(float4(particle.positionAge.xyz, 1.0f),
+                particleEmitters[sortGeometry.z].world).xyz;
+            command.depth = dot(center - particleEye.xyz, particleForward.xyz);
+            if (isfinite(command.depth))
+            {
+                command.geometry = sortGeometry.xy;
+                command.selection = uint4(slot, 2u, sortParameters.w, sortGeometry.z);
+                command.draw = uint4(6u, 1u, 0u, 0u);
+            }
+        }
+        particleCommands[destination] = command;
+    }
+    else if (sortParameters.x == 1)
+    {
+        const uint partner = index ^ sortParameters.z;
+        if (partner <= index)
+            return;
+        const ParticleCommand a = particleCommands[index];
+        const ParticleCommand b = particleCommands[partner];
+        const bool descending = (index & sortParameters.w) == 0;
+        if (descending ? fartherFirst(b, a) : fartherFirst(a, b))
+        {
+            particleCommands[index] = b;
+            particleCommands[partner] = a;
+        }
+    }
+    else if (sortParameters.x == 2)
+    {
+        if (index != 0)
+            return;
+        uint lo = 0, hi = sortParameters.y;
+        while (lo < hi)
+        {
+            const uint mid = lo + (hi - lo) / 2u;
+            if (particleCommands[mid].draw.y != 0)
+                lo = mid + 1u;
+            else
+                hi = mid;
+        }
+        particleCommandCount.Store(0, lo);
+    }
+    else
+        particleCommands[index + sortParameters.z] = (ParticleCommand)0;
+}
+
+float3 directionOr(float3 value, float3 fallback)
+{
+    const float squared = dot(value, value);
+    return squared < 1e-8f || !isfinite(squared) ? fallback : value * rsqrt(squared);
+}
+
+float3 sampleParticleFlipbook(ParticleEmitterDraw emitter, float age, float normalizedAge, uint seed)
+{
+    const uint mode = emitter.flipbook.z;
+    const uint loops = emitter.flipbook.w;
+    const uint count = mode == 2 ? emitter.sequence.y : emitter.flipbook.x * emitter.flipbook.y;
+    const uint start = emitter.sequence.z != 0 ? seed % count : 0;
+    uint frame = 0;
+    float blend = 0;
+    bool hold = false;
+    if (mode == 2)
+    {
+        const float duration = emitter.scrollTiming.w;
+        const float cycle = floor(age / duration);
+        hold = loops != 0 && cycle >= loops;
+        float remaining = fmod(age, duration);
+        frame = count - 1;
+        if (!hold)
+        {
+            for (uint i = 0; i < count; ++i)
+            {
+                const float length = particleFrames[emitter.sequence.x + (start + i) % count].duration;
+                if (remaining < length || i + 1 == count)
+                {
+                    frame = i;
+                    blend = saturate(remaining / length);
+                    break;
+                }
+                remaining -= length;
+            }
+            hold = loops != 0 && cycle >= loops - 1 && frame + 1 == count;
+        }
+    }
+    else
+    {
+        const float phase = mode == 0 ? normalizedAge * count : age * emitter.scrollTiming.z;
+        const float cycle = floor(phase / count);
+        const bool finished = mode == 0 ? phase >= count : loops != 0 && cycle >= loops;
+        frame = finished ? count - 1 : (uint)fmod(phase, count);
+        hold = finished || (frame + 1 == count && (mode == 0 || (loops != 0 && cycle >= loops - 1)));
+        blend = frac(phase);
+    }
+    const uint current = (start + frame) % count;
+    const uint next = hold ? current : (current + 1) % count;
+    return float3(mode == 2 ? particleFrames[emitter.sequence.x + current].cell : current,
+        mode == 2 ? particleFrames[emitter.sequence.x + next].cell : next,
+        hold || emitter.sequence.w == 0 ? 0.0f : blend);
+}
+
+float4 particleAtlasBounds(uint frame, uint2 grid, float2 inset)
+{
+    const float2 extent = rcp(float2(grid));
+    const float2 origin = float2(frame % grid.x, frame / grid.x) * extent;
+    return float4(origin + inset, origin + extent - inset);
+}
+
+PixelInput vsSorted(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
+{
+    const uint index = particleSelection.x + instance;
+    if (particleSelection.y == 0)
+        return expandQuad(vertex, particleGeometry.Load<QuadInstance>(index * 128));
+    if (particleSelection.y == 1)
+    {
+        const ParticleMeshInstance mesh = particleMeshInstances[index];
+        const ParticleMeshVertex meshVertex = particleGeometry.Load<ParticleMeshVertex>(vertex * 20);
+        MeshVertexInput input;
+        input.position = meshVertex.position;
+        input.uv = meshVertex.uv;
+        input.instancePosition = mesh.position;
+        input.instanceRight = mesh.right;
+        input.instanceUp = mesh.up;
+        input.instanceNormal = mesh.normal;
+        input.color = mesh.color;
+        input.uvBounds = mesh.uvBounds;
+        input.uvOffset = mesh.uvOffset;
+        input.nextUvBounds = mesh.nextUvBounds;
+        input.frameBlend = mesh.blend;
+        return vsMesh(input);
+    }
+    const GpuParticleState particle = particleGeometry.Load<GpuParticleState>(index * 96);
+    const ParticleEmitterDraw emitter = particleEmitters[particleSelection.w];
+    const float age = saturate(particle.positionAge.w / particle.velocityLifetime.w);
+    const float3 forward = particleForward.xyz;
+    float3 right = particleRight.xyz;
+    float3 up = particleUp.xyz;
+    float stretch = 1.0f;
+    const uint orientation = (uint)emitter.orientation.w;
+    if (orientation == 1 || orientation == 5)
+    {
+        const float3 velocity = mul(float4(particle.velocityLifetime.xyz, 0.0f), emitter.world).xyz;
+        const float3 projected = velocity - forward * dot(velocity, forward);
+        if (dot(projected, projected) > 1e-8f)
+        {
+            up = normalize(projected);
+            right = normalize(cross(up, forward));
+        }
+        if (orientation == 5)
+            stretch += length(velocity) * emitter.sizeScale.w;
+    }
+    else if (orientation == 2)
+    {
+        up = normalize(emitter.orientation.xyz);
+        right = directionOr(cross(up, forward), normalize(cross(up, right)));
+    }
+    else if (orientation == 3 || orientation == 4)
+    {
+        const float3 normal = orientation == 3 ? float3(0, 1, 0) : normalize(emitter.orientation.xyz);
+        const float3 fallback = abs(normal.y) > 0.99f ? float3(0, 0, 1) : float3(0, 1, 0);
+        right = directionOr(cross(fallback, normal), particleRight.xyz);
+        up = normalize(cross(normal, right));
+    }
+    const float size = lerp(particle.sizeRotation.x, particle.sizeRotation.y, age) * emitter.sizeScale.z * 0.5f;
+    float sine, cosine;
+    sincos(particle.sizeRotation.z, sine, cosine);
+    QuadInstance quad = (QuadInstance)0;
+    quad.origin = mul(float4(particle.positionAge.xyz, 1.0f), emitter.world).xyz;
+    quad.rightOrEnd = (right * cosine + up * sine) * size * emitter.sizeScale.x;
+    quad.upOrStartSide = (up * cosine - right * sine) * size * emitter.sizeScale.y * stretch;
+    quad.color = lerp(particle.startColor, particle.endColor, age);
+    quad.uvOffset = frac(particle.positionAge.w * emitter.scrollTiming.xy);
+    if ((particleMaterials[particleSelection.z].appearance & 255) == 1)
+    {
+        const float3 frames = sampleParticleFlipbook(emitter, particle.positionAge.w, age, particle.randomData.x);
+        const float2 inset = emitter.atlasInset.xy;
+        quad.uvBounds = particleAtlasBounds((uint)frames.x, emitter.flipbook.xy, inset);
+        quad.nextUvBounds = particleAtlasBounds((uint)frames.y, emitter.flipbook.xy, inset);
+        quad.frameBlend = frames.z;
+    }
+    else
+    {
+        quad.uvBounds = float4(0, 0, 1, 1);
+        quad.nextUvBounds = quad.uvBounds;
+    }
+    return expandQuad(vertex, quad);
+}
+
+struct ParticleBlendOutput { float4 source : SV_Target0; float4 destinationFactor : SV_Target1; };
+
+ParticleBlendOutput psSorted(PixelInput input)
+{
+    const ParticleMaterial material = particleMaterials[particleSelection.z];
+    Texture2D primary = sortedTextures[NonUniformResourceIndex(material.textures.x)];
+    Texture2D secondary = sortedTextures[NonUniformResourceIndex(material.textures.y)];
+    Texture2D mask = sortedTextures[NonUniformResourceIndex(material.textures.z)];
+    Texture2D distortion = sortedTextures[NonUniformResourceIndex(material.textures.w)];
+    const float4 color = shadeParticle(input, material.appearance, material.softness, material.distortion,
+        material.refraction, primary, secondary, mask, distortion);
+    const uint mode = (material.appearance >> 8) & 255;
+    const bool normalizedTarget = particleTargetUnorm != 0;
+    const float alpha = normalizedTarget ? saturate(color.a) : color.a;
+    const float3 weighted = (mode < 2 && normalizedTarget ? saturate(color.rgb) : color.rgb)
+        * (mode < 2 ? alpha : color.a);
+    ParticleBlendOutput output;
+    output.source = float4(normalizedTarget ? saturate(weighted) : weighted, alpha);
+    output.destinationFactor = float4((1.0f - alpha).xxx, 0.0f);
+    if (mode == 1)
+    {
+        output.source.a = 0.0f;
+        output.destinationFactor = 1.0f;
+    }
+    else if (mode == 3)
+    {
+        output.source = 0.0f;
+        const float3 factor = lerp(1.0f, color.rgb, color.a);
+        output.destinationFactor = float4(normalizedTarget ? saturate(factor) : factor, 1.0f);
+    }
+    else if (mode == 4)
+    {
+        output.source.a = 0.0f;
+        output.destinationFactor = float4(1.0f - output.source.rgb, 1.0f);
+    }
+    return output;
 }
