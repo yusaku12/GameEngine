@@ -25,6 +25,9 @@ namespace Engine
         D3D12_PRIMITIVE_TOPOLOGY_TYPE primitiveTopology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; //!< Primitive Topology 種別
         D3D12_COMPARISON_FUNC depthComparison = D3D12_COMPARISON_FUNC_LESS;                       //!< 深度比較関数
         bool enableAlphaBlend = false;                                                            //!< SrcAlphaによる透過Blendを有効にするか
+        bool enableAdditiveBlend = false;                                                         //!< SrcAlphaを加算し、出力先Alphaを保持するか
+        bool overrideBlend = false;                                                              //!< 明示的なBlend設定を使用するか
+        D3D12_RENDER_TARGET_BLEND_DESC blendOverride{};                                          //!< 明示的なBlend設定
         bool enableDepthWrite = true;                                                             //!< Depth Bufferへの書き込みを有効にするか
         D3D12_CULL_MODE cullMode = D3D12_CULL_MODE_BACK;                                          //!< Rasterizerの面Culling設定
     };

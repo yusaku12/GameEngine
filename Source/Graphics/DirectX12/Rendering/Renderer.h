@@ -14,6 +14,7 @@
 #include "Graphics\DirectX12\Culling\GpuOcclusionCulling.h"
 #include "Graphics\DirectX12\Diagnostics\GpuProfiler.h"
 #include "Graphics\DirectX12\Rendering\ModelCommandRecorder.h"
+#include "Graphics\DirectX12\Rendering\ParticleRenderer.h"
 #include "Graphics\Shader\ShaderManager.h"
 #include "Graphics\DirectX12\Presentation\SwapChain.h"
 #include "Graphics\Camera\CameraData.h"
@@ -358,6 +359,8 @@ namespace Engine
         DX12CommandQueue m_directQueue;                                                                   //!< 描画コマンドキュー
         DX12Fence m_directFence;                                                                          //!< 描画コマンドの完了 Fence
         DX12GpuProfiler m_gpuProfiler;                                                                    //!< Direct QueueのFrame Timestamp計測
+        DX12GpuProfiler m_particleGpuProfiler;
+        std::array<ParticleGpuStatistics, FRAME_COUNT> m_particleFrameStatistics{};
         DX12SwapChain m_swapChain;                                                                        //!< 画面出力用 SwapChain
         DX12DescriptorHeap m_gameRtvHeap;                                                                 //!< Game Texture用 RTV Heap
         DX12Resource m_gameRenderTarget;                                                                  //!< ImGui Game Viewへ表示するScene描画Texture
@@ -373,6 +376,7 @@ namespace Engine
         DX12DescriptorHeap m_dsvHeap;                                                                     //!< 深度バッファ用 DSV Heap
         DX12Resource m_depthBuffer;                                                                       //!< 画面描画用深度バッファ
         DX12CpuDescriptorHandle m_depthStencilView;                                                       //!< 深度バッファの DSV
+        DX12CpuDescriptorHandle m_depthReadOnlyStencilView;                                               //!< 深度読み取り専用 DSV
         DX12Resource m_shadowMap;                                                                         //!< ShadowCaster pass用Depth Buffer
         std::array<DX12CpuDescriptorHandle, SHADOW_CASCADE_COUNT> m_shadowDepthStencilViews{};            //!< Cascade DSVs.
         std::array<DX12UploadBuffer, FRAME_COUNT> m_lightingBuffers;
@@ -408,6 +412,12 @@ namespace Engine
         ShaderID m_debugVertexShaderID = 0;                                                               //!< Debug Primitive頂点Shader ID
         ShaderID m_debugShapeVertexShaderID = 0;                                                          //!< Debug Primitive形状頂点Shader ID
         ShaderID m_debugPixelShaderID = 0;                                                                //!< Debug Primitive Pixel Shader ID
+        ShaderID m_particleVertexShaderID = 0;                                                            //!< Particle billboard vertex shader ID.
+        ShaderID m_particleMeshVertexShaderID = 0;                                                        //!< Instanced particle mesh vertex shader ID.
+        ShaderID m_particlePixelShaderID = 0;                                                             //!< Particle billboard pixel shader ID.
+        ShaderID m_particleGpuVertexShaderID = 0;
+        ShaderID m_particleGpuPixelShaderID = 0;
+        ShaderID m_particleSimulationShaderID = 0;
         ShaderID m_hizShaderID = 0;                                                                       //!< Hi-Z生成Compute Shader ID
         ShaderID m_occlusionShaderID = 0;                                                                 //!< 可視判定Compute Shader ID
         bool m_psoRebuildPending = false;                                                                 //!< Shader 更新に伴う Graphics PSO 再生成要求フラグ
@@ -420,6 +430,7 @@ namespace Engine
         DX12GraphicsPipeline m_gbufferModelPipeline;
         DX12GraphicsPipeline m_gbufferAlphaTestModelPipeline;
         DX12GraphicsPipeline m_deferredTransparentModelPipeline;
+        ParticleRenderer m_particleRenderer;
         DX12ComputePipeline m_deferredLightingPipeline;
         DX12GraphicsPipeline m_deferredDebugPipeline;
         DX12ComputePipeline m_hizPipeline;                                                                //!< Hi-Z生成PSO
@@ -457,6 +468,7 @@ namespace Engine
         std::unordered_map<std::uint32_t, std::shared_ptr<const SkinningPaletteSnapshot>> m_currentSkinningPalettes;
         bool m_enableModelInstancing = true;                                                              //!< 非透明Modelの互換Drawをまとめる
         Matrix m_viewProjection = Matrix::Identity;                                                       //!< CameraのView Projection行列
+        Matrix m_inverseView = Matrix::Identity;                                                          //!< CameraのInverse View行列
         Matrix m_inverseViewProjection = Matrix::Identity;
         Matrix m_inverseUnjitteredViewProjection = Matrix::Identity;
         Matrix m_unjitteredProjection = Matrix::Identity;

@@ -112,6 +112,9 @@
     <Filter Include="Source\Components\Rendering">
       <UniqueIdentifier>{DC35FFE0-13B4-4054-9F64-C2DFA9F51D48}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source\Components\Effects">
+      <UniqueIdentifier>{274FD3C8-1D38-48FD-AE3D-DFE6F3E941BC}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source\Components\Terrain">
       <UniqueIdentifier>{A65711DD-486E-4BFD-976A-DEA8020C1973}</UniqueIdentifier>
     </Filter>
@@ -195,6 +198,9 @@
     </Filter>
     <Filter Include="Source\Graphics\Debug">
       <UniqueIdentifier>{26FEBB3D-B48C-4BB6-8945-3F23F18394FF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics\Effects">
+      <UniqueIdentifier>{98F724F6-9182-46E0-B789-1A01A8B9952E}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source\Graphics\DirectX12">
       <UniqueIdentifier>{44C5701D-B9C3-43D4-A1E6-6DE522398BBF}</UniqueIdentifier>
@@ -456,6 +462,15 @@
     <ClCompile Include="Source\Components\Rendering\VolumetricFogComponent.cpp">
       <Filter>Source\Components\Rendering</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Components\Effects\ParticleEffectComponent.cpp">
+      <Filter>Source\Components\Effects</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Components\Effects\ParticleRibbonComponent.cpp">
+      <Filter>Source\Components\Effects</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Assets\Effects\ParticleEffectAssetManager.cpp">
+      <Filter>Source\Assets</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Components\Rendering\ModelRendererComponent.cpp">
       <Filter>Source\Components\Rendering</Filter>
     </ClCompile>
@@ -602,6 +617,12 @@
     </ClCompile>
     <ClCompile Include="Source\Graphics\Debug\DebugPrimitive.cpp">
       <Filter>Source\Graphics\Debug</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Effects\ParticleRenderSubmission.cpp">
+      <Filter>Source\Graphics\Effects</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DirectX12\Rendering\ParticleRenderer.cpp">
+      <Filter>Source\Graphics\DirectX12\Rendering</Filter>
     </ClCompile>
     <ClCompile Include="Source\Graphics\DirectX12\Command\Command.cpp">
       <Filter>Source\Graphics\DirectX12\Command</Filter>
@@ -798,6 +819,15 @@
       <Filter>Generated\FlatBuffers</Filter>
     </ClInclude>
     <ClInclude Include="Generated\FlatBuffers\VolumetricFogComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\ParticleEffectComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\ParticleRibbonComponent_generated.h">
+      <Filter>Generated\FlatBuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="Generated\FlatBuffers\ParticleEffectAsset_generated.h">
       <Filter>Generated\FlatBuffers</Filter>
     </ClInclude>
     <ClInclude Include="Generated\FlatBuffers\Material_generated.h">
@@ -1037,6 +1067,18 @@
     <ClInclude Include="Source\Components\Rendering\VolumetricFogComponent.h">
       <Filter>Source\Components\Rendering</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Components\Effects\ParticleEffectComponent.h">
+      <Filter>Source\Components\Effects</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Components\Effects\ParticleRibbonComponent.h">
+      <Filter>Source\Components\Effects</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Effects\ParticleEffectAsset.h">
+      <Filter>Source\Assets</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Assets\Effects\ParticleEffectAssetManager.h">
+      <Filter>Source\Assets</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Components\Rendering\ModelRendererComponent.h">
       <Filter>Source\Components\Rendering</Filter>
     </ClInclude>
@@ -1249,6 +1291,12 @@
     </ClInclude>
     <ClInclude Include="Source\Graphics\Debug\DebugPrimitive.h">
       <Filter>Source\Graphics\Debug</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Effects\ParticleRenderSubmission.h">
+      <Filter>Source\Graphics\Effects</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DirectX12\Rendering\ParticleRenderer.h">
+      <Filter>Source\Graphics\DirectX12\Rendering</Filter>
     </ClInclude>
     <ClInclude Include="Source\Graphics\Debug\DebugPrimitiveCulling.h">
       <Filter>Source\Graphics\Debug</Filter>
@@ -1474,6 +1522,9 @@
     <None Include="Assets\Shaders\DebugPrimitive.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>
+    <None Include="Assets\Shaders\Particles.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
     <None Include="Assets\Shaders\Deferred.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>
@@ -1592,6 +1643,15 @@
       <Filter>Schemas\FlatBuffers</Filter>
     </None>
     <None Include="Schemas\FlatBuffers\TerrainComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\ParticleEffectComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\ParticleRibbonComponent.fbs">
+      <Filter>Schemas\FlatBuffers</Filter>
+    </None>
+    <None Include="Schemas\FlatBuffers\ParticleEffectAsset.fbs">
       <Filter>Schemas\FlatBuffers</Filter>
     </None>
     <None Include="Schemas\FlatBuffers\TerrainMaterial.fbs">

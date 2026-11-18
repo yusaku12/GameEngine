@@ -115,7 +115,7 @@ namespace Engine
         void lateUpdate(float deltaTime) noexcept { m_objects.lateUpdate(deltaTime); }
 
         /**
-         * @brief Submits camera/model snapshots without executing gameplay callbacks.
+         * @brief Submits camera/model snapshots and paused particles without executing gameplay callbacks.
          * @param animationDeltaTime Unscaled preview seconds while editing; zero preserves the pose.
          */
         void submitRenderData(float animationDeltaTime = 0.0f) noexcept

@@ -97,7 +97,7 @@ namespace Engine
         void lateUpdate(float deltaTime) noexcept;
 
         /**
-         * @brief Submits current camera/model data while editing or paused.
+         * @brief Submits current camera/model data and paused particle data without advancing gameplay.
          * @details Does not invoke gameplay lifecycle callbacks.
          * @param animationDeltaTime Positive unscaled seconds to preview Animators while editing;
          * zero retains the current pose while game execution is paused.

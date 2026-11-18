@@ -1,0 +1,11 @@
+include "Common.fbs";
+namespace Engine.Serialization;
+
+table ParticleEffectAssetFile {
+    version:uint = 1;
+    guid:AssetGuid;
+    settings:[ubyte];
+}
+
+root_type ParticleEffectAssetFile;
+file_identifier "PEFA";

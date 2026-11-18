@@ -1,0 +1,138 @@
+include "Common.fbs";
+namespace Engine.Serialization;
+
+struct ParticleBurst {
+    time:float;
+    count:uint;
+}
+
+struct ParticleScalarKey {
+    time:float;
+    value:float;
+}
+
+struct ParticleColorKey {
+    time:float;
+    value:Vec4;
+}
+
+struct ParticleVectorKey {
+    time:float;
+    value:Vec3;
+}
+
+struct ParticleFlipbookFrame {
+    frame:uint;
+    duration:float;
+}
+
+struct ParticleBurstOptions {
+    count_min:uint;
+    count_max:uint;
+    probability:float;
+    repeat_count:uint;
+    repeat_interval:float;
+    random_count:bool;
+}
+
+table ParticleCurveVariant {
+    color:[ParticleColorKey];
+    size:[ParticleScalarKey];
+    speed:[ParticleScalarKey];
+    angular_speed:[ParticleScalarKey];
+    width:[ParticleScalarKey];
+    height:[ParticleScalarKey];
+    smooth:bool;
+    acceleration:[ParticleVectorKey];
+    velocity:[ParticleVectorKey];
+    gravity:[ParticleScalarKey];
+    drag:[ParticleScalarKey];
+}
+
+table ParticleEffectComponentPayload {
+    play_on_awake:bool = false;
+    looping:bool = true;
+    local_space:bool = true;
+    max_particles:uint = 256;
+    emission_rate:float = 10;
+    burst_count:uint = 0;
+    duration:float = 1;
+    lifetime_min:float = 0.5;
+    lifetime_max:float = 1.5;
+    shape_radius:float = 0;
+    direction:Vec3;
+    spread_angle_degrees:float = 20;
+    speed_min:float = 0.5;
+    speed_max:float = 1.5;
+    gravity:Vec3;
+    drag:float = 0;
+    start_size:float = 0.2;
+    end_size:float = 0;
+    start_color:Vec4;
+    end_color:Vec4;
+    seed:uint = 1;
+    asset_guid:AssetGuid;
+    asset_path:string;
+    texture_path:string;
+    blend_mode:ubyte = 0;
+    flipbook_columns:uint = 1;
+    flipbook_rows:uint = 1;
+    emission_shape:ubyte = 0;
+    box_extents:Vec3;
+    bursts:[ParticleBurst];
+    color_keys:[ParticleColorKey];
+    size_keys:[ParticleScalarKey];
+    speed_keys:[ParticleScalarKey];
+    trail_enabled:bool = false;
+    trail_lifetime:float = 0.5;
+    trail_width:float = 0.1;
+    trail_min_distance:float = 0.05;
+    random_initial:bool = false;
+    initial_size_min:float = 0.2;
+    initial_size_max:float = 0.2;
+    initial_color_min:Vec4;
+    initial_color_max:Vec4;
+    initial_rotation_min:float = 0;
+    initial_rotation_max:float = 6.283185307179586;
+    angular_velocity_min:float = 0;
+    angular_velocity_max:float = 0;
+    angular_speed_keys:[ParticleScalarKey];
+    simulation_speed:float = 1;
+    clear_on_stop:bool = false;
+    smooth_curves:bool = false;
+    initial_size_scale:Vec2;
+    width_keys:[ParticleScalarKey];
+    height_keys:[ParticleScalarKey];
+    acceleration_keys:[ParticleVectorKey];
+    velocity_keys:[ParticleVectorKey];
+    gravity_keys:[ParticleScalarKey];
+    drag_keys:[ParticleScalarKey];
+    burst_options:[ParticleBurstOptions];
+    start_delay:float = 0;
+    prewarm:bool = false;
+    curve_variants:[ParticleCurveVariant];
+    distance_per_particle:float = 0;
+    inherit_velocity:float = 0;
+    orientation:ubyte = 0;
+    orientation_direction:Vec3;
+    stretch_by_speed:float = 0;
+    soft_distance:float = 0;
+    uv_scroll:Vec2;
+    secondary_texture_path:string;
+    mask_texture_path:string;
+    distortion_texture_path:string;
+    uv_distortion:float = 0;
+    refraction_pixels:float = 0;
+    mesh_path:string;
+    emission_rate_keys:[ParticleScalarKey];
+    flipbook_playback:ubyte = 0;
+    flipbook_frames_per_second:float = 12;
+    flipbook_loop_count:uint = 1;
+    flipbook_random_start_frame:bool = false;
+    flipbook_frame_blending:bool = false;
+    flipbook_frames:[ParticleFlipbookFrame];
+    simulation_backend:ubyte = 0;
+}
+
+root_type ParticleEffectComponentPayload;
+file_identifier "PEFC";

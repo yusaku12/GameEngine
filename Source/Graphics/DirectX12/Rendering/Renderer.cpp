@@ -112,7 +112,8 @@ namespace Engine
             || !TextureManager::instance().initialize(m_device, m_directQueue, m_directFence)
             || !m_modelGpuCache.initialize(m_device, m_directFence)
             || !m_materialGpuCache.initialize(m_device, m_directFence)
-            || !DebugPrimitive::instance().initialize(m_device, m_directFence))
+            || !DebugPrimitive::instance().initialize(m_device, m_directFence)
+            || !m_particleRenderer.initialize(m_device, m_directFence))
         {
             rollbackInitialization();
             return false;
@@ -124,7 +125,8 @@ namespace Engine
             return false;
         }
 
-        if (!m_gpuProfiler.initialize(*m_device.get(), *m_directQueue.get(), m_directFence))
+        if (!m_gpuProfiler.initialize(*m_device.get(), *m_directQueue.get(), m_directFence)
+            || !m_particleGpuProfiler.initialize(*m_device.get(), *m_directQueue.get(), m_directFence))
         {
             rollbackInitialization();
             return false;
@@ -152,7 +154,7 @@ namespace Engine
             })
             || !m_dsvHeap.initialize(*m_device.get(), {
                 .type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
-                .capacity = 1 + SHADOW_CASCADE_COUNT,
+                .capacity = 2 + SHADOW_CASCADE_COUNT,
                 .shaderVisible = false,
                 })
                 || !createGameRenderTarget(width, height, m_cameraClearColor)
@@ -355,6 +357,27 @@ namespace Engine
         debugShapeVertexShaderDesc.entryPoint = "vsShape";
         m_debugShapeVertexShaderID = m_shaderManager.registerShader(debugShapeVertexShaderDesc);
         m_debugPixelShaderID = m_shaderManager.registerShader(debugPixelShaderDesc);
+        ShaderCompileDesc particleShaderDesc = debugVertexShaderDesc;
+        particleShaderDesc.sourcePath = "Assets/Shaders/Particles.hlsl";
+        particleShaderDesc.outputPath = "Assets/Shaders/Compiled/Particles_vsMain_vs.cso";
+        m_particleVertexShaderID = m_shaderManager.registerShader(particleShaderDesc);
+        particleShaderDesc.entryPoint = "vsMesh";
+        particleShaderDesc.outputPath = "Assets/Shaders/Compiled/Particles_vsMesh_vs.cso";
+        m_particleMeshVertexShaderID = m_shaderManager.registerShader(particleShaderDesc);
+        particleShaderDesc.entryPoint = "vsGpu";
+        particleShaderDesc.outputPath = "Assets/Shaders/Compiled/Particles_vsGpu_vs.cso";
+        m_particleGpuVertexShaderID = m_shaderManager.registerShader(particleShaderDesc);
+        particleShaderDesc.stage = ShaderStage::Pixel;
+        particleShaderDesc.entryPoint = "psMain";
+        particleShaderDesc.outputPath = "Assets/Shaders/Compiled/Particles_psMain_ps.cso";
+        m_particlePixelShaderID = m_shaderManager.registerShader(particleShaderDesc);
+        particleShaderDesc.entryPoint = "psGpu";
+        particleShaderDesc.outputPath = "Assets/Shaders/Compiled/Particles_psGpu_ps.cso";
+        m_particleGpuPixelShaderID = m_shaderManager.registerShader(particleShaderDesc);
+        particleShaderDesc.entryPoint = "csSimulate";
+        particleShaderDesc.stage = ShaderStage::Compute;
+        particleShaderDesc.outputPath = "Assets/Shaders/Compiled/Particles_csSimulate_cs.cso";
+        m_particleSimulationShaderID = m_shaderManager.registerShader(particleShaderDesc);
         const ShaderCompileDesc hizShaderDesc{
             .sourcePath = "Assets/Shaders/HiZ.hlsl",
             .outputPath = "Assets/Shaders/Compiled/HiZ_csMain_cs.cso",
@@ -423,6 +446,8 @@ namespace Engine
             return false;
         if (!m_gpuProfiler.finalize())
             return false;
+        if (!m_particleGpuProfiler.finalize())
+            return false;
 
         m_depthBuffer.finalize();
         for (DX12Resource& target : m_gbufferTargets)
@@ -474,10 +499,13 @@ namespace Engine
         m_gbufferRenderTargetViews = {};
         m_deferredLightingRenderTargetView = {};
         m_depthStencilView = {};
+        m_depthReadOnlyStencilView = {};
         m_shadowDepthStencilViews = {};
 
         ModelRenderSubmissionQueue::instance().clear();
         m_modelRenderQueue.clear();
+        if (!m_particleRenderer.finalize())
+            return false;
         if (!DebugPrimitive::instance().finalize())
             return false;
         if (!m_modelGpuCache.finalize())
@@ -545,6 +573,12 @@ namespace Engine
         m_debugVertexShaderID = 0;
         m_debugShapeVertexShaderID = 0;
         m_debugPixelShaderID = 0;
+        m_particleVertexShaderID = 0;
+        m_particleMeshVertexShaderID = 0;
+        m_particlePixelShaderID = 0;
+        m_particleGpuVertexShaderID = 0;
+        m_particleGpuPixelShaderID = 0;
+        m_particleSimulationShaderID = 0;
         m_occlusionShaderID = 0;
         m_hizShaderID = 0;
         m_psoRebuildPending = false;
@@ -575,6 +609,7 @@ namespace Engine
         m_frustum.reset();
         m_shadowViewProjection.reset();
         m_viewProjection = Matrix::Identity;
+        m_inverseView = Matrix::Identity;
         m_inverseViewProjection = Matrix::Identity;
         m_previousViewProjection = Matrix::Identity;
         m_lastSubmittedViewProjection = Matrix::Identity;
@@ -631,6 +666,7 @@ namespace Engine
         else
         {
             m_viewProjection = Matrix::Identity;
+            m_inverseView = Matrix::Identity;
             m_inverseViewProjection = Matrix::Identity;
             m_cameraPosition = Vector3::Zero;
             m_cameraForward = Vector3::UnitZ;
@@ -816,6 +852,18 @@ namespace Engine
             && !FrameProfiler::instance().recordGpuTime(gpuFrameId, gpuMilliseconds))
         {
             return false;
+        }
+        bool particleGpuAvailable = false;
+        std::uint64_t particleGpuFrameId = 0;
+        double particleGpuMilliseconds = 0.0;
+        if (!m_particleGpuProfiler.collect(frameIndex, particleGpuAvailable, particleGpuFrameId, particleGpuMilliseconds))
+            return false;
+        if (particleGpuAvailable)
+        {
+            auto statistics = m_particleFrameStatistics[frameIndex];
+            statistics.frameId = particleGpuFrameId;
+            statistics.milliseconds = particleGpuMilliseconds;
+            ParticleRenderSubmissionQueue::instance().publishGpuStatistics(statistics);
         }
 
         const Viewport pixelViewport = CameraUtils::toPixelViewport(m_cameraViewport,
@@ -1041,6 +1089,11 @@ namespace Engine
             return false;
         if (!DebugPrimitive::instance().markFrameUsed(frameIndex, submittedFenceValue))
             return false;
+        if (!m_particleRenderer.markSubmitted(frameIndex, submittedFenceValue))
+            return false;
+        if (m_particleRenderer.getForExecution(frameIndex) != nullptr
+            && !m_particleGpuProfiler.markSubmitted(frameIndex, submittedFenceValue))
+            return false;
         for (const ModelHandle handle : usedModels)
         {
             if (!m_modelGpuCache.markUsed(handle, submittedFenceValue))
@@ -1186,6 +1239,7 @@ namespace Engine
             projection._32 += (0.5f - halton(sampleIndex, 3)) * 2.0f / height;
         }
         m_viewProjection = view.camera.view * projection;
+        m_inverseView = view.camera.inverseView;
         m_inverseViewProjection = m_viewProjection.Invert();
         m_previousViewProjection = sameCamera ? m_lastSubmittedViewProjection : m_viewProjection;
         m_cameraPosition = view.camera.position;
@@ -1238,6 +1292,18 @@ namespace Engine
         dsv.Format = DXGI_FORMAT_D32_FLOAT;
         dsv.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
         m_device.get()->CreateDepthStencilView(m_depthBuffer.get(), &dsv, m_depthStencilView.native);
+        if (m_depthReadOnlyStencilView.native.ptr == 0)
+        {
+            const auto allocation = m_dsvHeap.allocate();
+            if (!allocation)
+            {
+                LOG_ERROR("[Renderer] Failed to allocate the read-only depth DSV.");
+                return false;
+            }
+            m_depthReadOnlyStencilView = allocation->cpu;
+        }
+        dsv.Flags = D3D12_DSV_FLAG_READ_ONLY_DEPTH;
+        m_device.get()->CreateDepthStencilView(m_depthBuffer.get(), &dsv, m_depthReadOnlyStencilView.native);
         if (!m_depthShaderView)
             m_depthShaderView = TextureManager::instance().getDescriptorHeap().allocate();
         if (!m_depthShaderView || !m_depthShaderView->gpu)
@@ -1627,13 +1693,22 @@ namespace Engine
         const auto debugVertexShader = m_shaderManager.get(m_debugVertexShaderID);
         const auto debugShapeVertexShader = m_shaderManager.get(m_debugShapeVertexShaderID);
         const auto debugPixelShader = m_shaderManager.get(m_debugPixelShaderID);
+        const auto particleVertexShader = m_shaderManager.get(m_particleVertexShaderID);
+        const auto particleMeshVertexShader = m_shaderManager.get(m_particleMeshVertexShaderID);
+        const auto particlePixelShader = m_shaderManager.get(m_particlePixelShaderID);
+        const auto particleGpuVertexShader = m_shaderManager.get(m_particleGpuVertexShaderID);
+        const auto particleGpuPixelShader = m_shaderManager.get(m_particleGpuPixelShaderID);
+        const auto particleSimulationShader = m_shaderManager.get(m_particleSimulationShaderID);
         const auto hizShader = m_shaderManager.get(m_hizShaderID);
         const auto occlusionShader = m_shaderManager.get(m_occlusionShaderID);
         if (!modelVertexShader || !skinningComputeShader || !modelPixelShader || !alphaTestPixelShader || !depthAlphaTestPixelShader
             || !gbufferPixelShader || !gbufferAlphaTestPixelShader || !deferredVertexShader
             || !deferredLightingComputeShader || !deferredDebugPixelShader
             || !postProcessVertexShader || !postProcessToneMappingShader || !postProcessOutputShader
-            || !debugVertexShader || !debugShapeVertexShader || !debugPixelShader || !hizShader || !occlusionShader
+            || !debugVertexShader || !debugShapeVertexShader || !debugPixelShader
+            || !particleVertexShader || !particleMeshVertexShader || !particlePixelShader
+            || !particleGpuVertexShader || !particleGpuPixelShader || !particleSimulationShader
+            || !hizShader || !occlusionShader
             || !modelVertexShader->isCompiled() || !skinningComputeShader->isCompiled() || !modelPixelShader->isCompiled()
             || !alphaTestPixelShader->isCompiled() || !depthAlphaTestPixelShader->isCompiled()
             || !gbufferPixelShader->isCompiled() || !gbufferAlphaTestPixelShader->isCompiled()
@@ -1642,6 +1717,9 @@ namespace Engine
             || !postProcessVertexShader->isCompiled() || !postProcessToneMappingShader->isCompiled()
             || !postProcessOutputShader->isCompiled()
             || !debugVertexShader->isCompiled() || !debugShapeVertexShader->isCompiled() || !debugPixelShader->isCompiled()
+            || !particleVertexShader->isCompiled() || !particleMeshVertexShader->isCompiled()
+            || !particlePixelShader->isCompiled() || !particleGpuVertexShader->isCompiled()
+            || !particleGpuPixelShader->isCompiled() || !particleSimulationShader->isCompiled()
             || !hizShader->isCompiled() || !occlusionShader->isCompiled())
         {
             LOG_ERROR("[DX12] 有効なModel Shaderがロードされていません");
@@ -1871,6 +1949,9 @@ namespace Engine
                 nextHiZPipeline, nextOcclusionPipeline)
             || !DebugPrimitive::instance().rebuildPipeline(*debugVertexShader, *debugShapeVertexShader, *debugPixelShader)
             || !m_materialGpuCache.rebuildAll()
+            || !m_particleRenderer.rebuildPipeline(
+                *particleVertexShader, *particleMeshVertexShader, *particlePixelShader,
+                *particleGpuVertexShader, *particleGpuPixelShader, *particleSimulationShader)
             || !m_postProcess.rebuild(postProcessVertexShader, postProcessToneMappingShader, postProcessOutputShader,
                 postProcessBuiltins, postProcessBloom, lightShaftsComputeShader, lightShaftsFallbackShader,
                 autoExposureComputeShader))
@@ -2323,10 +2404,40 @@ namespace Engine
             }
             m_executionLists.push_back(native);
         }
+        const DXGI_FORMAT particleTargetFormat = m_deferredFrameActive
+            ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_R8G8B8A8_UNORM;
+        const D3D12_CPU_DESCRIPTOR_HANDLE particleTarget = m_deferredFrameActive
+            ? state.deferredTarget : state.colorTarget;
+        const bool particleRenderingEnabled = m_frustum.has_value()
+            && (!m_deferredFrameActive || m_deferredDebugView == 0);
         if (!queryInserted)
             m_executionLists.push_back(queryList.getForExecution());
         if (!deferredInserted)
             m_executionLists.push_back(m_deferredLightingCommandLists[frameIndex].getForExecution());
+        if (!m_depthShaderView || !m_depthShaderView->gpu)
+        {
+            LOG_ERROR("[Renderer] Particle depth SRV is unavailable.");
+            return false;
+        }
+        const ParticleSceneDepth particleDepth{ &m_depthBuffer, m_depthReadOnlyStencilView.native,
+            m_depthShaderView->gpu->native, m_inverseViewProjection };
+        DX12Resource* const particleSceneColor = m_deferredFrameActive
+            ? &m_deferredLightingTarget : &m_gameRenderTarget;
+        if (!m_particleRenderer.record(frameIndex, m_viewProjection, m_inverseView,
+            m_cameraPosition, m_cameraForward, particleTarget, state.depthTarget,
+            state.viewport, state.scissor, particleTargetFormat, particleRenderingEnabled,
+            &m_particleGpuProfiler, FrameProfiler::instance().currentFrameId(), &particleDepth, particleSceneColor))
+            return false;
+        m_particleFrameStatistics[frameIndex] = {};
+        if (m_particleRenderer.getForExecution(frameIndex) != nullptr)
+        {
+            m_particleFrameStatistics[frameIndex].drawCalls = m_particleRenderer.drawCount();
+            m_particleFrameStatistics[frameIndex].particles = m_particleRenderer.renderedParticleCount();
+            m_particleFrameStatistics[frameIndex].trailSegments = m_particleRenderer.renderedTrailCount();
+            m_particleFrameStatistics[frameIndex].ribbons = m_particleRenderer.renderedRibbonCount();
+        }
+        if (ID3D12CommandList* const particleList = m_particleRenderer.getForExecution(frameIndex))
+            m_executionLists.push_back(particleList);
         const auto& statistics = recorder.getStatistics();
         m_frameStatistics.drawCallCount = statistics.drawCallCount;
         m_frameStatistics.indirectCallCount = statistics.indirectCallCount;

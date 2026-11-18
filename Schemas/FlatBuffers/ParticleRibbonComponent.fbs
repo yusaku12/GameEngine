@@ -1,0 +1,22 @@
+include "Common.fbs";
+namespace Engine.Serialization;
+
+struct ParticleRibbonPoint {
+    position:Vec3;
+    color:Vec4;
+    width:float;
+}
+
+table ParticleRibbonComponentPayload {
+    mode:ubyte = 0;
+    local_space:bool = true;
+    control_points:[ParticleRibbonPoint];
+    lightning_segments:uint = 12;
+    lightning_amplitude:float = 0.1;
+    update_interval:float = 0.05;
+    seed:uint = 1;
+    blend_mode:ubyte = 0;
+}
+
+root_type ParticleRibbonComponentPayload;
+file_identifier "PRBC";

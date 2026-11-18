@@ -2,6 +2,7 @@
 #include "Editor\ImGui\EditorUi.h"
 #include "Assets\Model\ModelManager.h"
 #include "Components\Rendering\CameraComponent.h"
+#include "Components\Effects\ParticleEffectComponent.h"
 #include "Components\Rendering\ModelRendererComponent.h"
 #include "Components\Terrain\TerrainComponent.h"
 #include "Core\Prefab\Prefab.h"
@@ -91,6 +92,72 @@ namespace Engine
             case ThreadDebugTask::RenderUpdate: return "Render Update";
             case ThreadDebugTask::JobExecution: return "Job Execution";
             default: return "Unknown";
+            }
+        }
+
+        void drawParticleEmitterGizmo(const GameObject& object, const ParticleEffectSettings& settings)
+        {
+            auto& debug = DebugPrimitive::instance();
+            const Matrix world = object.getWorldMatrix();
+            const Color shapeColor(0.25f, 0.8f, 1.0f, 1.0f);
+            const Color directionColor(1.0f, 0.75f, 0.2f, 1.0f);
+            if (settings.shape == ParticleEmissionShape::Sphere && settings.shapeRadius > 0.0f)
+                debug.drawSphere(world, settings.shapeRadius, shapeColor);
+            else if (settings.shape == ParticleEmissionShape::Box && settings.boxExtents.x > 0.0f
+                && settings.boxExtents.y > 0.0f && settings.boxExtents.z > 0.0f)
+                debug.drawBox(world, settings.boxExtents, shapeColor);
+
+            constexpr int segments = 32;
+            constexpr float pi = 3.14159265358979323846f;
+            const auto line = [&debug, &world](const Vector3& a, const Vector3& b, const Color& color)
+            {
+                debug.drawLine(Vector3::Transform(a, world), Vector3::Transform(b, world), color);
+            };
+            if (settings.shape == ParticleEmissionShape::Box && (settings.boxExtents.x == 0.0f
+                || settings.boxExtents.y == 0.0f || settings.boxExtents.z == 0.0f))
+            {
+                for (int i = 0; i < 8; ++i)
+                {
+                    const Vector3 p((i & 1 ? 1.0f : -1.0f) * settings.boxExtents.x,
+                        (i & 2 ? 1.0f : -1.0f) * settings.boxExtents.y,
+                        (i & 4 ? 1.0f : -1.0f) * settings.boxExtents.z);
+                    if ((i & 1) == 0) line(p, p + Vector3(2 * settings.boxExtents.x, 0, 0), shapeColor);
+                    if ((i & 2) == 0) line(p, p + Vector3(0, 2 * settings.boxExtents.y, 0), shapeColor);
+                    if ((i & 4) == 0) line(p, p + Vector3(0, 0, 2 * settings.boxExtents.z), shapeColor);
+                }
+            }
+            if (settings.shape == ParticleEmissionShape::Disk)
+            {
+                for (int i = 0; i < segments; ++i)
+                {
+                    const float a = 2.0f * pi * static_cast<float>(i) / segments;
+                    const float b = 2.0f * pi * static_cast<float>(i + 1) / segments;
+                    line(Vector3(std::cos(a), 0, std::sin(a)) * settings.shapeRadius,
+                        Vector3(std::cos(b), 0, std::sin(b)) * settings.shapeRadius, shapeColor);
+                }
+            }
+            Vector3 axis = settings.direction;
+            axis.Normalize();
+            const Vector3 helper = std::abs(axis.y) < 0.999f ? Vector3::UnitY : Vector3::UnitX;
+            Vector3 tangent = axis.Cross(helper);
+            tangent.Normalize();
+            const Vector3 bitangent = axis.Cross(tangent);
+            const float length = std::max(1.0f, settings.shape == ParticleEmissionShape::Box
+                ? std::max({ settings.boxExtents.x, settings.boxExtents.y, settings.boxExtents.z })
+                : settings.shapeRadius);
+            const float angle = settings.spreadAngleDegrees * pi / 180.0f;
+            const Vector3 center = axis * (std::cos(angle) * length);
+            const float radius = std::sin(angle) * length;
+            line(Vector3::Zero, axis * length, directionColor);
+            for (int i = 0; i < segments; ++i)
+            {
+                const float a = 2.0f * pi * static_cast<float>(i) / segments;
+                const float b = 2.0f * pi * static_cast<float>(i + 1) / segments;
+                const Vector3 start = center + (tangent * std::cos(a) + bitangent * std::sin(a)) * radius;
+                const Vector3 end = center + (tangent * std::cos(b) + bitangent * std::sin(b)) * radius;
+                line(start, end, directionColor);
+                if (i % 8 == 0)
+                    line(Vector3::Zero, start, directionColor);
             }
         }
     }
@@ -191,13 +258,11 @@ namespace Engine
             ImGui::EndMainMenuBar();
         }
 
-        ImGui::BeginDisabled(GameSession::instance().isPlaying());
         drawHierarchy();
-        ImGui::EndDisabled();
+        GameSession::instance().setParticlePreviewSelection(
+            m_selectedObjects.size() == 1 ? m_selectedObjectGuid : ObjectGUID{});
         drawGameView(gameTextureId, gameWidth, gameHeight);
-        ImGui::BeginDisabled(GameSession::instance().isPlaying());
         drawInspector();
-        ImGui::EndDisabled();
         drawShaderManager(shaderManager);
         drawThreadDebug();
         drawPerformanceProfiler();
@@ -268,6 +333,9 @@ namespace Engine
         const std::vector<GameObject*> selectedRoots = getSelectedRoots();
         for (const GameObject* const selectedObject : selectedRoots)
         {
+            if (const auto* effect = selectedObject->getComponent<ParticleEffectComponent>();
+                effect != nullptr && effect->isEnabled())
+                drawParticleEmitterGizmo(*selectedObject, effect->settings());
             const ModelRendererComponent* const modelRenderer = selectedObject->getComponent<ModelRendererComponent>();
             if (modelRenderer != nullptr && modelRenderer->getModel().isValid())
             {
@@ -762,6 +830,8 @@ namespace Engine
         ImGui::SameLine();
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint("##HierarchySearch", "Search", m_hierarchySearch.data(), m_hierarchySearch.size());
+        if (GameSession::instance().isPlaying())
+            ImGui::TextDisabled("Play Mode: runtime object changes are discarded on Stop.");
         ImGui::TextDisabled("Ctrl-click: multi-select | Ctrl+D: duplicate | Delete: delete");
         if (!m_hierarchyStatus.empty())
             ImGui::TextDisabled("%s", m_hierarchyStatus.c_str());
@@ -808,8 +878,7 @@ namespace Engine
                 ImGui::EndPopup();
             }
 
-            if (!GameSession::instance().isPlaying()
-                && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
+            if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
                 && !ImGui::GetIO().WantTextInput)
             {
                 if (ImGui::IsKeyPressed(ImGuiKey_Delete) && !m_selectedObjects.empty())
@@ -912,11 +981,14 @@ namespace Engine
                     selectObject(&object);
                 m_hierarchyDuplicateRequested = true;
             }
-            if (ImGui::MenuItem("Save as Prefab..."))
+            const bool canSavePrefab = !GameSession::instance().isPlaying();
+            if (ImGui::MenuItem("Save as Prefab...", nullptr, false, canSavePrefab))
             {
                 selectObject(&object);
                 saveSelectedAsPrefab();
             }
+            if (!canSavePrefab && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("Prefab files cannot be saved from Play Mode.");
             ImGui::EndPopup();
         }
         if (open)
@@ -1058,6 +1130,8 @@ namespace Engine
             ImGui::End();
             return;
         }
+        if (GameSession::instance().isPlaying())
+            ImGui::TextDisabled("Play Mode: runtime object changes are discarded on Stop.");
         if (m_selectedObjects.size() > 1)
         {
             ImGui::Text("%zu objects selected", m_selectedObjects.size());

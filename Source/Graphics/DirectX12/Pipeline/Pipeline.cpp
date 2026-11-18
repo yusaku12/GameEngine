@@ -101,19 +101,20 @@ namespace Engine
         description.BlendState.AlphaToCoverageEnable = FALSE;
         description.BlendState.IndependentBlendEnable = FALSE;
         const D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlend{
-            .BlendEnable = config.enableAlphaBlend,
+            .BlendEnable = config.enableAlphaBlend || config.enableAdditiveBlend,
             .LogicOpEnable = FALSE,
-            .SrcBlend = config.enableAlphaBlend ? D3D12_BLEND_SRC_ALPHA : D3D12_BLEND_ONE,
-            .DestBlend = config.enableAlphaBlend ? D3D12_BLEND_INV_SRC_ALPHA : D3D12_BLEND_ZERO,
+            .SrcBlend = (config.enableAlphaBlend || config.enableAdditiveBlend) ? D3D12_BLEND_SRC_ALPHA : D3D12_BLEND_ONE,
+            .DestBlend = config.enableAdditiveBlend ? D3D12_BLEND_ONE
+                : (config.enableAlphaBlend ? D3D12_BLEND_INV_SRC_ALPHA : D3D12_BLEND_ZERO),
             .BlendOp = D3D12_BLEND_OP_ADD,
-            .SrcBlendAlpha = D3D12_BLEND_ONE,
-            .DestBlendAlpha = D3D12_BLEND_ZERO,
+            .SrcBlendAlpha = config.enableAdditiveBlend ? D3D12_BLEND_ZERO : D3D12_BLEND_ONE,
+            .DestBlendAlpha = config.enableAdditiveBlend ? D3D12_BLEND_ONE : D3D12_BLEND_ZERO,
             .BlendOpAlpha = D3D12_BLEND_OP_ADD,
             .LogicOp = D3D12_LOGIC_OP_NOOP,
             .RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL,
         };
         for (D3D12_RENDER_TARGET_BLEND_DESC& target : description.BlendState.RenderTarget)
-            target = renderTargetBlend;
+            target = config.overrideBlend ? config.blendOverride : renderTargetBlend;
 
         description.SampleMask = UINT_MAX;
         description.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;

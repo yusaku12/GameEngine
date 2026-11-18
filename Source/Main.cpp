@@ -5,6 +5,7 @@
 #include "Core\System\Window.h"
 #include "Graphics\Camera\CameraManager.h"
 #include "Assets\PostProcess\PostProcessProfileManager.h"
+#include "Assets\Effects\ParticleEffectAssetManager.h"
 #include "Graphics\DirectX12\Rendering\Renderer.h"
 #include "Physics\PhysicsSystem.h"
 #include "Core\Scene\SceneSerializer.h"
@@ -104,6 +105,7 @@ namespace Engine
     static void finalizeCore()
     {
         PostProcessProfileManager::instance().clear();
+        ParticleEffectAssetManager::instance().clear();
         RuntimeUI::instance().shutdown();
         AudioSystem::instance().shutdown();
         // ジョブシステムの終了処理を行うことで、ジョブの完了待ち中に発生したエラーをログに出力する

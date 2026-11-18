@@ -240,7 +240,7 @@ namespace Engine
             TextureHandle handle; //!< 世代付きTexture Handle
         };
 
-        std::unordered_multimap<std::string, CachedTexture> m_pathToHandle;                //!< パス → ハンドルインデックスのマッピング
+        std::unordered_multimap<std::filesystem::path, CachedTexture> m_pathToHandle;      //!< パス → ハンドルインデックスのマッピング
         std::unordered_map<AssetGUID, std::filesystem::path, ObjectGUIDHash> m_guidToPath; //!< GUIDからAsset Pathへの対応
         std::unordered_map<std::filesystem::path, AssetGUID> m_pathToGuid;                 //!< Asset PathからGUIDへの対応
         mutable std::mutex m_assetPathMutex;                                               //!< GUIDとPathの対応を保護するMutex

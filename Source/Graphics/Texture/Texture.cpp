@@ -5,6 +5,8 @@
 #include "Graphics\DirectX12\Command\Fence.h"
 #include "Graphics\DirectX12\Command\Queue.h"
 #include "Core\Logging\Logger.h"
+#include "Core\Containers\String.h"
+#include <cwctype>
 
 namespace Engine
 {
@@ -36,19 +38,19 @@ namespace Engine
         const bool fileExists = std::filesystem::exists(path, error);
         if (error)
         {
-            LOG_ERROR("[Texture] ファイルの存在確認に失敗しました: {} ({})", path.string(), error.message());
+            LOG_ERROR("[Texture] ファイルの存在確認に失敗しました: {} ({})", String::fromWide(path.c_str()).c_str(), error.message());
             return false;
         }
         if (!fileExists)
         {
-            LOG_ERROR("[Texture] ファイルが見つかりません: {}", path.string());
+            LOG_ERROR("[Texture] ファイルが見つかりません: {}", String::fromWide(path.c_str()).c_str());
             return false;
         }
 
         m_path = std::filesystem::weakly_canonical(path, error);
         if (error)
         {
-            LOG_ERROR("[Texture] ファイルパスの正規化に失敗しました: {} ({})", path.string(), error.message());
+            LOG_ERROR("[Texture] ファイルパスの正規化に失敗しました: {} ({})", String::fromWide(path.c_str()).c_str(), error.message());
             return false;
         }
 
@@ -58,7 +60,7 @@ namespace Engine
         DirectX::ScratchImage scratchImage = loadImageFromFile(m_path);
         if (scratchImage.GetImageCount() == 0)
         {
-            LOG_ERROR("[Texture] 画像ロード失敗: {}", m_path.string());
+            LOG_ERROR("[Texture] 画像ロード失敗: {}", String::fromWide(m_path.c_str()).c_str());
             m_state = TextureState::Failed;
             return false;
         }
@@ -67,26 +69,26 @@ namespace Engine
         if (FAILED(preparationResult))
         {
             LOG_ERROR("[Texture] 画像の準備に失敗しました: {} (0x{:08X})",
-                m_path.string(), static_cast<unsigned int>(preparationResult));
+                String::fromWide(m_path.c_str()).c_str(), static_cast<unsigned int>(preparationResult));
             m_state = TextureState::Failed;
             return false;
         }
         if (preparationResult == S_FALSE)
-            LOG_WARNING("[Texture] BC画像のミップは事前変換で生成してください: {}", m_path.string());
+            LOG_WARNING("[Texture] BC画像のミップは事前変換で生成してください: {}", String::fromWide(m_path.c_str()).c_str());
         m_info.colorSpace = DirectX::IsSRGB(scratchImage.GetMetadata().format)
             ? TextureColorSpace::SRGB : TextureColorSpace::Linear;
 
         m_state = TextureState::Uploading;
         if (!createGpuResource(device, descriptorHeap, directQueue, fence, scratchImage))
         {
-            LOG_ERROR("[Texture] GPUリソース作成またはアップロードに失敗しました: {}", m_path.string());
+            LOG_ERROR("[Texture] GPUリソース作成またはアップロードに失敗しました: {}", String::fromWide(m_path.c_str()).c_str());
             m_state = TextureState::Failed;
             return false;
         }
 
         m_state = TextureState::Ready;
         LOG_INFO("[Texture] テクスチャロード: {} ({}x{}, Mips: {}, Format: {})",
-            m_path.filename().string(), m_info.width, m_info.height, m_info.mipLevels,
+            String::fromWide(m_path.filename().c_str()).c_str(), m_info.width, m_info.height, m_info.mipLevels,
             static_cast<int>(m_info.format));
         return true;
     }
@@ -188,29 +190,28 @@ namespace Engine
     {
         DirectX::ScratchImage scratchImage;
         const std::wstring wPath = path.wstring();
-        const auto ext = path.extension().string();
-        std::string extLower = ext;
+        std::wstring extLower = path.extension().wstring();
         std::transform(extLower.begin(), extLower.end(), extLower.begin(),
-            [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+            [](const wchar_t character) { return static_cast<wchar_t>(std::towlower(character)); });
 
         HRESULT hr = E_FAIL;
-        if (extLower == ".dds")
+        if (extLower == L".dds")
             hr = DirectX::LoadFromDDSFile(wPath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, scratchImage);
-        else if (extLower == ".tga")
+        else if (extLower == L".tga")
             hr = DirectX::LoadFromTGAFile(wPath.c_str(), nullptr, scratchImage);
-        else if (extLower == ".hdr")
+        else if (extLower == L".hdr")
             hr = DirectX::LoadFromHDRFile(wPath.c_str(), nullptr, scratchImage);
-        else if (extLower != ".png" && extLower != ".jpg" && extLower != ".jpeg"
-            && extLower != ".bmp" && extLower != ".tif" && extLower != ".tiff" && extLower != ".gif")
+        else if (extLower != L".png" && extLower != L".jpg" && extLower != L".jpeg"
+            && extLower != L".bmp" && extLower != L".tif" && extLower != L".tiff" && extLower != L".gif")
         {
-            LOG_ERROR("[Texture] 未対応の拡張子です: {}", path.extension().string());
+            LOG_ERROR("[Texture] 未対応の拡張子です: {}", String::fromWide(path.extension().c_str()).c_str());
             return scratchImage;
         }
         else
             hr = DirectX::LoadFromWICFile(wPath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, scratchImage);
 
         if (FAILED(hr))
-            LOG_ERROR("[Texture] ファイル読み込み失敗: {} (0x{:08X})", path.string(), static_cast<unsigned int>(hr));
+            LOG_ERROR("[Texture] ファイル読み込み失敗: {} (0x{:08X})", String::fromWide(path.c_str()).c_str(), static_cast<unsigned int>(hr));
 
         return scratchImage;
     }

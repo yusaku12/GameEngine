@@ -2,6 +2,8 @@
 #include "Core\Logging\Logging.h"
 #include "Core\GameObject\GameObjectManager.h"
 #include "Components\Animation\AnimatorComponent.h"
+#include "Components\Effects\ParticleEffectComponent.h"
+#include "Components\Effects\ParticleRibbonComponent.h"
 #include "Components\Rendering\CameraComponent.h"
 #include "Components\Rendering\ModelRendererComponent.h"
 #include "Components\Terrain\TerrainComponent.h"
@@ -12,6 +14,7 @@
 #include "Core\GameObject\GameObject.h"
 #include "Core\Scene\TagManager.h"
 #include "Core\Scene\LayerManager.h"
+#include "Core\System\GameSession.h"
 
 namespace Engine
 {
@@ -497,7 +500,14 @@ namespace Engine
         for (const auto& object : m_objects)
         {
             if (!object->isActiveInHierarchy() || object->m_destroyRequested)
+            {
+                if (GameSession::instance().state() == PlayState::Editing)
+                {
+                    if (auto* effect = object->getComponent<ParticleEffectComponent>())
+                        effect->suspendPreview();
+                }
                 continue;
+            }
             if (auto* camera = object->getComponent<CameraComponent>(); camera != nullptr && camera->isEnabled())
                 camera->onLateUpdate(0.0f);
             if (auto* renderer = object->getComponent<ModelRendererComponent>();
@@ -508,6 +518,26 @@ namespace Engine
             }
             if (auto* terrain = object->getComponent<TerrainComponent>(); terrain != nullptr && terrain->isEnabled())
                 terrain->submitRenderData();
+            if (auto* ribbon = object->getComponent<ParticleRibbonComponent>();
+                ribbon != nullptr && ribbon->isEnabled())
+                ribbon->submitRenderData();
+            if (GameSession::instance().state() == PlayState::Paused)
+            {
+                if (auto* effect = object->getComponent<ParticleEffectComponent>();
+                    effect != nullptr && effect->isEnabled() && effect->m_lifecycleEnabled
+                    && effect->m_lifecycleActive && effect->m_started)
+                    effect->submitRenderData();
+            }
+            else if (GameSession::instance().state() == PlayState::Editing)
+            {
+                if (auto* effect = object->getComponent<ParticleEffectComponent>())
+                {
+                    if (effect->isEnabled() && object->getGUID() == GameSession::instance().particlePreviewSelection())
+                        effect->updatePreview(animationDeltaTime);
+                    else
+                        effect->suspendPreview();
+                }
+            }
         }
     }
 

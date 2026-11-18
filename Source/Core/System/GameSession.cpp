@@ -3,6 +3,7 @@
 #include "Core\Scene\SceneClone.h"
 #include "Core\Scene\SceneManager.h"
 #include "Components\Rendering\CameraComponent.h"
+#include "Components\Effects\ParticleEffectComponent.h"
 #include "Editor\Components\Camera\FreeCameraController.h"
 #include "Graphics\Camera\CameraManager.h"
 #include "Graphics\Camera\CameraRenderSubmission.h"
@@ -39,6 +40,7 @@ namespace Engine
         m_stepRequested = false;
         m_stepThisFrame = false;
         m_gameViewFocused = false;
+        setParticlePreviewSelection({});
         m_status.clear();
     }
 
@@ -196,6 +198,7 @@ namespace Engine
             LOG_ERROR("[Play] Pause requires an active editor Play session.");
             return false;
         }
+
         if (!AudioSystem::instance().setPaused(paused))
             return false;
         m_state = paused ? PlayState::Paused : PlayState::Playing;
@@ -203,6 +206,60 @@ namespace Engine
         m_stepRequested = false;
         InputManager::instance().resetState();
         return true;
+    }
+
+    ParticleEffectComponent* GameSession::findEditorParticleEffect(const ObjectGUID object) const noexcept
+    {
+        if (m_mode != ExecutionMode::Editor || !isPlaying() || !object.isValid() || !m_savedPersistent)
+        {
+            LOG_ERROR("[Play] Particle settings transfer requires an active editor Play session.");
+            return nullptr;
+        }
+        GameObject* found = m_savedPersistent->find(object);
+        for (const auto& scene : m_savedScenes)
+        {
+            if (GameObject* candidate = scene->find(object))
+            {
+                if (found != nullptr)
+                {
+                    LOG_ERROR("[Play] Particle settings owner is ambiguous across editor scenes.");
+                    return nullptr;
+                }
+                found = candidate;
+            }
+        }
+        auto* const effect = found ? found->getComponent<ParticleEffectComponent>() : nullptr;
+        if (effect == nullptr)
+        {
+            LOG_ERROR("[Play] Original editor particle component no longer exists.");
+            return nullptr;
+        }
+        return effect;
+    }
+
+    bool GameSession::applyParticleEffectSettings(const ObjectGUID object, const ParticleEffectSettings& settings)
+    {
+        auto* const effect = findEditorParticleEffect(object);
+        if (effect == nullptr)
+            return false;
+        if (!effect->setSettings(settings))
+            return false;
+        if (!effect->setAsset({}))
+            return false;
+        effect->stopPreview();
+        return true;
+    }
+
+    bool GameSession::discardParticleEffectSettings(const ObjectGUID object, ParticleEffectComponent& destination)
+    {
+        const auto* const owner = destination.getGameObject();
+        if (owner == nullptr || owner->getGUID() != object)
+        {
+            LOG_ERROR("[Play] Particle settings destination does not match the runtime object.");
+            return false;
+        }
+        const auto* const original = findEditorParticleEffect(object);
+        return original != nullptr && original->copyConfigurationTo(destination);
     }
 
     bool GameSession::step() noexcept

@@ -5,6 +5,7 @@
 #include "Graphics\DirectX12\Command\Queue.h"
 #include "Graphics\DirectX12\Command\Fence.h"
 #include "Core\Logging\Logger.h"
+#include "Core\Containers\String.h"
 #include "Core\CoreDefines.h"
 
 namespace Engine
@@ -112,10 +113,10 @@ namespace Engine
         const auto normPath = std::filesystem::weakly_canonical(path, error);
         if (error)
         {
-            LOG_ERROR("[TextureManager] パスの正規化に失敗しました: {} ({})", path.string(), error.message());
+            LOG_ERROR("[TextureManager] パスの正規化に失敗しました: {} ({})", String::fromWide(path.c_str()).c_str(), error.message());
             return TextureHandle::Invalid();
         }
-        const auto normPathStr = normPath.string();
+        const auto& normPathStr = normPath;
 
         // キャッシュ確認
         const auto [begin, end] = m_pathToHandle.equal_range(normPathStr);
@@ -128,7 +129,7 @@ namespace Engine
             }
             if (get(it->second.handle) != nullptr)
             {
-                LOG_DEBUG("[TextureManager] キャッシュ: {}", normPathStr);
+                LOG_DEBUG("[TextureManager] キャッシュ: {}", String::fromWide(normPathStr.c_str()).c_str());
                 return it->second.handle;
             }
             it = m_pathToHandle.erase(it);
@@ -374,7 +375,7 @@ namespace Engine
         if (path.empty())
             return false;
         std::error_code error;
-        const std::string normalizedPath = std::filesystem::weakly_canonical(path, error).string();
+        const auto normalizedPath = std::filesystem::weakly_canonical(path, error);
         if (error)
             return false;
         const auto [begin, end] = m_pathToHandle.equal_range(normalizedPath);
@@ -441,17 +442,17 @@ namespace Engine
         std::uint32_t allocatedSrvIndex = TextureHandle::INVALID_INDEX;
         try
         {
-            const std::string cachePath = path.string();
+            const auto cachePath = path;
             auto texture = std::make_unique<Texture>();
             if (!texture->initialize(*m_device->get(), m_descriptorHeap, *m_directQueue, *m_directFence, path, desc))
             {
-                LOG_ERROR("[TextureManager] テクスチャ初期化失敗: {}", path.string());
+                LOG_ERROR("[TextureManager] テクスチャ初期化失敗: {}", String::fromWide(path.c_str()).c_str());
                 return TextureHandle::Invalid();
             }
             const TextureResourceInfo* const info = texture->getResourceInfo();
             if (info == nullptr)
             {
-                LOG_ERROR("[TextureManager] Initialized texture has no SRV resource information: {}", path.string());
+                LOG_ERROR("[TextureManager] Initialized texture has no SRV resource information: {}", String::fromWide(path.c_str()).c_str());
                 return TextureHandle::Invalid();
             }
             allocatedSrvIndex = info->srvIndex;
@@ -478,7 +479,7 @@ namespace Engine
 
             ++m_nextGeneration;
             allocatedSrvIndex = TextureHandle::INVALID_INDEX;
-            LOG_DEBUG("[TextureManager] テクスチャロード: {} (Handle: {})", path.filename().string(), handle.index);
+            LOG_DEBUG("[TextureManager] テクスチャロード: {} (Handle: {})", String::fromWide(path.filename().c_str()).c_str(), handle.index);
             return handle;
         }
         catch (const std::bad_alloc&)
@@ -486,7 +487,7 @@ namespace Engine
             if (allocatedSrvIndex != TextureHandle::INVALID_INDEX
                 && !m_descriptorHeap.release(allocatedSrvIndex))
                 LOG_ERROR("[TextureManager] Failed to release Texture SRV Descriptor after allocation failure.");
-            LOG_ERROR("[TextureManager] メモリ確保に失敗したためテクスチャを登録できません: {}", path.string());
+            LOG_ERROR("[TextureManager] メモリ確保に失敗したためテクスチャを登録できません: {}", String::fromWide(path.c_str()).c_str());
             return TextureHandle::Invalid();
         }
         catch (const std::length_error&)
@@ -494,7 +495,7 @@ namespace Engine
             if (allocatedSrvIndex != TextureHandle::INVALID_INDEX
                 && !m_descriptorHeap.release(allocatedSrvIndex))
                 LOG_ERROR("[TextureManager] Failed to release Texture SRV Descriptor after capacity failure.");
-            LOG_ERROR("[TextureManager] テクスチャ管理容量の上限に達しました: {}", path.string());
+            LOG_ERROR("[TextureManager] テクスチャ管理容量の上限に達しました: {}", String::fromWide(path.c_str()).c_str());
             return TextureHandle::Invalid();
         }
     }

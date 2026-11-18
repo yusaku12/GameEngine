@@ -9,6 +9,8 @@
 namespace Engine
 {
     class Scene;
+    class ParticleEffectComponent;
+    struct ParticleEffectSettings;
 
     /** @brief State of the editor's isolated game session. */
     enum class PlayState { Editing, Playing, Paused };
@@ -52,11 +54,29 @@ namespace Engine
         void setGameViewFocused(bool focused) noexcept { m_gameViewFocused = focused; }
         /** @brief Returns the most recent transition error/status for editor display. */
         const std::string& status() const noexcept { return m_status; }
+        /** @brief Selects the editor object whose particle preview may advance. */
+        void setParticlePreviewSelection(ObjectGUID guid) noexcept
+        {
+            if (m_particlePreviewSelection != guid)
+            {
+                m_particlePreviewSelection = guid;
+                ++m_particlePreviewSelectionRevision;
+            }
+        }
+        /** @brief Returns the selected particle preview owner. */
+        ObjectGUID particlePreviewSelection() const noexcept { return m_particlePreviewSelection; }
+        /** @brief Returns a revision that changes when the preview selection changes. */
+        std::uint64_t particlePreviewSelectionRevision() const noexcept { return m_particlePreviewSelectionRevision; }
+        /** @brief Copies runtime particle settings to the editor object as independent inline settings. */
+        bool applyParticleEffectSettings(ObjectGUID object, const ParticleEffectSettings& settings);
+        /** @brief Restores a runtime particle component's settings from its editor counterpart. */
+        bool discardParticleEffectSettings(ObjectGUID object, ParticleEffectComponent& destination);
 
     private:
         GameSession() = default;
         GameSession(const GameSession&) = delete;
         GameSession& operator=(const GameSession&) = delete;
+        ParticleEffectComponent* findEditorParticleEffect(ObjectGUID object) const noexcept;
 
         ExecutionMode m_mode = ExecutionMode::Editor;
         PlayState m_state = PlayState::Editing;
@@ -64,6 +84,8 @@ namespace Engine
         std::unique_ptr<Scene> m_savedPersistent;
         Scene* m_savedActive = nullptr;
         ObjectGUID m_savedMainCamera;
+        ObjectGUID m_particlePreviewSelection;
+        std::uint64_t m_particlePreviewSelectionRevision = 0;
         float m_savedTimeScale = 1.0f;
         float m_savedFixedDeltaTime = 1.0f / 60.0f;
         float m_savedMaxDeltaTime = 0.1f;
