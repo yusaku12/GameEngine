@@ -16,6 +16,11 @@ namespace Engine
     namespace
     {
         constexpr std::uint32_t MAX_GPU_PARTICLES = 4096;
+        // csCompact uses one group of 128 lanes with up to 32 slots per lane.
+        static_assert(MAX_GPU_PARTICLES <= 128 * 32);
+        static_assert(sizeof(D3D12_DRAW_ARGUMENTS) == 16);
+        constexpr D3D12_RESOURCE_STATES GPU_DRAW_DATA_READ_STATE =
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
         constexpr float PARTICLE_PI = 3.14159265358979323846f;
 
         bool isFinite(const Vector3& value) noexcept
@@ -113,6 +118,19 @@ namespace Engine
 
         m_device = &device;
         m_fence = &fence;
+        D3D12_INDIRECT_ARGUMENT_DESC argument{};
+        argument.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
+        const D3D12_COMMAND_SIGNATURE_DESC signature{
+            sizeof(D3D12_DRAW_ARGUMENTS), 1, &argument, 0 };
+        const HRESULT result = device.get()->CreateCommandSignature(&signature, nullptr,
+            IID_PPV_ARGS(&m_gpuDrawSignature));
+        if (FAILED(result))
+        {
+            LOG_ERROR("[ParticleEffect] Failed to create the indirect draw signature (HRESULT: 0x{:08X}).",
+                static_cast<unsigned long>(result));
+            static_cast<void>(finalize());
+            return false;
+        }
         m_quadInstanceCapacities.fill(0);
         m_meshInstanceCapacities.fill(0);
         m_frameRecorded.fill(false);
@@ -187,15 +205,8 @@ namespace Engine
         for (auto& pipeline : m_deferredGpuPipelines)
             pipeline.finalize();
         m_gpuSimulationPipeline.finalize();
-        for (auto& [id, state] : m_gpuEmitterStates)
-        {
-            static_cast<void>(id);
-            if (state->resource)
-                state->resource->finalize();
-            for (RetiredGpuBuffer& retired : state->retiredBuffers)
-                if (retired.resource)
-                    retired.resource->finalize();
-        }
+        m_gpuCompactionPipeline.finalize();
+        m_gpuDrawSignature.Reset();
         m_gpuEmitterStates.clear();
         m_quadInstanceCapacities.fill(0);
         m_meshInstanceCapacities.fill(0);
@@ -234,7 +245,7 @@ namespace Engine
     bool ParticleRenderer::rebuildPipeline(const DX12Shader& vertexShader,
         const DX12Shader& meshVertexShader, const DX12Shader& pixelShader,
         const DX12Shader& gpuVertexShader, const DX12Shader& gpuPixelShader,
-        const DX12Shader& simulationShader)
+        const DX12Shader& simulationShader, const DX12Shader& compactionShader)
     {
         if (m_device == nullptr || m_device->get() == nullptr)
         {
@@ -386,9 +397,11 @@ namespace Engine
         gpuDrawConstants.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         gpuDrawConstants.Constants = { 7, 0, 16 };
         gpuDrawConstants.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+        D3D12_ROOT_PARAMETER gpuDrawData = gpuParticleBuffer;
+        gpuDrawData.Descriptor.ShaderRegister = 8;
         const std::array gpuRootParameters{
             viewProjectionConstants, gpuTextureTable, appearanceConstants, gpuParticleBuffer,
-            gpuWorldConstants, gpuDrawConstants };
+            gpuWorldConstants, gpuDrawConstants, gpuDrawData };
         DX12GraphicsPipelineConfig gpuConfig = config;
         gpuConfig.vertexShader = &gpuVertexShader;
         gpuConfig.pixelShader = &gpuPixelShader;
@@ -414,6 +427,23 @@ namespace Engine
         if (!gpuSimulation.initialize(*m_device->get(), simulationShader, gpuSimulationParameters))
         {
             LOG_ERROR("[ParticleEffect] Failed to build the particle simulation compute pipeline.");
+            return false;
+        }
+        DX12ComputePipeline gpuCompaction;
+        const D3D12_ROOT_PARAMETER gpuCompactionConstants{
+            .ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
+            .Constants = { 8, 0, 1 },
+            .ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL,
+        };
+        D3D12_ROOT_PARAMETER gpuCompactionInput = gpuParticleBuffer;
+        gpuCompactionInput.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        D3D12_ROOT_PARAMETER gpuCompactionOutput = gpuSimulationBuffer;
+        gpuCompactionOutput.Descriptor.ShaderRegister = 1;
+        const std::array gpuCompactionParameters{
+            gpuCompactionConstants, gpuCompactionInput, gpuCompactionOutput };
+        if (!gpuCompaction.initialize(*m_device->get(), compactionShader, gpuCompactionParameters))
+        {
+            LOG_ERROR("[ParticleEffect] Failed to build the particle compaction compute pipeline.");
             return false;
         }
 
@@ -485,6 +515,7 @@ namespace Engine
             m_deferredGpuPipelines[index].swap(deferredGpu[index]);
         }
         m_gpuSimulationPipeline.swap(gpuSimulation);
+        m_gpuCompactionPipeline.swap(gpuCompaction);
         return true;
     }
 
@@ -564,8 +595,6 @@ namespace Engine
                     || m_fence->isComplete(state->second->lastFenceValue))
                 && retired.empty())
             {
-                if (state->second->resource)
-                    state->second->resource->finalize();
                 state = m_gpuEmitterStates.erase(state);
             }
             else
@@ -610,7 +639,7 @@ namespace Engine
                 state.particleLimit = emitter.settings.maxParticles;
                 state.needsClear = true;
             }
-            if (!ensureGpuEmitterBuffer(state, emitter.settings.maxParticles))
+            if (!ensureGpuEmitterBuffers(state, emitter.settings.maxParticles))
                 return false;
         }
         for (const ParticleRenderParticle& particle : m_particles)
@@ -1184,8 +1213,8 @@ namespace Engine
             for (const ParticleGpuEmitterSubmission& emitter : m_gpuEmitterSubmissions)
             {
                 GpuEmitterState& state = *m_gpuEmitterStates.at(emitter.id);
-                if (!state.resource
-                    || !state.resource->transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+                auto& particles = state.buffers->particles;
+                if (!particles.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
                     return false;
                 GpuSimulationConstants constants{
                     { emitter.settings.maxParticles, (emitter.clear || state.needsClear) ? 1u : 0u,
@@ -1212,12 +1241,29 @@ namespace Engine
                     { emitter.settings.randomInitial ? 1u : 0u, 0u, 0u, 0u },
                 };
                 native->SetComputeRoot32BitConstants(0, 52, &constants, 0);
-                native->SetComputeRootUnorderedAccessView(1, state.resource->get()->GetGPUVirtualAddress());
+                native->SetComputeRootUnorderedAccessView(1, particles.get()->GetGPUVirtualAddress());
                 native->Dispatch((emitter.settings.maxParticles + 63) / 64, 1, 1);
-                if (!state.resource->transition(commandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE))
+                if (!particles.transition(commandList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE))
                     return false;
                 state.needsClear = false;
                 m_frameGpuEmitterIds[frameIndex].push_back(emitter.id);
+            }
+            if (enabled)
+            {
+                if (!m_gpuCompactionPipeline.bind(commandList))
+                    return false;
+                for (const ParticleGpuEmitterSubmission& emitter : m_gpuEmitterSubmissions)
+                {
+                    GpuEmitterBuffers& buffers = *m_gpuEmitterStates.at(emitter.id)->buffers;
+                    if (!buffers.drawData.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+                        return false;
+                    native->SetComputeRoot32BitConstant(0, emitter.settings.maxParticles, 0);
+                    native->SetComputeRootShaderResourceView(1, buffers.particles.get()->GetGPUVirtualAddress());
+                    native->SetComputeRootUnorderedAccessView(2, buffers.drawData.get()->GetGPUVirtualAddress());
+                    native->Dispatch(1, 1, 1);
+                    if (!buffers.drawData.transition(commandList, GPU_DRAW_DATA_READ_STATE))
+                        return false;
+                }
             }
         }
         struct DepthConstants
@@ -1295,7 +1341,7 @@ namespace Engine
             const DX12GraphicsPipeline* boundGpuPipeline = nullptr;
             for (const ParticleGpuEmitterSubmission& emitter : m_gpuEmitterSubmissions)
             {
-                GpuEmitterState& state = *m_gpuEmitterStates.at(emitter.id);
+                const GpuEmitterBuffers& buffers = *m_gpuEmitterStates.at(emitter.id)->buffers;
                 D3D12_GPU_DESCRIPTOR_HANDLE texture = whiteInfo->srv;
                 if (!resolveGpuTexture(emitter.settings.texturePath, texture))
                     continue;
@@ -1322,7 +1368,7 @@ namespace Engine
                     return false;
                 }
                 const GpuParticleDrawConstants drawConstants{
-                    { emitter.settings.maxParticles, 1u, emitter.settings.flipbookColumns,
+                    { 0u, 1u, emitter.settings.flipbookColumns,
                         emitter.settings.flipbookRows },
                     Vector4(right.x, right.y, right.z, worldScale),
                     Vector4(up.x, up.y, up.z, emitter.settings.initialSizeScale.x),
@@ -1330,12 +1376,12 @@ namespace Engine
                 };
                 native->SetGraphicsRootDescriptorTable(1, texture);
                 native->SetGraphicsRoot32BitConstants(2, 1, &appearance, 0);
-                native->SetGraphicsRootShaderResourceView(3, state.resource->get()->GetGPUVirtualAddress());
+                native->SetGraphicsRootShaderResourceView(3, buffers.particles.get()->GetGPUVirtualAddress());
                 native->SetGraphicsRoot32BitConstants(4, 16, &emitter.worldMatrix._11, 0);
                 native->SetGraphicsRoot32BitConstants(5, 16, &drawConstants, 0);
-                native->DrawInstanced(6, emitter.settings.maxParticles, 0, 0);
+                native->SetGraphicsRootShaderResourceView(6, buffers.drawData.get()->GetGPUVirtualAddress());
+                native->ExecuteIndirect(m_gpuDrawSignature.Get(), 1, buffers.drawData.get(), 0, nullptr, 0);
                 ++m_gpuEmitterDrawCount;
-                m_renderedParticles += emitter.settings.maxParticles;
             }
         }
         if (usesSoftParticles)
@@ -1385,11 +1431,14 @@ namespace Engine
         return succeeded;
     }
 
-    bool ParticleRenderer::ensureGpuEmitterBuffer(GpuEmitterState& state, const std::uint32_t requestedCapacity)
+    bool ParticleRenderer::ensureGpuEmitterBuffers(GpuEmitterState& state, const std::uint32_t requestedCapacity)
     {
         if (requestedCapacity == 0 || requestedCapacity > MAX_GPU_PARTICLES)
+        {
+            LOG_ERROR("[ParticleEffect] Invalid GPU emitter buffer capacity {}.", requestedCapacity);
             return false;
-        if (state.resource && requestedCapacity <= state.capacity)
+        }
+        if (state.buffers && requestedCapacity <= state.capacity)
             return true;
         if (m_device == nullptr || m_device->get() == nullptr)
         {
@@ -1399,11 +1448,6 @@ namespace Engine
 
         const std::uint32_t capacity = state.capacity == 0 ? requestedCapacity
             : std::max(requestedCapacity, std::min(state.capacity * 2, MAX_GPU_PARTICLES));
-        if (capacity > (std::numeric_limits<std::uint64_t>::max)() / sizeof(GpuParticleState))
-        {
-            LOG_ERROR("[ParticleEffect] GPU particle state buffer size overflows.");
-            return false;
-        }
         D3D12_RESOURCE_DESC description{};
         description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
         description.Width = static_cast<std::uint64_t>(capacity) * sizeof(GpuParticleState);
@@ -1413,47 +1457,51 @@ namespace Engine
         description.SampleDesc = { 1, 0 };
         description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
         description.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-        std::unique_ptr<DX12Resource> replacement;
+        std::unique_ptr<GpuEmitterBuffers> replacement;
         try
         {
-            replacement = std::make_unique<DX12Resource>();
+            replacement = std::make_unique<GpuEmitterBuffers>();
         }
         catch (const std::bad_alloc&)
         {
-            LOG_ERROR("[ParticleEffect] Failed to allocate GPU particle state wrapper.");
+            LOG_ERROR("[ParticleEffect] Failed to allocate GPU particle buffer wrappers.");
             return false;
         }
-        if (!replacement->initialize(*m_device->get(), {
+        if (!replacement->particles.initialize(*m_device->get(), {
             .description = description,
             .initialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS }))
         {
             LOG_ERROR("[ParticleEffect] Failed to allocate the GPU particle state buffer.");
             return false;
         }
-        if (state.resource)
+        description.Width = sizeof(D3D12_DRAW_ARGUMENTS) + static_cast<std::uint64_t>(capacity) * sizeof(std::uint32_t);
+        if (!replacement->drawData.initialize(*m_device->get(), {
+            .description = description,
+            .initialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS }))
         {
-            if (state.lastFenceValue != 0 && m_fence != nullptr && m_fence->isComplete(state.lastFenceValue))
-                state.resource->finalize();
-            else
-            {
-                try
-                {
-                    state.retiredBuffers.reserve(state.retiredBuffers.size() + 1);
-                }
-                catch (const std::bad_alloc&)
-                {
-                    LOG_ERROR("[ParticleEffect] Failed to retain a GPU particle buffer during resize.");
-                    return false;
-                }
-                catch (const std::length_error&)
-                {
-                    LOG_ERROR("[ParticleEffect] Retired GPU particle buffer list exceeds capacity.");
-                    return false;
-                }
-                state.retiredBuffers.push_back({ std::move(state.resource), state.lastFenceValue });
-            }
+            LOG_ERROR("[ParticleEffect] Failed to allocate the GPU particle indirect draw data buffer.");
+            return false;
         }
-        state.resource = std::move(replacement);
+        if (state.buffers && state.lastFenceValue != 0 && m_fence != nullptr
+            && !m_fence->isComplete(state.lastFenceValue))
+        {
+            try
+            {
+                state.retiredBuffers.reserve(state.retiredBuffers.size() + 1);
+            }
+            catch (const std::bad_alloc&)
+            {
+                LOG_ERROR("[ParticleEffect] Failed to retain GPU particle buffers during resize.");
+                return false;
+            }
+            catch (const std::length_error&)
+            {
+                LOG_ERROR("[ParticleEffect] Retired GPU particle buffer list exceeds capacity.");
+                return false;
+            }
+            state.retiredBuffers.push_back({ std::move(state.buffers), state.lastFenceValue });
+        }
+        state.buffers = std::move(replacement);
         state.capacity = capacity;
         return true;
     }

@@ -401,6 +401,9 @@ Play 中の **Discard Runtime Settings** は選択した Component の設定を�
 Simulation Backend は CPU／GPU を選択できます。GPU 対応設定では、粒子の生成・更新・寿命切れ判定を
 Compute Shader で行い、状態を GPU バッファに保持して Billboard を描画します。粒子状態の CPU 読み戻しは
 行いません。Emitter の連続発生スケジュールと乱数 seed の準備は CPU 側で行います。
+GPU は更新後に生存スロットだけを元の順序で一覧化し、その件数を間接描画へ渡します。
+生存粒子がない場合は頂点を処理しません。Inspector の描画提出数には生存数 0 の間接描画も含まれ、
+粒子インスタンス数は CPU シミュレーション分のみ表示します。
 GPU は通常の Play 中に利用でき、Editor Preview は CPU シミュレーションです。GPU は固定レートの連続発生、
 Additive、Local Space、カメラ向き Billboard、通常の寿命 Flipbook 再生に対応します。Mesh／Trail、非 Additive、
 World Space、他の向き、Soft Particle／Refraction／補助テクスチャ、UV Scroll、Burst／Emission Rate Keys、

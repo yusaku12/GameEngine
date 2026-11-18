@@ -81,6 +81,7 @@ $jobs = @(
     @{ Source = Join-Path $ShaderRoot "Particles.hlsl"; Entry = "psMain"; Target = "ps_6_0"; Output = "Particles_psMain_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "Particles.hlsl"; Entry = "psGpu"; Target = "ps_6_0"; Output = "Particles_psGpu_ps.cso" },
     @{ Source = Join-Path $ShaderRoot "Particles.hlsl"; Entry = "csSimulate"; Target = "cs_6_0"; Output = "Particles_csSimulate_cs.cso" },
+    @{ Source = Join-Path $ShaderRoot "Particles.hlsl"; Entry = "csCompact"; Target = "cs_6_0"; Output = "Particles_csCompact_cs.cso" },
     @{ Source = Join-Path $ShaderRoot "HiZ.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "HiZ_csMain_cs.cso" },
     @{ Source = Join-Path $ShaderRoot "Occlusion.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "Occlusion_csMain_cs.cso" },
     @{ Source = Join-Path $ShaderRoot "TerrainNoise.hlsl"; Entry = "csMain"; Target = "cs_6_0"; Output = "TerrainNoise_csMain_cs.cso"; WarningsAsErrors = $true },

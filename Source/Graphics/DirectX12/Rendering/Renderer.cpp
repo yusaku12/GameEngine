@@ -378,6 +378,9 @@ namespace Engine
         particleShaderDesc.stage = ShaderStage::Compute;
         particleShaderDesc.outputPath = "Assets/Shaders/Compiled/Particles_csSimulate_cs.cso";
         m_particleSimulationShaderID = m_shaderManager.registerShader(particleShaderDesc);
+        particleShaderDesc.entryPoint = "csCompact";
+        particleShaderDesc.outputPath = "Assets/Shaders/Compiled/Particles_csCompact_cs.cso";
+        m_particleCompactionShaderID = m_shaderManager.registerShader(particleShaderDesc);
         const ShaderCompileDesc hizShaderDesc{
             .sourcePath = "Assets/Shaders/HiZ.hlsl",
             .outputPath = "Assets/Shaders/Compiled/HiZ_csMain_cs.cso",
@@ -579,6 +582,7 @@ namespace Engine
         m_particleGpuVertexShaderID = 0;
         m_particleGpuPixelShaderID = 0;
         m_particleSimulationShaderID = 0;
+        m_particleCompactionShaderID = 0;
         m_occlusionShaderID = 0;
         m_hizShaderID = 0;
         m_psoRebuildPending = false;
@@ -1699,6 +1703,7 @@ namespace Engine
         const auto particleGpuVertexShader = m_shaderManager.get(m_particleGpuVertexShaderID);
         const auto particleGpuPixelShader = m_shaderManager.get(m_particleGpuPixelShaderID);
         const auto particleSimulationShader = m_shaderManager.get(m_particleSimulationShaderID);
+        const auto particleCompactionShader = m_shaderManager.get(m_particleCompactionShaderID);
         const auto hizShader = m_shaderManager.get(m_hizShaderID);
         const auto occlusionShader = m_shaderManager.get(m_occlusionShaderID);
         if (!modelVertexShader || !skinningComputeShader || !modelPixelShader || !alphaTestPixelShader || !depthAlphaTestPixelShader
@@ -1707,7 +1712,7 @@ namespace Engine
             || !postProcessVertexShader || !postProcessToneMappingShader || !postProcessOutputShader
             || !debugVertexShader || !debugShapeVertexShader || !debugPixelShader
             || !particleVertexShader || !particleMeshVertexShader || !particlePixelShader
-            || !particleGpuVertexShader || !particleGpuPixelShader || !particleSimulationShader
+            || !particleGpuVertexShader || !particleGpuPixelShader || !particleSimulationShader || !particleCompactionShader
             || !hizShader || !occlusionShader
             || !modelVertexShader->isCompiled() || !skinningComputeShader->isCompiled() || !modelPixelShader->isCompiled()
             || !alphaTestPixelShader->isCompiled() || !depthAlphaTestPixelShader->isCompiled()
@@ -1720,6 +1725,7 @@ namespace Engine
             || !particleVertexShader->isCompiled() || !particleMeshVertexShader->isCompiled()
             || !particlePixelShader->isCompiled() || !particleGpuVertexShader->isCompiled()
             || !particleGpuPixelShader->isCompiled() || !particleSimulationShader->isCompiled()
+            || !particleCompactionShader->isCompiled()
             || !hizShader->isCompiled() || !occlusionShader->isCompiled())
         {
             LOG_ERROR("[DX12] 有効なModel Shaderがロードされていません");
@@ -1951,7 +1957,7 @@ namespace Engine
             || !m_materialGpuCache.rebuildAll()
             || !m_particleRenderer.rebuildPipeline(
                 *particleVertexShader, *particleMeshVertexShader, *particlePixelShader,
-                *particleGpuVertexShader, *particleGpuPixelShader, *particleSimulationShader)
+                *particleGpuVertexShader, *particleGpuPixelShader, *particleSimulationShader, *particleCompactionShader)
             || !m_postProcess.rebuild(postProcessVertexShader, postProcessToneMappingShader, postProcessOutputShader,
                 postProcessBuiltins, postProcessBloom, lightShaftsComputeShader, lightShaftsFallbackShader,
                 autoExposureComputeShader))
@@ -2432,7 +2438,7 @@ namespace Engine
         if (m_particleRenderer.getForExecution(frameIndex) != nullptr)
         {
             m_particleFrameStatistics[frameIndex].drawCalls = m_particleRenderer.drawCount();
-            m_particleFrameStatistics[frameIndex].particles = m_particleRenderer.renderedParticleCount();
+            m_particleFrameStatistics[frameIndex].cpuParticles = m_particleRenderer.renderedCpuParticleCount();
             m_particleFrameStatistics[frameIndex].trailSegments = m_particleRenderer.renderedTrailCount();
             m_particleFrameStatistics[frameIndex].ribbons = m_particleRenderer.renderedRibbonCount();
         }

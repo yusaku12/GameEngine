@@ -190,6 +190,56 @@ cbuffer GpuParticleDraw : register(b7)
 
 StructuredBuffer<GpuParticleState> gpuParticles : register(t6);
 
+cbuffer GpuParticleCompaction : register(b8)
+{
+    uint compactParticleLimit;
+};
+
+// D3D12_DRAW_ARGUMENTS followed by uint slot indices, used by ExecuteIndirect and vsGpu.
+RWByteAddressBuffer compactOutput : register(u1);
+ByteAddressBuffer compactDrawData : register(t8);
+static const uint drawArgumentBytes = 16;
+groupshared uint compactPrefix[128];
+
+[numthreads(128, 1, 1)]
+void csCompact(uint lane : SV_GroupIndex)
+{
+    // One group per emitter. Contiguous chunks preserve the original slot order.
+    const uint chunkSize = (compactParticleLimit + 127u) / 128u;
+    const uint begin = lane * chunkSize;
+    const uint end = min(begin + chunkSize, compactParticleLimit);
+    uint aliveMask = 0u;
+    for (uint slot = begin; slot < end; ++slot)
+    {
+        const GpuParticleState particle = gpuParticles[slot];
+        if (particle.positionAge.w >= 0.0f && particle.velocityLifetime.w > 0.0f)
+            aliveMask |= 1u << (slot - begin);
+    }
+
+    const uint alive = countbits(aliveMask);
+    compactPrefix[lane] = alive;
+    GroupMemoryBarrierWithGroupSync();
+    [unroll]
+    for (uint stride = 1u; stride < 128u; stride <<= 1)
+    {
+        const uint previous = lane >= stride ? compactPrefix[lane - stride] : 0u;
+        GroupMemoryBarrierWithGroupSync();
+        compactPrefix[lane] += previous;
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    uint destination = compactPrefix[lane] - alive;
+    while (aliveMask != 0u)
+    {
+        const uint slot = begin + (uint)firstbitlow(aliveMask);
+        compactOutput.Store(drawArgumentBytes + destination * 4u, slot);
+        ++destination;
+        aliveMask &= aliveMask - 1u;
+    }
+    if (lane == 127u)
+        compactOutput.Store4(0u, uint4(6u, compactPrefix[lane], 0u, 0u));
+}
+
 struct QuadInstance
 {
     float3 origin;
@@ -225,18 +275,9 @@ PixelInput vsGpu(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
         float2(-0.5f, -0.5f), float2(0.5f, 0.5f), float2(0.5f, -0.5f)
     };
     PixelInput output = (PixelInput)0;
-    if (instanceId >= gpuDrawHeader.x)
-    {
-        output.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
-        return output;
-    }
-    const GpuParticleState particle = gpuParticles[instanceId];
+    const uint slot = compactDrawData.Load(drawArgumentBytes + instanceId * 4u);
+    const GpuParticleState particle = gpuParticles[slot];
     const float life = particle.velocityLifetime.w;
-    if (particle.positionAge.w < 0.0f || life <= 0.0f)
-    {
-        output.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
-        return output;
-    }
     const float normalizedAge = saturate(particle.positionAge.w / life);
     const float2 corner = corners[vertexId % 6];
     const float cosine = cos(particle.sizeRotation.z);

@@ -2683,10 +2683,10 @@ namespace Engine
         const auto gpuStats = ParticleRenderSubmissionQueue::instance().gpuStatistics();
         if (gpuStats.frameId != 0)
         {
-            ImGui::Text("All particles GPU: %.3f ms | Draw calls: %zu (frame %llu)",
+            ImGui::Text("All particles GPU: %.3f ms | Draw submissions: %zu (frame %llu)",
                 gpuStats.milliseconds, gpuStats.drawCalls, static_cast<unsigned long long>(gpuStats.frameId));
-            ImGui::Text("All rendered particles: %zu | Trail segments: %zu | Independent ribbons: %zu",
-                gpuStats.particles, gpuStats.trailSegments, gpuStats.ribbons);
+            ImGui::Text("CPU-simulated particle instances: %zu | Trail segments: %zu | Independent ribbons: %zu",
+                gpuStats.cpuParticles, gpuStats.trailSegments, gpuStats.ribbons);
         }
         else
             ImGui::TextDisabled("All particles GPU: no completed measurement.");

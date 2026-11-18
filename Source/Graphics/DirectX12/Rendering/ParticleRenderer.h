@@ -48,7 +48,8 @@ namespace Engine
         /** @brief Rebuilds the forward and deferred transparent pipelines transactionally. */
         bool rebuildPipeline(const DX12Shader& vertexShader, const DX12Shader& meshVertexShader,
             const DX12Shader& pixelShader, const DX12Shader& gpuVertexShader,
-            const DX12Shader& gpuPixelShader, const DX12Shader& simulationShader);
+            const DX12Shader& gpuPixelShader, const DX12Shader& simulationShader,
+            const DX12Shader& compactionShader);
         /** @brief Records the current particle snapshot into the selected scene color target. */
         bool record(std::uint32_t frameIndex, const Matrix& viewProjection, const Matrix& inverseView,
             const Vector3& cameraPosition, const Vector3& cameraForward,
@@ -56,10 +57,10 @@ namespace Engine
             const D3D12_VIEWPORT& viewport, const D3D12_RECT& scissor, DXGI_FORMAT targetFormat,
             bool enabled, DX12GpuProfiler* profiler = nullptr, std::uint64_t profileFrameId = 0,
             const ParticleSceneDepth* sceneDepth = nullptr, DX12Resource* sceneColor = nullptr);
-        /** @brief Returns the number of particle draw batches recorded for a frame slot. */
+        /** @brief Returns recorded direct batches and indirect submissions, including empty indirect draws. */
         std::size_t drawCount() const noexcept { return m_batches.size() + m_gpuEmitterDrawCount; }
-        /** @brief Returns the number of particle billboards in the last recorded pass. */
-        std::size_t renderedParticleCount() const noexcept { return m_renderedParticles; }
+        /** @brief Returns the number of CPU-simulated particle instances submitted in the last recorded pass. */
+        std::size_t renderedCpuParticleCount() const noexcept { return m_renderedParticles; }
         /** @brief Returns the number of trail segments in the last recorded pass. */
         std::size_t renderedTrailCount() const noexcept { return m_renderedTrails; }
         /** @brief Returns the number of independent ribbons in the last recorded pass. */
@@ -85,14 +86,19 @@ namespace Engine
             Vector4 nextUvBounds = Vector4(0, 0, 1, 1);
         };
         struct MeshData;
+        struct GpuEmitterBuffers
+        {
+            DX12Resource particles;
+            DX12Resource drawData;
+        };
         struct RetiredGpuBuffer
         {
-            std::unique_ptr<DX12Resource> resource;
+            std::unique_ptr<GpuEmitterBuffers> buffers;
             std::uint64_t fenceValue = 0;
         };
         struct GpuEmitterState
         {
-            std::unique_ptr<DX12Resource> resource;
+            std::unique_ptr<GpuEmitterBuffers> buffers;
             std::vector<RetiredGpuBuffer> retiredBuffers;
             std::uint32_t capacity = 0;
             std::uint32_t particleLimit = 0;
@@ -167,7 +173,7 @@ namespace Engine
         bool ensureQuadInstanceCapacity(std::uint32_t frameIndex, std::size_t instanceCount);
         bool ensureMeshInstanceCapacity(std::uint32_t frameIndex, std::size_t instanceCount);
         bool ensureSceneCopy(std::uint32_t frameIndex, const DX12Resource& source);
-        bool ensureGpuEmitterBuffer(GpuEmitterState& state, std::uint32_t capacity);
+        bool ensureGpuEmitterBuffers(GpuEmitterState& state, std::uint32_t capacity);
         bool resolveGpuTexture(const std::filesystem::path& path, D3D12_GPU_DESCRIPTOR_HANDLE& texture);
         const MeshData* resolveMesh(const std::filesystem::path& path);
 
@@ -181,6 +187,8 @@ namespace Engine
         std::array<DX12GraphicsPipeline, BLEND_MODE_COUNT> m_forwardGpuPipelines;
         std::array<DX12GraphicsPipeline, BLEND_MODE_COUNT> m_deferredGpuPipelines;
         DX12ComputePipeline m_gpuSimulationPipeline;
+        DX12ComputePipeline m_gpuCompactionPipeline;
+        Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_gpuDrawSignature;
         std::array<DX12CommandList, FRAME_COUNT> m_commandLists;
         std::array<DX12UploadBuffer, FRAME_COUNT> m_quadInstanceBuffers;
         std::array<DX12UploadBuffer, FRAME_COUNT> m_meshInstanceBuffers;

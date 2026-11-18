@@ -107,7 +107,7 @@ namespace Engine
         std::uint64_t frameId = 0;
         double milliseconds = 0.0;
         std::size_t drawCalls = 0;
-        std::size_t particles = 0;
+        std::size_t cpuParticles = 0;
         std::size_t trailSegments = 0;
         std::size_t ribbons = 0;
     };
