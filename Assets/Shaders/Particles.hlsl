@@ -70,9 +70,16 @@ cbuffer GpuSimulationSettings : register(b13)
     float emissionTailTime;
     uint emissionWraps;
     uint4 emissionHeader; // table offset, rate keys, bursts, initial count + flag
+    float3 motionStartOffset;
+    float motionDistance;
+    float3 motionDelta;
+    float distanceSpacing;
+    float3 emitterVelocity;
+    float velocityInheritance;
 };
 
 static const uint trailPointCapacity = 16;
+static const float gpuParticleSlotLimit = 65536.0f; // MAX_RENDER_GPU_PARTICLES
 static const uint trailPointBytes = 32;
 static const uint trailHeaderBytes = 32;
 static const uint trailStride = trailHeaderBytes + (trailPointCapacity + 1) * trailPointBytes;
@@ -90,7 +97,7 @@ struct GpuTrailHeader
 
 cbuffer GpuSimulation : register(b0)
 {
-    uint4 simulationHeader;
+    uint4 simulationHeader; // capacity, clear particles, clear scheduler, clear distance remainder
     float4 simulationTiming;
     float4 simulationSpeedShape;
     uint simulationShape;
@@ -456,6 +463,53 @@ uint scheduledBurstCount(float2 phase, float2 endPhase, bool initial, bool activ
     return min(count, capacity);
 }
 
+uint scheduleDistanceEmission(bool reset, uint available, out float firstDistance)
+{
+    const float2 previous = reset || simulationHeader.w != 0
+        ? 0.0f : asfloat(simulationScheduler.Load2(20));
+    firstDistance = 0.0f;
+    if (motionDistance <= 0.0f || distanceSpacing <= 0.0f)
+    {
+        simulationScheduler.Store2(20, asuint(previous));
+        return 0;
+    }
+
+    const float spacing = distanceSpacing;
+    firstDistance = max(0.0f, emissionAdd(float2(spacing, 0), -previous).x);
+    float travel = motionDistance;
+    // Reduce very large travel by exact powers of two before converting the quotient to an integer.
+    // These removed intervals already exceed the entire slot budget.
+    const float saturationDistance = spacing * gpuParticleSlotLimit;
+    const bool saturated = travel >= saturationDistance;
+    if (saturated)
+    {
+        while (travel >= saturationDistance)
+        {
+            // Both inputs are normal; subtract a multiple in (travel / 2, travel].
+            const uint shift = (asuint(travel) >> 23) - (asuint(spacing) >> 23);
+            float multiple = asfloat(asuint(spacing) + (shift << 23));
+            if (multiple > travel)
+                multiple *= 0.5f;
+            travel -= multiple;
+        }
+    }
+    const float2 total = emissionAdd(previous, float2(travel, 0));
+    uint requested = (uint)floor(total.x / spacing);
+    float2 remainder = emissionAdd(total, -emissionProduct((float)requested, spacing));
+    if (requested != 0 && emissionBefore(remainder, 0.0f))
+    {
+        --requested;
+        remainder = emissionAdd(remainder, float2(spacing, 0));
+    }
+    else if (!emissionBefore(remainder, float2(spacing, 0)))
+    {
+        ++requested;
+        remainder = emissionAdd(remainder, float2(-spacing, 0));
+    }
+    simulationScheduler.Store2(20, asuint(remainder));
+    return saturated ? available : min(requested, available);
+}
+
 void scheduleEmission()
 {
     const bool reset = simulationHeader.z != 0;
@@ -486,9 +540,13 @@ void scheduleEmission()
     const float whole = max(0.0f, rounded - (total.x == rounded && total.y < 0.0f ? 1.0f : 0.0f));
     const float2 next = emissionAdd(total, float2(-whole, 0));
     const uint bursts = initial || activeTime > 0.0f ? scheduledBurstCount(phase, endPhase, initial, activeTime > 0.0f) : 0;
-    const uint count = min((uint)whole + bursts, simulationHeader.x);
+    const uint timeCount = min((uint)whole + bursts, simulationHeader.x);
+    float firstDistance;
+    const uint distanceCount = scheduleDistanceEmission(reset, simulationHeader.x - timeCount, firstDistance);
+    const uint count = timeCount + distanceCount;
     simulationScheduler.Store4(0, uint4((cursor + count) % simulationHeader.x, cursor, count, asuint(next.x)));
     simulationScheduler.Store(16, asuint(next.y));
+    simulationScheduler.Store2(28, uint2(timeCount, asuint(firstDistance)));
 }
 
 [numthreads(64, 1, 1)]
@@ -562,9 +620,19 @@ void csSimulate(uint3 dispatchThreadId : SV_DispatchThreadID)
             + tangent * (coneRadial * cos(coneAzimuth))
             + bitangent * (coneRadial * sin(coneAzimuth)));
 
+        if (motionDistance > 0.0f)
+        {
+            const uint2 distanceBirths = simulationScheduler.Load2(28);
+            if (spawnOffset >= distanceBirths.x)
+            {
+                const float along = asfloat(distanceBirths.y) + (spawnOffset - distanceBirths.x) * distanceSpacing;
+                position += motionStartOffset + motionDelta * saturate(along / motionDistance);
+            }
+        }
         particle.positionAge = float4(position, 0.0f);
         particle.velocityLifetime = float4(velocityDirection
-            * lerp(simulationSpeedShape.x, simulationSpeedShape.y, randomUnit(randomState)),
+            * lerp(simulationSpeedShape.x, simulationSpeedShape.y, randomUnit(randomState))
+            + emitterVelocity * velocityInheritance,
             lerp(simulationTiming.z, simulationTiming.w, randomUnit(randomState)));
         particle.startColor = simulationStartColor;
         if (simulationFlags.x != 0)

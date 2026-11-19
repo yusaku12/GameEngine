@@ -108,8 +108,15 @@ namespace Engine
             float emissionTailTime;
             std::uint32_t emissionWraps;
             std::array<std::uint32_t, 4> emissionHeader; // table offset, rate keys, bursts, initial count + flag
+            Vector3 motionStartOffset;
+            float motionDistance;
+            Vector3 motionDelta;
+            float distanceSpacing;
+            Vector3 emitterVelocity;
+            float velocityInheritance;
         };
-        static_assert(sizeof(GpuSimulationSettings) == 160);
+        static_assert(sizeof(GpuSimulationSettings) == 208);
+        constexpr std::uint32_t GPU_SCHEDULER_WORDS = 9;
 
         Vector2 splitEmissionTime(const double time) noexcept
         {
@@ -1357,13 +1364,16 @@ namespace Engine
                     { static_cast<std::uint32_t>(state.packedCurves.size() * sizeof(std::uint32_t)),
                         static_cast<std::uint32_t>(settings.emissionRateKeys.size()),
                         static_cast<std::uint32_t>(settings.bursts.size()),
-                        window.initial ? (0x80000000u | settings.burstCount) : 0u } };
+                        window.initial ? (0x80000000u | settings.burstCount) : 0u },
+                    emitter.motion.segmentStartOffset, emitter.motion.distance, emitter.motion.segmentDelta,
+                    settings.distancePerParticle, emitter.motion.localVelocity, settings.inheritVelocity };
                 if (!settingsUpload.write(std::as_bytes(std::span(&gpuSettings, 1)), settingsOffset)
                     || (trails.get() && !trails.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)))
                     return false;
                 GpuSimulationConstants constants{
                     { emitter.settings.maxParticles, (emitter.clear || state.needsClear) ? 1u : 0u,
-                        (emitter.clear || state.needsSchedulerClear) ? 1u : 0u, 0u },
+                        (emitter.clear || state.needsSchedulerClear) ? 1u : 0u,
+                        emitter.motion.resetDistance ? 1u : 0u },
                     Vector4(std::bit_cast<float>(emitter.spawnSeed), emitter.deltaTime,
                         emitter.settings.lifetimeMin, emitter.settings.lifetimeMax),
                     Vector4(emitter.settings.speedMin, emitter.settings.speedMax,
@@ -1912,7 +1922,7 @@ namespace Engine
             }
         }
         state.birthCurveVersion = 0;
-        if (emitter.emission.maySpawn(settings))
+        if (emitter.emission.maySpawn(settings) || emitter.motion.distance > 0.0f)
         {
             if (settings.curveVariants.size() >= GPU_CURVE_SETS)
                 return false;
@@ -2134,7 +2144,7 @@ namespace Engine
             LOG_ERROR("[ParticleEffect] Failed to allocate the GPU particle indirect draw data buffer.");
             return false;
         }
-        description.Width = 20;
+        description.Width = GPU_SCHEDULER_WORDS * sizeof(std::uint32_t);
         if (!state.scheduler.get() && !state.scheduler.initialize(*m_device->get(), {
             .description = description, .initialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS }))
         {

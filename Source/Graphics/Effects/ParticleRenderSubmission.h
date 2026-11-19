@@ -108,6 +108,16 @@ namespace Engine
         }
     };
 
+    /** @brief Sampled emitter motion in the current simulation space, clipped to the emission window. */
+    struct ParticleGpuEmitterMotion
+    {
+        Vector3 segmentStartOffset = Vector3::Zero;
+        Vector3 segmentDelta = Vector3::Zero;
+        Vector3 localVelocity = Vector3::Zero;
+        float distance = 0.0f;
+        bool resetDistance = false;
+    };
+
     /** @brief Frame-local command for a persistent GPU-simulated particle emitter. */
     struct ParticleGpuEmitterSubmission
     {
@@ -116,6 +126,7 @@ namespace Engine
         Matrix worldMatrix = Matrix::Identity;
         float deltaTime = 0.0f;
         ParticleGpuEmissionWindow emission;
+        ParticleGpuEmitterMotion motion;
         std::uint32_t spawnSeed = 1;
         bool clear = false;
     };

@@ -806,11 +806,13 @@ namespace Engine
             m_gpuEmitterId = 0;
             m_gpuClearPending = settings.simulationBackend == ParticleSimulationBackend::GPU;
             m_gpuPendingEmission = {};
+            m_gpuPendingMotion = {};
             m_gpuPendingDeltaTime = 0.0f;
             m_gpuLiveTimeRemaining = 0.0;
             m_particles.clear();
             m_renderParticles.clear();
             clearTrails();
+            resetEmitterMotion();
         }
         m_settings = std::move(newSettings);
         m_renderVisual = std::move(newVisual);
@@ -820,6 +822,8 @@ namespace Engine
         {
             resetEmitterMotion();
             m_distanceRemainder = 0.0;
+            m_gpuResetDistancePending = true;
+            m_gpuPendingMotion = {};
         }
         if (m_prewarmRemaining > 0.0)
         {
@@ -920,11 +924,12 @@ namespace Engine
         m_prewarmFailed = false;
         m_hasEmitterPosition = false;
         m_motionValid = false;
-        m_inheritedVelocity = Vector3::Zero;
+        m_emitterVelocity = Vector3::Zero;
         m_distanceRemainder = 0.0;
         m_motionElapsed = 0.0;
         m_randomState = m_settings.seed == 0 ? 0x9E3779B9u : m_settings.seed;
         m_gpuPendingEmission = {};
+        m_gpuPendingMotion = {};
         m_gpuPendingSeed = m_randomState;
         m_gpuLiveTimeRemaining = 0.0;
         m_gpuClearPending = true;
@@ -968,7 +973,7 @@ namespace Engine
     {
         m_hasEmitterPosition = false;
         m_motionValid = false;
-        m_inheritedVelocity = Vector3::Zero;
+        m_emitterVelocity = Vector3::Zero;
         m_motionElapsed = 0.0;
     }
 
@@ -987,6 +992,7 @@ namespace Engine
         clearTrails();
         m_gpuClearPending = true;
         m_gpuPendingEmission = {};
+        m_gpuPendingMotion = {};
         m_gpuPendingDeltaTime = 0.0f;
         m_gpuLiveTimeRemaining = 0.0;
         m_deltaCappedReported = false;
@@ -1644,9 +1650,11 @@ namespace Engine
     void ParticleEffectComponent::updateGpuSimulation(const float deltaTime, const Matrix& worldMatrix)
     {
         m_gpuPendingEmission = {};
+        m_gpuPendingMotion = {};
         m_gpuPendingDeltaTime = 0.0f;
         if (!std::isfinite(deltaTime) || deltaTime < 0.0f || !isFinite(worldMatrix))
         {
+            resetEmitterMotion();
             LOG_ERROR("[ParticleEffect] GPU simulation received invalid frame data.");
             return;
         }
@@ -1659,6 +1667,7 @@ namespace Engine
         float simulationDelta = deltaTime * m_settings.simulationSpeed;
         if (!std::isfinite(simulationDelta))
         {
+            resetEmitterMotion();
             LOG_ERROR("[ParticleEffect] GPU simulation delta is not finite.");
             return;
         }
@@ -1673,6 +1682,14 @@ namespace Engine
         else
             m_deltaCappedReported = false;
         m_gpuPendingDeltaTime = simulationDelta;
+
+        if (simulationDelta > 0.0f)
+        {
+            if (sampleEmitterMotion(deltaTime, worldMatrix))
+                m_gpuPendingMotion.localVelocity = m_emitterVelocity;
+        }
+        else
+            resetEmitterMotion();
 
         if (m_emitting && simulationDelta > 0.0f)
         {
@@ -1690,6 +1707,29 @@ namespace Engine
                 window.phase = std::min(m_emissionElapsed, duration);
                 const double activeTime = m_settings.looping && duration > 0.0
                     ? afterDelay : std::min(afterDelay, duration - window.phase);
+                const double distanceTime = m_settings.looping ? afterDelay : activeTime;
+                if (m_motionValid && m_settings.distancePerParticle > 0.0f && distanceTime > 0.0)
+                {
+                    const Vector3 movement = m_motionEnd - m_motionStart;
+                    const float startFromEnd = static_cast<float>(-afterDelay / simulationDelta);
+                    const float span = static_cast<float>(distanceTime / simulationDelta);
+                    const auto travel = movement * span;
+                    const float distance = travel.Length();
+                    const Vector3 startOffset = Vector3::TransformNormal(movement * startFromEnd, m_motionInverse);
+                    const Vector3 localTravel = Vector3::TransformNormal(travel, m_motionInverse);
+                    if (!std::isfinite(distance) || !isFinite(startOffset) || !isFinite(localTravel)
+                        || !isFinite(startOffset + localTravel))
+                    {
+                        LOG_ERROR("[ParticleEffect] GPU emitter travel is not finite.");
+                        resetEmitterMotion();
+                    }
+                    else
+                    {
+                        m_gpuPendingMotion.distance = distance;
+                        m_gpuPendingMotion.segmentStartOffset = startOffset;
+                        m_gpuPendingMotion.segmentDelta = localTravel;
+                    }
+                }
                 window.activeTime = static_cast<float>(activeTime);
                 const double end = window.phase + activeTime;
                 if (m_settings.looping && duration > 0.0 && end >= duration)
@@ -1702,7 +1742,8 @@ namespace Engine
                 else
                     window.endPhase = std::min(end, duration);
                 m_emissionElapsed = window.endPhase;
-                if (duration <= 0.0 || (!m_settings.looping && end >= duration))
+                if ((!m_settings.looping && end >= duration)
+                    || (duration <= 0.0 && m_settings.distancePerParticle == 0.0f))
                     m_emitting = false;
             }
         }
@@ -1714,7 +1755,7 @@ namespace Engine
                     - (static_cast<double>(std::nextafter(MAX_PARTICLE_LIFETIME,
                         (std::numeric_limits<float>::infinity)())) + MAX_TRAIL_LIFETIME)
                         * static_cast<double>(std::numeric_limits<float>::epsilon()) * 0.5));
-        if (m_gpuPendingEmission.maySpawn(m_settings))
+        if (m_gpuPendingEmission.maySpawn(m_settings) || m_gpuPendingMotion.distance > 0.0f)
             m_gpuLiveTimeRemaining = std::max(m_gpuLiveTimeRemaining,
                 static_cast<double>(std::nextafter(m_settings.lifetimeMax, (std::numeric_limits<float>::infinity)()))
                     + (m_settings.trailEnabled ? static_cast<double>(m_settings.trailLifetime) : 0.0));
@@ -1759,7 +1800,11 @@ namespace Engine
         submission.worldMatrix = getGameObject()->getWorldMatrix();
         submission.deltaTime = deltaTime;
         if (deltaTime > 0.0f)
+        {
             submission.emission = m_gpuPendingEmission;
+            submission.motion = m_gpuPendingMotion;
+        }
+        submission.motion.resetDistance = m_gpuResetDistancePending;
         submission.spawnSeed = m_gpuPendingSeed;
         submission.clear = m_gpuClearPending;
         if (!ParticleRenderSubmissionQueue::instance().submitGpuEmitter(submission))
@@ -1771,6 +1816,8 @@ namespace Engine
         if (submission.emission.initial)
             m_burstPending = false;
         m_gpuPendingEmission = {};
+        m_gpuPendingMotion = {};
+        m_gpuResetDistancePending = false;
         m_gpuClearPending = false;
         m_submissionFailed = false;
         return true;
@@ -1788,7 +1835,8 @@ namespace Engine
             if (GameSession::instance().state() == PlayState::Paused)
                 resetEmitterMotion();
             if (!m_emitting && m_gpuLiveTimeRemaining <= 0.0 && !m_gpuClearPending
-                && !m_gpuPendingEmission.initial && m_gpuPendingEmission.activeTime == 0.0f)
+                && !m_gpuPendingEmission.initial && m_gpuPendingEmission.activeTime == 0.0f
+                && m_gpuPendingMotion.distance == 0.0f)
             {
                 if (m_gpuEmitterId != 0)
                 {
@@ -2936,7 +2984,7 @@ namespace Engine
             position += Vector3::TransformNormal(worldOffset, m_motionInverse);
 
         const Vector3 velocity = velocityDirection * std::lerp(m_settings.speedMin, m_settings.speedMax, randomUnit())
-            + m_inheritedVelocity;
+            + m_emitterVelocity * m_settings.inheritVelocity;
         if (!isFinite(position) || !isFinite(velocity))
         {
             LOG_ERROR("[ParticleEffect] Particle birth position or velocity is invalid.");
@@ -3042,7 +3090,7 @@ namespace Engine
     bool ParticleEffectComponent::sampleEmitterMotion(const float elapsed, const Matrix& worldMatrix)
     {
         m_motionValid = false;
-        m_inheritedVelocity = Vector3::Zero;
+        m_emitterVelocity = Vector3::Zero;
         if (m_settings.distancePerParticle == 0.0f && m_settings.inheritVelocity == 0.0f)
             return false;
         const Vector3 position = worldMatrix.Translation();
@@ -3079,14 +3127,14 @@ namespace Engine
                 return false;
             }
             m_motionInverse = worldMatrix.Invert();
-            m_inheritedVelocity = Vector3::TransformNormal(velocity, m_motionInverse) * m_settings.inheritVelocity;
+            m_emitterVelocity = Vector3::TransformNormal(velocity, m_motionInverse);
         }
         else
-            m_inheritedVelocity = velocity * m_settings.inheritVelocity;
-        if (!isFinite(m_inheritedVelocity))
+            m_emitterVelocity = velocity;
+        if (!isFinite(m_emitterVelocity * m_settings.inheritVelocity))
         {
             LOG_ERROR("[ParticleEffect] Inherited particle velocity is not finite.");
-            m_inheritedVelocity = Vector3::Zero;
+            m_emitterVelocity = Vector3::Zero;
             m_hasEmitterPosition = false;
             return false;
         }

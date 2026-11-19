@@ -165,7 +165,7 @@ namespace Engine
         Vector3 m_previousEmitterPosition = Vector3::Zero;
         Vector3 m_motionStart = Vector3::Zero;
         Vector3 m_motionEnd = Vector3::Zero;
-        Vector3 m_inheritedVelocity = Vector3::Zero;
+        Vector3 m_emitterVelocity = Vector3::Zero;
         Matrix m_motionInverse = Matrix::Identity;
         double m_distanceRemainder = 0;
         double m_motionElapsed = 0;
@@ -177,6 +177,8 @@ namespace Engine
         std::uint32_t m_gpuPendingSeed = 1;
         float m_gpuPendingDeltaTime = 0.0f;
         ParticleGpuEmissionWindow m_gpuPendingEmission;
+        ParticleGpuEmitterMotion m_gpuPendingMotion;
+        bool m_gpuResetDistancePending = false;
         double m_gpuLiveTimeRemaining = 0.0;
         bool m_emitting = false;
         bool m_burstPending = false;

@@ -212,8 +212,8 @@ namespace Engine
             return "GPU simulation does not support Mesh particles.";
         if (!settings.localSpace)
             return "GPU simulation currently requires Local Space.";
-        if (settings.prewarm || settings.distancePerParticle > 0.0f || settings.inheritVelocity > 0.0f)
-            return "GPU simulation does not support prewarm, distance emission, or velocity inheritance.";
+        if (settings.prewarm)
+            return "GPU simulation does not support prewarm.";
         if (!gpuSortingSupported() && (settings.trailEnabled || settings.blendMode != ParticleBlendMode::Additive
             || settings.orientation != ParticleOrientation::Camera
             || settings.softDistance > 0.0f || settings.refractionPixels != 0.0f
@@ -245,6 +245,16 @@ namespace Engine
             || !std::isfinite(window.completeCycleTime) || window.completeCycleTime < 0.0
             || window.completeCycleTime > emitter.deltaTime
             || settings.bursts.size() > 32 || settings.emissionRateKeys.size() > 32
+            || !std::isfinite(settings.distancePerParticle) || settings.distancePerParticle < 0.0f
+            || (settings.distancePerParticle > 0.0f && settings.distancePerParticle < 0.0001f)
+            || settings.distancePerParticle > 10000.0f || !std::isfinite(settings.inheritVelocity)
+            || settings.inheritVelocity < 0.0f || settings.inheritVelocity > 4.0f
+            || !std::isfinite(emitter.motion.distance) || emitter.motion.distance < 0.0f
+            || (emitter.motion.distance > 0.0f && (emitter.deltaTime <= 0.0f || settings.distancePerParticle <= 0.0f))
+            || !isFinite(emitter.motion.segmentStartOffset) || !isFinite(emitter.motion.segmentDelta)
+            || !isFinite(emitter.motion.segmentStartOffset + emitter.motion.segmentDelta)
+            || !isFinite(emitter.motion.localVelocity)
+            || !isFinite(emitter.motion.localVelocity * settings.inheritVelocity)
             || !isFinite(emitter.worldMatrix))
         {
             LOG_ERROR("[ParticleEffect] GPU emitter submission contains invalid state.");
@@ -266,7 +276,11 @@ namespace Engine
         try
         {
             if (existing != m_pendingGpuEmitters.end())
+            {
+                const bool resetDistance = existing->motion.resetDistance || emitter.motion.resetDistance;
                 *existing = emitter;
+                existing->motion.resetDistance = resetDistance;
+            }
             else
                 m_pendingGpuEmitters.push_back(emitter);
         }
