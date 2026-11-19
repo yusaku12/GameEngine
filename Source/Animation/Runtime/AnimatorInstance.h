@@ -1,8 +1,5 @@
 ﻿#pragma once
 
-#include <string>
-#include <string_view>
-#include <span>
 #include <ozz/animation/runtime/sampling_job.h>
 #include <ozz/base/maths/simd_math.h>
 #include <ozz/base/maths/soa_transform.h>
@@ -156,7 +153,9 @@ namespace Engine
 		 */
 		bool configureRootMotion(bool enabled, std::string_view jointName, RootMotionAxes axes = {});
 
-		/** @brief 最後の正常なupdateが生成したモデル空間の移動差分。スケールは含まない。 */
+		/**
+		 * @brief 最後の正常なupdateが生成したモデル空間の移動差分。スケールは含まない。
+		 */
 		const Matrix& getRootMotionDelta() const noexcept { return m_rootMotionDelta; }
 
 		/**
@@ -264,7 +263,7 @@ namespace Engine
 			std::shared_ptr<const AnimationClipAsset> clip;                //!< 再生中のClip。nullptrは未設定状態。
 			std::unique_ptr<ozz::animation::SamplingJob::Context> context; //!< ozz runtimeのSamplingJob用Context。ozz runtimeが必要とする中間バッファを保持する。
 			std::vector<ozz::math::SoaTransform> localTransforms;          //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
-			RootMotionTrack rootMotion;
+			RootMotionTrack rootMotion;                                    //!< 再生中のClipのRoot Motionを保持する。ClipのWrap Modeに応じてcycleが変化する。
 			float speed = 1.0f;                                            //!< 再生速度。負値は逆再生として扱う。
 			float time = 0.0f;                                             //!< 再生中のClipの経過時間(秒)。ClipのWrap Modeに応じてClampまたはWrapされる。
 			std::int64_t loopCount = 0;                                    //!< 再生中のClipの符号付きLoop回数。ClipのWrap Modeに応じて増減する。
@@ -383,20 +382,20 @@ namespace Engine
 		std::unique_ptr<ozz::animation::SamplingJob::Context> m_samplingContext; //!< ozz runtimeのSamplingJob用Context。ozz runtimeが必要とする中間バッファを保持する。
 		std::vector<ozz::math::SoaTransform> m_localTransforms;                  //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
 		std::vector<ozz::math::Float4x4> m_modelMatrices;                        //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。
-		std::vector<ozz::math::SoaTransform> m_ikLocalTransforms;
-		std::vector<ozz::math::Float4x4> m_ikModelMatrices;
-		std::vector<ozz::math::SoaTransform> m_lookAtLocalTransforms;
-		std::vector<ozz::math::Float4x4> m_lookAtModelMatrices;
+		std::vector<ozz::math::SoaTransform> m_ikLocalTransforms;                //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
+		std::vector<ozz::math::Float4x4> m_ikModelMatrices;                      //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。
+		std::vector<ozz::math::SoaTransform> m_lookAtLocalTransforms;            //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
+		std::vector<ozz::math::Float4x4> m_lookAtModelMatrices;                  //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。
 		std::vector<Matrix> m_bindPoseCorrections;                               //!< Import時の逆バインド行列とOzzレスト姿勢の差分補正。
 		std::array<std::shared_ptr<SkinningPaletteSnapshot>, 3> m_snapshotRing;  //!< Ring Bufferとして保持するPalette Snapshot。Game threadが評価中のSnapshotとRender threadが参照中のSnapshotを分離する。
 		std::shared_ptr<const SkinningPaletteSnapshot> m_publishedSnapshot;      //!< Render threadが参照中のPalette Snapshot。Game threadはこのSnapshotを更新しない。
 		std::size_t m_nextSnapshot = 0;                                          //!< Ring Bufferの次に使用するSnapshotのインデックス。Game threadが評価中のSnapshotを指す。
 		float m_time = 0.0f;                                                     //!< 再生中のClip内の現在時刻(秒)。ClipのWrap Modeに応じてClampまたはWrapされる。
 		float m_speed = 1.0f;                                                    //!< 再生速度。1.0fで実時間と同じ速度、2.0fで2倍速、-1.0fで逆再生。
-		AnimationWrapMode m_wrapMode = AnimationWrapMode::Loop;
+		AnimationWrapMode m_wrapMode = AnimationWrapMode::Loop;                  //!< 再生中のClipのWrap Mode。ClipのWrap Modeに応じてtimeとloopCountが変化する。
 		std::int64_t m_loopCount = 0;                                            //!< 再生中のClipのLoop回数。ClipのWrap Modeに応じて符号付きで増減する。
 		bool m_playing = false;                                                  //!< 再生中かどうか。trueで再生中、falseで停止中。
-		bool m_rootMotionEnabled = false;
+		bool m_rootMotionEnabled = false;                                        //!< Root Motionの有効化。trueで有効、falseで無効。
 		RootMotionAxes m_rootMotionAxes;
 		std::string m_rootMotionJointName;
 		std::size_t m_rootMotionJoint = 0;

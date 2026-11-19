@@ -33,3 +33,8 @@
 #include <cwctype>
 #include <spdlog/fmt/fmt.h>
 #include <spdlog/logger.h>
+#include <cmath>
+#include <limits>
+#include <span>
+#include <functional>
+#include <unordered_map>

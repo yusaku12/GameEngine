@@ -1,8 +1,5 @@
 #include "Pch.h"
 #include "Animation\Runtime\FootIK.h"
-#include <cmath>
-#include <limits>
-#include <vector>
 #include <ozz/animation/runtime/ik_aim_job.h>
 #include <ozz/animation/runtime/ik_two_bone_job.h>
 #include <ozz/animation/runtime/local_to_model_job.h>

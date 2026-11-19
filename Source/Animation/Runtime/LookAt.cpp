@@ -1,7 +1,5 @@
 #include "Pch.h"
 #include "Animation\Runtime\LookAt.h"
-#include <cmath>
-#include <limits>
 #include <ozz/animation/runtime/ik_aim_job.h>
 #include <ozz/animation/runtime/local_to_model_job.h>
 #include <ozz/animation/runtime/skeleton.h>

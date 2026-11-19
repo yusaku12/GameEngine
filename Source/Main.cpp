@@ -108,10 +108,7 @@ namespace Engine
 		ParticleEffectAssetManager::instance().clear();
 		RuntimeUI::instance().shutdown();
 		AudioSystem::instance().shutdown();
-		// ジョブシステムの終了処理を行うことで、ジョブの完了待ち中に発生したエラーをログに出力する
 		JobSystem::instance().finalize();
-
-		// ロガーの終了処理を行うことで、未書き出しのログを出力する
 		Logger::instance().finalize();
 	}
 
