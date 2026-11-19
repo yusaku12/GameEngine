@@ -96,11 +96,9 @@ namespace Engine
         ParticleEffectSettings settings;
         Matrix worldMatrix = Matrix::Identity;
         float deltaTime = 0.0f;
-        std::uint32_t spawnCount = 0;
-        std::uint32_t spawnCursor = 0;
+        float emissionTime = 0.0f; //!< Portion of this update during which the emitter was active.
         std::uint32_t spawnSeed = 1;
         bool clear = false;
-        bool emitting = false;
     };
 
     /** @brief Most recently completed GPU measurement for the combined particle pass. */

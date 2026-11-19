@@ -21,6 +21,8 @@ namespace Engine
         constexpr float PARTICLE_PI = 3.14159265358979323846f;
         constexpr float MAX_SIMULATION_DELTA = 0.25f;
         constexpr float SIMULATION_STEP = 1.0f / 60.0f;
+        constexpr float MAX_PARTICLE_LIFETIME = 3600.0f;
+        constexpr float MAX_TRAIL_LIFETIME = 60.0f;
         constexpr std::uint32_t MAX_PARTICLES = 4096;
         constexpr std::size_t MAX_BURSTS = 32;
         constexpr std::size_t MAX_CURVE_KEYS = 32;
@@ -580,7 +582,7 @@ namespace Engine
             || settings.burstCount > MAX_PARTICLES
             || !std::isfinite(settings.duration) || settings.duration < 0.0f || settings.duration > 3600.0f
             || !std::isfinite(settings.lifetimeMin) || !std::isfinite(settings.lifetimeMax)
-            || settings.lifetimeMin <= 0.0f || settings.lifetimeMax < settings.lifetimeMin || settings.lifetimeMax > 3600.0f
+            || settings.lifetimeMin <= 0.0f || settings.lifetimeMax < settings.lifetimeMin || settings.lifetimeMax > MAX_PARTICLE_LIFETIME
             || !std::isfinite(settings.shapeRadius) || settings.shapeRadius < 0.0f || settings.shapeRadius > 10000.0f
             || !isFinite(settings.direction) || !std::isfinite(directionLengthSquared) || directionLengthSquared < 1e-8f
             || !std::isfinite(settings.spreadAngleDegrees) || settings.spreadAngleDegrees < 0.0f || settings.spreadAngleDegrees > 180.0f
@@ -729,7 +731,7 @@ namespace Engine
             return false;
         }
         if (!std::isfinite(settings.trailLifetime) || settings.trailLifetime < 0.01f
-            || settings.trailLifetime > 60.0f || !std::isfinite(settings.trailWidth)
+            || settings.trailLifetime > MAX_TRAIL_LIFETIME || !std::isfinite(settings.trailWidth)
             || settings.trailWidth <= 0.0f || settings.trailWidth > 10000.0f
             || !std::isfinite(settings.trailMinDistance) || settings.trailMinDistance < 0.0f
             || settings.trailMinDistance > 10000.0f)
@@ -803,7 +805,7 @@ namespace Engine
             ParticleRenderSubmissionQueue::instance().removeGpuEmitter(m_gpuEmitterId);
             m_gpuEmitterId = 0;
             m_gpuClearPending = settings.simulationBackend == ParticleSimulationBackend::GPU;
-            m_gpuPendingSpawnCount = 0;
+            m_gpuPendingEmissionTime = 0.0f;
             m_gpuPendingDeltaTime = 0.0f;
             m_gpuLiveTimeRemaining = 0.0;
             m_particles.clear();
@@ -922,8 +924,7 @@ namespace Engine
         m_distanceRemainder = 0.0;
         m_motionElapsed = 0.0;
         m_randomState = m_settings.seed == 0 ? 0x9E3779B9u : m_settings.seed;
-        m_gpuSpawnCursor = 0;
-        m_gpuPendingSpawnCount = 0;
+        m_gpuPendingEmissionTime = 0.0f;
         m_gpuPendingSeed = m_randomState;
         m_gpuLiveTimeRemaining = 0.0;
         m_gpuClearPending = true;
@@ -985,7 +986,7 @@ namespace Engine
         m_renderParticles.clear();
         clearTrails();
         m_gpuClearPending = true;
-        m_gpuPendingSpawnCount = 0;
+        m_gpuPendingEmissionTime = 0.0f;
         m_gpuLiveTimeRemaining = 0.0;
         m_deltaCappedReported = false;
     }
@@ -1641,7 +1642,7 @@ namespace Engine
 
     void ParticleEffectComponent::updateGpuSimulation(const float deltaTime, const Matrix& worldMatrix)
     {
-        m_gpuPendingSpawnCount = 0;
+        m_gpuPendingEmissionTime = 0.0f;
         m_gpuPendingDeltaTime = 0.0f;
         if (!std::isfinite(deltaTime) || deltaTime < 0.0f || !isFinite(worldMatrix))
         {
@@ -1685,23 +1686,7 @@ namespace Engine
                     ? static_cast<double>(simulationDelta)
                     : std::min(static_cast<double>(simulationDelta),
                         std::max(0.0, duration - m_emissionElapsed));
-                const double total = m_emissionRemainder
-                    + static_cast<double>(m_settings.emissionRate) * activeDuration;
-                const double requested = std::floor(total);
-                const std::uint32_t count = static_cast<std::uint32_t>(
-                    std::min(requested, static_cast<double>(m_settings.maxParticles)));
-                if (requested > count)
-                {
-                    const double dropped = requested - count;
-                    if (dropped >= static_cast<double>(UINT64_MAX - m_droppedParticles))
-                        m_droppedParticles = UINT64_MAX;
-                    else
-                        m_droppedParticles += static_cast<std::uint64_t>(dropped);
-                }
-                m_gpuPendingSpawnCursor = m_gpuSpawnCursor;
-                m_gpuPendingSpawnCount = count;
-                m_gpuSpawnCursor = (m_gpuSpawnCursor + count) % m_settings.maxParticles;
-                m_emissionRemainder = total - requested;
+                m_gpuPendingEmissionTime = static_cast<float>(activeDuration);
                 m_emissionElapsed += activeDuration;
                 if (m_settings.looping)
                     m_emissionElapsed = std::fmod(m_emissionElapsed, duration);
@@ -1710,12 +1695,16 @@ namespace Engine
             }
         }
 
+        // Do not retire a GPU emitter before float age accumulation can expire its particles and trails.
         if (m_gpuPendingDeltaTime > 0.0f && m_gpuLiveTimeRemaining > 0.0)
             m_gpuLiveTimeRemaining = std::max(0.0,
-                m_gpuLiveTimeRemaining - static_cast<double>(m_gpuPendingDeltaTime));
-        if (m_gpuPendingSpawnCount != 0)
+                m_gpuLiveTimeRemaining - std::max(0.0, static_cast<double>(m_gpuPendingDeltaTime)
+                    - (static_cast<double>(std::nextafter(MAX_PARTICLE_LIFETIME,
+                        (std::numeric_limits<float>::infinity)())) + MAX_TRAIL_LIFETIME)
+                        * static_cast<double>(std::numeric_limits<float>::epsilon()) * 0.5));
+        if (m_gpuPendingEmissionTime > 0.0f && m_settings.emissionRate > 0.0f)
             m_gpuLiveTimeRemaining = std::max(m_gpuLiveTimeRemaining,
-                static_cast<double>(m_settings.lifetimeMax)
+                static_cast<double>(std::nextafter(m_settings.lifetimeMax, (std::numeric_limits<float>::infinity)()))
                     + (m_settings.trailEnabled ? static_cast<double>(m_settings.trailLifetime) : 0.0));
         m_gpuPendingSeed = nextRandom();
     }
@@ -1757,18 +1746,16 @@ namespace Engine
         }
         submission.worldMatrix = getGameObject()->getWorldMatrix();
         submission.deltaTime = deltaTime;
-        submission.spawnCount = m_gpuPendingSpawnCount;
-        submission.spawnCursor = m_gpuPendingSpawnCursor;
+        submission.emissionTime = deltaTime > 0.0f ? m_gpuPendingEmissionTime : 0.0f;
         submission.spawnSeed = m_gpuPendingSeed;
         submission.clear = m_gpuClearPending;
-        submission.emitting = m_emitting;
         if (!ParticleRenderSubmissionQueue::instance().submitGpuEmitter(submission))
         {
             m_submissionFailed = true;
             return false;
         }
         m_gpuPendingDeltaTime = 0.0f;
-        m_gpuPendingSpawnCount = 0;
+        m_gpuPendingEmissionTime = 0.0f;
         m_gpuClearPending = false;
         m_submissionFailed = false;
         return true;
@@ -1786,7 +1773,7 @@ namespace Engine
             if (GameSession::instance().state() == PlayState::Paused)
                 resetEmitterMotion();
             if (!m_emitting && m_gpuLiveTimeRemaining <= 0.0 && !m_gpuClearPending
-                && m_gpuPendingSpawnCount == 0)
+                && m_gpuPendingEmissionTime == 0.0f)
             {
                 if (m_gpuEmitterId != 0)
                 {
@@ -2638,10 +2625,16 @@ namespace Engine
         }
         ImGui::EndDisabled();
 
-        ImGui::Text("Live Particles: %u", static_cast<unsigned>(m_particles.size()));
-        ImGui::Text("Live Trails: %zu | Submitted Segments: %zu", m_activeTrails, m_renderTrails.size());
-        ImGui::Text("Dropped Particles: %llu | Dropped Trails: %llu",
-            static_cast<unsigned long long>(m_droppedParticles), static_cast<unsigned long long>(m_droppedTrails));
+        if (m_settings.simulationBackend == ParticleSimulationBackend::GPU
+            && gpuSimulationFallbackReason(m_settings) == nullptr && playing)
+            ImGui::TextDisabled("GPU particle, trail and drop counts are not read back.");
+        else
+        {
+            ImGui::Text("Live Particles: %u", static_cast<unsigned>(m_particles.size()));
+            ImGui::Text("Live Trails: %zu | Submitted Segments: %zu", m_activeTrails, m_renderTrails.size());
+            ImGui::Text("Dropped Particles: %llu | Dropped Trails: %llu",
+                static_cast<unsigned long long>(m_droppedParticles), static_cast<unsigned long long>(m_droppedTrails));
+        }
         ImGui::Text("Effect CPU last update + snapshot: %.3f ms", m_cpuMilliseconds);
         if (m_prewarmRemaining > 0.0)
             ImGui::TextDisabled("Prewarming: %.2f seconds remaining.", m_prewarmRemaining);

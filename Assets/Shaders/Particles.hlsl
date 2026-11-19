@@ -55,6 +55,7 @@ struct GpuParticleState
 static const uint gpuParticleStride = 144;
 RWStructuredBuffer<GpuParticleState> simulationParticles : register(u0);
 RWByteAddressBuffer simulationTrails : register(u4);
+RWByteAddressBuffer simulationScheduler : register(u5);
 ByteAddressBuffer lifetimeCurves : register(t15);
 
 cbuffer GpuSimulationSettings : register(b13)
@@ -63,6 +64,7 @@ cbuffer GpuSimulationSettings : register(b13)
     float4 trailSettings; // lifetime, width, minimum distance, blend mode
     uint2 curveBirth; // version + 1, number of sets
     float2 birthSizeScale;
+    float4 emissionSettings; // active time, fixed rate
 };
 
 static const uint trailPointCapacity = 16;
@@ -71,6 +73,7 @@ static const uint trailHeaderBytes = 32;
 static const uint trailStride = trailHeaderBytes + (trailPointCapacity + 1) * trailPointBytes;
 static const uint trailReset = 1u;
 static const uint trailAgePass = 2u;
+static const uint emissionSchedulePass = 4u;
 
 struct GpuTrailPoint { float4 positionAge; float4 color; };
 struct GpuTrailHeader
@@ -335,10 +338,50 @@ GpuTrailPoint particleTrailPoint(GpuParticleState particle)
     return tip;
 }
 
+void scheduleEmission()
+{
+    uint cursor = simulationHeader.z != 0 ? 0u : simulationScheduler.Load(0) % simulationHeader.x;
+    precise float remainder = simulationHeader.z != 0 ? 0.0f : asfloat(simulationScheduler.Load(12));
+    precise float remainderError = simulationHeader.z != 0 ? 0.0f : asfloat(simulationScheduler.Load(16));
+
+    // Error-free float multiplication preserves fractional emissions over long runtimes.
+    precise float rate = emissionSettings.y;
+    precise float duration = emissionSettings.x;
+    precise float product = rate * duration;
+    precise float splitRate = rate * 4097.0f;
+    precise float rateHigh = splitRate - (splitRate - rate);
+    precise float rateLow = rate - rateHigh;
+    precise float splitDuration = duration * 4097.0f;
+    precise float durationHigh = splitDuration - (splitDuration - duration);
+    precise float durationLow = duration - durationHigh;
+    precise float productError = ((rateHigh * durationHigh - product) + rateHigh * durationLow
+        + rateLow * durationHigh) + rateLow * durationLow;
+
+    const uint whole = (uint)floor(product);
+    precise float fraction = product - (float)whole;
+    precise float sum = remainder + fraction;
+    precise float fractionPart = sum - remainder;
+    precise float sumError = (remainder - (sum - fractionPart)) + (fraction - fractionPart);
+    sumError += remainderError + productError;
+    const uint carry = (sum > 1.0f || (sum == 1.0f && sumError >= 0.0f)) ? 1u : 0u;
+    precise float base = sum - (float)carry;
+    precise float nextRemainder = base + sumError;
+    precise float nextError = (base - nextRemainder) + sumError;
+    const uint count = min(whole + carry, simulationHeader.x);
+    simulationScheduler.Store4(0, uint4((cursor + count) % simulationHeader.x, cursor, count, asuint(nextRemainder)));
+    simulationScheduler.Store(16, asuint(nextError));
+}
+
 [numthreads(64, 1, 1)]
 void csSimulate(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     const uint index = dispatchThreadId.x;
+    if ((simulationFlags.w & emissionSchedulePass) != 0)
+    {
+        if (index == 0)
+            scheduleEmission();
+        return;
+    }
     if ((simulationFlags.w & trailAgePass) != 0)
     {
         ageTrailsAndBuildFreeList(index);
@@ -355,9 +398,11 @@ void csSimulate(uint3 dispatchThreadId : SV_DispatchThreadID)
     }
     const bool hasAttachedTrail = hasTrails && particle.randomData.y != 0;
     const uint trailBase = hasAttachedTrail ? (particle.randomData.y - 1) * trailStride : 0;
-    const uint spawnOffset = (index + simulationHeader.x - simulationHeader.z)
+    const uint spawnCursor = simulationScheduler.Load(4);
+    const uint spawnCount = simulationScheduler.Load(8);
+    const uint spawnOffset = (index + simulationHeader.x - spawnCursor)
         % simulationHeader.x;
-    if (spawnOffset < simulationHeader.w)
+    if (spawnOffset < spawnCount)
     {
         if (hasAttachedTrail)
         {

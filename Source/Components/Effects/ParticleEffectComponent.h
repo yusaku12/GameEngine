@@ -174,11 +174,9 @@ namespace Engine
         std::uint64_t m_previewSelectionRevision = 0;
         std::uint32_t m_randomState = 1;
         std::uint64_t m_gpuEmitterId = 0;
-        std::uint32_t m_gpuSpawnCursor = 0;
-        std::uint32_t m_gpuPendingSpawnCursor = 0;
-        std::uint32_t m_gpuPendingSpawnCount = 0;
         std::uint32_t m_gpuPendingSeed = 1;
         float m_gpuPendingDeltaTime = 0.0f;
+        float m_gpuPendingEmissionTime = 0.0f;
         double m_gpuLiveTimeRemaining = 0.0;
         bool m_emitting = false;
         bool m_burstPending = false;

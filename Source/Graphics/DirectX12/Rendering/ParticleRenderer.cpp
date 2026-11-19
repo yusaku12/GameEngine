@@ -102,8 +102,9 @@ namespace Engine
             std::uint32_t curveVersion;
             std::uint32_t curveSetCount;
             Vector2 birthSizeScale;
+            Vector4 emission; // active time, fixed rate
         };
-        static_assert(sizeof(GpuSimulationSettings) == 96);
+        static_assert(sizeof(GpuSimulationSettings) == 112);
 
     }
 
@@ -451,8 +452,10 @@ namespace Engine
         D3D12_ROOT_PARAMETER gpuCurveInput{};
         gpuCurveInput.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
         gpuCurveInput.Descriptor.ShaderRegister = 15;
+        D3D12_ROOT_PARAMETER gpuScheduler = gpuSimulationBuffer;
+        gpuScheduler.Descriptor.ShaderRegister = 5;
         const std::array gpuSimulationParameters{ gpuSimulationConstants, gpuSimulationBuffer,
-            gpuTrailOutput, gpuTrailConstants, gpuCurveInput };
+            gpuTrailOutput, gpuTrailConstants, gpuCurveInput, gpuScheduler };
         if (!gpuSimulation.initialize(*m_device->get(), simulationShader, gpuSimulationParameters))
         {
             LOG_ERROR("[ParticleEffect] Failed to build the particle simulation compute pipeline.");
@@ -1292,7 +1295,11 @@ namespace Engine
             {
                 if (!committed)
                     for (const auto& emitter : submissions)
-                        states.find(emitter.id)->second->needsClear = true;
+                    {
+                        auto& state = *states.find(emitter.id)->second;
+                        state.needsClear = true;
+                        state.needsSchedulerClear = true;
+                    }
             }
         } curveRecording{ m_gpuEmitterSubmissions, m_gpuEmitterStates };
         if (!m_gpuEmitterSubmissions.empty())
@@ -1312,19 +1319,21 @@ namespace Engine
                 GpuEmitterState& state = *m_gpuEmitterStates.at(emitter.id);
                 auto& particles = state.buffers->particles;
                 auto& trails = state.buffers->trails;
+                auto& scheduler = state.scheduler;
                 if (!particles.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
                     return false;
                 const GpuSimulationSettings gpuSettings{ emitter.worldMatrix,
                     Vector4(emitter.settings.trailLifetime, emitter.settings.trailWidth, emitter.settings.trailMinDistance,
                         static_cast<float>(emitter.settings.blendMode)),
                     state.birthCurveVersion, 1u + static_cast<std::uint32_t>(emitter.settings.curveVariants.size()),
-                    emitter.settings.initialSizeScale };
+                    emitter.settings.initialSizeScale,
+                    Vector4(emitter.emissionTime, emitter.settings.emissionRate, 0.0f, 0.0f) };
                 if (!settingsUpload.write(std::as_bytes(std::span(&gpuSettings, 1)), settingsOffset)
                     || (trails.get() && !trails.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)))
                     return false;
                 GpuSimulationConstants constants{
                     { emitter.settings.maxParticles, (emitter.clear || state.needsClear) ? 1u : 0u,
-                        emitter.spawnCursor, emitter.spawnCount },
+                        (emitter.clear || state.needsSchedulerClear) ? 1u : 0u, 0u },
                     Vector4(std::bit_cast<float>(emitter.spawnSeed), emitter.deltaTime,
                         emitter.settings.lifetimeMin, emitter.settings.lifetimeMax),
                     Vector4(emitter.settings.speedMin, emitter.settings.speedMax,
@@ -1353,6 +1362,16 @@ namespace Engine
                 native->SetComputeRootConstantBufferView(3, settingsUpload.getGpuVirtualAddress() + settingsOffset);
                 native->SetComputeRootShaderResourceView(4,
                     m_gpuCurveSettings[frameIndex].getGpuVirtualAddress() + m_curveUploadOffsets[emitterIndex++]);
+                native->SetComputeRootUnorderedAccessView(5, scheduler.get()->GetGPUVirtualAddress());
+                D3D12_RESOURCE_BARRIER schedulerBarrier{};
+                schedulerBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                schedulerBarrier.UAV.pResource = scheduler.get();
+                native->ResourceBarrier(1, &schedulerBarrier);
+                constexpr std::uint32_t schedulerPass = 4;
+                native->SetComputeRoot32BitConstant(0, constants.flags[3] | schedulerPass, 51);
+                native->Dispatch(1, 1, 1);
+                native->ResourceBarrier(1, &schedulerBarrier);
+                native->SetComputeRoot32BitConstant(0, constants.flags[3], 51);
                 if (trails.get())
                 {
                     constexpr std::uint32_t ageTrailPass = 2;
@@ -1370,6 +1389,7 @@ namespace Engine
                     return false;
                 settingsOffset += alignment;
                 state.needsClear = false;
+                state.needsSchedulerClear = false;
                 state.needsTrailClear = false;
                 m_frameGpuEmitterIds[frameIndex].push_back(emitter.id);
             }
@@ -1837,11 +1857,32 @@ namespace Engine
         bool repack = emitter.clear || state.needsClear;
         if (repack)
         {
-            state.slotCurveVersions.clear();
             state.curveVersions.clear();
             state.birthCurveVersion = 0;
         }
-        if (emitter.spawnCount != 0)
+        else
+        {
+            for (auto& version : state.curveVersions)
+            {
+                if (version.remainingLifetime <= 0.0)
+                {
+                    if (!version.words.empty())
+                    {
+                        version.words.clear();
+                        version.maximumLifetime = 0.0f;
+                        repack = true;
+                    }
+                    continue;
+                }
+                // GPU particle ages are floats; account for the maximum rounding loss per update.
+                const double rounding = static_cast<double>(version.maximumLifetime)
+                    * (static_cast<double>(std::numeric_limits<float>::epsilon()) * 0.5);
+                const double advance = std::max(0.0, static_cast<double>(emitter.deltaTime) - rounding);
+                version.remainingLifetime -= advance;
+            }
+        }
+        state.birthCurveVersion = 0;
+        if (emitter.emissionTime > 0.0f && settings.emissionRate > 0.0f)
         {
             if (settings.curveVariants.size() >= GPU_CURVE_SETS)
                 return false;
@@ -1890,46 +1931,30 @@ namespace Engine
                 if (!packSet(settings.curveVariants[i], i + 1))
                     return false;
 
-            const auto slotFor = [&](const std::uint32_t offset)
-            {
-                return (emitter.spawnCursor + offset) % settings.maxParticles;
-            };
             const bool hasKeys = words.size() > GPU_CURVE_SETS * GPU_CURVE_SET_WORDS;
-            if (hasKeys && state.slotCurveVersions.empty())
-                state.slotCurveVersions.resize(settings.maxParticles);
-            // Only births overwrite a slot. Keeping dead slots' references until reuse avoids a GPU readback.
-            if (!state.slotCurveVersions.empty())
-                for (std::uint32_t i = 0; i < emitter.spawnCount; ++i)
-                {
-                    const auto previous = state.slotCurveVersions[slotFor(i)];
-                    if (previous != 0 && --state.curveVersions[previous - 1].slotReferences == 0)
-                        repack = true;
-                }
-            if (!hasKeys)
-                state.birthCurveVersion = 0;
-            else if (state.birthCurveVersion == 0 || state.curveVersions[state.birthCurveVersion - 1].words != words)
+            if (hasKeys)
             {
                 auto version = std::find_if(state.curveVersions.begin(), state.curveVersions.end(),
-                    [&words](const auto& candidate) { return candidate.words == words; });
+                    [&words](const auto& candidate) { return !candidate.words.empty() && candidate.words == words; });
                 if (version == state.curveVersions.end())
                 {
                     version = std::find_if(state.curveVersions.begin(), state.curveVersions.end(),
-                        [](const auto& candidate) { return candidate.slotReferences == 0; });
+                        [](const auto& candidate) { return candidate.words.empty(); });
                     if (version == state.curveVersions.end())
                     {
                         state.curveVersions.emplace_back();
                         version = std::prev(state.curveVersions.end());
                     }
                     version->words.assign(words.begin(), words.end());
+                    version->maximumLifetime = 0.0f;
                     repack = true;
                 }
                 state.birthCurveVersion = 1u + static_cast<std::uint32_t>(version - state.curveVersions.begin());
+                const float lifetimeBound = std::nextafter(settings.lifetimeMax,
+                    (std::numeric_limits<float>::infinity)());
+                version->remainingLifetime = std::max(version->remainingLifetime, static_cast<double>(lifetimeBound));
+                version->maximumLifetime = std::max(version->maximumLifetime, lifetimeBound);
             }
-            if (state.birthCurveVersion != 0)
-                state.curveVersions[state.birthCurveVersion - 1].slotReferences += emitter.spawnCount;
-            if (!state.slotCurveVersions.empty())
-                for (std::uint32_t i = 0; i < emitter.spawnCount; ++i)
-                    state.slotCurveVersions[slotFor(i)] = state.birthCurveVersion;
         }
         if (repack)
         {
@@ -1938,10 +1963,13 @@ namespace Engine
             for (std::size_t i = 0; i < state.curveVersions.size(); ++i)
             {
                 auto& version = state.curveVersions[i];
-                if (version.slotReferences == 0)
-                {
-                    version.words.clear();
+                if (version.words.empty())
                     continue;
+                constexpr auto maxWords = (std::numeric_limits<std::uint32_t>::max)() / sizeof(std::uint32_t);
+                if (packed.size() > maxWords || version.words.size() > maxWords - packed.size())
+                {
+                    LOG_ERROR("[ParticleEffect] GPU lifetime curve input exceeds the shader address range.");
+                    return false;
                 }
                 packed[i] = static_cast<std::uint32_t>(packed.size());
                 packed.insert(packed.end(), version.words.begin(), version.words.end());
@@ -2045,6 +2073,13 @@ namespace Engine
             .initialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS }))
         {
             LOG_ERROR("[ParticleEffect] Failed to allocate the GPU particle indirect draw data buffer.");
+            return false;
+        }
+        description.Width = 20;
+        if (!state.scheduler.get() && !state.scheduler.initialize(*m_device->get(), {
+            .description = description, .initialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS }))
+        {
+            LOG_ERROR("[ParticleEffect] Failed to allocate the GPU emission scheduler.");
             return false;
         }
         if (state.buffers && state.lastFenceValue != 0 && m_fence != nullptr

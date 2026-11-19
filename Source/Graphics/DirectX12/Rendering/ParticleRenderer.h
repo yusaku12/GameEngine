@@ -103,12 +103,13 @@ namespace Engine
             struct CurveVersion
             {
                 std::vector<std::uint32_t> words;
-                std::uint32_t slotReferences = 0;
+                double remainingLifetime = 0.0;
+                float maximumLifetime = 0.0f;
             };
             std::unique_ptr<GpuEmitterBuffers> buffers;
+            DX12Resource scheduler;
             std::vector<RetiredGpuBuffer> retiredBuffers;
             std::vector<CurveVersion> curveVersions;
-            std::vector<std::uint32_t> slotCurveVersions;
             std::vector<std::uint32_t> packedCurves;
             std::uint32_t birthCurveVersion = 0;
             std::uint32_t capacity = 0;
@@ -116,6 +117,7 @@ namespace Engine
             std::uint64_t lastFenceValue = 0;
             bool retired = false;
             bool needsClear = true;
+            bool needsSchedulerClear = true;
             bool needsTrailClear = false;
         };
         struct DrawBatch

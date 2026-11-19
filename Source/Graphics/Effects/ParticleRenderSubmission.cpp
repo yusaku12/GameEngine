@@ -232,10 +232,12 @@ namespace Engine
         if (emitter.id == 0 || emitter.settings.simulationBackend != ParticleSimulationBackend::GPU
             || emitter.settings.maxParticles == 0
             || emitter.settings.maxParticles > ParticleRenderSubmissionQueue::MAX_RENDER_PARTICLES
-            || emitter.spawnCount > emitter.settings.maxParticles
-            || emitter.spawnCursor >= emitter.settings.maxParticles
+            || !std::isfinite(emitter.settings.emissionRate) || emitter.settings.emissionRate < 0.0f
+            || emitter.settings.emissionRate > 10000.0f
             || !std::isfinite(emitter.deltaTime) || emitter.deltaTime < 0.0f
-            || emitter.deltaTime > 0.25f || !isFinite(emitter.worldMatrix))
+            || emitter.deltaTime > 0.25f || !std::isfinite(emitter.emissionTime)
+            || emitter.emissionTime < 0.0f || emitter.emissionTime > emitter.deltaTime
+            || !isFinite(emitter.worldMatrix))
         {
             LOG_ERROR("[ParticleEffect] GPU emitter submission contains invalid state.");
             return false;
