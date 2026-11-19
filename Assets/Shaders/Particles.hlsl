@@ -64,7 +64,12 @@ cbuffer GpuSimulationSettings : register(b13)
     float4 trailSettings; // lifetime, width, minimum distance, blend mode
     uint2 curveBirth; // version + 1, number of sets
     float2 birthSizeScale;
-    float4 emissionSettings; // active time, fixed rate
+    float4 emissionSettings; // active time, fixed rate, cycle duration, complete cycle time
+    float4 emissionPhases;
+    float2 emissionDelay;
+    float emissionTailTime;
+    uint emissionWraps;
+    uint4 emissionHeader; // table offset, rate keys, bursts, initial count + flag
 };
 
 static const uint trailPointCapacity = 16;
@@ -338,38 +343,152 @@ GpuTrailPoint particleTrailPoint(GpuParticleState particle)
     return tip;
 }
 
+// A two-float expansion preserves event boundaries and fractional emission without FP64 support.
+float2 emissionAdd(precise float2 a, precise float2 b)
+{
+    precise float sum = a.x + b.x;
+    precise float part = sum - a.x;
+    precise float error = ((a.x - (sum - part)) + (b.x - part)) + (a.y + b.y);
+    precise float high = sum + error;
+    return float2(high, (sum - high) + error);
+}
+
+float2 emissionProduct(precise float a, precise float b)
+{
+    precise float product = a * b;
+    precise float splitA = a * 4097.0f;
+    precise float highA = splitA - (splitA - a);
+    precise float lowA = a - highA;
+    precise float splitB = b * 4097.0f;
+    precise float highB = splitB - (splitB - b);
+    precise float lowB = b - highB;
+    precise float error = ((highA * highB - product) + highA * lowB + lowA * highB) + lowA * lowB;
+    return float2(product, error);
+}
+
+bool emissionBefore(float2 a, float2 b)
+{
+    return a.x < b.x || (a.x == b.x && a.y < b.y);
+}
+
+uint sampleBurstRange(inout uint random, uint size)
+{
+    const uint bits = hashRandom(random);
+    return (((bits >> 16) * size) + (((bits & 65535u) * size) >> 16)) >> 16;
+}
+
+float2 integrateRateWindow(float2 phase, float span, float duration, float weight)
+{
+    if (span <= 0.0f)
+        return 0.0f;
+    const uint firstKey = emissionHeader.x;
+    const float2 first = asfloat(lifetimeCurves.Load2(firstKey));
+    float2 previous = float2(0, first.y);
+    float left = -phase.x - phase.y;
+    float2 total = 0.0f;
+    for (uint i = 0; i <= emissionHeader.y; ++i)
+    {
+        const float2 next = i < emissionHeader.y
+            ? asfloat(lifetimeCurves.Load2(firstKey + i * 8)) : float2(1, previous.y);
+        const float2 relative = emissionAdd(emissionProduct(next.x, duration), -phase);
+        const float right = relative.x + relative.y;
+        const float begin = max(0.0f, left);
+        const float end = min(span, right);
+        if (end > begin)
+        {
+            const float length = right - left;
+            const float midpoint = (begin - left) + (end - begin) * 0.5f;
+            const float rate = lerp(previous.y, next.y, saturate(midpoint / length));
+            total = emissionAdd(total, emissionProduct(rate, (end - begin) * weight));
+        }
+        if (right >= span)
+            break;
+        left = right;
+        previous = next;
+    }
+    return total;
+}
+
+uint scheduledBurstCount(float2 phase, float2 endPhase, bool initial, bool active)
+{
+    const uint capacity = simulationHeader.x;
+    uint count = initial ? min(emissionHeader.w & 0x7fffffffu, capacity) : 0;
+    uint random = asuint(simulationTiming.x) ^ 0x6a09e667u;
+    if (random == 0)
+        random = 0x9e3779b9u;
+    const float2 duration = float2(emissionSettings.z, 0);
+    for (uint i = 0; i < emissionHeader.z && count < capacity; ++i)
+    {
+        const uint address = emissionHeader.x + emissionHeader.y * 8 + i * 24;
+        const uint4 timing = lifetimeCurves.Load4(address);
+        const uint2 range = lifetimeCurves.Load2(address + 16);
+        const float probability = asfloat(timing.z);
+        if (probability <= 0.0f || range.y == 0)
+            continue;
+        for (uint repeat = 0; repeat < timing.w && count < capacity; ++repeat)
+        {
+            float2 eventTime = emissionAdd(float2(asfloat(timing.x), 0),
+                emissionProduct((float)repeat, asfloat(timing.y)));
+            if (emissionBefore(duration, eventTime))
+                eventTime = duration;
+            uint occurrences = initial && repeat == 0 && asfloat(timing.x) == 0.0f ? 1u : 0u;
+            if (active)
+            {
+                if (emissionWraps != 0 && !emissionBefore(eventTime, duration))
+                    occurrences += emissionWraps;
+                else
+                    occurrences += (uint)max(0, (int)emissionWraps
+                        + (int)!emissionBefore(endPhase, eventTime) - (int)!emissionBefore(phase, eventTime));
+            }
+            if (range.x == range.y && probability == 1.0f)
+                count += min(occurrences, (capacity - count + range.x - 1) / range.x) * range.x;
+            else
+                for (uint event = 0; event < occurrences && count < capacity; ++event)
+                {
+                    if (probability < 1.0f && randomUnit(random) >= probability)
+                        continue;
+                    const uint size = range.y == range.x ? range.x
+                        : range.x + sampleBurstRange(random, range.y - range.x + 1);
+                    count += size;
+                }
+        }
+    }
+    return min(count, capacity);
+}
+
 void scheduleEmission()
 {
-    uint cursor = simulationHeader.z != 0 ? 0u : simulationScheduler.Load(0) % simulationHeader.x;
-    precise float remainder = simulationHeader.z != 0 ? 0.0f : asfloat(simulationScheduler.Load(12));
-    precise float remainderError = simulationHeader.z != 0 ? 0.0f : asfloat(simulationScheduler.Load(16));
-
-    // Error-free float multiplication preserves fractional emissions over long runtimes.
-    precise float rate = emissionSettings.y;
-    precise float duration = emissionSettings.x;
-    precise float product = rate * duration;
-    precise float splitRate = rate * 4097.0f;
-    precise float rateHigh = splitRate - (splitRate - rate);
-    precise float rateLow = rate - rateHigh;
-    precise float splitDuration = duration * 4097.0f;
-    precise float durationHigh = splitDuration - (splitDuration - duration);
-    precise float durationLow = duration - durationHigh;
-    precise float productError = ((rateHigh * durationHigh - product) + rateHigh * durationLow
-        + rateLow * durationHigh) + rateLow * durationLow;
-
-    const uint whole = (uint)floor(product);
-    precise float fraction = product - (float)whole;
-    precise float sum = remainder + fraction;
-    precise float fractionPart = sum - remainder;
-    precise float sumError = (remainder - (sum - fractionPart)) + (fraction - fractionPart);
-    sumError += remainderError + productError;
-    const uint carry = (sum > 1.0f || (sum == 1.0f && sumError >= 0.0f)) ? 1u : 0u;
-    precise float base = sum - (float)carry;
-    precise float nextRemainder = base + sumError;
-    precise float nextError = (base - nextRemainder) + sumError;
-    const uint count = min(whole + carry, simulationHeader.x);
-    simulationScheduler.Store4(0, uint4((cursor + count) % simulationHeader.x, cursor, count, asuint(nextRemainder)));
-    simulationScheduler.Store(16, asuint(nextError));
+    const bool reset = simulationHeader.z != 0;
+    const uint cursor = reset ? 0u : simulationScheduler.Load(0) % simulationHeader.x;
+    const float2 remainder = reset ? 0.0f : asfloat(simulationScheduler.Load2(12));
+    const float2 afterDelay = emissionAdd(float2(simulationTiming.y, 0), -emissionDelay);
+    const bool started = emissionBefore(0.0f, afterDelay);
+    const float activeTime = started ? min(emissionSettings.x, afterDelay.x) : 0.0f;
+    const bool initial = started && (emissionHeader.w & 0x80000000u) != 0;
+    const float2 phase = emissionPhases.xy;
+    const float2 endPhase = emissionPhases.zw;
+    float2 integrated = 0.0f;
+    if (activeTime > 0.0f)
+    {
+        if (emissionHeader.y == 0)
+            integrated = emissionProduct(emissionSettings.y, activeTime);
+        else if (emissionWraps == 0)
+            integrated = integrateRateWindow(phase, activeTime, emissionSettings.z, 1.0f);
+        else
+        {
+            integrated = integrateRateWindow(phase, emissionTailTime, emissionSettings.z, 1.0f);
+            integrated = emissionAdd(integrated, integrateRateWindow(0.0f, endPhase.x, emissionSettings.z, 1.0f));
+            integrated = emissionAdd(integrated, integrateRateWindow(0.0f, 1.0f, 1.0f, emissionSettings.w));
+        }
+    }
+    const float2 total = emissionAdd(remainder, integrated);
+    const float rounded = floor(total.x);
+    const float whole = max(0.0f, rounded - (total.x == rounded && total.y < 0.0f ? 1.0f : 0.0f));
+    const float2 next = emissionAdd(total, float2(-whole, 0));
+    const uint bursts = initial || activeTime > 0.0f ? scheduledBurstCount(phase, endPhase, initial, activeTime > 0.0f) : 0;
+    const uint count = min((uint)whole + bursts, simulationHeader.x);
+    simulationScheduler.Store4(0, uint4((cursor + count) % simulationHeader.x, cursor, count, asuint(next.x)));
+    simulationScheduler.Store(16, asuint(next.y));
 }
 
 [numthreads(64, 1, 1)]

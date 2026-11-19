@@ -212,10 +212,8 @@ namespace Engine
             return "GPU simulation does not support Mesh particles.";
         if (!settings.localSpace)
             return "GPU simulation currently requires Local Space.";
-        if (settings.burstCount != 0 || !settings.bursts.empty() || !settings.emissionRateKeys.empty()
-            || settings.startDelay > 0.0f || settings.prewarm
-            || settings.distancePerParticle > 0.0f || settings.inheritVelocity > 0.0f)
-            return "GPU simulation does not support bursts, scheduled/distance emission, velocity inheritance, delay, or prewarm.";
+        if (settings.prewarm || settings.distancePerParticle > 0.0f || settings.inheritVelocity > 0.0f)
+            return "GPU simulation does not support prewarm, distance emission, or velocity inheritance.";
         if (!gpuSortingSupported() && (settings.trailEnabled || settings.blendMode != ParticleBlendMode::Additive
             || settings.orientation != ParticleOrientation::Camera
             || settings.softDistance > 0.0f || settings.refractionPixels != 0.0f
@@ -229,14 +227,24 @@ namespace Engine
 
     bool ParticleRenderSubmissionQueue::submitGpuEmitter(const ParticleGpuEmitterSubmission& emitter)
     {
+        const auto& window = emitter.emission;
+        const auto& settings = emitter.settings;
         if (emitter.id == 0 || emitter.settings.simulationBackend != ParticleSimulationBackend::GPU
             || emitter.settings.maxParticles == 0
             || emitter.settings.maxParticles > ParticleRenderSubmissionQueue::MAX_RENDER_PARTICLES
             || !std::isfinite(emitter.settings.emissionRate) || emitter.settings.emissionRate < 0.0f
             || emitter.settings.emissionRate > 10000.0f
             || !std::isfinite(emitter.deltaTime) || emitter.deltaTime < 0.0f
-            || emitter.deltaTime > 0.25f || !std::isfinite(emitter.emissionTime)
-            || emitter.emissionTime < 0.0f || emitter.emissionTime > emitter.deltaTime
+            || emitter.deltaTime > 0.25f || !std::isfinite(window.activeTime)
+            || window.activeTime < 0.0f || window.activeTime > emitter.deltaTime
+            || !std::isfinite(window.delay) || window.delay < 0.0 || window.delay > 3600.0
+            || !std::isfinite(settings.duration) || settings.duration < 0.0f || settings.duration > 3600.0f
+            || !std::isfinite(window.phase) || window.phase < 0.0 || window.phase > settings.duration
+            || !std::isfinite(window.endPhase) || window.endPhase < 0.0 || window.endPhase > settings.duration
+            || !std::isfinite(window.wraps) || window.wraps < 0.0 || std::floor(window.wraps) != window.wraps
+            || !std::isfinite(window.completeCycleTime) || window.completeCycleTime < 0.0
+            || window.completeCycleTime > emitter.deltaTime
+            || settings.bursts.size() > 32 || settings.emissionRateKeys.size() > 32
             || !isFinite(emitter.worldMatrix))
         {
             LOG_ERROR("[ParticleEffect] GPU emitter submission contains invalid state.");

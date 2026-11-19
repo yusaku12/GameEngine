@@ -176,7 +176,7 @@ namespace Engine
         std::uint64_t m_gpuEmitterId = 0;
         std::uint32_t m_gpuPendingSeed = 1;
         float m_gpuPendingDeltaTime = 0.0f;
-        float m_gpuPendingEmissionTime = 0.0f;
+        ParticleGpuEmissionWindow m_gpuPendingEmission;
         double m_gpuLiveTimeRemaining = 0.0;
         bool m_emitting = false;
         bool m_burstPending = false;

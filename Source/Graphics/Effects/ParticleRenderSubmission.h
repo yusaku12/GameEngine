@@ -89,6 +89,25 @@ namespace Engine
         ParticleBlendMode blendMode = ParticleBlendMode::Alpha;
     };
 
+    /** @brief Playback window for the GPU scheduler; times are in simulation seconds. */
+    struct ParticleGpuEmissionWindow
+    {
+        double delay = 0.0;
+        double phase = 0.0;
+        double endPhase = 0.0;
+        double wraps = 0.0;
+        double completeCycleTime = 0.0;
+        float activeTime = 0.0f;
+        bool initial = false;
+
+        /** @brief Conservatively reports whether this window can schedule births. */
+        bool maySpawn(const ParticleEffectSettings& settings) const noexcept
+        {
+            return initial || (activeTime > 0.0f
+                && (settings.emissionRate > 0.0f || !settings.emissionRateKeys.empty() || !settings.bursts.empty()));
+        }
+    };
+
     /** @brief Frame-local command for a persistent GPU-simulated particle emitter. */
     struct ParticleGpuEmitterSubmission
     {
@@ -96,7 +115,7 @@ namespace Engine
         ParticleEffectSettings settings;
         Matrix worldMatrix = Matrix::Identity;
         float deltaTime = 0.0f;
-        float emissionTime = 0.0f; //!< Portion of this update during which the emitter was active.
+        ParticleGpuEmissionWindow emission;
         std::uint32_t spawnSeed = 1;
         bool clear = false;
     };

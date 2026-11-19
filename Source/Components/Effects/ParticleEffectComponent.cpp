@@ -805,7 +805,7 @@ namespace Engine
             ParticleRenderSubmissionQueue::instance().removeGpuEmitter(m_gpuEmitterId);
             m_gpuEmitterId = 0;
             m_gpuClearPending = settings.simulationBackend == ParticleSimulationBackend::GPU;
-            m_gpuPendingEmissionTime = 0.0f;
+            m_gpuPendingEmission = {};
             m_gpuPendingDeltaTime = 0.0f;
             m_gpuLiveTimeRemaining = 0.0;
             m_particles.clear();
@@ -924,7 +924,7 @@ namespace Engine
         m_distanceRemainder = 0.0;
         m_motionElapsed = 0.0;
         m_randomState = m_settings.seed == 0 ? 0x9E3779B9u : m_settings.seed;
-        m_gpuPendingEmissionTime = 0.0f;
+        m_gpuPendingEmission = {};
         m_gpuPendingSeed = m_randomState;
         m_gpuLiveTimeRemaining = 0.0;
         m_gpuClearPending = true;
@@ -986,7 +986,8 @@ namespace Engine
         m_renderParticles.clear();
         clearTrails();
         m_gpuClearPending = true;
-        m_gpuPendingEmissionTime = 0.0f;
+        m_gpuPendingEmission = {};
+        m_gpuPendingDeltaTime = 0.0f;
         m_gpuLiveTimeRemaining = 0.0;
         m_deltaCappedReported = false;
     }
@@ -1642,7 +1643,7 @@ namespace Engine
 
     void ParticleEffectComponent::updateGpuSimulation(const float deltaTime, const Matrix& worldMatrix)
     {
-        m_gpuPendingEmissionTime = 0.0f;
+        m_gpuPendingEmission = {};
         m_gpuPendingDeltaTime = 0.0f;
         if (!std::isfinite(deltaTime) || deltaTime < 0.0f || !isFinite(worldMatrix))
         {
@@ -1675,22 +1676,33 @@ namespace Engine
 
         if (m_emitting && simulationDelta > 0.0f)
         {
+            auto& window = m_gpuPendingEmission;
+            window.delay = m_delayRemaining;
+            const double delay = std::min(m_delayRemaining, static_cast<double>(simulationDelta));
+            m_delayRemaining -= delay;
+            const double afterDelay = static_cast<double>(simulationDelta) - delay;
             const double duration = m_settings.duration;
-            if (duration <= 0.0)
-                m_emitting = false;
-            else
+            if (afterDelay > 0.0)
             {
-                if (m_settings.looping && m_emissionElapsed >= duration)
+                window.initial = m_burstPending;
+                if (m_settings.looping && duration > 0.0 && m_emissionElapsed >= duration)
                     m_emissionElapsed = std::fmod(m_emissionElapsed, duration);
-                const double activeDuration = m_settings.looping
-                    ? static_cast<double>(simulationDelta)
-                    : std::min(static_cast<double>(simulationDelta),
-                        std::max(0.0, duration - m_emissionElapsed));
-                m_gpuPendingEmissionTime = static_cast<float>(activeDuration);
-                m_emissionElapsed += activeDuration;
-                if (m_settings.looping)
-                    m_emissionElapsed = std::fmod(m_emissionElapsed, duration);
-                else if (m_emissionElapsed >= duration)
+                window.phase = std::min(m_emissionElapsed, duration);
+                const double activeTime = m_settings.looping && duration > 0.0
+                    ? afterDelay : std::min(afterDelay, duration - window.phase);
+                window.activeTime = static_cast<float>(activeTime);
+                const double end = window.phase + activeTime;
+                if (m_settings.looping && duration > 0.0 && end >= duration)
+                {
+                    window.endPhase = std::fmod(end, duration);
+                    window.wraps = std::round((end - window.endPhase) / duration);
+                    window.completeCycleTime = std::max(0.0,
+                        activeTime - (duration - window.phase) - window.endPhase);
+                }
+                else
+                    window.endPhase = std::min(end, duration);
+                m_emissionElapsed = window.endPhase;
+                if (duration <= 0.0 || (!m_settings.looping && end >= duration))
                     m_emitting = false;
             }
         }
@@ -1702,7 +1714,7 @@ namespace Engine
                     - (static_cast<double>(std::nextafter(MAX_PARTICLE_LIFETIME,
                         (std::numeric_limits<float>::infinity)())) + MAX_TRAIL_LIFETIME)
                         * static_cast<double>(std::numeric_limits<float>::epsilon()) * 0.5));
-        if (m_gpuPendingEmissionTime > 0.0f && m_settings.emissionRate > 0.0f)
+        if (m_gpuPendingEmission.maySpawn(m_settings))
             m_gpuLiveTimeRemaining = std::max(m_gpuLiveTimeRemaining,
                 static_cast<double>(std::nextafter(m_settings.lifetimeMax, (std::numeric_limits<float>::infinity)()))
                     + (m_settings.trailEnabled ? static_cast<double>(m_settings.trailLifetime) : 0.0));
@@ -1746,7 +1758,8 @@ namespace Engine
         }
         submission.worldMatrix = getGameObject()->getWorldMatrix();
         submission.deltaTime = deltaTime;
-        submission.emissionTime = deltaTime > 0.0f ? m_gpuPendingEmissionTime : 0.0f;
+        if (deltaTime > 0.0f)
+            submission.emission = m_gpuPendingEmission;
         submission.spawnSeed = m_gpuPendingSeed;
         submission.clear = m_gpuClearPending;
         if (!ParticleRenderSubmissionQueue::instance().submitGpuEmitter(submission))
@@ -1755,7 +1768,9 @@ namespace Engine
             return false;
         }
         m_gpuPendingDeltaTime = 0.0f;
-        m_gpuPendingEmissionTime = 0.0f;
+        if (submission.emission.initial)
+            m_burstPending = false;
+        m_gpuPendingEmission = {};
         m_gpuClearPending = false;
         m_submissionFailed = false;
         return true;
@@ -1773,7 +1788,7 @@ namespace Engine
             if (GameSession::instance().state() == PlayState::Paused)
                 resetEmitterMotion();
             if (!m_emitting && m_gpuLiveTimeRemaining <= 0.0 && !m_gpuClearPending
-                && m_gpuPendingEmissionTime == 0.0f)
+                && !m_gpuPendingEmission.initial && m_gpuPendingEmission.activeTime == 0.0f)
             {
                 if (m_gpuEmitterId != 0)
                 {

@@ -102,9 +102,25 @@ namespace Engine
             std::uint32_t curveVersion;
             std::uint32_t curveSetCount;
             Vector2 birthSizeScale;
-            Vector4 emission; // active time, fixed rate
+            Vector4 emission; // active time, fixed rate, cycle duration, complete cycle time
+            Vector4 emissionPhases; // start and end, each split into high/low
+            Vector2 emissionDelay;
+            float emissionTailTime;
+            std::uint32_t emissionWraps;
+            std::array<std::uint32_t, 4> emissionHeader; // table offset, rate keys, bursts, initial count + flag
         };
-        static_assert(sizeof(GpuSimulationSettings) == 112);
+        static_assert(sizeof(GpuSimulationSettings) == 160);
+
+        Vector2 splitEmissionTime(const double time) noexcept
+        {
+            const auto high = static_cast<float>(time);
+            return Vector2(high, static_cast<float>(time - high));
+        }
+
+        constexpr std::size_t GPU_RATE_KEY_WORDS = 2;
+        constexpr std::size_t GPU_BURST_WORDS = 6;
+        // Randomized bursts are authoring-limited to 8192 events per 1/60 s; deterministic counts saturate.
+        constexpr double GPU_MAX_CYCLE_WRAPS = 131072.0;
 
     }
 
@@ -1322,12 +1338,26 @@ namespace Engine
                 auto& scheduler = state.scheduler;
                 if (!particles.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
                     return false;
+                const auto& window = emitter.emission;
+                const auto phase = splitEmissionTime(window.phase);
+                const auto endPhase = splitEmissionTime(window.endPhase);
+                const auto& settings = emitter.settings;
+                const auto wraps = static_cast<std::uint32_t>(std::min(window.wraps, GPU_MAX_CYCLE_WRAPS));
                 const GpuSimulationSettings gpuSettings{ emitter.worldMatrix,
                     Vector4(emitter.settings.trailLifetime, emitter.settings.trailWidth, emitter.settings.trailMinDistance,
                         static_cast<float>(emitter.settings.blendMode)),
                     state.birthCurveVersion, 1u + static_cast<std::uint32_t>(emitter.settings.curveVariants.size()),
                     emitter.settings.initialSizeScale,
-                    Vector4(emitter.emissionTime, emitter.settings.emissionRate, 0.0f, 0.0f) };
+                    Vector4(window.activeTime, settings.emissionRate, settings.duration,
+                        static_cast<float>(window.completeCycleTime)),
+                    Vector4(phase.x, phase.y, endPhase.x, endPhase.y),
+                    splitEmissionTime(window.delay),
+                    wraps != 0 ? static_cast<float>(settings.duration - window.phase) : window.activeTime,
+                    wraps,
+                    { static_cast<std::uint32_t>(state.packedCurves.size() * sizeof(std::uint32_t)),
+                        static_cast<std::uint32_t>(settings.emissionRateKeys.size()),
+                        static_cast<std::uint32_t>(settings.bursts.size()),
+                        window.initial ? (0x80000000u | settings.burstCount) : 0u } };
                 if (!settingsUpload.write(std::as_bytes(std::span(&gpuSettings, 1)), settingsOffset)
                     || (trails.get() && !trails.transition(commandList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)))
                     return false;
@@ -1882,7 +1912,7 @@ namespace Engine
             }
         }
         state.birthCurveVersion = 0;
-        if (emitter.emissionTime > 0.0f && settings.emissionRate > 0.0f)
+        if (emitter.emission.maySpawn(settings))
         {
             if (settings.curveVariants.size() >= GPU_CURVE_SETS)
                 return false;
@@ -1995,8 +2025,16 @@ namespace Engine
                     LOG_ERROR("[ParticleEffect] GPU lifetime curves exceeded the supported key or set limit.");
                     return false;
                 }
-                m_curveUploadOffsets.push_back(state.packedCurves.empty() ? 0 : bytes);
-                bytes += (state.packedCurves.size() * sizeof(std::uint32_t) + 15) & ~std::uint64_t{15};
+                const auto size = (state.packedCurves.size()
+                    + emitter.settings.emissionRateKeys.size() * GPU_RATE_KEY_WORDS
+                    + emitter.settings.bursts.size() * GPU_BURST_WORDS) * sizeof(std::uint32_t);
+                if (size > (std::numeric_limits<std::uint32_t>::max)())
+                {
+                    LOG_ERROR("[ParticleEffect] GPU particle input exceeds the shader address range.");
+                    return false;
+                }
+                m_curveUploadOffsets.push_back(size == 0 ? 0 : bytes);
+                bytes += (size + 15) & ~std::uint64_t{15};
             }
         }
         catch (const std::bad_alloc&)
@@ -2017,8 +2055,29 @@ namespace Engine
         }
         for (std::size_t i = 0; i < m_gpuEmitterSubmissions.size(); ++i)
         {
-            const auto& packed = m_gpuEmitterStates.at(m_gpuEmitterSubmissions[i].id)->packedCurves;
-            if (!packed.empty() && !upload.write(std::as_bytes(std::span(packed)), m_curveUploadOffsets[i]))
+            const auto& emitter = m_gpuEmitterSubmissions[i];
+            const auto& packed = m_gpuEmitterStates.at(emitter.id)->packedCurves;
+            auto offset = m_curveUploadOffsets[i];
+            if (!packed.empty() && !upload.write(std::as_bytes(std::span(packed)), offset))
+                return false;
+            offset += packed.size() * sizeof(std::uint32_t);
+            std::array<std::uint32_t, 32 * (GPU_RATE_KEY_WORDS + GPU_BURST_WORDS)> emissionWords;
+            std::size_t count = 0;
+            for (const auto& key : emitter.settings.emissionRateKeys)
+            {
+                emissionWords[count++] = std::bit_cast<std::uint32_t>(key.time);
+                emissionWords[count++] = std::bit_cast<std::uint32_t>(key.value);
+            }
+            for (const auto& burst : emitter.settings.bursts)
+            {
+                emissionWords[count++] = std::bit_cast<std::uint32_t>(burst.time);
+                emissionWords[count++] = std::bit_cast<std::uint32_t>(burst.repeatInterval);
+                emissionWords[count++] = std::bit_cast<std::uint32_t>(burst.probability);
+                emissionWords[count++] = burst.repeatCount;
+                emissionWords[count++] = burst.randomCount ? burst.countMin : burst.count;
+                emissionWords[count++] = burst.randomCount ? burst.countMax : burst.count;
+            }
+            if (count != 0 && !upload.write(std::as_bytes(std::span(emissionWords).first(count)), offset))
                 return false;
         }
         return true;
