@@ -8,57 +8,57 @@
 
 namespace Engine
 {
-    /**
-     * @brief Materialが参照するTexture AssetのGUID。Path Hintは実行時に絶対パス、保存時に参照元Asset基準の相対パス。
-     */
-    struct MaterialTextureReferences
-    {
-        AssetGUID baseColor;                         //!< BaseColor TextureのGUID
-        AssetGUID normal;                            //!< Normal TextureのGUID
-        AssetGUID metallicRoughness;                 //!< MetallicRoughness TextureのGUID
-        AssetGUID ambientOcclusion;                  //!< AmbientOcclusion TextureのGUID
-        AssetGUID emissive;                          //!< Emissive TextureのGUID
-        std::filesystem::path baseColorPath;         //!< GUID解決用のAsset Path Hint
-        std::filesystem::path normalPath;            //!< GUID解決用のAsset Path Hint
-        std::filesystem::path metallicRoughnessPath; //!< GUID解決用のAsset Path Hint
-        std::filesystem::path ambientOcclusionPath;  //!< GUID解決用のAsset Path Hint
-        std::filesystem::path emissivePath;          //!< GUID解決用のAsset Path Hint
-    };
+	/**
+	 * @brief Materialが参照するTexture AssetのGUID。Path Hintは実行時に絶対パス、保存時に参照元Asset基準の相対パス。
+	 */
+	struct MaterialTextureReferences
+	{
+		AssetGUID baseColor;                         //!< BaseColor TextureのGUID
+		AssetGUID normal;                            //!< Normal TextureのGUID
+		AssetGUID metallicRoughness;                 //!< MetallicRoughness TextureのGUID
+		AssetGUID ambientOcclusion;                  //!< AmbientOcclusion TextureのGUID
+		AssetGUID emissive;                          //!< Emissive TextureのGUID
+		std::filesystem::path baseColorPath;         //!< GUID解決用のAsset Path Hint
+		std::filesystem::path normalPath;            //!< GUID解決用のAsset Path Hint
+		std::filesystem::path metallicRoughnessPath; //!< GUID解決用のAsset Path Hint
+		std::filesystem::path ambientOcclusionPath;  //!< GUID解決用のAsset Path Hint
+		std::filesystem::path emissivePath;          //!< GUID解決用のAsset Path Hint
+	};
 
-    /**
-     * @brief 型安全なMaterial描画状態。
-     */
-    struct MaterialRenderState
-    {
-        MaterialSurfaceType surfaceType = MaterialSurfaceType::Opaque; //!< Materialの描画分類
-        MaterialCullMode cullMode = MaterialCullMode::Back;            //!< カリングモード
-        MaterialDepthTest depthTest = MaterialDepthTest::LessEqual;    //!< 深度テストモード
-        MaterialBlendMode blendMode = MaterialBlendMode::Opaque;       //!< ブレンドモード
-        bool depthWrite = true;                                        //!< 深度書き込みの有無
-        std::int32_t renderQueueOffset = 0;                            //!< レンダーキューのオフセット
-    };
+	/**
+	 * @brief 型安全なMaterial描画状態。
+	 */
+	struct MaterialRenderState
+	{
+		MaterialSurfaceType surfaceType = MaterialSurfaceType::Opaque; //!< Materialの描画分類
+		MaterialCullMode cullMode = MaterialCullMode::Back;            //!< カリングモード
+		MaterialDepthTest depthTest = MaterialDepthTest::LessEqual;    //!< 深度テストモード
+		MaterialBlendMode blendMode = MaterialBlendMode::Opaque;       //!< ブレンドモード
+		bool depthWrite = true;                                        //!< 深度書き込みの有無
+		std::int32_t renderQueueOffset = 0;                            //!< レンダーキューのオフセット
+	};
 
-    /**
-     * @brief Standard PBR Material Asset with optional opaque terrain layers.
-     * @details GPU API型を保持せず、MaterialManagerから不変Snapshotとして公開する。
-     */
-    struct MaterialAsset
-    {
-        AssetGUID guid;                                      //!< Material AssetのGUID
-        std::string name;                                    //!< Material Assetの名前
-        AssetGUID shaderGuid;                                //!< 使用するShaderのGUID
-        MaterialRenderState renderState;                     //!< Materialの描画状態
-        Vector4 baseColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f); //!< 基本色
-        float metallic = 0.0f;                               //!< 金属度
-        float roughness = 1.0f;                              //!< 粗さ
-        float specular = 0.5f;                               //!< 非金属の鏡面反射強度
-        Vector3 emissiveColor = Vector3::Zero;               //!< エミッシブカラー
-        float emissiveIntensity = 0.0f;                      //!< エミッシブ強度
-        float normalScale = 1.0f;                            //!< 法線マップのスケール
-        float occlusionStrength = 1.0f;                      //!< アンビエントオクルージョンの強度
-        float alphaCutoff = 0.5f;                            //!< アルファカットオフ値
-        MaterialTextureReferences textures;                  //!< 使用するテクスチャ参照
-        MaterialKeywordMask shaderKeywords = 0;              //!< シェーダーキーワードマスク
-        std::optional<TerrainMaterialSettings> terrain;       //!< Opaque terrain layers; vertex colors carry blend weights.
-    };
+	/**
+	 * @brief Standard PBR Material Asset with optional opaque terrain layers.
+	 * @details GPU API型を保持せず、MaterialManagerから不変Snapshotとして公開する。
+	 */
+	struct MaterialAsset
+	{
+		AssetGUID guid;                                      //!< Material AssetのGUID
+		std::string name;                                    //!< Material Assetの名前
+		AssetGUID shaderGuid;                                //!< 使用するShaderのGUID
+		MaterialRenderState renderState;                     //!< Materialの描画状態
+		Vector4 baseColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f); //!< 基本色
+		float metallic = 0.0f;                               //!< 金属度
+		float roughness = 1.0f;                              //!< 粗さ
+		float specular = 0.5f;                               //!< 非金属の鏡面反射強度
+		Vector3 emissiveColor = Vector3::Zero;               //!< エミッシブカラー
+		float emissiveIntensity = 0.0f;                      //!< エミッシブ強度
+		float normalScale = 1.0f;                            //!< 法線マップのスケール
+		float occlusionStrength = 1.0f;                      //!< アンビエントオクルージョンの強度
+		float alphaCutoff = 0.5f;                            //!< アルファカットオフ値
+		MaterialTextureReferences textures;                  //!< 使用するテクスチャ参照
+		MaterialKeywordMask shaderKeywords = 0;              //!< シェーダーキーワードマスク
+		std::optional<TerrainMaterialSettings> terrain;       //!< Opaque terrain layers; vertex colors carry blend weights.
+	};
 } // namespace Engine

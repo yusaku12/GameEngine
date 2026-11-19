@@ -6,98 +6,98 @@
 
 namespace Engine
 {
-    class DX12Device;
-    class DX12Fence;
+	class DX12Device;
+	class DX12Fence;
 
-    /**
-     * @brief 1 Mesh分のGPU BufferとView。
-     */
-    struct ModelGpuMesh
-    {
-        DX12UploadBuffer vertexBuffer;               //!< 頂点Buffer
-        DX12UploadBuffer indexBuffer;                //!< インデックスBuffer
-        D3D12_VERTEX_BUFFER_VIEW vertexBufferView{}; //!< 頂点Buffer View
-        D3D12_INDEX_BUFFER_VIEW indexBufferView{};   //!< インデックスBuffer View
-        Matrix nodeTransform = Matrix::Identity;     //!< Model RootからMesh Nodeまでの累積変換
-        SkinningBounds skinningBounds;              //!< 不変頂点から構築したボーン影響範囲
-        bool hasSkinWeights = false;                 //!< 0以外のBone Weightを含むか
-    };
+	/**
+	 * @brief 1 Mesh分のGPU BufferとView。
+	 */
+	struct ModelGpuMesh
+	{
+		DX12UploadBuffer vertexBuffer;               //!< 頂点Buffer
+		DX12UploadBuffer indexBuffer;                //!< インデックスBuffer
+		D3D12_VERTEX_BUFFER_VIEW vertexBufferView{}; //!< 頂点Buffer View
+		D3D12_INDEX_BUFFER_VIEW indexBufferView{};   //!< インデックスBuffer View
+		Matrix nodeTransform = Matrix::Identity;     //!< Model RootからMesh Nodeまでの累積変換
+		SkinningBounds skinningBounds;              //!< 不変頂点から構築したボーン影響範囲
+		bool hasSkinWeights = false;                 //!< 0以外のBone Weightを含むか
+	};
 
-    /**
-     * @brief ModelResourceに対応するGPU描画Resource。
-     */
-    struct ModelGpuResource
-    {
-        ModelHandle handle;                                //!< Cache内でのModel Handle
-        std::shared_ptr<const ModelResource> source;       //!< 元のModelResourceへの参照
-        std::vector<std::unique_ptr<ModelGpuMesh>> meshes; //!< Mesh単位のGPU描画Resource
-        DX12UploadBuffer bonePaletteBuffer;                //!< Bind Pose用Bone行列Buffer
-        std::uint64_t lastUsedFenceValue = 0;              //!< 最終描画提出Fence値
-    };
+	/**
+	 * @brief ModelResourceに対応するGPU描画Resource。
+	 */
+	struct ModelGpuResource
+	{
+		ModelHandle handle;                                //!< Cache内でのModel Handle
+		std::shared_ptr<const ModelResource> source;       //!< 元のModelResourceへの参照
+		std::vector<std::unique_ptr<ModelGpuMesh>> meshes; //!< Mesh単位のGPU描画Resource
+		DX12UploadBuffer bonePaletteBuffer;                //!< Bind Pose用Bone行列Buffer
+		std::uint64_t lastUsedFenceValue = 0;              //!< 最終描画提出Fence値
+	};
 
-    /**
-     * @brief ModelHandle単位でGPU Meshを遅延作成し再利用するCache。
-     * @thread_safety Not thread-safe. Render thread only.
-     */
-    class ModelGpuCache
-    {
-    public:
+	/**
+	 * @brief ModelHandle単位でGPU Meshを遅延作成し再利用するCache。
+	 * @thread_safety Not thread-safe. Render thread only.
+	 */
+	class ModelGpuCache
+	{
+	public:
 
-        ModelGpuCache() = default;
-        ~ModelGpuCache();
+		ModelGpuCache() = default;
+		~ModelGpuCache();
 
-        GE_DISABLE_COPY_AND_MOVE(ModelGpuCache);
+		GE_DISABLE_COPY_AND_MOVE(ModelGpuCache);
 
-        /**
-         * @brief Cacheを初期化する。
-         * @param device DX12Deviceへの参照
-         * @param fence DX12Fenceへの参照
-         */
-        bool initialize(DX12Device& device, DX12Fence& fence) noexcept;
+		/**
+		 * @brief Cacheを初期化する。
+		 * @param device DX12Deviceへの参照
+		 * @param fence DX12Fenceへの参照
+		 */
+		bool initialize(DX12Device& device, DX12Fence& fence) noexcept;
 
-        /**
-         * @brief GPU完了を待ってCacheを解放する。
-         */
-        bool finalize();
+		/**
+		 * @brief GPU完了を待ってCacheを解放する。
+		 */
+		bool finalize();
 
-        /**
-         * @brief Handleに対応するGPU Resourceを取得し、未作成ならUploadする。
-         * @param handle ModelHandle
-         * @param snapshot Optional immutable procedural geometry, retained even after the handle is unloaded.
-         */
-        ModelGpuResource* getOrCreate(ModelHandle handle, std::shared_ptr<const ModelResource> snapshot = {});
+		/**
+		 * @brief Handleに対応するGPU Resourceを取得し、未作成ならUploadする。
+		 * @param handle ModelHandle
+		 * @param snapshot Optional immutable procedural geometry, retained even after the handle is unloaded.
+		 */
+		ModelGpuResource* getOrCreate(ModelHandle handle, std::shared_ptr<const ModelResource> snapshot = {});
 
-        /**
-         * @brief 指定モデルのBufferへ最終使用Fence値を記録する。
-         * @param handle ModelHandle
-         * @param fenceValue Fence値
-         * @return 成功した場合はtrue、それ以外はfalse
-         */
-        bool markUsed(ModelHandle handle, std::uint64_t fenceValue);
+		/**
+		 * @brief 指定モデルのBufferへ最終使用Fence値を記録する。
+		 * @param handle ModelHandle
+		 * @param fenceValue Fence値
+		 * @return 成功した場合はtrue、それ以外はfalse
+		 */
+		bool markUsed(ModelHandle handle, std::uint64_t fenceValue);
 
-        /**
-         * @brief アンロード済みModelのGPU ResourceをFence完了後に破棄する。
-         */
-        void collectGarbage();
+		/**
+		 * @brief アンロード済みModelのGPU ResourceをFence完了後に破棄する。
+		 */
+		void collectGarbage();
 
-    private:
+	private:
 
-        /**
-         * @brief ModelHandleからユニークなキーを作成する。
-         * @param handle ModelHandle
-         * @return ユニークなキー
-         */
-        static std::uint64_t makeKey(ModelHandle handle) noexcept;
+		/**
+		 * @brief ModelHandleからユニークなキーを作成する。
+		 * @param handle ModelHandle
+		 * @return ユニークなキー
+		 */
+		static std::uint64_t makeKey(ModelHandle handle) noexcept;
 
-        /**
-         * @brief ModelHandleに対応するGPU Resourceを作成する。
-         * @param handle ModelHandle
-         * @return 作成したGPU Resourceへのunique_ptr
-         */
-        std::unique_ptr<ModelGpuResource> createResource(ModelHandle handle, std::shared_ptr<const ModelResource> source);
+		/**
+		 * @brief ModelHandleに対応するGPU Resourceを作成する。
+		 * @param handle ModelHandle
+		 * @return 作成したGPU Resourceへのunique_ptr
+		 */
+		std::unique_ptr<ModelGpuResource> createResource(ModelHandle handle, std::shared_ptr<const ModelResource> source);
 
-        DX12Device* m_device = nullptr;                                                   //!< DX12Deviceへの非所有参照
-        DX12Fence* m_fence = nullptr;                                                     //!< DX12Fenceへの非所有参照
-        std::unordered_map<std::uint64_t, std::unique_ptr<ModelGpuResource>> m_resources; //!< ModelHandleに対応するGPU ResourceのMap
-    };
+		DX12Device* m_device = nullptr;                                                   //!< DX12Deviceへの非所有参照
+		DX12Fence* m_fence = nullptr;                                                     //!< DX12Fenceへの非所有参照
+		std::unordered_map<std::uint64_t, std::unique_ptr<ModelGpuResource>> m_resources; //!< ModelHandleに対応するGPU ResourceのMap
+	};
 } // namespace Engine

@@ -14,211 +14,211 @@
 
 namespace Engine::Serialization
 {
-    namespace
-    {
-        AssetGuid toFlat(const AssetGUID& value) { return AssetGuid(value.high, value.low); }
-        Vec3 toFlat(const Vector3& value) { return Vec3(value.x, value.y, value.z); }
-        Vec4 toFlat(const Vector4& value) { return Vec4(value.x, value.y, value.z, value.w); }
+	namespace
+	{
+		AssetGuid toFlat(const AssetGUID& value) { return AssetGuid(value.high, value.low); }
+		Vec3 toFlat(const Vector3& value) { return Vec3(value.x, value.y, value.z); }
+		Vec4 toFlat(const Vector4& value) { return Vec4(value.x, value.y, value.z, value.w); }
 
-        AssetGUID toEngine(const AssetGuid* value)
-        {
-            return value ? AssetGUID{ value->high(), value->low() } : AssetGUID{};
-        }
+		AssetGUID toEngine(const AssetGuid* value)
+		{
+			return value ? AssetGUID{ value->high(), value->low() } : AssetGUID{};
+		}
 
-        bool isFinite(const Vector3& value) noexcept
-        {
-            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
-        }
+		bool isFinite(const Vector3& value) noexcept
+		{
+			return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+		}
 
-        bool isFinite(const Vector4& value) noexcept
-        {
-            return std::isfinite(value.x) && std::isfinite(value.y)
-                && std::isfinite(value.z) && std::isfinite(value.w);
-        }
+		bool isFinite(const Vector4& value) noexcept
+		{
+			return std::isfinite(value.x) && std::isfinite(value.y)
+				&& std::isfinite(value.z) && std::isfinite(value.w);
+		}
 
-        bool readRenderState(const Engine::Serialization::MaterialRenderState* source, Engine::MaterialRenderState& state)
-        {
-            if (source == nullptr ||
-                source->surface_type() > MaterialSurfaceType_Transparent ||
-                source->cull_mode() > MaterialCullMode_Back ||
-                source->depth_test() > MaterialDepthTest_Always ||
-                source->blend_mode() > MaterialBlendMode_Additive)
-                return false;
+		bool readRenderState(const Engine::Serialization::MaterialRenderState* source, Engine::MaterialRenderState& state)
+		{
+			if (source == nullptr ||
+				source->surface_type() > MaterialSurfaceType_Transparent ||
+				source->cull_mode() > MaterialCullMode_Back ||
+				source->depth_test() > MaterialDepthTest_Always ||
+				source->blend_mode() > MaterialBlendMode_Additive)
+				return false;
 
-            state.surfaceType = static_cast<Engine::MaterialSurfaceType>(source->surface_type());
-            state.cullMode = static_cast<Engine::MaterialCullMode>(source->cull_mode());
-            state.depthTest = static_cast<Engine::MaterialDepthTest>(source->depth_test());
-            state.blendMode = static_cast<Engine::MaterialBlendMode>(source->blend_mode());
-            state.depthWrite = source->depth_write();
-            state.renderQueueOffset = source->render_queue_offset();
-            return true;
-        }
-    }
+			state.surfaceType = static_cast<Engine::MaterialSurfaceType>(source->surface_type());
+			state.cullMode = static_cast<Engine::MaterialCullMode>(source->cull_mode());
+			state.depthTest = static_cast<Engine::MaterialDepthTest>(source->depth_test());
+			state.blendMode = static_cast<Engine::MaterialBlendMode>(source->blend_mode());
+			state.depthWrite = source->depth_write();
+			state.renderQueueOffset = source->render_queue_offset();
+			return true;
+		}
+	}
 
-    bool MaterialSerializer::save(const std::filesystem::path& path, const MaterialAsset& material) const
-    {
-        if (!material.guid.isValid()) {
-            LOG_ERROR("Cannot save Material Asset with an invalid GUID: {}", path.string());
-            return false;
-        }
+	bool MaterialSerializer::save(const std::filesystem::path& path, const MaterialAsset& material) const
+	{
+		if (!material.guid.isValid()) {
+			LOG_ERROR("Cannot save Material Asset with an invalid GUID: {}", path.string());
+			return false;
+		}
 
-        Engine::MaterialTextureReferences relativeTextures = material.textures;
-        if (!relativizeTextureReferences(relativeTextures, {}, path))
-            return false;
+		Engine::MaterialTextureReferences relativeTextures = material.textures;
+		if (!relativizeTextureReferences(relativeTextures, {}, path))
+			return false;
 
-        flatbuffers::FlatBufferBuilder builder(512);
-        flatbuffers::Offset<TerrainMaterialData> terrain;
-        if (material.terrain)
-        {
-            auto resolved = *material.terrain;
-            if (material.renderState.surfaceType != Engine::MaterialSurfaceType::Opaque
-                || !resolveTerrainMaterialTextures(resolved) || !writeTerrainMaterial(builder, resolved, terrain, path))
-            {
-                LOG_ERROR("[MaterialSerializer] Invalid terrain material.");
-                return false;
-            }
-        }
-        const AssetGuid guid = toFlat(material.guid);
-        const AssetGuid shaderGuid = toFlat(material.shaderGuid);
-        const AssetGuid baseColorTexture = toFlat(material.textures.baseColor);
-        const AssetGuid normalTexture = toFlat(material.textures.normal);
-        const AssetGuid metallicRoughnessTexture = toFlat(material.textures.metallicRoughness);
-        const AssetGuid ambientOcclusionTexture = toFlat(material.textures.ambientOcclusion);
-        const AssetGuid emissiveTexture = toFlat(material.textures.emissive);
-        const Vec4 baseColor = toFlat(material.baseColor);
-        const Vec3 emissiveColor = toFlat(material.emissiveColor);
+		flatbuffers::FlatBufferBuilder builder(512);
+		flatbuffers::Offset<TerrainMaterialData> terrain;
+		if (material.terrain)
+		{
+			auto resolved = *material.terrain;
+			if (material.renderState.surfaceType != Engine::MaterialSurfaceType::Opaque
+				|| !resolveTerrainMaterialTextures(resolved) || !writeTerrainMaterial(builder, resolved, terrain, path))
+			{
+				LOG_ERROR("[MaterialSerializer] Invalid terrain material.");
+				return false;
+			}
+		}
+		const AssetGuid guid = toFlat(material.guid);
+		const AssetGuid shaderGuid = toFlat(material.shaderGuid);
+		const AssetGuid baseColorTexture = toFlat(material.textures.baseColor);
+		const AssetGuid normalTexture = toFlat(material.textures.normal);
+		const AssetGuid metallicRoughnessTexture = toFlat(material.textures.metallicRoughness);
+		const AssetGuid ambientOcclusionTexture = toFlat(material.textures.ambientOcclusion);
+		const AssetGuid emissiveTexture = toFlat(material.textures.emissive);
+		const Vec4 baseColor = toFlat(material.baseColor);
+		const Vec3 emissiveColor = toFlat(material.emissiveColor);
 
-        const auto renderState = CreateMaterialRenderState(builder,
-            static_cast<Engine::Serialization::MaterialSurfaceType>(material.renderState.surfaceType),
-            static_cast<Engine::Serialization::MaterialCullMode>(material.renderState.cullMode),
-            static_cast<Engine::Serialization::MaterialDepthTest>(material.renderState.depthTest),
-            static_cast<Engine::Serialization::MaterialBlendMode>(material.renderState.blendMode),
-            material.renderState.depthWrite, material.renderState.renderQueueOffset);
-        const auto textures = CreateMaterialTextureReferences(builder, &baseColorTexture, &normalTexture,
-            &metallicRoughnessTexture, &ambientOcclusionTexture, &emissiveTexture,
-            builder.CreateString(relativeTextures.baseColorPath.generic_string()),
-            builder.CreateString(relativeTextures.normalPath.generic_string()),
-            builder.CreateString(relativeTextures.metallicRoughnessPath.generic_string()),
-            builder.CreateString(relativeTextures.ambientOcclusionPath.generic_string()),
-            builder.CreateString(relativeTextures.emissivePath.generic_string()));
+		const auto renderState = CreateMaterialRenderState(builder,
+			static_cast<Engine::Serialization::MaterialSurfaceType>(material.renderState.surfaceType),
+			static_cast<Engine::Serialization::MaterialCullMode>(material.renderState.cullMode),
+			static_cast<Engine::Serialization::MaterialDepthTest>(material.renderState.depthTest),
+			static_cast<Engine::Serialization::MaterialBlendMode>(material.renderState.blendMode),
+			material.renderState.depthWrite, material.renderState.renderQueueOffset);
+		const auto textures = CreateMaterialTextureReferences(builder, &baseColorTexture, &normalTexture,
+			&metallicRoughnessTexture, &ambientOcclusionTexture, &emissiveTexture,
+			builder.CreateString(relativeTextures.baseColorPath.generic_string()),
+			builder.CreateString(relativeTextures.normalPath.generic_string()),
+			builder.CreateString(relativeTextures.metallicRoughnessPath.generic_string()),
+			builder.CreateString(relativeTextures.ambientOcclusionPath.generic_string()),
+			builder.CreateString(relativeTextures.emissivePath.generic_string()));
 
-        const auto data = CreateMaterialAssetData(builder, &guid, builder.CreateString(material.name), &shaderGuid,
-            renderState, &baseColor, material.metallic, material.roughness, &emissiveColor,
-            material.emissiveIntensity, material.normalScale, material.occlusionStrength, material.alphaCutoff,
-            textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS, terrain, material.specular);
-        const auto header = CreateFileHeader(builder, CURRENT_SCHEMA_VERSION, CURRENT_MATERIAL_VERSION, 0);
-        FinishMaterialFileBuffer(builder, CreateMaterialFile(builder, header, data));
-        return FlatBufferWriter{}.saveAtomic(path,
-            std::span<const std::uint8_t>(builder.GetBufferPointer(), builder.GetSize()));
-    }
+		const auto data = CreateMaterialAssetData(builder, &guid, builder.CreateString(material.name), &shaderGuid,
+			renderState, &baseColor, material.metallic, material.roughness, &emissiveColor,
+			material.emissiveIntensity, material.normalScale, material.occlusionStrength, material.alphaCutoff,
+			textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS, terrain, material.specular);
+		const auto header = CreateFileHeader(builder, CURRENT_SCHEMA_VERSION, CURRENT_MATERIAL_VERSION, 0);
+		FinishMaterialFileBuffer(builder, CreateMaterialFile(builder, header, data));
+		return FlatBufferWriter{}.saveAtomic(path,
+			std::span<const std::uint8_t>(builder.GetBufferPointer(), builder.GetSize()));
+	}
 
-    bool MaterialSerializer::load(const std::filesystem::path& path, MaterialAsset& material) const
-    {
-        FlatBufferReader reader;
-        if (!reader.open(path))
-            return false;
-        if (!reader.hasIdentifier("MATL")) {
-            LOG_ERROR("FlatBuffers material has an invalid file identifier: {}", path.string());
-            return false;
-        }
+	bool MaterialSerializer::load(const std::filesystem::path& path, MaterialAsset& material) const
+	{
+		FlatBufferReader reader;
+		if (!reader.open(path))
+			return false;
+		if (!reader.hasIdentifier("MATL")) {
+			LOG_ERROR("FlatBuffers material has an invalid file identifier: {}", path.string());
+			return false;
+		}
 
-        flatbuffers::Verifier verifier(reader.data(), reader.size());
-        if (!VerifyMaterialFileBuffer(verifier)) {
-            LOG_ERROR("FlatBuffers material verification failed: {}", path.string());
-            return false;
-        }
+		flatbuffers::Verifier verifier(reader.data(), reader.size());
+		if (!VerifyMaterialFileBuffer(verifier)) {
+			LOG_ERROR("FlatBuffers material verification failed: {}", path.string());
+			return false;
+		}
 
-        const MaterialFile* file = GetMaterialFile(reader.data());
-        const MaterialAssetData* source = file ? file->material() : nullptr;
-        if (file == nullptr || file->header() == nullptr || source == nullptr || source->guid() == nullptr ||
-            source->name() == nullptr || source->render_state() == nullptr || source->base_color() == nullptr ||
-            source->emissive_color() == nullptr || source->textures() == nullptr ||
-            file->header()->schema_version() != CURRENT_SCHEMA_VERSION ||
-            file->header()->asset_version() < MINIMUM_SUPPORTED_MATERIAL_VERSION ||
-            file->header()->asset_version() > CURRENT_MATERIAL_VERSION) {
-            LOG_ERROR("Unsupported or invalid material version: {}", path.string());
-            return false;
-        }
+		const MaterialFile* file = GetMaterialFile(reader.data());
+		const MaterialAssetData* source = file ? file->material() : nullptr;
+		if (file == nullptr || file->header() == nullptr || source == nullptr || source->guid() == nullptr ||
+			source->name() == nullptr || source->render_state() == nullptr || source->base_color() == nullptr ||
+			source->emissive_color() == nullptr || source->textures() == nullptr ||
+			file->header()->schema_version() != CURRENT_SCHEMA_VERSION ||
+			file->header()->asset_version() < MINIMUM_SUPPORTED_MATERIAL_VERSION ||
+			file->header()->asset_version() > CURRENT_MATERIAL_VERSION) {
+			LOG_ERROR("Unsupported or invalid material version: {}", path.string());
+			return false;
+		}
 
-        MaterialAsset loaded;
-        loaded.guid = toEngine(source->guid());
-        if (!loaded.guid.isValid() || !readRenderState(source->render_state(), loaded.renderState)) {
-            LOG_ERROR("Material contains an invalid GUID or render state: {}", path.string());
-            return false;
-        }
+		MaterialAsset loaded;
+		loaded.guid = toEngine(source->guid());
+		if (!loaded.guid.isValid() || !readRenderState(source->render_state(), loaded.renderState)) {
+			LOG_ERROR("Material contains an invalid GUID or render state: {}", path.string());
+			return false;
+		}
 
-        const Vector4 baseColor(source->base_color()->x(), source->base_color()->y(),
-            source->base_color()->z(), source->base_color()->w());
-        const Vector3 emissiveColor(source->emissive_color()->x(), source->emissive_color()->y(),
-            source->emissive_color()->z());
-        if (!isFinite(baseColor) || !isFinite(emissiveColor)
-            || !std::isfinite(source->metallic()) || !std::isfinite(source->roughness())
-            || !std::isfinite(source->specular())
-            || !std::isfinite(source->emissive_intensity()) || !std::isfinite(source->normal_scale())
-            || !std::isfinite(source->occlusion_strength()) || !std::isfinite(source->alpha_cutoff()))
-        {
-            LOG_ERROR("Material contains non-finite parameter values: {}", path.string());
-            return false;
-        }
+		const Vector4 baseColor(source->base_color()->x(), source->base_color()->y(),
+			source->base_color()->z(), source->base_color()->w());
+		const Vector3 emissiveColor(source->emissive_color()->x(), source->emissive_color()->y(),
+			source->emissive_color()->z());
+		if (!isFinite(baseColor) || !isFinite(emissiveColor)
+			|| !std::isfinite(source->metallic()) || !std::isfinite(source->roughness())
+			|| !std::isfinite(source->specular())
+			|| !std::isfinite(source->emissive_intensity()) || !std::isfinite(source->normal_scale())
+			|| !std::isfinite(source->occlusion_strength()) || !std::isfinite(source->alpha_cutoff()))
+		{
+			LOG_ERROR("Material contains non-finite parameter values: {}", path.string());
+			return false;
+		}
 
-        loaded.name = source->name()->str();
-        loaded.shaderGuid = toEngine(source->shader_guid());
-        loaded.baseColor = baseColor;
-        loaded.metallic = source->metallic();
-        loaded.roughness = source->roughness();
-        loaded.specular = source->specular();
-        loaded.emissiveColor = emissiveColor;
-        loaded.emissiveIntensity = source->emissive_intensity();
-        loaded.normalScale = source->normal_scale();
-        loaded.occlusionStrength = source->occlusion_strength();
-        loaded.alphaCutoff = source->alpha_cutoff();
+		loaded.name = source->name()->str();
+		loaded.shaderGuid = toEngine(source->shader_guid());
+		loaded.baseColor = baseColor;
+		loaded.metallic = source->metallic();
+		loaded.roughness = source->roughness();
+		loaded.specular = source->specular();
+		loaded.emissiveColor = emissiveColor;
+		loaded.emissiveIntensity = source->emissive_intensity();
+		loaded.normalScale = source->normal_scale();
+		loaded.occlusionStrength = source->occlusion_strength();
+		loaded.alphaCutoff = source->alpha_cutoff();
 
-        const auto* textures = source->textures();
-        loaded.textures.baseColor = toEngine(textures->base_color());
-        loaded.textures.normal = toEngine(textures->normal());
-        loaded.textures.metallicRoughness = toEngine(textures->metallic_roughness());
-        loaded.textures.ambientOcclusion = toEngine(textures->ambient_occlusion());
-        loaded.textures.emissive = toEngine(textures->emissive());
-        loaded.textures.baseColorPath = textures->base_color_path() ? textures->base_color_path()->str() : "";
-        loaded.textures.normalPath = textures->normal_path() ? textures->normal_path()->str() : "";
-        loaded.textures.metallicRoughnessPath = textures->metallic_roughness_path() ? textures->metallic_roughness_path()->str() : "";
-        loaded.textures.ambientOcclusionPath = textures->ambient_occlusion_path() ? textures->ambient_occlusion_path()->str() : "";
-        loaded.textures.emissivePath = textures->emissive_path() ? textures->emissive_path()->str() : "";
-        if (const auto* keywords = source->shader_keywords(); keywords != nullptr && !keywords->empty())
-        {
-            for (const flatbuffers::String* keyword : *keywords)
-            {
-                if (keyword == nullptr)
-                    return false;
-                if (keyword->string_view() == "USE_NORMAL_MAP") loaded.shaderKeywords |= toMask(MaterialKeyword::UseNormalMap);
-                else if (keyword->string_view() == "USE_EMISSIVE_MAP") loaded.shaderKeywords |= toMask(MaterialKeyword::UseEmissiveMap);
-                else if (keyword->string_view() == "USE_SKINNING") loaded.shaderKeywords |= toMask(MaterialKeyword::UseSkinning);
-                else if (keyword->string_view() == "USE_ALPHA_TEST") loaded.shaderKeywords |= toMask(MaterialKeyword::UseAlphaTest);
-                else LOG_WARNING("Ignoring unsupported Material shader keyword '{}': {}", keyword->str(), path.string());
-            }
-        }
-        else
-        {
-            if ((source->keyword_mask() & ~VALID_MATERIAL_KEYWORDS) != 0)
-                LOG_WARNING("Material contains unsupported shader keyword bits: {}", path.string());
-            loaded.shaderKeywords = source->keyword_mask() & VALID_MATERIAL_KEYWORDS;
-        }
+		const auto* textures = source->textures();
+		loaded.textures.baseColor = toEngine(textures->base_color());
+		loaded.textures.normal = toEngine(textures->normal());
+		loaded.textures.metallicRoughness = toEngine(textures->metallic_roughness());
+		loaded.textures.ambientOcclusion = toEngine(textures->ambient_occlusion());
+		loaded.textures.emissive = toEngine(textures->emissive());
+		loaded.textures.baseColorPath = textures->base_color_path() ? textures->base_color_path()->str() : "";
+		loaded.textures.normalPath = textures->normal_path() ? textures->normal_path()->str() : "";
+		loaded.textures.metallicRoughnessPath = textures->metallic_roughness_path() ? textures->metallic_roughness_path()->str() : "";
+		loaded.textures.ambientOcclusionPath = textures->ambient_occlusion_path() ? textures->ambient_occlusion_path()->str() : "";
+		loaded.textures.emissivePath = textures->emissive_path() ? textures->emissive_path()->str() : "";
+		if (const auto* keywords = source->shader_keywords(); keywords != nullptr && !keywords->empty())
+		{
+			for (const flatbuffers::String* keyword : *keywords)
+			{
+				if (keyword == nullptr)
+					return false;
+				if (keyword->string_view() == "USE_NORMAL_MAP") loaded.shaderKeywords |= toMask(MaterialKeyword::UseNormalMap);
+				else if (keyword->string_view() == "USE_EMISSIVE_MAP") loaded.shaderKeywords |= toMask(MaterialKeyword::UseEmissiveMap);
+				else if (keyword->string_view() == "USE_SKINNING") loaded.shaderKeywords |= toMask(MaterialKeyword::UseSkinning);
+				else if (keyword->string_view() == "USE_ALPHA_TEST") loaded.shaderKeywords |= toMask(MaterialKeyword::UseAlphaTest);
+				else LOG_WARNING("Ignoring unsupported Material shader keyword '{}': {}", keyword->str(), path.string());
+			}
+		}
+		else
+		{
+			if ((source->keyword_mask() & ~VALID_MATERIAL_KEYWORDS) != 0)
+				LOG_WARNING("Material contains unsupported shader keyword bits: {}", path.string());
+			loaded.shaderKeywords = source->keyword_mask() & VALID_MATERIAL_KEYWORDS;
+		}
 
-        // Version 1 material hints were working-directory-relative, not owner-relative.
-        const std::filesystem::path referenceOwner = file->header()->asset_version() >= 2 ? path : std::filesystem::path{};
-        if (!resolveTextureReferences(loaded.textures, referenceOwner))
-            return false;
-        if (source->terrain())
-        {
-            loaded.terrain.emplace();
-            if (loaded.renderState.surfaceType != Engine::MaterialSurfaceType::Opaque
-                || !readTerrainMaterial(source->terrain(), *loaded.terrain, path))
-            {
-                LOG_ERROR("[MaterialSerializer] Invalid serialized terrain material.");
-                return false;
-            }
-        }
-        material = std::move(loaded);
-        return true;
-    }
+		// Version 1 material hints were working-directory-relative, not owner-relative.
+		const std::filesystem::path referenceOwner = file->header()->asset_version() >= 2 ? path : std::filesystem::path{};
+		if (!resolveTextureReferences(loaded.textures, referenceOwner))
+			return false;
+		if (source->terrain())
+		{
+			loaded.terrain.emplace();
+			if (loaded.renderState.surfaceType != Engine::MaterialSurfaceType::Opaque
+				|| !readTerrainMaterial(source->terrain(), *loaded.terrain, path))
+			{
+				LOG_ERROR("[MaterialSerializer] Invalid serialized terrain material.");
+				return false;
+			}
+		}
+		material = std::move(loaded);
+		return true;
+	}
 } // namespace Engine::Serialization

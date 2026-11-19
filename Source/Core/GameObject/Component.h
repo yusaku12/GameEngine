@@ -10,237 +10,237 @@
 
 namespace Engine
 {
-    class GameObject;
-    using ObjectReferenceMap = std::unordered_map<ObjectGUID, GameObject*, ObjectGUIDHash>;
+	class GameObject;
+	using ObjectReferenceMap = std::unordered_map<ObjectGUID, GameObject*, ObjectGUIDHash>;
 
-    /**
-     * @brief GameObjectが所有する機能拡張の基底クラス。
-     * @thread_safety メインスレッドからのみ使用可能。
-     */
-    class Component
-    {
-    public:
+	/**
+	 * @brief GameObjectが所有する機能拡張の基底クラス。
+	 * @thread_safety メインスレッドからのみ使用可能。
+	 */
+	class Component
+	{
+	public:
 
-        virtual ~Component() = default;
+		virtual ~Component() = default;
 
-        /**
-         * @brief Componentが所属するGameObjectを取得する。
-         * @return GameObjectのポインタ。
-         */
-        GameObject* getGameObject() noexcept { return m_gameObject; }
-        const GameObject* getGameObject() const noexcept { return m_gameObject; }
+		/**
+		 * @brief Componentが所属するGameObjectを取得する。
+		 * @return GameObjectのポインタ。
+		 */
+		GameObject* getGameObject() noexcept { return m_gameObject; }
+		const GameObject* getGameObject() const noexcept { return m_gameObject; }
 
-        /**
-         * @brief Componentが所属するGameObjectのTransformを取得する。
-         * @return Transformのポインタ。
-         */
-        Transform* getTransform() noexcept;
-        const Transform* getTransform() const noexcept;
+		/**
+		 * @brief Componentが所属するGameObjectのTransformを取得する。
+		 * @return Transformのポインタ。
+		 */
+		Transform* getTransform() noexcept;
+		const Transform* getTransform() const noexcept;
 
-        /**
-         * @brief Componentが有効かどうかを取得する。
-         * @return 有効な場合はtrue、無効な場合はfalse。
-         */
-        bool isEnabled() const noexcept { return m_enabled; }
+		/**
+		 * @brief Componentが有効かどうかを取得する。
+		 * @return 有効な場合はtrue、無効な場合はfalse。
+		 */
+		bool isEnabled() const noexcept { return m_enabled; }
 
-        /**
-         * @brief Componentの有効状態を設定する。
-         * @param enabled 有効にする場合はtrue、無効にする場合はfalse。
-         */
-        void setEnabled(bool enabled) noexcept;
+		/**
+		 * @brief Componentの有効状態を設定する。
+		 * @param enabled 有効にする場合はtrue、無効にする場合はfalse。
+		 */
+		void setEnabled(bool enabled) noexcept;
 
-        /**
-         * @brief ComponentのInspector UIを描画する。
-         * @details EditorUiが選択中のGameObjectを描画するときに呼ばれる。
-         */
-        void drawImGui() { onImGui(); }
+		/**
+		 * @brief ComponentのInspector UIを描画する。
+		 * @details EditorUiが選択中のGameObjectを描画するときに呼ばれる。
+		 */
+		void drawImGui() { onImGui(); }
 
-        /** @brief Component固有payloadのversionを取得する。 */
-        virtual std::uint32_t getPayloadVersion() const noexcept { return 0; }
+		/** @brief Component固有payloadのversionを取得する。 */
+		virtual std::uint32_t getPayloadVersion() const noexcept { return 0; }
 
-        /**
-         * @brief Component固有payloadを保存する。空payloadを持つComponentは既定実装を使用できる。
-         * @param payload 保存先
-         * @return 保存に成功した場合はtrue
-         */
-        virtual bool serializePayload(std::vector<std::uint8_t>& payload) const
-        {
-            payload.clear();
-            return true;
-        }
+		/**
+		 * @brief Component固有payloadを保存する。空payloadを持つComponentは既定実装を使用できる。
+		 * @param payload 保存先
+		 * @return 保存に成功した場合はtrue
+		 */
+		virtual bool serializePayload(std::vector<std::uint8_t>& payload) const
+		{
+			payload.clear();
+			return true;
+		}
 
-        /**
-         * @brief Component固有payloadを復元する。
-         * @param version payload version
-         * @param payload payload bytes
-         * @return 復元に成功した場合はtrue
-         */
-        virtual bool deserializePayload(std::uint32_t version, std::span<const std::uint8_t> payload)
-        {
-            return version == 0 && payload.empty();
-        }
+		/**
+		 * @brief Component固有payloadを復元する。
+		 * @param version payload version
+		 * @param payload payload bytes
+		 * @return 復元に成功した場合はtrue
+		 */
+		virtual bool deserializePayload(std::uint32_t version, std::span<const std::uint8_t> payload)
+		{
+			return version == 0 && payload.empty();
+		}
 
-        /**
-         * @brief Copies configuration into a fresh component of the same registered type.
-         * @details Override for in-memory resources that cannot be serialized to disk.
-         * Runtime state and ownership must not be shared between components.
-         * @param destination Newly created component, before its lifecycle starts.
-         * @return True if all configuration was copied.
-         */
-        virtual bool copyConfigurationTo(Component& destination) const
-        {
-            std::vector<std::uint8_t> payload;
-            return serializePayload(payload)
-                && destination.deserializePayload(getPayloadVersion(), payload);
-        }
+		/**
+		 * @brief Copies configuration into a fresh component of the same registered type.
+		 * @details Override for in-memory resources that cannot be serialized to disk.
+		 * Runtime state and ownership must not be shared between components.
+		 * @param destination Newly created component, before its lifecycle starts.
+		 * @return True if all configuration was copied.
+		 */
+		virtual bool copyConfigurationTo(Component& destination) const
+		{
+			std::vector<std::uint8_t> payload;
+			return serializePayload(payload)
+				&& destination.deserializePayload(getPayloadVersion(), payload);
+		}
 
-        /** @brief シリアライズされたペイロードの復元後にコンポーネントのフックを呼び出す。 */
-        void notifyPayloadRestored() noexcept
-        {
-            if (m_lifecycleActive)
-                onPayloadRestored();
-        }
+		/** @brief シリアライズされたペイロードの復元後にコンポーネントのフックを呼び出す。 */
+		void notifyPayloadRestored() noexcept
+		{
+			if (m_lifecycleActive)
+				onPayloadRestored();
+		}
 
-        /**
-         * @brief シリアライズされた他のGameObjectへの参照を解決する。
-         * @param objects シリアライズ時の識別子をキーとするGameObjectのマップ。
-         */
-        virtual bool resolveObjectReferences(const ObjectReferenceMap& objects)
-        {
-            static_cast<void>(objects);
-            return true;
-        }
+		/**
+		 * @brief シリアライズされた他のGameObjectへの参照を解決する。
+		 * @param objects シリアライズ時の識別子をキーとするGameObjectのマップ。
+		 */
+		virtual bool resolveObjectReferences(const ObjectReferenceMap& objects)
+		{
+			static_cast<void>(objects);
+			return true;
+		}
 
-    protected:
+	protected:
 
-        friend class GameObject;
+		friend class GameObject;
 
-        /**
-         * @brief Componentが所属するGameObjectを設定する。
-         * @param gameObject 所属するGameObjectのポインタ。
-         */
-        void setGameObject(GameObject* gameObject) noexcept { m_gameObject = gameObject; }
+		/**
+		 * @brief Componentが所属するGameObjectを設定する。
+		 * @param gameObject 所属するGameObjectのポインタ。
+		 */
+		void setGameObject(GameObject* gameObject) noexcept { m_gameObject = gameObject; }
 
-        /**
-         * @brief Componentの有効状態を設定する。
-         * @param enabled 有効にする場合はtrue、無効にする場合はfalse。
-         */
-        virtual void onAwake() {}
+		/**
+		 * @brief Componentの有効状態を設定する。
+		 * @param enabled 有効にする場合はtrue、無効にする場合はfalse。
+		 */
+		virtual void onAwake() {}
 
-        /**
-         * @brief Componentが有効になったときに呼ばれる。
-         */
-        virtual void onEnable() {}
+		/**
+		 * @brief Componentが有効になったときに呼ばれる。
+		 */
+		virtual void onEnable() {}
 
-        /**
-         * @brief Componentが開始されたときに呼ばれる。
-         */
-        virtual void onStart() {}
+		/**
+		 * @brief Componentが開始されたときに呼ばれる。
+		 */
+		virtual void onStart() {}
 
-        /**
-         * @brief Componentが更新されるときに呼ばれる。
-         * @param deltaTime 前フレームからの経過時間（秒）。
-         */
-        virtual void onUpdate(float) {}
+		/**
+		 * @brief Componentが更新されるときに呼ばれる。
+		 * @param deltaTime 前フレームからの経過時間（秒）。
+		 */
+		virtual void onUpdate(float) {}
 
-        /**
-         * @brief Componentが固定時間間隔で更新されるときに呼ばれる。
-         * @param fixedDeltaTime 固定時間間隔（秒）。
-         */
-        virtual void onFixedUpdate(float) {}
+		/**
+		 * @brief Componentが固定時間間隔で更新されるときに呼ばれる。
+		 * @param fixedDeltaTime 固定時間間隔（秒）。
+		 */
+		virtual void onFixedUpdate(float) {}
 
-        /**
-         * @brief Componentが遅延更新されるときに呼ばれる。
-         * @param deltaTime 前フレームからの経過時間（秒）。
-         */
-        virtual void onLateUpdate(float) {}
+		/**
+		 * @brief Componentが遅延更新されるときに呼ばれる。
+		 * @param deltaTime 前フレームからの経過時間（秒）。
+		 */
+		virtual void onLateUpdate(float) {}
 
-        /**
-         * @brief Componentが無効になったときに呼ばれる。
-         */
-        virtual void onDisable() {}
+		/**
+		 * @brief Componentが無効になったときに呼ばれる。
+		 */
+		virtual void onDisable() {}
 
-        /**
-         * @brief Componentが破棄されるときに呼ばれる。
-         */
-        virtual void onDestroy() {}
+		/**
+		 * @brief Componentが破棄されるときに呼ばれる。
+		 */
+		virtual void onDestroy() {}
 
-        /**
-         * @brief ComponentのInspector UIを描画するときに呼ばれる。
-         */
-        virtual void onImGui() {}
+		/**
+		 * @brief ComponentのInspector UIを描画するときに呼ばれる。
+		 */
+		virtual void onImGui() {}
 
-        /** @brief シリアライズされた設定の復元後にネイティブの実行時状態を再生成する。 */
-        virtual void onPayloadRestored() {}
+		/** @brief シリアライズされた設定の復元後にネイティブの実行時状態を再生成する。 */
+		virtual void onPayloadRestored() {}
 
-        GameObject* m_gameObject = nullptr; //!< 所属するGameObjectのポインタ。nullptrの場合は所属していない。
-        bool m_enabled = true;              //!< Componentが有効かどうか。GameObjectが非アクティブの場合はfalse。
+		GameObject* m_gameObject = nullptr; //!< 所属するGameObjectのポインタ。nullptrの場合は所属していない。
+		bool m_enabled = true;              //!< Componentが有効かどうか。GameObjectが非アクティブの場合はfalse。
 
-    private:
+	private:
 
-        friend class GameObjectManager;
+		friend class GameObjectManager;
 
-        /**
-         * @brief ComponentのLifecycleを有効にするかどうかを設定する。
-         * @param enabled 有効にする場合はtrue、無効にする場合はfalse。
-         */
-        void setLifecycleEnabled(bool enabled) noexcept { m_lifecycleEnabled = enabled; }
+		/**
+		 * @brief ComponentのLifecycleを有効にするかどうかを設定する。
+		 * @param enabled 有効にする場合はtrue、無効にする場合はfalse。
+		 */
+		void setLifecycleEnabled(bool enabled) noexcept { m_lifecycleEnabled = enabled; }
 
-        /**
-         * @brief ComponentのAwake処理を呼び出す。
-         * @details GameObjectManagerが管理するGameObjectのAwake時に呼ばれる。
-         */
-        void invokeAwake() noexcept;
+		/**
+		 * @brief ComponentのAwake処理を呼び出す。
+		 * @details GameObjectManagerが管理するGameObjectのAwake時に呼ばれる。
+		 */
+		void invokeAwake() noexcept;
 
-        /**
-         * @brief Componentの有効化処理を呼び出す。
-         * @details GameObjectがアクティブになったときに呼ばれる。
-         */
-        void invokeEnable() noexcept;
+		/**
+		 * @brief Componentの有効化処理を呼び出す。
+		 * @details GameObjectがアクティブになったときに呼ばれる。
+		 */
+		void invokeEnable() noexcept;
 
-        /**
-         * @brief Componentの開始処理を呼び出す。
-         * @details GameObjectManagerが管理するGameObjectの開始時に呼ばれる。
-         */
-        void invokeStart() noexcept;
+		/**
+		 * @brief Componentの開始処理を呼び出す。
+		 * @details GameObjectManagerが管理するGameObjectの開始時に呼ばれる。
+		 */
+		void invokeStart() noexcept;
 
-        /**
-         * @brief Componentの更新処理を呼び出す。
-         * @details GameObjectManagerが管理するGameObjectの更新時に呼ばれる。
-         * @param deltaTime 前フレームからの経過時間（秒）。
-         */
-        void invokeUpdate(float deltaTime) noexcept;
+		/**
+		 * @brief Componentの更新処理を呼び出す。
+		 * @details GameObjectManagerが管理するGameObjectの更新時に呼ばれる。
+		 * @param deltaTime 前フレームからの経過時間（秒）。
+		 */
+		void invokeUpdate(float deltaTime) noexcept;
 
-        /**
-         * @brief Componentの固定更新処理を呼び出す。
-         * @details GameObjectManagerが管理するGameObjectの固定更新時に呼ばれる。
-         * @param fixedDeltaTime 固定時間間隔（秒）。
-         */
-        void invokeFixedUpdate(float fixedDeltaTime) noexcept;
+		/**
+		 * @brief Componentの固定更新処理を呼び出す。
+		 * @details GameObjectManagerが管理するGameObjectの固定更新時に呼ばれる。
+		 * @param fixedDeltaTime 固定時間間隔（秒）。
+		 */
+		void invokeFixedUpdate(float fixedDeltaTime) noexcept;
 
-        /**
-         * @brief Componentの遅延更新処理を呼び出す。
-         * @details GameObjectManagerが管理するGameObjectの遅延更新時に呼ばれる。
-         * @param deltaTime 前フレームからの経過時間（秒）。
-         */
-        void invokeLateUpdate(float deltaTime) noexcept;
+		/**
+		 * @brief Componentの遅延更新処理を呼び出す。
+		 * @details GameObjectManagerが管理するGameObjectの遅延更新時に呼ばれる。
+		 * @param deltaTime 前フレームからの経過時間（秒）。
+		 */
+		void invokeLateUpdate(float deltaTime) noexcept;
 
-        /**
-         * @brief Componentの無効化処理を呼び出す。
-         * @details GameObjectが非アクティブになったときに呼ばれる。
-         */
-        void invokeDisable() noexcept;
+		/**
+		 * @brief Componentの無効化処理を呼び出す。
+		 * @details GameObjectが非アクティブになったときに呼ばれる。
+		 */
+		void invokeDisable() noexcept;
 
-        /**
-         * @brief Componentの破棄処理を呼び出す。
-         * @details GameObjectManagerが管理するGameObjectが破棄されるときに呼ばれる。
-         */
-        void invokeDestroy() noexcept;
+		/**
+		 * @brief Componentの破棄処理を呼び出す。
+		 * @details GameObjectManagerが管理するGameObjectが破棄されるときに呼ばれる。
+		 */
+		void invokeDestroy() noexcept;
 
-        bool m_lifecycleEnabled = false; //!< Lifecycleを有効にするかどうか。GameObjectが非アクティブの場合はfalse。
-        bool m_awakened = false;         //!< Awakeが呼ばれたかどうか。
-        bool m_started = false;          //!< Startが呼ばれたかどうか。
-        bool m_lifecycleActive = false;  //!< Lifecycleが有効かどうか。GameObjectが非アクティブの場合はfalse。
-        bool m_destroyed = false;        //!< Destroy callbackが呼ばれたかどうか。
-    };
+		bool m_lifecycleEnabled = false; //!< Lifecycleを有効にするかどうか。GameObjectが非アクティブの場合はfalse。
+		bool m_awakened = false;         //!< Awakeが呼ばれたかどうか。
+		bool m_started = false;          //!< Startが呼ばれたかどうか。
+		bool m_lifecycleActive = false;  //!< Lifecycleが有効かどうか。GameObjectが非アクティブの場合はfalse。
+		bool m_destroyed = false;        //!< Destroy callbackが呼ばれたかどうか。
+	};
 } // namespace Engine

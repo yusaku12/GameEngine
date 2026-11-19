@@ -5,26 +5,26 @@
 
 namespace Engine
 {
-    /**
-     * @brief GameObjectのローカル変換を保持する必須Component。
-     * @thread_safety Main thread only.
-     */
-    class TransformComponent final : public Component
-    {
-    public:
+	/**
+	 * @brief GameObjectのローカル変換を保持する必須Component。
+	 * @thread_safety Main thread only.
+	 */
+	class TransformComponent final : public Component
+	{
+	public:
 
-        /**
-         * @brief ローカルTransformを取得する。
-         */
-        Transform& localTransform() noexcept { return m_localTransform; }
-        const Transform& localTransform() const noexcept { return m_localTransform; }
+		/**
+		 * @brief ローカルTransformを取得する。
+		 */
+		Transform& localTransform() noexcept { return m_localTransform; }
+		const Transform& localTransform() const noexcept { return m_localTransform; }
 
-    protected:
+	protected:
 
-        void onImGui() override;
+		void onImGui() override;
 
-    private:
+	private:
 
-        Transform m_localTransform; //!< GameObjectのローカル変換
-    };
+		Transform m_localTransform; //!< GameObjectのローカル変換
+	};
 } // namespace Engine

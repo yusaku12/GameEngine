@@ -10,72 +10,72 @@
 
 namespace Engine
 {
-    struct ModelResource;
-    struct MaterialAsset;
-    struct TerrainLodSnapshot;
+	struct ModelResource;
+	struct MaterialAsset;
+	struct TerrainLodSnapshot;
 
-    /** @brief Allocates a nonzero object ID shared by all model-rendering component types. */
-    std::uint32_t allocateModelRenderObjectID() noexcept;
+	/** @brief Allocates a nonzero object ID shared by all model-rendering component types. */
+	std::uint32_t allocateModelRenderObjectID() noexcept;
 
-    /**
-     * @brief Game updateからRender threadへ渡すモデル描画Snapshot。
-     */
-    struct ModelRenderSubmission
-    {
-        ModelHandle model;                                              //!< 描画するモデルのHandle
-        std::shared_ptr<const ModelResource> modelSnapshot;              //!< Keeps regenerated procedural geometry alive until consumed.
-        std::shared_ptr<const MaterialAsset> materialSnapshot;            //!< Optional immutable slot-zero procedural material.
-        std::shared_ptr<const TerrainLodSnapshot> terrainLod;             //!< Optional procedural chunk LOD ranges matching modelSnapshot.
-        std::shared_ptr<const std::vector<Matrix>> instanceTransforms;   //!< Optional immutable static local instances; composed with worldMatrix.
-        std::shared_ptr<const std::vector<std::shared_ptr<const MaterialAsset>>> materialSnapshots; //!< Optional immutable per-slot materials.
-        std::vector<MaterialHandle> materials;                          //!< 優先順位を解決済みのSlot IndexごとのMaterial
-        MaterialPropertyBlock materialProperties;                       //!< Renderer単位の数値Parameter Override
-        std::shared_ptr<const SkinningPaletteSnapshot> skinningPalette; //!< Animation済みPalette Snapshot
-        Matrix worldMatrix = Matrix::Identity;                          //!< モデルのワールド変換行列
-        AABB worldBounds{};                                             //!< 静的ModelのWorld AABB。AnimationはRender側でPose Boundsを算出する
-        std::uint32_t objectID = 0;                                     //!< オブジェクトID。レンダリングパスでの識別に使用される
-        LayerID layer = 0;                                              //!< Camera Culling Maskで判定するLayer
-        bool castShadows = true;                                        //!< シャドウをキャストするかどうか
-    };
+	/**
+	 * @brief Game updateからRender threadへ渡すモデル描画Snapshot。
+	 */
+	struct ModelRenderSubmission
+	{
+		ModelHandle model;                                              //!< 描画するモデルのHandle
+		std::shared_ptr<const ModelResource> modelSnapshot;              //!< Keeps regenerated procedural geometry alive until consumed.
+		std::shared_ptr<const MaterialAsset> materialSnapshot;            //!< Optional immutable slot-zero procedural material.
+		std::shared_ptr<const TerrainLodSnapshot> terrainLod;             //!< Optional procedural chunk LOD ranges matching modelSnapshot.
+		std::shared_ptr<const std::vector<Matrix>> instanceTransforms;   //!< Optional immutable static local instances; composed with worldMatrix.
+		std::shared_ptr<const std::vector<std::shared_ptr<const MaterialAsset>>> materialSnapshots; //!< Optional immutable per-slot materials.
+		std::vector<MaterialHandle> materials;                          //!< 優先順位を解決済みのSlot IndexごとのMaterial
+		MaterialPropertyBlock materialProperties;                       //!< Renderer単位の数値Parameter Override
+		std::shared_ptr<const SkinningPaletteSnapshot> skinningPalette; //!< Animation済みPalette Snapshot
+		Matrix worldMatrix = Matrix::Identity;                          //!< モデルのワールド変換行列
+		AABB worldBounds{};                                             //!< 静的ModelのWorld AABB。AnimationはRender側でPose Boundsを算出する
+		std::uint32_t objectID = 0;                                     //!< オブジェクトID。レンダリングパスでの識別に使用される
+		LayerID layer = 0;                                              //!< Camera Culling Maskで判定するLayer
+		bool castShadows = true;                                        //!< シャドウをキャストするかどうか
+	};
 
-    /**
-     * @brief ModelRendererComponentの提出結果をRender threadへ安全に渡すQueue。
-     * @thread_safety Thread-safe.
-     */
-    class ModelRenderSubmissionQueue
-    {
-    public:
+	/**
+	 * @brief ModelRendererComponentの提出結果をRender threadへ安全に渡すQueue。
+	 * @thread_safety Thread-safe.
+	 */
+	class ModelRenderSubmissionQueue
+	{
+	public:
 
-        static ModelRenderSubmissionQueue& instance() noexcept;
+		static ModelRenderSubmissionQueue& instance() noexcept;
 
-        GE_DISABLE_COPY_AND_MOVE(ModelRenderSubmissionQueue);
+		GE_DISABLE_COPY_AND_MOVE(ModelRenderSubmissionQueue);
 
-        /**
-         * @brief Game update側から描画Snapshotを提出する。
-         * @param submission 提出する描画Snapshot。値渡し後にQueueへ移動する
-         */
-        void submit(ModelRenderSubmission submission);
+		/**
+		 * @brief Game update側から描画Snapshotを提出する。
+		 * @param submission 提出する描画Snapshot。値渡し後にQueueへ移動する
+		 */
+		void submit(ModelRenderSubmission submission);
 
-        /**
-         * @brief 現在までの提出結果をRender側の再利用可能なBufferへ移動する。
-         * @param destination 回収先。以前のcapacityは次フレームの提出用に再利用される
-         */
-        void consume(std::vector<ModelRenderSubmission>& destination);
+		/**
+		 * @brief 現在までの提出結果をRender側の再利用可能なBufferへ移動する。
+		 * @param destination 回収先。以前のcapacityは次フレームの提出用に再利用される
+		 */
+		void consume(std::vector<ModelRenderSubmission>& destination);
 
-        /**
-         * @brief 未処理の提出結果を破棄する。
-         */
-        void clear() noexcept;
+		/**
+		 * @brief 未処理の提出結果を破棄する。
+		 */
+		void clear() noexcept;
 
-    private:
+	private:
 
-        /**
-         * @brief コンストラクタ。初期容量を確保する。
-         */
-        ModelRenderSubmissionQueue() { m_pending.reserve(256); }
-        ~ModelRenderSubmissionQueue() = default;
+		/**
+		 * @brief コンストラクタ。初期容量を確保する。
+		 */
+		ModelRenderSubmissionQueue() { m_pending.reserve(256); }
+		~ModelRenderSubmissionQueue() = default;
 
-        std::mutex m_mutex;                           //!< 提出結果の保護用Mutex
-        std::vector<ModelRenderSubmission> m_pending; //!< 提出された描画Snapshotの保管用Buffer
-    };
+		std::mutex m_mutex;                           //!< 提出結果の保護用Mutex
+		std::vector<ModelRenderSubmission> m_pending; //!< 提出された描画Snapshotの保管用Buffer
+	};
 } // namespace Engine

@@ -4,96 +4,96 @@
 
 namespace Engine
 {
-    class JobCounter;
-    class DX12Renderer;
+	class JobCounter;
+	class DX12Renderer;
 
-    /**
-     * @brief ウィンドウクラス
-     * ウィンドウの作成、更新、描画、およびメッセージ処理を行う
-     * エンジン起動時に一度しか生成しない物もここで初期化する
-     */
-    class Window
-    {
-    public:
+	/**
+	 * @brief ウィンドウクラス
+	 * ウィンドウの作成、更新、描画、およびメッセージ処理を行う
+	 * エンジン起動時に一度しか生成しない物もここで初期化する
+	 */
+	class Window
+	{
+	public:
 
-        /**
-         * @brief コンストラクタ
-         * @param hwnd ウィンドウハンドル
-         */
-        Window(HWND hwnd, DX12Renderer& renderer);
+		/**
+		 * @brief コンストラクタ
+		 * @param hwnd ウィンドウハンドル
+		 */
+		Window(HWND hwnd, DX12Renderer& renderer);
 
-        /**
-         * @brief デストラクタ
-         */
-        ~Window();
+		/**
+		 * @brief デストラクタ
+		 */
+		~Window();
 
-        GE_DISABLE_COPY_AND_MOVE(Window);
+		GE_DISABLE_COPY_AND_MOVE(Window);
 
-        /**
-         * @brief ウィンドウの更新
-         */
-        void update();
+		/**
+		 * @brief ウィンドウの更新
+		 */
+		void update();
 
-        /**
-         * @brief ウィンドウの描画
-         */
-        void render();
+		/**
+		 * @brief ウィンドウの描画
+		 */
+		void render();
 
-        /**
-         * @brief メインループを実行する
-         * @return int 終了コード
-         */
-        int run();
+		/**
+		 * @brief メインループを実行する
+		 * @return int 終了コード
+		 */
+		int run();
 
-        /**
-         * @brief ウィンドウのメッセージ処理
-         * @param hwnd ウィンドウハンドル
-         * @param msg メッセージID
-         * @param wparam メッセージの追加情報
-         * @param lparam メッセージの追加情報
-         * @return LRESULT メッセージ処理の結果
-         */
-        LRESULT processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+		/**
+		 * @brief ウィンドウのメッセージ処理
+		 * @param hwnd ウィンドウハンドル
+		 * @param msg メッセージID
+		 * @param wparam メッセージの追加情報
+		 * @param lparam メッセージの追加情報
+		 * @return LRESULT メッセージ処理の結果
+		 */
+		LRESULT processMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
-    private:
+	private:
 
-        /**
-         * @brief ウィンドウのタイトルバーを更新する
-         */
-        void updateFrameInput();
+		/**
+		 * @brief ウィンドウのタイトルバーを更新する
+		 */
+		void updateFrameInput();
 
-        /**
-         * @brief ウィンドウの描画を更新する
-         */
-        void runThreadedFrame();
+		/**
+		 * @brief ウィンドウの描画を更新する
+		 */
+		void runThreadedFrame();
 
-        /**
-         * @brief ゲームの更新処理を実行する
-         */
-        void runGameUpdateJob();
+		/**
+		 * @brief ゲームの更新処理を実行する
+		 */
+		void runGameUpdateJob();
 
-        /**
-         * @brief 描画の更新処理を実行する
-         */
-        void runRenderUpdateJob();
+		/**
+		 * @brief 描画の更新処理を実行する
+		 */
+		void runRenderUpdateJob();
 
-        /**
-         * @brief フレームジョブの完了を待機する
-         * @param counter 待機対象のジョブカウンター
-         */
-        void waitForFrameJobs(const JobCounter& counter) const;
+		/**
+		 * @brief フレームジョブの完了を待機する
+		 * @param counter 待機対象のジョブカウンター
+		 */
+		void waitForFrameJobs(const JobCounter& counter) const;
 
-        /**
-         * @brief タイトルバーの更新処理を実行する
-         */
-        void updateTitleBar();
+		/**
+		 * @brief タイトルバーの更新処理を実行する
+		 */
+		void updateTitleBar();
 
-        static constexpr float TITLE_BAR_INTERVAL = 0.5f; //!< タイトルバーを更新する間隔（秒）
+		static constexpr float TITLE_BAR_INTERVAL = 0.5f; //!< タイトルバーを更新する間隔（秒）
 
-        const HWND m_hwnd;               //!< ウィンドウハンドル
-        DX12Renderer& m_renderer;        //!< 描画処理
-        float      m_titleTimer = 0.0f;  //!< タイトルバーを更新するまでの経過時間
-        bool m_windowFocused = true;
-        bool m_frameFailed = false;
-    };
+		const HWND m_hwnd;               //!< ウィンドウハンドル
+		DX12Renderer& m_renderer;        //!< 描画処理
+		float      m_titleTimer = 0.0f;  //!< タイトルバーを更新するまでの経過時間
+		bool m_windowFocused = true;
+		bool m_frameFailed = false;
+	};
 } // namespace Engine

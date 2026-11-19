@@ -6,81 +6,81 @@
 
 namespace Engine
 {
-    class DX12Device;
-    class DX12Fence;
+	class DX12Device;
+	class DX12Fence;
 
-    /**
-     * @brief MaterialHandle単位でGPU描画Resourceを遅延作成するCache。
-     * @thread_safety Not thread-safe. Render thread only.
-     */
-    class MaterialGpuCache
-    {
-    public:
+	/**
+	 * @brief MaterialHandle単位でGPU描画Resourceを遅延作成するCache。
+	 * @thread_safety Not thread-safe. Render thread only.
+	 */
+	class MaterialGpuCache
+	{
+	public:
 
-        MaterialGpuCache() = default;
-        ~MaterialGpuCache();
+		MaterialGpuCache() = default;
+		~MaterialGpuCache();
 
-        GE_DISABLE_COPY_AND_MOVE(MaterialGpuCache);
+		GE_DISABLE_COPY_AND_MOVE(MaterialGpuCache);
 
-        /**
-         * @brief Cacheを初期化する。
-         * @param device DX12Device参照
-         * @param fence DX12Fence参照
-         */
-        bool initialize(DX12Device& device, DX12Fence& fence) noexcept;
+		/**
+		 * @brief Cacheを初期化する。
+		 * @param device DX12Device参照
+		 * @param fence DX12Fence参照
+		 */
+		bool initialize(DX12Device& device, DX12Fence& fence) noexcept;
 
-        /**
-         * @brief GPU完了を待ってCacheを解放する。
-         */
-        bool finalize();
+		/**
+		 * @brief GPU完了を待ってCacheを解放する。
+		 */
+		bool finalize();
 
-        /**
-         * @brief Material GPU Resourceを取得し、未作成なら遅延作成する。失敗時はError MaterialへFallbackする。
-         * @param handle MaterialHandle
-         * @param snapshot Optional immutable procedural snapshot, retained even after the handle is unloaded.
-         */
-        MaterialGpuResource* getOrCreate(MaterialHandle handle, std::shared_ptr<const MaterialAsset> snapshot = {});
+		/**
+		 * @brief Material GPU Resourceを取得し、未作成なら遅延作成する。失敗時はError MaterialへFallbackする。
+		 * @param handle MaterialHandle
+		 * @param snapshot Optional immutable procedural snapshot, retained even after the handle is unloaded.
+		 */
+		MaterialGpuResource* getOrCreate(MaterialHandle handle, std::shared_ptr<const MaterialAsset> snapshot = {});
 
-        /**
-         * @brief Material Bufferへ最終使用Fence値を記録する。
-         * @param handle MaterialHandle
-         * @param fenceValue 最終使用Fence値
-         * @return 成功した場合はtrue、失敗した場合はfalse
-         */
-        bool markUsed(MaterialHandle handle, std::uint64_t fenceValue);
+		/**
+		 * @brief Material Bufferへ最終使用Fence値を記録する。
+		 * @param handle MaterialHandle
+		 * @param fenceValue 最終使用Fence値
+		 * @return 成功した場合はtrue、失敗した場合はfalse
+		 */
+		bool markUsed(MaterialHandle handle, std::uint64_t fenceValue);
 
-        /**
-         * @brief Cache済みMaterialを新しいShader Layout向けに再生成する。
-         * @return 全Resourceを生成して交換できた場合はtrue。失敗時は現在のCacheを維持する。
-         */
-        bool rebuildAll();
+		/**
+		 * @brief Cache済みMaterialを新しいShader Layout向けに再生成する。
+		 * @return 全Resourceを生成して交換できた場合はtrue。失敗時は現在のCacheを維持する。
+		 */
+		bool rebuildAll();
 
-        /**
-         * @brief unload済みMaterialのGPU ResourceをFence完了後に破棄する。
-         */
-        void collectGarbage();
+		/**
+		 * @brief unload済みMaterialのGPU ResourceをFence完了後に破棄する。
+		 */
+		void collectGarbage();
 
-    private:
+	private:
 
-        /**
-         * @brief MaterialHandleからCache用のユニークキーを生成する。
-         * @param handle MaterialHandle
-         * @return ユニークキー
-         */
-        static std::uint64_t makeKey(MaterialHandle handle) noexcept;
+		/**
+		 * @brief MaterialHandleからCache用のユニークキーを生成する。
+		 * @param handle MaterialHandle
+		 * @return ユニークキー
+		 */
+		static std::uint64_t makeKey(MaterialHandle handle) noexcept;
 
-        /**
-         * @brief MaterialHandleからMaterialGpuResourceを作成する。
-         * @param handle MaterialHandle
-         * @param snapshot Optional immutable source; otherwise resolves the handle from MaterialManager.
-         * @return 作成に成功した場合はMaterialGpuResourceのunique_ptr、失敗時はnullptr
-         */
-        std::unique_ptr<MaterialGpuResource> createResource(MaterialHandle handle,
-            std::shared_ptr<const MaterialAsset> snapshot = {});
+		/**
+		 * @brief MaterialHandleからMaterialGpuResourceを作成する。
+		 * @param handle MaterialHandle
+		 * @param snapshot Optional immutable source; otherwise resolves the handle from MaterialManager.
+		 * @return 作成に成功した場合はMaterialGpuResourceのunique_ptr、失敗時はnullptr
+		 */
+		std::unique_ptr<MaterialGpuResource> createResource(MaterialHandle handle,
+			std::shared_ptr<const MaterialAsset> snapshot = {});
 
-        DX12Device* m_device = nullptr;                                                      //!< DX12Device参照
-        DX12Fence* m_fence = nullptr;                                                        //!< DX12Fence参照
-        std::unordered_map<std::uint64_t, std::unique_ptr<MaterialGpuResource>> m_resources; //!< MaterialHandleユニークキー -> MaterialGpuResource
-        std::vector<std::unique_ptr<MaterialGpuResource>> m_retiredResources;                //!< Fence完了待ちの旧Snapshot
-    };
+		DX12Device* m_device = nullptr;                                                      //!< DX12Device参照
+		DX12Fence* m_fence = nullptr;                                                        //!< DX12Fence参照
+		std::unordered_map<std::uint64_t, std::unique_ptr<MaterialGpuResource>> m_resources; //!< MaterialHandleユニークキー -> MaterialGpuResource
+		std::vector<std::unique_ptr<MaterialGpuResource>> m_retiredResources;                //!< Fence完了待ちの旧Snapshot
+	};
 } // namespace Engine

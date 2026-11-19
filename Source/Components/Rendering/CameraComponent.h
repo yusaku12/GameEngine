@@ -8,354 +8,354 @@
 
 namespace Engine
 {
-    /**
-     * @brief GameObjectのTransformから描画Camera情報を生成するComponent。
-     * @thread_safety Main thread only. Render threadにはRenderViewを渡す。
-     */
-    class CameraComponent final : public Component
-    {
-    public:
+	/**
+	 * @brief GameObjectのTransformから描画Camera情報を生成するComponent。
+	 * @thread_safety Main thread only. Render threadにはRenderViewを渡す。
+	 */
+	class CameraComponent final : public Component
+	{
+	public:
 
-        CameraComponent() noexcept;
-        ~CameraComponent() override;
+		CameraComponent() noexcept;
+		~CameraComponent() override;
 
-        CameraComponent(const CameraComponent&) = delete;
-        CameraComponent& operator=(const CameraComponent&) = delete;
+		CameraComponent(const CameraComponent&) = delete;
+		CameraComponent& operator=(const CameraComponent&) = delete;
 
-        /**
-         * @brief Projection方式を設定する。
-         * @param mode 使用するProjection方式。
-         */
-        void setProjectionMode(CameraProjectionMode mode) noexcept;
+		/**
+		 * @brief Projection方式を設定する。
+		 * @param mode 使用するProjection方式。
+		 */
+		void setProjectionMode(CameraProjectionMode mode) noexcept;
 
-        /**
-         * @brief Projection方式を取得する。
-         * @return 現在のProjection方式。
-         */
-        CameraProjectionMode getProjectionMode() const noexcept { return m_projectionMode; }
+		/**
+		 * @brief Projection方式を取得する。
+		 * @return 現在のProjection方式。
+		 */
+		CameraProjectionMode getProjectionMode() const noexcept { return m_projectionMode; }
 
-        /**
-         * @brief 垂直FOVを度単位で設定する。
-         * @param fieldOfViewDegrees 1度以上179度以下のFOV。
-         */
-        void setFieldOfView(float fieldOfViewDegrees) noexcept;
+		/**
+		 * @brief 垂直FOVを度単位で設定する。
+		 * @param fieldOfViewDegrees 1度以上179度以下のFOV。
+		 */
+		void setFieldOfView(float fieldOfViewDegrees) noexcept;
 
-        /**
-         * @brief 垂直FOVを取得する。
-         * @return 度単位のFOV。
-         */
-        float getFieldOfView() const noexcept { return m_fieldOfViewDegrees; }
+		/**
+		 * @brief 垂直FOVを取得する。
+		 * @return 度単位のFOV。
+		 */
+		float getFieldOfView() const noexcept { return m_fieldOfViewDegrees; }
 
-        /**
-         * @brief Near Clip距離を設定する。
-         * @param nearClip 0より大きくFar Clip未満の距離。
-         */
-        void setNearClipPlane(float nearClip) noexcept;
+		/**
+		 * @brief Near Clip距離を設定する。
+		 * @param nearClip 0より大きくFar Clip未満の距離。
+		 */
+		void setNearClipPlane(float nearClip) noexcept;
 
-        /**
-         * @brief Near Clip距離を取得する。
-         * @return Near Clip距離。
-         */
-        float getNearClipPlane() const noexcept { return m_nearClip; }
+		/**
+		 * @brief Near Clip距離を取得する。
+		 * @return Near Clip距離。
+		 */
+		float getNearClipPlane() const noexcept { return m_nearClip; }
 
-        /**
-         * @brief Far Clip距離を設定する。
-         * @param farClip Near Clipより大きい距離。
-         */
-        void setFarClipPlane(float farClip) noexcept;
+		/**
+		 * @brief Far Clip距離を設定する。
+		 * @param farClip Near Clipより大きい距離。
+		 */
+		void setFarClipPlane(float farClip) noexcept;
 
-        /**
-         * @brief Far Clip距離を取得する。
-         * @return Far Clip距離。
-         */
-        float getFarClipPlane() const noexcept { return m_farClip; }
+		/**
+		 * @brief Far Clip距離を取得する。
+		 * @return Far Clip距離。
+		 */
+		float getFarClipPlane() const noexcept { return m_farClip; }
 
-        /**
-         * @brief Orthographicの縦方向Half Sizeを設定する。
-         * @param size 0より大きいHalf Size。
-         */
-        void setOrthographicSize(float size) noexcept;
+		/**
+		 * @brief Orthographicの縦方向Half Sizeを設定する。
+		 * @param size 0より大きいHalf Size。
+		 */
+		void setOrthographicSize(float size) noexcept;
 
-        /**
-         * @brief Orthographic Sizeを取得する。
-         * @return 縦方向Half Size。
-         */
-        float getOrthographicSize() const noexcept { return m_orthographicSize; }
+		/**
+		 * @brief Orthographic Sizeを取得する。
+		 * @return 縦方向Half Size。
+		 */
+		float getOrthographicSize() const noexcept { return m_orthographicSize; }
 
-        /**
-         * @brief 正規化Viewportを設定する。
-         * @param viewport 0～1の範囲に収まるViewport。
-         */
-        void setViewport(const CameraViewport& viewport) noexcept;
+		/**
+		 * @brief 正規化Viewportを設定する。
+		 * @param viewport 0～1の範囲に収まるViewport。
+		 */
+		void setViewport(const CameraViewport& viewport) noexcept;
 
-        /**
-         * @brief 正規化Viewportを取得する。
-         * @return 現在のViewport。
-         */
-        const CameraViewport& getViewport() const noexcept { return m_viewport; }
+		/**
+		 * @brief 正規化Viewportを取得する。
+		 * @return 現在のViewport。
+		 */
+		const CameraViewport& getViewport() const noexcept { return m_viewport; }
 
-        /**
-         * @brief Render Target Sizeを設定しAspect Ratioを更新する。
-         * @param width Pixel幅。
-         * @param height Pixel高さ。0の場合は変更しない。
-         */
-        void setRenderTargetSize(std::uint32_t width, std::uint32_t height) noexcept;
+		/**
+		 * @brief Render Target Sizeを設定しAspect Ratioを更新する。
+		 * @param width Pixel幅。
+		 * @param height Pixel高さ。0の場合は変更しない。
+		 */
+		void setRenderTargetSize(std::uint32_t width, std::uint32_t height) noexcept;
 
-        /**
-         * @brief View行列を取得する。
-         * @return CPU用の非Transpose View行列。
-         */
-        const Matrix& getViewMatrix() const noexcept;
+		/**
+		 * @brief View行列を取得する。
+		 * @return CPU用の非Transpose View行列。
+		 */
+		const Matrix& getViewMatrix() const noexcept;
 
-        /**
-         * @brief Projection行列を取得する。
-         * @return 左手座標系、Depth Range 0～1のProjection行列。
-         */
-        const Matrix& getProjectionMatrix() const noexcept;
+		/**
+		 * @brief Projection行列を取得する。
+		 * @return 左手座標系、Depth Range 0～1のProjection行列。
+		 */
+		const Matrix& getProjectionMatrix() const noexcept;
 
-        /**
-         * @brief View Projection行列を取得する。
-         * @return View * Projection行列。
-         */
-        const Matrix& getViewProjectionMatrix() const noexcept;
+		/**
+		 * @brief View Projection行列を取得する。
+		 * @return View * Projection行列。
+		 */
+		const Matrix& getViewProjectionMatrix() const noexcept;
 
-        /**
-         * @brief Inverse View行列を取得する。
-         * @return CameraのWorld行列。
-         */
-        const Matrix& getInverseViewMatrix() const noexcept;
+		/**
+		 * @brief Inverse View行列を取得する。
+		 * @return CameraのWorld行列。
+		 */
+		const Matrix& getInverseViewMatrix() const noexcept;
 
-        /**
-         * @brief Inverse Projection行列を取得する。
-         * @return Projectionの逆行列。
-         */
-        const Matrix& getInverseProjectionMatrix() const noexcept;
+		/**
+		 * @brief Inverse Projection行列を取得する。
+		 * @return Projectionの逆行列。
+		 */
+		const Matrix& getInverseProjectionMatrix() const noexcept;
 
-        /**
-         * @brief Inverse View Projection行列を取得する。
-         * @return View Projectionの逆行列。
-         */
-        const Matrix& getInverseViewProjectionMatrix() const noexcept;
+		/**
+		 * @brief Inverse View Projection行列を取得する。
+		 * @return View Projectionの逆行列。
+		 */
+		const Matrix& getInverseViewProjectionMatrix() const noexcept;
 
-        /**
-         * @brief 前回提出時のView Projection行列を取得する。
-         * @return 初回は現在値、それ以降は前回値。
-         */
-        const Matrix& getPreviousViewProjectionMatrix() const noexcept;
+		/**
+		 * @brief 前回提出時のView Projection行列を取得する。
+		 * @return 初回は現在値、それ以降は前回値。
+		 */
+		const Matrix& getPreviousViewProjectionMatrix() const noexcept;
 
-        /**
-         * @brief CameraのWorld座標を取得する。
-         * @return Camera位置。
-         */
-        Vector3 getPosition() const noexcept;
+		/**
+		 * @brief CameraのWorld座標を取得する。
+		 * @return Camera位置。
+		 */
+		Vector3 getPosition() const noexcept;
 
-        /**
-         * @brief Cameraの前方向を取得する。
-         * @return 左手座標系の正規化Forward。
-         */
-        Vector3 getForward() const noexcept;
+		/**
+		 * @brief Cameraの前方向を取得する。
+		 * @return 左手座標系の正規化Forward。
+		 */
+		Vector3 getForward() const noexcept;
 
-        /**
-         * @brief Cameraの右方向を取得する。
-         * @return 正規化Right。
-         */
-        Vector3 getRight() const noexcept;
+		/**
+		 * @brief Cameraの右方向を取得する。
+		 * @return 正規化Right。
+		 */
+		Vector3 getRight() const noexcept;
 
-        /**
-         * @brief Cameraの上方向を取得する。
-         * @return 正規化Up。
-         */
-        Vector3 getUp() const noexcept;
+		/**
+		 * @brief Cameraの上方向を取得する。
+		 * @return 正規化Up。
+		 */
+		Vector3 getUp() const noexcept;
 
-        /**
-         * @brief World Space Frustumを取得する。
-         * @return キャッシュされたFrustum。
-         */
-        const CameraFrustum& getFrustum() const noexcept;
+		/**
+		 * @brief World Space Frustumを取得する。
+		 * @return キャッシュされたFrustum。
+		 */
+		const CameraFrustum& getFrustum() const noexcept;
 
-        /**
-         * @brief Screen座標をWorld座標へ変換する。
-         * @param screenPoint x/yはRender Target左上原点のPixel座標、zは0～1のDepth。
-         * @return World座標。
-         */
-        Vector3 screenToWorldPoint(const Vector3& screenPoint) const noexcept;
+		/**
+		 * @brief Screen座標をWorld座標へ変換する。
+		 * @param screenPoint x/yはRender Target左上原点のPixel座標、zは0～1のDepth。
+		 * @return World座標。
+		 */
+		Vector3 screenToWorldPoint(const Vector3& screenPoint) const noexcept;
 
-        /**
-         * @brief World座標をScreen座標へ変換する。
-         * @param worldPoint World座標。
-         * @return x/yはRender Target左上原点のPixel座標、zは0～1のDepth。
-         */
-        Vector3 worldToScreenPoint(const Vector3& worldPoint) const noexcept;
+		/**
+		 * @brief World座標をScreen座標へ変換する。
+		 * @param worldPoint World座標。
+		 * @return x/yはRender Target左上原点のPixel座標、zは0～1のDepth。
+		 */
+		Vector3 worldToScreenPoint(const Vector3& worldPoint) const noexcept;
 
-        /**
-         * @brief Screen座標からPicking Rayを生成する。
-         * @param screenPoint Render Target左上原点のPixel座標。
-         * @return World Space Ray。
-         */
-        Ray screenPointToRay(const Vector2& screenPoint) const noexcept;
+		/**
+		 * @brief Screen座標からPicking Rayを生成する。
+		 * @param screenPoint Render Target左上原点のPixel座標。
+		 * @return World Space Ray。
+		 */
+		Ray screenPointToRay(const Vector2& screenPoint) const noexcept;
 
-        /**
-         * @brief Projection JitterをNDC単位で設定する。
-         * @param jitter NDC Offset。
-         */
-        void setProjectionJitter(const Vector2& jitter) noexcept;
+		/**
+		 * @brief Projection JitterをNDC単位で設定する。
+		 * @param jitter NDC Offset。
+		 */
+		void setProjectionJitter(const Vector2& jitter) noexcept;
 
-        /**
-         * @brief Projection Jitterを取得する。
-         * @return NDC Offset。
-         */
-        Vector2 getProjectionJitter() const noexcept { return m_projectionJitter; }
+		/**
+		 * @brief Projection Jitterを取得する。
+		 * @return NDC Offset。
+		 */
+		Vector2 getProjectionJitter() const noexcept { return m_projectionJitter; }
 
-        /**
-         * @brief カメラカットや不連続なTransform変更後にTemporal Effectの履歴を破棄する。
-         */
-        void resetTemporalHistory() noexcept { m_hasPreviousViewProjection = false; }
+		/**
+		 * @brief カメラカットや不連続なTransform変更後にTemporal Effectの履歴を破棄する。
+		 */
+		void resetTemporalHistory() noexcept { m_hasPreviousViewProjection = false; }
 
-        /**
-         * @brief Culling Maskを設定する。
-         * @param mask 描画対象LayerのBit Mask。
-         */
-        void setCullingMask(std::uint32_t mask) noexcept { m_cullingMask = mask; }
+		/**
+		 * @brief Culling Maskを設定する。
+		 * @param mask 描画対象LayerのBit Mask。
+		 */
+		void setCullingMask(std::uint32_t mask) noexcept { m_cullingMask = mask; }
 
-        /**
-         * @brief Culling Maskを取得する。
-         * @return 描画対象LayerのBit Mask。
-         */
-        std::uint32_t getCullingMask() const noexcept { return m_cullingMask; }
-        /** @brief Sets the Volume selection mask independently of geometry culling. */
-        void setPostProcessVolumeMask(std::uint32_t mask) noexcept { m_postProcessVolumeMask = mask; }
-        /** @brief Gets the Volume selection mask; default includes all layers. */
-        std::uint32_t getPostProcessVolumeMask() const noexcept { return m_postProcessVolumeMask; }
+		/**
+		 * @brief Culling Maskを取得する。
+		 * @return 描画対象LayerのBit Mask。
+		 */
+		std::uint32_t getCullingMask() const noexcept { return m_cullingMask; }
+		/** @brief Sets the Volume selection mask independently of geometry culling. */
+		void setPostProcessVolumeMask(std::uint32_t mask) noexcept { m_postProcessVolumeMask = mask; }
+		/** @brief Gets the Volume selection mask; default includes all layers. */
+		std::uint32_t getPostProcessVolumeMask() const noexcept { return m_postProcessVolumeMask; }
 
-        /**
-         * @brief Clear方式を設定する。
-         * @param mode Clear方式。
-         */
-        void setClearMode(CameraClearMode mode) noexcept;
+		/**
+		 * @brief Clear方式を設定する。
+		 * @param mode Clear方式。
+		 */
+		void setClearMode(CameraClearMode mode) noexcept;
 
-        /**
-         * @brief Clear方式を取得する。
-         * @return Clear方式。
-         */
-        CameraClearMode getClearMode() const noexcept { return m_clearMode; }
+		/**
+		 * @brief Clear方式を取得する。
+		 * @return Clear方式。
+		 */
+		CameraClearMode getClearMode() const noexcept { return m_clearMode; }
 
-        /**
-         * @brief 背景Clear Colorを設定する。
-         * @param color RGBA Color。
-         */
-        void setBackgroundColor(const Color& color) noexcept;
+		/**
+		 * @brief 背景Clear Colorを設定する。
+		 * @param color RGBA Color。
+		 */
+		void setBackgroundColor(const Color& color) noexcept;
 
-        /**
-         * @brief 背景Clear Colorを取得する。
-         * @return RGBA Color。
-         */
-        const Color& getBackgroundColor() const noexcept { return m_backgroundColor; }
+		/**
+		 * @brief 背景Clear Colorを取得する。
+		 * @return RGBA Color。
+		 */
+		const Color& getBackgroundColor() const noexcept { return m_backgroundColor; }
 
-        /**
-         * @brief Renderer用のCamera snapshotを生成する。
-         * @return D3D12 Resourceを含まないRenderView。
-         */
-        RenderView buildRenderView() const noexcept;
+		/**
+		 * @brief Renderer用のCamera snapshotを生成する。
+		 * @return D3D12 Resourceを含まないRenderView。
+		 */
+		RenderView buildRenderView() const noexcept;
 
-        /** @brief Enables resolved Profile/Camera effects in Deferred rendering. */
-        void setPostProcessEnabled(bool enabled) noexcept { m_postProcessEnabled = enabled; }
-        /** @brief Returns the camera Profile opt-in. */
-        bool isPostProcessEnabled() const noexcept { return m_postProcessEnabled; }
-        /** @brief Sets a finite camera contribution in [0,1]; invalid inputs log and preserve state. */
-        bool setPostProcessWeight(float weight) noexcept;
-        /** @brief Returns the authored camera contribution. */
-        float getPostProcessWeight() const noexcept { return m_postProcessWeight; }
-        /** @brief Assigns a registered shared Profile, or clears it with an empty handle. */
-        bool setPostProcessProfile(PostProcessProfileHandle handle);
-        /** @brief Returns the shared Profile handle; local overrides never modify that asset. */
-        PostProcessProfileHandle getPostProcessProfile() const noexcept { return m_postProcessProfile; }
-        /** @brief Replaces validated local overrides; failure leaves existing values untouched. */
-        bool setPostProcessOverrides(const PostProcessSettings& settings);
-        /** @brief Returns local authored values and explicit override flags. */
-        const PostProcessSettings& getPostProcessOverrides() const noexcept { return m_postProcessOverrides; }
-        /** @brief Copies in-memory Profile references and camera values, excluding runtime frame history. */
-        bool copyConfigurationTo(Component& destination) const override;
+		/** @brief Enables resolved Profile/Camera effects in Deferred rendering. */
+		void setPostProcessEnabled(bool enabled) noexcept { m_postProcessEnabled = enabled; }
+		/** @brief Returns the camera Profile opt-in. */
+		bool isPostProcessEnabled() const noexcept { return m_postProcessEnabled; }
+		/** @brief Sets a finite camera contribution in [0,1]; invalid inputs log and preserve state. */
+		bool setPostProcessWeight(float weight) noexcept;
+		/** @brief Returns the authored camera contribution. */
+		float getPostProcessWeight() const noexcept { return m_postProcessWeight; }
+		/** @brief Assigns a registered shared Profile, or clears it with an empty handle. */
+		bool setPostProcessProfile(PostProcessProfileHandle handle);
+		/** @brief Returns the shared Profile handle; local overrides never modify that asset. */
+		PostProcessProfileHandle getPostProcessProfile() const noexcept { return m_postProcessProfile; }
+		/** @brief Replaces validated local overrides; failure leaves existing values untouched. */
+		bool setPostProcessOverrides(const PostProcessSettings& settings);
+		/** @brief Returns local authored values and explicit override flags. */
+		const PostProcessSettings& getPostProcessOverrides() const noexcept { return m_postProcessOverrides; }
+		/** @brief Copies in-memory Profile references and camera values, excluding runtime frame history. */
+		bool copyConfigurationTo(Component& destination) const override;
 
-        /** @brief Returns the version of persisted camera configuration. */
-        std::uint32_t getPayloadVersion() const noexcept override;
-        /** @brief Writes camera configuration and Main Camera preference, excluding frame history. */
-        bool serializePayload(std::vector<std::uint8_t>& payload) const override;
-        /** @brief Validates and restores configuration; legacy empty payloads are accepted. */
-        bool deserializePayload(std::uint32_t version, std::span<const std::uint8_t> payload) override;
+		/** @brief Returns the version of persisted camera configuration. */
+		std::uint32_t getPayloadVersion() const noexcept override;
+		/** @brief Writes camera configuration and Main Camera preference, excluding frame history. */
+		bool serializePayload(std::vector<std::uint8_t>& payload) const override;
+		/** @brief Validates and restores configuration; legacy empty payloads are accepted. */
+		bool deserializePayload(std::uint32_t version, std::span<const std::uint8_t> payload) override;
 
-    protected:
+	protected:
 
-        friend class GameObjectManager;
+		friend class GameObjectManager;
 
-        void onEnable() override;
-        void onLateUpdate(float deltaTime) override;
-        void onDisable() override;
-        void onDestroy() override;
-        void onImGui() override;
+		void onEnable() override;
+		void onLateUpdate(float deltaTime) override;
+		void onDisable() override;
+		void onDestroy() override;
+		void onImGui() override;
 
-    private:
+	private:
 
-        friend class CameraManager;
-        bool m_mainCameraPreferred = false;
+		friend class CameraManager;
+		bool m_mainCameraPreferred = false;
 
-        /**
-         * @brief View行列を無効化する。
-         */
-        void invalidateProjection() noexcept;
+		/**
+		 * @brief View行列を無効化する。
+		 */
+		void invalidateProjection() noexcept;
 
-        /**
-         * @brief Projection行列を無効化する。
-         */
-        void synchronizeView() const noexcept;
+		/**
+		 * @brief Projection行列を無効化する。
+		 */
+		void synchronizeView() const noexcept;
 
-        /**
-         * @brief View Projection行列を無効化する。
-         */
-        void synchronizeProjection() const noexcept;
+		/**
+		 * @brief View Projection行列を無効化する。
+		 */
+		void synchronizeProjection() const noexcept;
 
-        /**
-         * @brief View Projection行列を無効化する。
-         */
-        void synchronizeViewProjection() const noexcept;
+		/**
+		 * @brief View Projection行列を無効化する。
+		 */
+		void synchronizeViewProjection() const noexcept;
 
-        /**
-         * @brief Frustumを無効化する。
-         */
-        Viewport getPixelViewport() const noexcept;
+		/**
+		 * @brief Frustumを無効化する。
+		 */
+		Viewport getPixelViewport() const noexcept;
 
-        CameraProjectionMode m_projectionMode = CameraProjectionMode::Perspective; //!< Projection方式
-        float m_fieldOfViewDegrees = 60.0f;                                        //!< 垂直FOV(度)
-        float m_nearClip = 0.1f;                                                   //!< Near Clip距離
-        float m_farClip = 1000.0f;                                                 //!< Far Clip距離
-        float m_aspectRatio = 16.0f / 9.0f;                                        //!< Aspect Ratio
-        float m_orthographicSize = 5.0f;                                           //!< Orthographic縦方向Half Size
-        CameraViewport m_viewport{};                                               //!< 正規化Viewport
-        Vector2 m_renderTargetSize = Vector2(1.0f, 1.0f);                          //!< Render Target Size
-        Vector2 m_projectionJitter = Vector2::Zero;                                //!< Projection Jitter
-        std::uint32_t m_cullingMask = std::numeric_limits<std::uint32_t>::max();   //!< 描画対象LayerのBit Mask
-        CameraClearMode m_clearMode = CameraClearMode::SolidColor;                 //!< Clear方式
-        Color m_backgroundColor = Color(0.08f, 0.16f, 0.24f, 1.0f);                //!< 背景Clear Color
-        std::uint32_t m_postProcessVolumeMask = UINT32_MAX;                        //!< Volume layers, independent of geometry.
-        mutable std::vector<PostProcessVolumeLayer> m_volumeScratch;              //!< Main-thread collection capacity reused per Camera.
-        bool m_postProcessEnabled = false;                                        //!< PostEffect opt-in.
-        float m_postProcessWeight = 1.0f;                                          //!< Contribution, 0-1.
-        PostProcessProfileHandle m_postProcessProfile;                             //!< Shared asset reference.
-        PostProcessSettings m_postProcessOverrides;                                //!< Camera-local authoring.
-        mutable bool m_missingProfileReported = false;                             //!< Avoid repeating a stale-reference diagnostic.
+		CameraProjectionMode m_projectionMode = CameraProjectionMode::Perspective; //!< Projection方式
+		float m_fieldOfViewDegrees = 60.0f;                                        //!< 垂直FOV(度)
+		float m_nearClip = 0.1f;                                                   //!< Near Clip距離
+		float m_farClip = 1000.0f;                                                 //!< Far Clip距離
+		float m_aspectRatio = 16.0f / 9.0f;                                        //!< Aspect Ratio
+		float m_orthographicSize = 5.0f;                                           //!< Orthographic縦方向Half Size
+		CameraViewport m_viewport{};                                               //!< 正規化Viewport
+		Vector2 m_renderTargetSize = Vector2(1.0f, 1.0f);                          //!< Render Target Size
+		Vector2 m_projectionJitter = Vector2::Zero;                                //!< Projection Jitter
+		std::uint32_t m_cullingMask = std::numeric_limits<std::uint32_t>::max();   //!< 描画対象LayerのBit Mask
+		CameraClearMode m_clearMode = CameraClearMode::SolidColor;                 //!< Clear方式
+		Color m_backgroundColor = Color(0.08f, 0.16f, 0.24f, 1.0f);                //!< 背景Clear Color
+		std::uint32_t m_postProcessVolumeMask = UINT32_MAX;                        //!< Volume layers, independent of geometry.
+		mutable std::vector<PostProcessVolumeLayer> m_volumeScratch;              //!< Main-thread collection capacity reused per Camera.
+		bool m_postProcessEnabled = false;                                        //!< PostEffect opt-in.
+		float m_postProcessWeight = 1.0f;                                          //!< Contribution, 0-1.
+		PostProcessProfileHandle m_postProcessProfile;                             //!< Shared asset reference.
+		PostProcessSettings m_postProcessOverrides;                                //!< Camera-local authoring.
+		mutable bool m_missingProfileReported = false;                             //!< Avoid repeating a stale-reference diagnostic.
 
-        mutable Matrix m_view = Matrix::Identity;                   //!< View行列
-        mutable Matrix m_projection = Matrix::Identity;             //!< Projection行列
-        mutable Matrix m_viewProjection = Matrix::Identity;         //!< View Projection行列
-        mutable Matrix m_inverseView = Matrix::Identity;            //!< Inverse View行列
-        mutable Matrix m_inverseProjection = Matrix::Identity;      //!< Inverse Projection行列
-        mutable Matrix m_inverseViewProjection = Matrix::Identity;  //!< Inverse View Projection行列
-        mutable Matrix m_previousViewProjection = Matrix::Identity; //!< 前回提出時のView Projection行列
-        mutable CameraFrustum m_frustum{};                          //!< World Space Clip Planes
-        mutable std::uint64_t m_transformRevision = 0;              //!< Transformの更新回数
-        mutable bool m_viewDirty = true;                            //!< View行列が更新されているか
-        mutable bool m_projectionDirty = true;                      //!< Projection行列が更新されているか
-        mutable bool m_viewProjectionDirty = true;                  //!< View Projection行列が更新されているか
-        mutable bool m_frustumDirty = true;                         //!< World Space Frustumが更新されているか
-        mutable bool m_hasPreviousViewProjection = false;           //!< 前回提出時のView Projection行列が有効か
-    };
+		mutable Matrix m_view = Matrix::Identity;                   //!< View行列
+		mutable Matrix m_projection = Matrix::Identity;             //!< Projection行列
+		mutable Matrix m_viewProjection = Matrix::Identity;         //!< View Projection行列
+		mutable Matrix m_inverseView = Matrix::Identity;            //!< Inverse View行列
+		mutable Matrix m_inverseProjection = Matrix::Identity;      //!< Inverse Projection行列
+		mutable Matrix m_inverseViewProjection = Matrix::Identity;  //!< Inverse View Projection行列
+		mutable Matrix m_previousViewProjection = Matrix::Identity; //!< 前回提出時のView Projection行列
+		mutable CameraFrustum m_frustum{};                          //!< World Space Clip Planes
+		mutable std::uint64_t m_transformRevision = 0;              //!< Transformの更新回数
+		mutable bool m_viewDirty = true;                            //!< View行列が更新されているか
+		mutable bool m_projectionDirty = true;                      //!< Projection行列が更新されているか
+		mutable bool m_viewProjectionDirty = true;                  //!< View Projection行列が更新されているか
+		mutable bool m_frustumDirty = true;                         //!< World Space Frustumが更新されているか
+		mutable bool m_hasPreviousViewProjection = false;           //!< 前回提出時のView Projection行列が有効か
+	};
 } // namespace Engine

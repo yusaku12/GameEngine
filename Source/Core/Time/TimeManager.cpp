@@ -5,187 +5,187 @@
 
 namespace Engine
 {
-    TimeManager::TimeManager()
-    {
-        // m_smoothDeltaTimeBuffer は std::array として初期化される
-    }
+	TimeManager::TimeManager()
+	{
+		// m_smoothDeltaTimeBuffer は std::array として初期化される
+	}
 
-    void TimeManager::initialize()
-    {
-        m_timer.initialize();
+	void TimeManager::initialize()
+	{
+		m_timer.initialize();
 
-        m_deltaTime = 0.0;
-        m_unscaledDeltaTime = 0.0;
-        m_gameTime = 0.0;
-        m_unscaledTime = 0.0;
-        m_realtime = 0.0;
-        m_timeScale = 1.0;
+		m_deltaTime = 0.0;
+		m_unscaledDeltaTime = 0.0;
+		m_gameTime = 0.0;
+		m_unscaledTime = 0.0;
+		m_realtime = 0.0;
+		m_timeScale = 1.0;
 
-        m_fixedAccumulator = 0.0;
-        m_fixedUpdatesThisFrame = 0;
+		m_fixedAccumulator = 0.0;
+		m_fixedUpdatesThisFrame = 0;
 
-        m_frameCount = 0;
-        m_fixedFrameCount = 0;
+		m_frameCount = 0;
+		m_fixedFrameCount = 0;
 
-        m_fps = 0.0;
-        m_averageFps = 0.0;
-        m_fpsTimer = 0.0;
-        m_fpsFrameCount = 0;
+		m_fps = 0.0;
+		m_averageFps = 0.0;
+		m_fpsTimer = 0.0;
+		m_fpsFrameCount = 0;
 
-        m_smoothDeltaTime = 0.0;
-        m_smoothBufferIndex = 0;
-        m_smoothSampleCount = 0;
-        std::fill(m_smoothDeltaTimeBuffer.begin(), m_smoothDeltaTimeBuffer.end(), 0.0);
+		m_smoothDeltaTime = 0.0;
+		m_smoothBufferIndex = 0;
+		m_smoothSampleCount = 0;
+		std::fill(m_smoothDeltaTimeBuffer.begin(), m_smoothDeltaTimeBuffer.end(), 0.0);
 
-        m_paused = false;
+		m_paused = false;
 
-        LOG_DEBUG_CAT("Time", "[TimeManager] Initialized");
-    }
+		LOG_DEBUG_CAT("Time", "[TimeManager] Initialized");
+	}
 
-    void TimeManager::resetSimulation() noexcept
-    {
-        m_timer.reset();
-        m_deltaTime = 0.0;
-        m_gameTime = 0.0;
-        m_fixedAccumulator = 0.0;
-        m_fixedUpdatesThisFrame = 0;
-        m_fixedFrameCount = 0;
-    }
+	void TimeManager::resetSimulation() noexcept
+	{
+		m_timer.reset();
+		m_deltaTime = 0.0;
+		m_gameTime = 0.0;
+		m_fixedAccumulator = 0.0;
+		m_fixedUpdatesThisFrame = 0;
+		m_fixedFrameCount = 0;
+	}
 
-    void TimeManager::beginFrame(const bool advanceSimulation, const bool singleStep)
-    {
-        // 現在の経過時間を取得
-        const double rawDeltaTime = m_timer.getElapsedSeconds();
-        m_timer.reset();
-        m_realtime += rawDeltaTime;
+	void TimeManager::beginFrame(const bool advanceSimulation, const bool singleStep)
+	{
+		// 現在の経過時間を取得
+		const double rawDeltaTime = m_timer.getElapsedSeconds();
+		m_timer.reset();
+		m_realtime += rawDeltaTime;
 
-        // Delta Time を Clamp
-        const double clampedDeltaTime = minimum(rawDeltaTime, m_maxDeltaTime);
+		// Delta Time を Clamp
+		const double clampedDeltaTime = minimum(rawDeltaTime, m_maxDeltaTime);
 
-        // Unscaled Delta Time を更新
-        m_unscaledDeltaTime = clampedDeltaTime;
+		// Unscaled Delta Time を更新
+		m_unscaledDeltaTime = clampedDeltaTime;
 
-        // Time Scale を適用して Delta Time を計算
-        m_deltaTime = singleStep ? m_fixedDeltaTime
-            : (advanceSimulation && !m_paused ? m_unscaledDeltaTime * m_timeScale : 0.0);
+		// Time Scale を適用して Delta Time を計算
+		m_deltaTime = singleStep ? m_fixedDeltaTime
+			: (advanceSimulation && !m_paused ? m_unscaledDeltaTime * m_timeScale : 0.0);
 
-        // ゲーム時間を更新
-        m_gameTime += m_deltaTime;
-        m_unscaledTime += m_unscaledDeltaTime;
+		// ゲーム時間を更新
+		m_gameTime += m_deltaTime;
+		m_unscaledTime += m_unscaledDeltaTime;
 
-        // Fixed Update Accumulator を更新
-        m_fixedAccumulator = singleStep ? m_fixedDeltaTime : m_fixedAccumulator + m_deltaTime;
-        m_fixedUpdatesThisFrame = 0;
+		// Fixed Update Accumulator を更新
+		m_fixedAccumulator = singleStep ? m_fixedDeltaTime : m_fixedAccumulator + m_deltaTime;
+		m_fixedUpdatesThisFrame = 0;
 
-        // フレームカウントを増加
-        ++m_frameCount;
+		// フレームカウントを増加
+		++m_frameCount;
 
-        // Smooth Delta Time を更新
-        updateSmoothDeltaTime();
+		// Smooth Delta Time を更新
+		updateSmoothDeltaTime();
 
-        // FPS統計を更新
-        updateFpsStats();
-    }
+		// FPS統計を更新
+		updateFpsStats();
+	}
 
-    void TimeManager::endFrame()
-    {
-        // 現在は処理なし
-        // 将来的な拡張に備える
-    }
+	void TimeManager::endFrame()
+	{
+		// 現在は処理なし
+		// 将来的な拡張に備える
+	}
 
-    void TimeManager::setTimeScale(float scale) noexcept
-    {
-        double timeScale = static_cast<double>(scale);
-        if (!std::isfinite(timeScale))
-        {
-            LOG_WARNING("[TimeManager] Invalid timeScale: {}, setting to 1.0", scale);
-            m_timeScale = 1.0;
-            return;
-        }
+	void TimeManager::setTimeScale(float scale) noexcept
+	{
+		double timeScale = static_cast<double>(scale);
+		if (!std::isfinite(timeScale))
+		{
+			LOG_WARNING("[TimeManager] Invalid timeScale: {}, setting to 1.0", scale);
+			m_timeScale = 1.0;
+			return;
+		}
 
-        m_timeScale = maximum(0.0, timeScale);
-    }
+		m_timeScale = maximum(0.0, timeScale);
+	}
 
-    void TimeManager::setFixedDeltaTime(float deltaTime) noexcept
-    {
-        double fixedDeltaTime = static_cast<double>(deltaTime);
+	void TimeManager::setFixedDeltaTime(float deltaTime) noexcept
+	{
+		double fixedDeltaTime = static_cast<double>(deltaTime);
 
-        // 0以下の値をチェック
-        if (fixedDeltaTime <= 0.0 || !std::isfinite(fixedDeltaTime))
-        {
-            LOG_WARNING("[TimeManager] Invalid fixedDeltaTime: {}, keeping previous value {}", deltaTime, m_fixedDeltaTime);
-            return;
-        }
+		// 0以下の値をチェック
+		if (fixedDeltaTime <= 0.0 || !std::isfinite(fixedDeltaTime))
+		{
+			LOG_WARNING("[TimeManager] Invalid fixedDeltaTime: {}, keeping previous value {}", deltaTime, m_fixedDeltaTime);
+			return;
+		}
 
-        m_fixedDeltaTime = fixedDeltaTime;
-    }
+		m_fixedDeltaTime = fixedDeltaTime;
+	}
 
-    void TimeManager::setMaxDeltaTime(const float seconds) noexcept
-    {
-        if (!std::isfinite(seconds) || seconds < 0.0f)
-        {
-            LOG_WARNING("[TimeManager] Invalid maxDeltaTime: {}, keeping previous value {}", seconds, m_maxDeltaTime);
-            return;
-        }
+	void TimeManager::setMaxDeltaTime(const float seconds) noexcept
+	{
+		if (!std::isfinite(seconds) || seconds < 0.0f)
+		{
+			LOG_WARNING("[TimeManager] Invalid maxDeltaTime: {}, keeping previous value {}", seconds, m_maxDeltaTime);
+			return;
+		}
 
-        m_maxDeltaTime = static_cast<double>(seconds);
-    }
+		m_maxDeltaTime = static_cast<double>(seconds);
+	}
 
-    void TimeManager::consumeFixedUpdate() noexcept
-    {
-        if (!hasFixedUpdate())
-            return;
+	void TimeManager::consumeFixedUpdate() noexcept
+	{
+		if (!hasFixedUpdate())
+			return;
 
-        m_fixedAccumulator -= m_fixedDeltaTime;
-        ++m_fixedUpdatesThisFrame;
-        ++m_fixedFrameCount;
+		m_fixedAccumulator -= m_fixedDeltaTime;
+		++m_fixedUpdatesThisFrame;
+		++m_fixedFrameCount;
 
-        if (m_fixedUpdatesThisFrame == MAX_FIXED_UPDATES_PER_FRAME
-            && m_fixedAccumulator >= m_fixedDeltaTime)
-        {
-            m_fixedAccumulator = std::fmod(m_fixedAccumulator, m_fixedDeltaTime);
-        }
-    }
+		if (m_fixedUpdatesThisFrame == MAX_FIXED_UPDATES_PER_FRAME
+			&& m_fixedAccumulator >= m_fixedDeltaTime)
+		{
+			m_fixedAccumulator = std::fmod(m_fixedAccumulator, m_fixedDeltaTime);
+		}
+	}
 
-    double TimeManager::realtimeSinceStartup() const noexcept
-    {
-        return m_realtime + m_timer.getElapsedSeconds();
-    }
+	double TimeManager::realtimeSinceStartup() const noexcept
+	{
+		return m_realtime + m_timer.getElapsedSeconds();
+	}
 
-    void TimeManager::updateSmoothDeltaTime() noexcept
-    {
-        // リングバッファに現在の Delta Time を格納
-        m_smoothDeltaTimeBuffer[m_smoothBufferIndex] = m_unscaledDeltaTime;
-        m_smoothBufferIndex = (m_smoothBufferIndex + 1) % SMOOTH_SAMPLE_COUNT;
-        m_smoothSampleCount = std::min(m_smoothSampleCount + 1, SMOOTH_SAMPLE_COUNT);
+	void TimeManager::updateSmoothDeltaTime() noexcept
+	{
+		// リングバッファに現在の Delta Time を格納
+		m_smoothDeltaTimeBuffer[m_smoothBufferIndex] = m_unscaledDeltaTime;
+		m_smoothBufferIndex = (m_smoothBufferIndex + 1) % SMOOTH_SAMPLE_COUNT;
+		m_smoothSampleCount = std::min(m_smoothSampleCount + 1, SMOOTH_SAMPLE_COUNT);
 
-        // バッファの平均を計算
-        double sum = 0.0;
-        for (const double value : m_smoothDeltaTimeBuffer)
-        {
-            sum += value;
-        }
+		// バッファの平均を計算
+		double sum = 0.0;
+		for (const double value : m_smoothDeltaTimeBuffer)
+		{
+			sum += value;
+		}
 
-        m_smoothDeltaTime = sum / static_cast<double>(m_smoothSampleCount);
-    }
+		m_smoothDeltaTime = sum / static_cast<double>(m_smoothSampleCount);
+	}
 
-    void TimeManager::updateFpsStats() noexcept
-    {
-        m_fpsTimer += m_unscaledDeltaTime;
+	void TimeManager::updateFpsStats() noexcept
+	{
+		m_fpsTimer += m_unscaledDeltaTime;
 
-        // 瞬間的なFPS
-        if (m_unscaledDeltaTime > 0.0)
-        {
-            m_fps = 1.0 / m_unscaledDeltaTime;
-            ++m_fpsFrameCount;
-        }
+		// 瞬間的なFPS
+		if (m_unscaledDeltaTime > 0.0)
+		{
+			m_fps = 1.0 / m_unscaledDeltaTime;
+			++m_fpsFrameCount;
+		}
 
-        // 平均FPS を更新
-        if (m_fpsTimer >= FPS_UPDATE_INTERVAL)
-        {
-            m_averageFps = static_cast<double>(m_fpsFrameCount) / m_fpsTimer;
-            m_fpsTimer = 0.0;
-            m_fpsFrameCount = 0;
-        }
-    }
+		// 平均FPS を更新
+		if (m_fpsTimer >= FPS_UPDATE_INTERVAL)
+		{
+			m_averageFps = static_cast<double>(m_fpsFrameCount) / m_fpsTimer;
+			m_fpsTimer = 0.0;
+			m_fpsFrameCount = 0;
+		}
+	}
 } // namespace Engine

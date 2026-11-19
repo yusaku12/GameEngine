@@ -10,338 +10,338 @@
 
 namespace Engine
 {
-    namespace
-    {
-        template<typename Keys>
-        bool validateKeyValues(const Keys& keys, const std::string& clip, const std::string& joint,
-            const char* type)
-        {
-            for (std::size_t index = 0; index < keys.size(); ++index)
-            {
-                const auto& value = keys[index].value;
-                bool valid = std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
-                if constexpr (requires { value.w; })
-                {
-                    const float lengthSquared = value.x * value.x + value.y * value.y
-                        + value.z * value.z + value.w * value.w;
-                    valid = valid && std::isfinite(value.w) && std::isfinite(lengthSquared) && lengthSquared > 0.0f;
-                }
-                else
-                {
-                    // ozz compresses translation and scale components to half precision.
-                    valid = valid && std::abs(value.x) <= 65504.0f
-                        && std::abs(value.y) <= 65504.0f && std::abs(value.z) <= 65504.0f;
-                }
-                if (!valid)
-                {
-                    LOG_ERROR("[AnimationAssetBuilder] Clip '{}' joint '{}' {} key {} at {} seconds "
-                        "has an invalid value or exceeds ozz compression range.",
-                        clip, joint, type, index, keys[index].time);
-                    return false;
-                }
-            }
-            return true;
-        }
+	namespace
+	{
+		template<typename Keys>
+		bool validateKeyValues(const Keys& keys, const std::string& clip, const std::string& joint,
+			const char* type)
+		{
+			for (std::size_t index = 0; index < keys.size(); ++index)
+			{
+				const auto& value = keys[index].value;
+				bool valid = std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+				if constexpr (requires { value.w; })
+				{
+					const float lengthSquared = value.x * value.x + value.y * value.y
+						+ value.z * value.z + value.w * value.w;
+					valid = valid && std::isfinite(value.w) && std::isfinite(lengthSquared) && lengthSquared > 0.0f;
+				}
+				else
+				{
+					// ozz compresses translation and scale components to half precision.
+					valid = valid && std::abs(value.x) <= 65504.0f
+						&& std::abs(value.y) <= 65504.0f && std::abs(value.z) <= 65504.0f;
+				}
+				if (!valid)
+				{
+					LOG_ERROR("[AnimationAssetBuilder] Clip '{}' joint '{}' {} key {} at {} seconds "
+						"has an invalid value or exceeds ozz compression range.",
+						clip, joint, type, index, keys[index].time);
+					return false;
+				}
+			}
+			return true;
+		}
 
-        template<typename Keys>
-        bool validateKeyTimes(const Keys& keys, const float duration, const std::string& clip,
-            const std::string& joint, const char* type)
-        {
-            float previous = -1.0f;
-            float previousRatio = -1.0f;
-            const float inverseDuration = 1.0f / duration;
-            for (std::size_t index = 0; index < keys.size(); ++index)
-            {
-                const float time = keys[index].time;
-                const float ratio = time * inverseDuration;
-                const bool implicitEndpointCollision = keys.size() > 1
-                    && ((index == 0 && time > 0.0f && ratio <= 0.0f)
-                        || (index + 1 == keys.size() && time < duration && ratio >= duration * inverseDuration));
-                if (!std::isfinite(time) || time < 0.0f || time > duration || time <= previous
-                    || !std::isfinite(ratio) || ratio <= previousRatio || implicitEndpointCollision)
-                {
-                    LOG_ERROR("[AnimationAssetBuilder] Clip '{}' joint '{}' {} key {} has invalid time {} "
-                        "(previous {}, duration {}, ozz ratio {}, previous ratio {}); "
-                        "times and ozz ratios must be finite and strictly increasing (including implicit endpoints), "
-                        "with times in range.",
-                        clip, joint, type, index, time, previous, duration, ratio, previousRatio);
-                    return false;
-                }
-                previous = time;
-                previousRatio = ratio;
-            }
-            return true;
-        }
+		template<typename Keys>
+		bool validateKeyTimes(const Keys& keys, const float duration, const std::string& clip,
+			const std::string& joint, const char* type)
+		{
+			float previous = -1.0f;
+			float previousRatio = -1.0f;
+			const float inverseDuration = 1.0f / duration;
+			for (std::size_t index = 0; index < keys.size(); ++index)
+			{
+				const float time = keys[index].time;
+				const float ratio = time * inverseDuration;
+				const bool implicitEndpointCollision = keys.size() > 1
+					&& ((index == 0 && time > 0.0f && ratio <= 0.0f)
+						|| (index + 1 == keys.size() && time < duration && ratio >= duration * inverseDuration));
+				if (!std::isfinite(time) || time < 0.0f || time > duration || time <= previous
+					|| !std::isfinite(ratio) || ratio <= previousRatio || implicitEndpointCollision)
+				{
+					LOG_ERROR("[AnimationAssetBuilder] Clip '{}' joint '{}' {} key {} has invalid time {} "
+						"(previous {}, duration {}, ozz ratio {}, previous ratio {}); "
+						"times and ozz ratios must be finite and strictly increasing (including implicit endpoints), "
+						"with times in range.",
+						clip, joint, type, index, time, previous, duration, ratio, previousRatio);
+					return false;
+				}
+				previous = time;
+				previousRatio = ratio;
+			}
+			return true;
+		}
 
-        void hashBytes(std::uint64_t& hash, const void* data, const std::size_t size) noexcept
-        {
-            constexpr std::uint64_t prime = 1099511628211ull;
-            const auto* bytes = static_cast<const std::uint8_t*>(data);
-            for (std::size_t index = 0; index < size; ++index)
-            {
-                hash ^= bytes[index];
-                hash *= prime;
-            }
-        }
+		void hashBytes(std::uint64_t& hash, const void* data, const std::size_t size) noexcept
+		{
+			constexpr std::uint64_t prime = 1099511628211ull;
+			const auto* bytes = static_cast<const std::uint8_t*>(data);
+			for (std::size_t index = 0; index < size; ++index)
+			{
+				hash ^= bytes[index];
+				hash *= prime;
+			}
+		}
 
-        AssetGUID makeAssetGuid(const std::filesystem::path& sourcePath, const std::string_view discriminator) noexcept
-        {
-            const std::string path = sourcePath.lexically_normal().generic_string();
-            AssetGUID guid{ 14695981039346656037ull, 1099511628211ull };
-            hashBytes(guid.high, path.data(), path.size());
-            hashBytes(guid.high, discriminator.data(), discriminator.size());
-            hashBytes(guid.low, discriminator.data(), discriminator.size());
-            hashBytes(guid.low, path.data(), path.size());
-            if (!guid.isValid()) guid.low = 1;
-            return guid;
-        }
+		AssetGUID makeAssetGuid(const std::filesystem::path& sourcePath, const std::string_view discriminator) noexcept
+		{
+			const std::string path = sourcePath.lexically_normal().generic_string();
+			AssetGUID guid{ 14695981039346656037ull, 1099511628211ull };
+			hashBytes(guid.high, path.data(), path.size());
+			hashBytes(guid.high, discriminator.data(), discriminator.size());
+			hashBytes(guid.low, discriminator.data(), discriminator.size());
+			hashBytes(guid.low, path.data(), path.size());
+			if (!guid.isValid()) guid.low = 1;
+			return guid;
+		}
 
-        bool decompose(const Matrix& matrix, ozz::math::Transform& transform)
-        {
-            Matrix decomposedMatrix = matrix;
-            Vector3 scale;
-            Quaternion rotation;
-            Vector3 translation;
-            if (!decomposedMatrix.Decompose(scale, rotation, translation))
-                return false;
-            rotation.Normalize();
-            transform.translation = { translation.x, translation.y, translation.z };
-            transform.rotation = { rotation.x, rotation.y, rotation.z, rotation.w };
-            transform.scale = { scale.x, scale.y, scale.z };
-            return true;
-        }
+		bool decompose(const Matrix& matrix, ozz::math::Transform& transform)
+		{
+			Matrix decomposedMatrix = matrix;
+			Vector3 scale;
+			Quaternion rotation;
+			Vector3 translation;
+			if (!decomposedMatrix.Decompose(scale, rotation, translation))
+				return false;
+			rotation.Normalize();
+			transform.translation = { translation.x, translation.y, translation.z };
+			transform.rotation = { rotation.x, rotation.y, rotation.z, rotation.w };
+			transform.scale = { scale.x, scale.y, scale.z };
+			return true;
+		}
 
-        bool buildJoint(const SkeletonResource& source, const std::size_t index, ozz::animation::offline::RawSkeleton::Joint& destination)
-        {
-            const Bone& bone = source.bones[index];
-            destination.name = bone.name;
-            if (!decompose(bone.localBindTransform, destination.transform))
-                return false;
+		bool buildJoint(const SkeletonResource& source, const std::size_t index, ozz::animation::offline::RawSkeleton::Joint& destination)
+		{
+			const Bone& bone = source.bones[index];
+			destination.name = bone.name;
+			if (!decompose(bone.localBindTransform, destination.transform))
+				return false;
 
-            std::size_t childCount = 0;
-            for (const Bone& candidate : source.bones)
-                childCount += candidate.parentIndex == static_cast<std::int32_t>(index) ? 1u : 0u;
-            destination.children.resize(childCount);
+			std::size_t childCount = 0;
+			for (const Bone& candidate : source.bones)
+				childCount += candidate.parentIndex == static_cast<std::int32_t>(index) ? 1u : 0u;
+			destination.children.resize(childCount);
 
-            std::size_t childIndex = 0;
-            for (std::size_t candidateIndex = 0; candidateIndex < source.bones.size(); ++candidateIndex)
-            {
-                if (source.bones[candidateIndex].parentIndex == static_cast<std::int32_t>(index)
-                    && !buildJoint(source, candidateIndex, destination.children[childIndex++]))
-                    return false;
-            }
-            return true;
-        }
+			std::size_t childIndex = 0;
+			for (std::size_t candidateIndex = 0; candidateIndex < source.bones.size(); ++candidateIndex)
+			{
+				if (source.bones[candidateIndex].parentIndex == static_cast<std::int32_t>(index)
+					&& !buildJoint(source, candidateIndex, destination.children[childIndex++]))
+					return false;
+			}
+			return true;
+		}
 
-        bool sameJointName(const std::string_view left, const std::string_view right)
-        {
-            const std::size_t leftSeparator = left.find_last_of(":|/");
-            const std::size_t rightSeparator = right.find_last_of(":|/");
-            const std::string_view leftLeaf = left.substr(leftSeparator == std::string_view::npos ? 0 : leftSeparator + 1);
-            const std::string_view rightLeaf = right.substr(rightSeparator == std::string_view::npos ? 0 : rightSeparator + 1);
-            if (leftLeaf.size() != rightLeaf.size())
-                return false;
-            for (std::size_t index = 0; index < leftLeaf.size(); ++index)
-                if (std::tolower(static_cast<unsigned char>(leftLeaf[index]))
-                    != std::tolower(static_cast<unsigned char>(rightLeaf[index])))
-                    return false;
-            return true;
-        }
-    }
+		bool sameJointName(const std::string_view left, const std::string_view right)
+		{
+			const std::size_t leftSeparator = left.find_last_of(":|/");
+			const std::size_t rightSeparator = right.find_last_of(":|/");
+			const std::string_view leftLeaf = left.substr(leftSeparator == std::string_view::npos ? 0 : leftSeparator + 1);
+			const std::string_view rightLeaf = right.substr(rightSeparator == std::string_view::npos ? 0 : rightSeparator + 1);
+			if (leftLeaf.size() != rightLeaf.size())
+				return false;
+			for (std::size_t index = 0; index < leftLeaf.size(); ++index)
+				if (std::tolower(static_cast<unsigned char>(leftLeaf[index]))
+					!= std::tolower(static_cast<unsigned char>(rightLeaf[index])))
+					return false;
+			return true;
+		}
+	}
 
-    SkeletonSignature AnimationAssetBuilder::calculateSignature(const std::span<const std::string> hierarchyPaths, const std::span<const std::int32_t> parentIndices) noexcept
-    {
-        if (hierarchyPaths.size() != parentIndices.size() || hierarchyPaths.empty())
-            return {};
+	SkeletonSignature AnimationAssetBuilder::calculateSignature(const std::span<const std::string> hierarchyPaths, const std::span<const std::int32_t> parentIndices) noexcept
+	{
+		if (hierarchyPaths.size() != parentIndices.size() || hierarchyPaths.empty())
+			return {};
 
-        SkeletonSignature result{ 14695981039346656037ull, 1099511628211ull };
-        for (std::size_t index = 0; index < hierarchyPaths.size(); ++index)
-        {
-            hashBytes(result.high, hierarchyPaths[index].data(), hierarchyPaths[index].size());
-            hashBytes(result.high, &parentIndices[index], sizeof(parentIndices[index]));
-            hashBytes(result.low, &parentIndices[index], sizeof(parentIndices[index]));
-            hashBytes(result.low, hierarchyPaths[index].data(), hierarchyPaths[index].size());
-        }
-        return result;
-    }
+		SkeletonSignature result{ 14695981039346656037ull, 1099511628211ull };
+		for (std::size_t index = 0; index < hierarchyPaths.size(); ++index)
+		{
+			hashBytes(result.high, hierarchyPaths[index].data(), hierarchyPaths[index].size());
+			hashBytes(result.high, &parentIndices[index], sizeof(parentIndices[index]));
+			hashBytes(result.low, &parentIndices[index], sizeof(parentIndices[index]));
+			hashBytes(result.low, hierarchyPaths[index].data(), hierarchyPaths[index].size());
+		}
+		return result;
+	}
 
-    bool AnimationAssetBuilder::buildSkeleton(const SkeletonResource& source, const std::filesystem::path& sourcePath, SkeletonAsset& destination) const
-    {
-        if (source.bones.empty() || source.bones.size() > MAX_SKINNING_BONES)
-            return false;
+	bool AnimationAssetBuilder::buildSkeleton(const SkeletonResource& source, const std::filesystem::path& sourcePath, SkeletonAsset& destination) const
+	{
+		if (source.bones.empty() || source.bones.size() > MAX_SKINNING_BONES)
+			return false;
 
-        SkeletonAsset result;
-        result.guid = makeAssetGuid(sourcePath, "skeleton");
-        result.name = sourcePath.stem().string();
-        result.sourcePath = sourcePath;
-        result.jointNames.reserve(source.bones.size());
-        result.parentIndices.reserve(source.bones.size());
-        result.hierarchyPaths.reserve(source.bones.size());
-        result.inverseBindPoses.reserve(source.bones.size());
-        result.localBindTransforms.reserve(source.bones.size());
+		SkeletonAsset result;
+		result.guid = makeAssetGuid(sourcePath, "skeleton");
+		result.name = sourcePath.stem().string();
+		result.sourcePath = sourcePath;
+		result.jointNames.reserve(source.bones.size());
+		result.parentIndices.reserve(source.bones.size());
+		result.hierarchyPaths.reserve(source.bones.size());
+		result.inverseBindPoses.reserve(source.bones.size());
+		result.localBindTransforms.reserve(source.bones.size());
 
-        std::size_t rootCount = 0;
-        for (std::size_t index = 0; index < source.bones.size(); ++index)
-        {
-            const Bone& bone = source.bones[index];
-            if (bone.index != index || bone.name.empty() || !result.jointLookup.emplace(bone.name, static_cast<std::uint32_t>(index)).second)
-                return false;
-            if (bone.parentIndex >= static_cast<std::int32_t>(index) || bone.parentIndex < -1)
-                return false;
+		std::size_t rootCount = 0;
+		for (std::size_t index = 0; index < source.bones.size(); ++index)
+		{
+			const Bone& bone = source.bones[index];
+			if (bone.index != index || bone.name.empty() || !result.jointLookup.emplace(bone.name, static_cast<std::uint32_t>(index)).second)
+				return false;
+			if (bone.parentIndex >= static_cast<std::int32_t>(index) || bone.parentIndex < -1)
+				return false;
 
-            result.jointNames.push_back(bone.name);
-            result.parentIndices.push_back(bone.parentIndex);
-            result.inverseBindPoses.push_back(bone.inverseBindPose);
-            result.localBindTransforms.push_back(bone.localBindTransform);
-            if (bone.parentIndex < 0)
-            {
-                result.hierarchyPaths.push_back(bone.name);
-                ++rootCount;
-            }
-            else
-            {
-                result.hierarchyPaths.push_back(result.hierarchyPaths[static_cast<std::size_t>(bone.parentIndex)] + "/" + bone.name);
-            }
-        }
+			result.jointNames.push_back(bone.name);
+			result.parentIndices.push_back(bone.parentIndex);
+			result.inverseBindPoses.push_back(bone.inverseBindPose);
+			result.localBindTransforms.push_back(bone.localBindTransform);
+			if (bone.parentIndex < 0)
+			{
+				result.hierarchyPaths.push_back(bone.name);
+				++rootCount;
+			}
+			else
+			{
+				result.hierarchyPaths.push_back(result.hierarchyPaths[static_cast<std::size_t>(bone.parentIndex)] + "/" + bone.name);
+			}
+		}
 
-        ozz::animation::offline::RawSkeleton rawSkeleton;
-        rawSkeleton.roots.resize(rootCount);
-        std::size_t rootIndex = 0;
-        for (std::size_t index = 0; index < source.bones.size(); ++index)
-        {
-            if (source.bones[index].parentIndex < 0 && !buildJoint(source, index, rawSkeleton.roots[rootIndex++]))
-                return false;
-        }
-        if (!rawSkeleton.Validate())
-            return false;
+		ozz::animation::offline::RawSkeleton rawSkeleton;
+		rawSkeleton.roots.resize(rootCount);
+		std::size_t rootIndex = 0;
+		for (std::size_t index = 0; index < source.bones.size(); ++index)
+		{
+			if (source.bones[index].parentIndex < 0 && !buildJoint(source, index, rawSkeleton.roots[rootIndex++]))
+				return false;
+		}
+		if (!rawSkeleton.Validate())
+			return false;
 
-        ozz::animation::offline::SkeletonBuilder builder;
-        auto runtimeSkeleton = builder(rawSkeleton);
-        if (runtimeSkeleton == nullptr || runtimeSkeleton->num_joints() != static_cast<int>(source.bones.size()))
-            return false;
+		ozz::animation::offline::SkeletonBuilder builder;
+		auto runtimeSkeleton = builder(rawSkeleton);
+		if (runtimeSkeleton == nullptr || runtimeSkeleton->num_joints() != static_cast<int>(source.bones.size()))
+			return false;
 
-        result.signature = calculateSignature(result.hierarchyPaths, result.parentIndices);
-        result.skeleton = std::move(*runtimeSkeleton);
-        destination = std::move(result);
-        return true;
-    }
+		result.signature = calculateSignature(result.hierarchyPaths, result.parentIndices);
+		result.skeleton = std::move(*runtimeSkeleton);
+		destination = std::move(result);
+		return true;
+	}
 
-    bool AnimationAssetBuilder::buildClip(const AnimationResource& source, const SkeletonAsset& skeleton, const std::filesystem::path& sourcePath, AnimationClipAsset& destination) const
-    {
-        if (!std::isfinite(source.duration) || source.duration <= 0.0f || skeleton.skeleton.num_joints() == 0)
-        {
-            LOG_ERROR("[AnimationAssetBuilder] Cannot build clip '{}': invalid duration {} or empty skeleton.",
-                source.name, source.duration);
-            return false;
-        }
+	bool AnimationAssetBuilder::buildClip(const AnimationResource& source, const SkeletonAsset& skeleton, const std::filesystem::path& sourcePath, AnimationClipAsset& destination) const
+	{
+		if (!std::isfinite(source.duration) || source.duration <= 0.0f || skeleton.skeleton.num_joints() == 0)
+		{
+			LOG_ERROR("[AnimationAssetBuilder] Cannot build clip '{}': invalid duration {} or empty skeleton.",
+				source.name, source.duration);
+			return false;
+		}
 
-        std::unordered_map<std::string_view, const AnimationChannel*> channels;
-        channels.reserve(source.channels.size());
-        for (const AnimationChannel& channel : source.channels)
-        {
-            if (!channels.emplace(channel.nodeName, &channel).second)
-            {
-                LOG_ERROR("[AnimationAssetBuilder] Clip '{}' contains duplicate channel '{}'.",
-                    source.name, channel.nodeName);
-                return false;
-            }
-        }
+		std::unordered_map<std::string_view, const AnimationChannel*> channels;
+		channels.reserve(source.channels.size());
+		for (const AnimationChannel& channel : source.channels)
+		{
+			if (!channels.emplace(channel.nodeName, &channel).second)
+			{
+				LOG_ERROR("[AnimationAssetBuilder] Clip '{}' contains duplicate channel '{}'.",
+					source.name, channel.nodeName);
+				return false;
+			}
+		}
 
-        ozz::animation::offline::RawAnimation rawAnimation;
-        rawAnimation.name = source.name;
-        rawAnimation.duration = source.duration;
-        rawAnimation.tracks.resize(skeleton.jointNames.size());
-        for (std::size_t index = 0; index < skeleton.jointNames.size(); ++index)
-        {
-            Vector3 bindScale;
-            Quaternion bindRotation;
-            Vector3 bindTranslation;
-            Matrix localBindTransform = skeleton.localBindTransforms[index];
-            if (!localBindTransform.Decompose(bindScale, bindRotation, bindTranslation))
-            {
-                bindScale = Vector3::One;
-                bindRotation = Quaternion::Identity;
-                bindTranslation = Vector3::Zero;
-            }
+		ozz::animation::offline::RawAnimation rawAnimation;
+		rawAnimation.name = source.name;
+		rawAnimation.duration = source.duration;
+		rawAnimation.tracks.resize(skeleton.jointNames.size());
+		for (std::size_t index = 0; index < skeleton.jointNames.size(); ++index)
+		{
+			Vector3 bindScale;
+			Quaternion bindRotation;
+			Vector3 bindTranslation;
+			Matrix localBindTransform = skeleton.localBindTransforms[index];
+			if (!localBindTransform.Decompose(bindScale, bindRotation, bindTranslation))
+			{
+				bindScale = Vector3::One;
+				bindRotation = Quaternion::Identity;
+				bindTranslation = Vector3::Zero;
+			}
 
-            auto& track = rawAnimation.tracks[index];
-            const auto pathFound = channels.find(skeleton.hierarchyPaths[index]);
-            const auto found = channels.find(skeleton.jointNames[index]);
-            const AnimationChannel* channel = pathFound != channels.end() ? pathFound->second
-                : found == channels.end() ? nullptr : found->second;
-            if (channel == nullptr)
-                for (const auto& [channelName, candidate] : channels)
-                    if (sameJointName(channelName, skeleton.jointNames[index]))
-                    {
-                        if (channel != nullptr)
-                        {
-                            LOG_ERROR("[AnimationAssetBuilder] Clip '{}' has ambiguous channels for joint '{}'.",
-                                source.name, skeleton.jointNames[index]);
-                            return false;
-                        }
-                        channel = candidate;
-                    }
-            if (channel == nullptr || channel->positions.empty())
-                track.translations.push_back({ 0.0f, { bindTranslation.x, bindTranslation.y, bindTranslation.z } });
-            else
-            {
-                for (const AnimationKeyPosition& key : channel->positions)
-                {
-                    track.translations.push_back({ key.time, { key.value.x, key.value.y, key.value.z } });
-                }
-            }
-            if (channel == nullptr || channel->rotations.empty())
-                track.rotations.push_back({ 0.0f, { bindRotation.x, bindRotation.y, bindRotation.z, bindRotation.w } });
-            else
-            {
-                for (const AnimationKeyRotation& key : channel->rotations)
-                {
-                    Quaternion rotation = key.value;
-                    rotation.Normalize();
-                    track.rotations.push_back({ key.time, { rotation.x, rotation.y, rotation.z, rotation.w } });
-                }
-            }
-            if (channel == nullptr || channel->scales.empty())
-                track.scales.push_back({ 0.0f, { bindScale.x, bindScale.y, bindScale.z } });
-            else
-            {
-                for (const AnimationKeyScale& key : channel->scales)
-                {
-                    track.scales.push_back({ key.time, { key.value.x, key.value.y, key.value.z } });
-                }
-            }
-            if (!validateKeyTimes(track.translations, source.duration, source.name, skeleton.jointNames[index], "translation")
-                || !validateKeyTimes(track.rotations, source.duration, source.name, skeleton.jointNames[index], "rotation")
-                || !validateKeyTimes(track.scales, source.duration, source.name, skeleton.jointNames[index], "scale")
-                || !validateKeyValues(track.translations, source.name, skeleton.jointNames[index], "translation")
-                || !validateKeyValues(track.rotations, source.name, skeleton.jointNames[index], "rotation")
-                || !validateKeyValues(track.scales, source.name, skeleton.jointNames[index], "scale"))
-                return false;
-        }
-        if (!rawAnimation.Validate())
-        {
-            LOG_ERROR("[AnimationAssetBuilder] ozz rejected raw animation '{}'.", source.name);
-            return false;
-        }
+			auto& track = rawAnimation.tracks[index];
+			const auto pathFound = channels.find(skeleton.hierarchyPaths[index]);
+			const auto found = channels.find(skeleton.jointNames[index]);
+			const AnimationChannel* channel = pathFound != channels.end() ? pathFound->second
+				: found == channels.end() ? nullptr : found->second;
+			if (channel == nullptr)
+				for (const auto& [channelName, candidate] : channels)
+					if (sameJointName(channelName, skeleton.jointNames[index]))
+					{
+						if (channel != nullptr)
+						{
+							LOG_ERROR("[AnimationAssetBuilder] Clip '{}' has ambiguous channels for joint '{}'.",
+								source.name, skeleton.jointNames[index]);
+							return false;
+						}
+						channel = candidate;
+					}
+			if (channel == nullptr || channel->positions.empty())
+				track.translations.push_back({ 0.0f,{ bindTranslation.x, bindTranslation.y, bindTranslation.z } });
+			else
+			{
+				for (const AnimationKeyPosition& key : channel->positions)
+				{
+					track.translations.push_back({ key.time,{ key.value.x, key.value.y, key.value.z } });
+				}
+			}
+			if (channel == nullptr || channel->rotations.empty())
+				track.rotations.push_back({ 0.0f,{ bindRotation.x, bindRotation.y, bindRotation.z, bindRotation.w } });
+			else
+			{
+				for (const AnimationKeyRotation& key : channel->rotations)
+				{
+					Quaternion rotation = key.value;
+					rotation.Normalize();
+					track.rotations.push_back({ key.time,{ rotation.x, rotation.y, rotation.z, rotation.w } });
+				}
+			}
+			if (channel == nullptr || channel->scales.empty())
+				track.scales.push_back({ 0.0f,{ bindScale.x, bindScale.y, bindScale.z } });
+			else
+			{
+				for (const AnimationKeyScale& key : channel->scales)
+				{
+					track.scales.push_back({ key.time,{ key.value.x, key.value.y, key.value.z } });
+				}
+			}
+			if (!validateKeyTimes(track.translations, source.duration, source.name, skeleton.jointNames[index], "translation")
+				|| !validateKeyTimes(track.rotations, source.duration, source.name, skeleton.jointNames[index], "rotation")
+				|| !validateKeyTimes(track.scales, source.duration, source.name, skeleton.jointNames[index], "scale")
+				|| !validateKeyValues(track.translations, source.name, skeleton.jointNames[index], "translation")
+				|| !validateKeyValues(track.rotations, source.name, skeleton.jointNames[index], "rotation")
+				|| !validateKeyValues(track.scales, source.name, skeleton.jointNames[index], "scale"))
+				return false;
+		}
+		if (!rawAnimation.Validate())
+		{
+			LOG_ERROR("[AnimationAssetBuilder] ozz rejected raw animation '{}'.", source.name);
+			return false;
+		}
 
-        ozz::animation::offline::AnimationBuilder builder;
-        auto runtimeAnimation = builder(rawAnimation);
-        if (runtimeAnimation == nullptr)
-        {
-            LOG_ERROR("[AnimationAssetBuilder] ozz runtime animation build failed for '{}'.", source.name);
-            return false;
-        }
+		ozz::animation::offline::AnimationBuilder builder;
+		auto runtimeAnimation = builder(rawAnimation);
+		if (runtimeAnimation == nullptr)
+		{
+			LOG_ERROR("[AnimationAssetBuilder] ozz runtime animation build failed for '{}'.", source.name);
+			return false;
+		}
 
-        AnimationClipAsset result;
-        result.guid = makeAssetGuid(sourcePath, std::string("clip/") + source.name);
-        result.name = source.name.empty() ? sourcePath.stem().string() : source.name;
-        result.skeletonGuid = skeleton.guid;
-        result.skeletonSignature = skeleton.signature;
-        result.animation = std::move(*runtimeAnimation);
-        result.duration = result.animation.duration();
-        result.sourcePath = sourcePath;
-        result.sourceClipName = source.name;
-        destination = std::move(result);
-        return true;
-    }
+		AnimationClipAsset result;
+		result.guid = makeAssetGuid(sourcePath, std::string("clip/") + source.name);
+		result.name = source.name.empty() ? sourcePath.stem().string() : source.name;
+		result.skeletonGuid = skeleton.guid;
+		result.skeletonSignature = skeleton.signature;
+		result.animation = std::move(*runtimeAnimation);
+		result.duration = result.animation.duration();
+		result.sourcePath = sourcePath;
+		result.sourceClipName = source.name;
+		destination = std::move(result);
+		return true;
+	}
 }

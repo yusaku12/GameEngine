@@ -3,42 +3,42 @@
 
 namespace Engine
 {
-    CameraRenderSubmissionQueue& CameraRenderSubmissionQueue::instance() noexcept
-    {
-        static CameraRenderSubmissionQueue instance;
-        return instance;
-    }
+	CameraRenderSubmissionQueue& CameraRenderSubmissionQueue::instance() noexcept
+	{
+		static CameraRenderSubmissionQueue instance;
+		return instance;
+	}
 
-    void CameraRenderSubmissionQueue::submit(const RenderView& view)
-    {
-        const std::scoped_lock lock(m_mutex);
-        m_pending = view;
-    }
+	void CameraRenderSubmissionQueue::submit(const RenderView& view)
+	{
+		const std::scoped_lock lock(m_mutex);
+		m_pending = view;
+	}
 
-    bool CameraRenderSubmissionQueue::consume(RenderView& destination)
-    {
-        const std::scoped_lock lock(m_mutex);
-        if (!m_pending.has_value())
-            return false;
+	bool CameraRenderSubmissionQueue::consume(RenderView& destination)
+	{
+		const std::scoped_lock lock(m_mutex);
+		if (!m_pending.has_value())
+			return false;
 
-        destination = *m_pending;
-        m_pending.reset();
-        return true;
-    }
+		destination = *m_pending;
+		m_pending.reset();
+		return true;
+	}
 
-    bool CameraRenderSubmissionQueue::peekUnjitteredFrustum(CameraFrustum& destination)
-    {
-        const std::scoped_lock lock(m_mutex);
-        if (!m_pending || !m_pending->frustum.valid
-            || m_pending->postProcess.settings.temporalAAEnabled.value)
-            return false;
-        destination = m_pending->frustum;
-        return true;
-    }
+	bool CameraRenderSubmissionQueue::peekUnjitteredFrustum(CameraFrustum& destination)
+	{
+		const std::scoped_lock lock(m_mutex);
+		if (!m_pending || !m_pending->frustum.valid
+			|| m_pending->postProcess.settings.temporalAAEnabled.value)
+			return false;
+		destination = m_pending->frustum;
+		return true;
+	}
 
-    void CameraRenderSubmissionQueue::clear() noexcept
-    {
-        const std::scoped_lock lock(m_mutex);
-        m_pending.reset();
-    }
+	void CameraRenderSubmissionQueue::clear() noexcept
+	{
+		const std::scoped_lock lock(m_mutex);
+		m_pending.reset();
+	}
 } // namespace Engine

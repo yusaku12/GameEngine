@@ -12,439 +12,439 @@
 
 namespace Engine
 {
-    namespace
-    {
-        bool finite(const Vector3& value) noexcept
-        {
-            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
-        }
+	namespace
+	{
+		bool finite(const Vector3& value) noexcept
+		{
+			return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+		}
 
-        bool unit(const Vector3& value) noexcept
-        {
-            return finite(value) && std::abs(value.LengthSquared() - 1.0f) < 1.0e-3f;
-        }
+		bool unit(const Vector3& value) noexcept
+		{
+			return finite(value) && std::abs(value.LengthSquared() - 1.0f) < 1.0e-3f;
+		}
 
-        ozz::math::SimdFloat4 simd(const Vector3& value) noexcept
-        {
-            return ozz::math::simd_float4::Load(value.x, value.y, value.z, 0.0f);
-        }
+		ozz::math::SimdFloat4 simd(const Vector3& value) noexcept
+		{
+			return ozz::math::simd_float4::Load(value.x, value.y, value.z, 0.0f);
+		}
 
-        Vector3 vector(const ozz::math::SimdFloat4 value) noexcept
-        {
-            return { ozz::math::GetX(value), ozz::math::GetY(value), ozz::math::GetZ(value) };
-        }
+		Vector3 vector(const ozz::math::SimdFloat4 value) noexcept
+		{
+			return { ozz::math::GetX(value), ozz::math::GetY(value), ozz::math::GetZ(value) };
+		}
 
-        bool normalize(Vector3& value) noexcept
-        {
-            const float lengthSquared = value.LengthSquared();
-            if (!finite(value) || !std::isfinite(lengthSquared) || lengthSquared <= 0.0f)
-                return false;
-            value /= std::sqrt(lengthSquared);
-            return unit(value);
-        }
+		bool normalize(Vector3& value) noexcept
+		{
+			const float lengthSquared = value.LengthSquared();
+			if (!finite(value) || !std::isfinite(lengthSquared) || lengthSquared <= 0.0f)
+				return false;
+			value /= std::sqrt(lengthSquared);
+			return unit(value);
+		}
 
-        bool buildRestModels(const ozz::animation::Skeleton& skeleton,
-            std::vector<ozz::math::Float4x4>& models)
-        {
-            models.resize(static_cast<std::size_t>(skeleton.num_joints()));
-            ozz::animation::LocalToModelJob job;
-            job.skeleton = &skeleton;
-            job.input = skeleton.joint_rest_poses();
-            job.output = ozz::span<ozz::math::Float4x4>(models.data(), models.size());
-            if (!job.Run())
-            {
-                LOG_ERROR("[FootIK] Cannot build the skeleton rest pose.");
-                return false;
-            }
-            return true;
-        }
+		bool buildRestModels(const ozz::animation::Skeleton& skeleton,
+			std::vector<ozz::math::Float4x4>& models)
+		{
+			models.resize(static_cast<std::size_t>(skeleton.num_joints()));
+			ozz::animation::LocalToModelJob job;
+			job.skeleton = &skeleton;
+			job.input = skeleton.joint_rest_poses();
+			job.output = ozz::span<ozz::math::Float4x4>(models.data(), models.size());
+			if (!job.Run())
+			{
+				LOG_ERROR("[FootIK] Cannot build the skeleton rest pose.");
+				return false;
+			}
+			return true;
+		}
 
-        bool localDirection(const std::span<const ozz::math::Float4x4> models, const int joint,
-            ozz::math::SimdFloat4 direction, Vector3& result)
-        {
-            if (joint >= 0)
-            {
-                ozz::math::SimdInt4 invertible;
-                const auto inverse = ozz::math::Invert(models[joint], &invertible);
-                if (!ozz::math::AreAllTrue1(invertible))
-                    return false;
-                direction = ozz::math::TransformVector(inverse, direction);
-            }
-            result = vector(direction);
-            return normalize(result);
-        }
+		bool localDirection(const std::span<const ozz::math::Float4x4> models, const int joint,
+			ozz::math::SimdFloat4 direction, Vector3& result)
+		{
+			if (joint >= 0)
+			{
+				ozz::math::SimdInt4 invertible;
+				const auto inverse = ozz::math::Invert(models[joint], &invertible);
+				if (!ozz::math::AreAllTrue1(invertible))
+					return false;
+				direction = ozz::math::TransformVector(inverse, direction);
+			}
+			result = vector(direction);
+			return normalize(result);
+		}
 
-        void multiplyRotation(const int joint, const ozz::math::SimdQuaternion correction,
-            const std::span<ozz::math::SoaTransform> locals)
-        {
-            auto& rotation = locals[static_cast<std::size_t>(joint / 4)].rotation;
-            ozz::math::SimdQuaternion rotations[4];
-            ozz::math::Transpose4x4(&rotation.x, &rotations[0].xyzw);
-            rotations[joint % 4] = rotations[joint % 4] * correction;
-            ozz::math::Transpose4x4(&rotations[0].xyzw, &rotation.x);
-        }
+		void multiplyRotation(const int joint, const ozz::math::SimdQuaternion correction,
+			const std::span<ozz::math::SoaTransform> locals)
+		{
+			auto& rotation = locals[static_cast<std::size_t>(joint / 4)].rotation;
+			ozz::math::SimdQuaternion rotations[4];
+			ozz::math::Transpose4x4(&rotation.x, &rotations[0].xyzw);
+			rotations[joint % 4] = rotations[joint % 4] * correction;
+			ozz::math::Transpose4x4(&rotations[0].xyzw, &rotation.x);
+		}
 
-        bool ancestor(const ozz::animation::Skeleton& skeleton, const int parent, int child)
-        {
-            const auto parents = skeleton.joint_parents();
-            while (child >= 0)
-            {
-                child = parents[static_cast<std::size_t>(child)];
-                if (child == parent)
-                    return true;
-            }
-            return false;
-        }
-    }
+		bool ancestor(const ozz::animation::Skeleton& skeleton, const int parent, int child)
+		{
+			const auto parents = skeleton.joint_parents();
+			while (child >= 0)
+			{
+				child = parents[static_cast<std::size_t>(child)];
+				if (child == parent)
+					return true;
+			}
+			return false;
+		}
+	}
 
-    bool validateFootIKTargets(const ozz::animation::Skeleton& skeleton,
-        const std::span<const FootIKTarget> targets)
-    {
-        for (std::size_t index = 0; index < targets.size(); ++index)
-        {
-            const auto& target = targets[index];
-            if (target.hip < 0 || target.knee < 0 || target.ankle < 0
-                || target.hip >= skeleton.num_joints() || target.knee >= skeleton.num_joints()
-                || target.ankle >= skeleton.num_joints()
-                || (target.poleJoint && (*target.poleJoint < ozz::animation::Skeleton::kNoParent
-                    || *target.poleJoint >= skeleton.num_joints()))
-                || !ancestor(skeleton, target.hip, target.knee)
-                || !ancestor(skeleton, target.knee, target.ankle)
-                || !unit(target.kneeAxis) || !unit(target.poleAxis)
-                || !unit(target.footUp) || !unit(target.footForward)
-                || std::abs(target.footUp.Dot(target.footForward)) > 1.0e-3f
-                || !finite(target.position) || !unit(target.normal)
-                || (target.minimumPosition && !finite(*target.minimumPosition))
-                || !std::isfinite(target.minimumWeight) || target.minimumWeight < 0.0f || target.minimumWeight > 1.0f
-                || !std::isfinite(target.weight) || target.weight < 0.0f || target.weight > 1.0f
-                || !std::isfinite(target.soften) || target.soften < 0.0f || target.soften > 1.0f)
-            {
-                LOG_ERROR("[FootIK] Invalid leg chain, axes, target, weight or soften at index {}.", index);
-                return false;
-            }
-            for (std::size_t previous = 0; previous < index; ++previous)
-            {
-                const int other = targets[previous].hip;
-                if (other == target.hip || ancestor(skeleton, other, target.hip)
-                    || ancestor(skeleton, target.hip, other))
-                {
-                    LOG_ERROR("[FootIK] Leg chains must have independent hip subtrees.");
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
+	bool validateFootIKTargets(const ozz::animation::Skeleton& skeleton,
+		const std::span<const FootIKTarget> targets)
+	{
+		for (std::size_t index = 0; index < targets.size(); ++index)
+		{
+			const auto& target = targets[index];
+			if (target.hip < 0 || target.knee < 0 || target.ankle < 0
+				|| target.hip >= skeleton.num_joints() || target.knee >= skeleton.num_joints()
+				|| target.ankle >= skeleton.num_joints()
+				|| (target.poleJoint && (*target.poleJoint < ozz::animation::Skeleton::kNoParent
+					|| *target.poleJoint >= skeleton.num_joints()))
+				|| !ancestor(skeleton, target.hip, target.knee)
+				|| !ancestor(skeleton, target.knee, target.ankle)
+				|| !unit(target.kneeAxis) || !unit(target.poleAxis)
+				|| !unit(target.footUp) || !unit(target.footForward)
+				|| std::abs(target.footUp.Dot(target.footForward)) > 1.0e-3f
+				|| !finite(target.position) || !unit(target.normal)
+				|| (target.minimumPosition && !finite(*target.minimumPosition))
+				|| !std::isfinite(target.minimumWeight) || target.minimumWeight < 0.0f || target.minimumWeight > 1.0f
+				|| !std::isfinite(target.weight) || target.weight < 0.0f || target.weight > 1.0f
+				|| !std::isfinite(target.soften) || target.soften < 0.0f || target.soften > 1.0f)
+			{
+				LOG_ERROR("[FootIK] Invalid leg chain, axes, target, weight or soften at index {}.", index);
+				return false;
+			}
+			for (std::size_t previous = 0; previous < index; ++previous)
+			{
+				const int other = targets[previous].hip;
+				if (other == target.hip || ancestor(skeleton, other, target.hip)
+					|| ancestor(skeleton, target.hip, other))
+				{
+					LOG_ERROR("[FootIK] Leg chains must have independent hip subtrees.");
+					return false;
+				}
+			}
+		}
+		return true;
+	}
 
-    bool configureFootIKAxesFromRestPose(const ozz::animation::Skeleton& skeleton,
-        const std::span<FootIKTarget> targets)
-    {
-        if (targets.empty() || !validateFootIKTargets(skeleton, targets))
-        {
-            LOG_ERROR("[FootIK] Select valid leg chains before configuring rest-pose axes.");
-            return false;
-        }
-        std::vector<ozz::math::Float4x4> models;
-        if (!buildRestModels(skeleton, models))
-            return false;
-        std::vector<FootIKTarget> configured(targets.begin(), targets.end());
-        for (auto& target : configured)
-        {
-            ozz::math::SimdInt4 kneeInvertible;
-            ozz::math::SimdInt4 ankleInvertible;
-            const auto kneeInverse = ozz::math::Invert(models[target.knee], &kneeInvertible);
-            const auto ankleInverse = ozz::math::Invert(models[target.ankle], &ankleInvertible);
-            if (!ozz::math::AreAllTrue1(kneeInvertible) || !ozz::math::AreAllTrue1(ankleInvertible))
-            {
-                LOG_ERROR("[FootIK] Rest-pose axis setup requires nonsingular leg transforms.");
-                return false;
-            }
-            auto start = vector(ozz::math::TransformPoint(kneeInverse, models[target.hip].cols[3]));
-            auto end = vector(ozz::math::TransformPoint(kneeInverse, models[target.ankle].cols[3]));
-            auto direction = vector(models[target.ankle].cols[3] - models[target.hip].cols[3]);
-            if (!normalize(start) || !normalize(end) || !normalize(direction))
-            {
-                LOG_ERROR("[FootIK] Cannot infer axes from a zero-length or folded rest-pose leg.");
-                return false;
-            }
-            const auto mid = vector(models[target.knee].cols[3] - models[target.hip].cols[3]);
-            auto pole = mid - direction * mid.Dot(direction);
-            if (pole.LengthSquared() <= 1.0e-6f * mid.LengthSquared())
-                pole = Vector3::UnitZ - direction * direction.z;
-            Vector3 kneePole;
-            if (!localDirection(models, target.knee, simd(pole), kneePole)
-                || !localDirection(models, target.poleJoint.value_or(target.knee), simd(pole), target.poleAxis))
-            {
-                LOG_ERROR("[FootIK] Rest-pose knee bend is ambiguous; configure axes manually.");
-                return false;
-            }
-            // This sign makes ozz's initial knee angle positive (positive rotation opens the knee).
-            target.kneeAxis = start.Cross(end);
-            if (target.kneeAxis.LengthSquared() <= 1.0e-6f)
-                target.kneeAxis = kneePole.Cross(start);
-            target.footUp = vector(ozz::math::TransformVector(ankleInverse, simd(Vector3::UnitY)));
-            target.footForward = vector(ozz::math::TransformVector(ankleInverse, simd(Vector3::UnitZ)));
-            if (!normalize(target.kneeAxis) || !normalize(target.footUp))
-            {
-                LOG_ERROR("[FootIK] Rest-pose hinge or foot-up axis is invalid.");
-                return false;
-            }
-            target.footForward -= target.footUp * target.footUp.Dot(target.footForward);
-            if (!normalize(target.footForward))
-            {
-                LOG_ERROR("[FootIK] Rest-pose foot-forward axis is invalid.");
-                return false;
-            }
-        }
-        if (!validateFootIKTargets(skeleton, configured))
-            return false;
-        std::copy(configured.begin(), configured.end(), targets.begin());
-        return true;
-    }
+	bool configureFootIKAxesFromRestPose(const ozz::animation::Skeleton& skeleton,
+		const std::span<FootIKTarget> targets)
+	{
+		if (targets.empty() || !validateFootIKTargets(skeleton, targets))
+		{
+			LOG_ERROR("[FootIK] Select valid leg chains before configuring rest-pose axes.");
+			return false;
+		}
+		std::vector<ozz::math::Float4x4> models;
+		if (!buildRestModels(skeleton, models))
+			return false;
+		std::vector<FootIKTarget> configured(targets.begin(), targets.end());
+		for (auto& target : configured)
+		{
+			ozz::math::SimdInt4 kneeInvertible;
+			ozz::math::SimdInt4 ankleInvertible;
+			const auto kneeInverse = ozz::math::Invert(models[target.knee], &kneeInvertible);
+			const auto ankleInverse = ozz::math::Invert(models[target.ankle], &ankleInvertible);
+			if (!ozz::math::AreAllTrue1(kneeInvertible) || !ozz::math::AreAllTrue1(ankleInvertible))
+			{
+				LOG_ERROR("[FootIK] Rest-pose axis setup requires nonsingular leg transforms.");
+				return false;
+			}
+			auto start = vector(ozz::math::TransformPoint(kneeInverse, models[target.hip].cols[3]));
+			auto end = vector(ozz::math::TransformPoint(kneeInverse, models[target.ankle].cols[3]));
+			auto direction = vector(models[target.ankle].cols[3] - models[target.hip].cols[3]);
+			if (!normalize(start) || !normalize(end) || !normalize(direction))
+			{
+				LOG_ERROR("[FootIK] Cannot infer axes from a zero-length or folded rest-pose leg.");
+				return false;
+			}
+			const auto mid = vector(models[target.knee].cols[3] - models[target.hip].cols[3]);
+			auto pole = mid - direction * mid.Dot(direction);
+			if (pole.LengthSquared() <= 1.0e-6f * mid.LengthSquared())
+				pole = Vector3::UnitZ - direction * direction.z;
+			Vector3 kneePole;
+			if (!localDirection(models, target.knee, simd(pole), kneePole)
+				|| !localDirection(models, target.poleJoint.value_or(target.knee), simd(pole), target.poleAxis))
+			{
+				LOG_ERROR("[FootIK] Rest-pose knee bend is ambiguous; configure axes manually.");
+				return false;
+			}
+			// This sign makes ozz's initial knee angle positive (positive rotation opens the knee).
+			target.kneeAxis = start.Cross(end);
+			if (target.kneeAxis.LengthSquared() <= 1.0e-6f)
+				target.kneeAxis = kneePole.Cross(start);
+			target.footUp = vector(ozz::math::TransformVector(ankleInverse, simd(Vector3::UnitY)));
+			target.footForward = vector(ozz::math::TransformVector(ankleInverse, simd(Vector3::UnitZ)));
+			if (!normalize(target.kneeAxis) || !normalize(target.footUp))
+			{
+				LOG_ERROR("[FootIK] Rest-pose hinge or foot-up axis is invalid.");
+				return false;
+			}
+			target.footForward -= target.footUp * target.footUp.Dot(target.footForward);
+			if (!normalize(target.footForward))
+			{
+				LOG_ERROR("[FootIK] Rest-pose foot-forward axis is invalid.");
+				return false;
+			}
+		}
+		if (!validateFootIKTargets(skeleton, configured))
+			return false;
+		std::copy(configured.begin(), configured.end(), targets.begin());
+		return true;
+	}
 
-    bool anchorFootIKPolesToHipParents(const ozz::animation::Skeleton& skeleton,
-        const std::span<FootIKTarget> targets)
-    {
-        if (targets.empty() || !validateFootIKTargets(skeleton, targets))
-        {
-            LOG_ERROR("[FootIK] Select valid leg chains before resolving pole anchors.");
-            return false;
-        }
-        std::vector<ozz::math::Float4x4> models;
-        if (!buildRestModels(skeleton, models))
-            return false;
-        std::vector<FootIKTarget> configured(targets.begin(), targets.end());
-        for (auto& target : configured)
-        {
-            const int previous = target.poleJoint.value_or(target.knee);
-            const auto pole = previous >= 0
-                ? ozz::math::TransformVector(models[previous], simd(target.poleAxis)) : simd(target.poleAxis);
-            const int parent = skeleton.joint_parents()[target.hip];
-            if (!localDirection(models, parent, pole, target.poleAxis))
-            {
-                LOG_ERROR("[FootIK] Cannot resolve a finite pole direction in hip-parent rest space.");
-                return false;
-            }
-            target.poleJoint = parent;
-        }
-        if (!validateFootIKTargets(skeleton, configured))
-            return false;
-        std::copy(configured.begin(), configured.end(), targets.begin());
-        return true;
-    }
+	bool anchorFootIKPolesToHipParents(const ozz::animation::Skeleton& skeleton,
+		const std::span<FootIKTarget> targets)
+	{
+		if (targets.empty() || !validateFootIKTargets(skeleton, targets))
+		{
+			LOG_ERROR("[FootIK] Select valid leg chains before resolving pole anchors.");
+			return false;
+		}
+		std::vector<ozz::math::Float4x4> models;
+		if (!buildRestModels(skeleton, models))
+			return false;
+		std::vector<FootIKTarget> configured(targets.begin(), targets.end());
+		for (auto& target : configured)
+		{
+			const int previous = target.poleJoint.value_or(target.knee);
+			const auto pole = previous >= 0
+				? ozz::math::TransformVector(models[previous], simd(target.poleAxis)) : simd(target.poleAxis);
+			const int parent = skeleton.joint_parents()[target.hip];
+			if (!localDirection(models, parent, pole, target.poleAxis))
+			{
+				LOG_ERROR("[FootIK] Cannot resolve a finite pole direction in hip-parent rest space.");
+				return false;
+			}
+			target.poleJoint = parent;
+		}
+		if (!validateFootIKTargets(skeleton, configured))
+			return false;
+		std::copy(configured.begin(), configured.end(), targets.begin());
+		return true;
+	}
 
-    bool calculateFootIKGroundTarget(const Vector3& hitPoint, const Vector3& normal,
-        const float footHeight, const float maxSlopeDegrees, Vector3& target) noexcept
-    {
-        if (!finite(hitPoint) || !unit(normal) || !std::isfinite(footHeight) || footHeight < 0.0f
-            || !std::isfinite(maxSlopeDegrees) || maxSlopeDegrees < 0.0f || maxSlopeDegrees >= 90.0f)
-        {
-            LOG_ERROR("[FootIK] Ground target requires finite inputs, a unit normal and a slope below 90 degrees.");
-            return false;
-        }
-        const float minimumUp = std::cos(maxSlopeDegrees * DirectX::XM_PI / 180.0f);
-        if (normal.y <= 1.0e-4f || normal.y + 1.0e-6f < minimumUp)
-            return false;
-        // Keep the ankle on the ray; clearance is measured perpendicular to the ground plane.
-        target = hitPoint + Vector3::UnitY * (footHeight / normal.y);
-        if (!finite(target))
-        {
-            LOG_ERROR("[FootIK] Ground target overflowed finite coordinates.");
-            return false;
-        }
-        return true;
-    }
+	bool calculateFootIKGroundTarget(const Vector3& hitPoint, const Vector3& normal,
+		const float footHeight, const float maxSlopeDegrees, Vector3& target) noexcept
+	{
+		if (!finite(hitPoint) || !unit(normal) || !std::isfinite(footHeight) || footHeight < 0.0f
+			|| !std::isfinite(maxSlopeDegrees) || maxSlopeDegrees < 0.0f || maxSlopeDegrees >= 90.0f)
+		{
+			LOG_ERROR("[FootIK] Ground target requires finite inputs, a unit normal and a slope below 90 degrees.");
+			return false;
+		}
+		const float minimumUp = std::cos(maxSlopeDegrees * DirectX::XM_PI / 180.0f);
+		if (normal.y <= 1.0e-4f || normal.y + 1.0e-6f < minimumUp)
+			return false;
+		// Keep the ankle on the ray; clearance is measured perpendicular to the ground plane.
+		target = hitPoint + Vector3::UnitY * (footHeight / normal.y);
+		if (!finite(target))
+		{
+			LOG_ERROR("[FootIK] Ground target overflowed finite coordinates.");
+			return false;
+		}
+		return true;
+	}
 
-    bool calculateFootIKContactWeight(const Vector3& ankle, const Vector3& groundTarget,
-        const Vector3& animatedUp, const Vector3& groundNormal, const float fadeDistance, float& weight) noexcept
-    {
-        if (!finite(ankle) || !finite(groundTarget) || !unit(animatedUp) || !unit(groundNormal)
-            || !std::isfinite(fadeDistance) || fadeDistance <= 0.0f)
-        {
-            LOG_ERROR("[FootIK] Contact estimation requires finite positions, unit directions and positive fade distance.");
-            return false;
-        }
-        const auto smooth = [](const float value) { return value * value * (3.0f - 2.0f * value); };
-        const double clearance = static_cast<double>(ankle.y) - groundTarget.y;
-        const float proximity = static_cast<float>(std::clamp(1.0 - clearance / fadeDistance, 0.0, 1.0));
-        const float facing = std::clamp((std::min)(animatedUp.y, animatedUp.Dot(groundNormal)) * 2.0f, 0.0f, 1.0f);
-        weight = smooth(proximity) * smooth(facing);
-        return true;
-    }
+	bool calculateFootIKContactWeight(const Vector3& ankle, const Vector3& groundTarget,
+		const Vector3& animatedUp, const Vector3& groundNormal, const float fadeDistance, float& weight) noexcept
+	{
+		if (!finite(ankle) || !finite(groundTarget) || !unit(animatedUp) || !unit(groundNormal)
+			|| !std::isfinite(fadeDistance) || fadeDistance <= 0.0f)
+		{
+			LOG_ERROR("[FootIK] Contact estimation requires finite positions, unit directions and positive fade distance.");
+			return false;
+		}
+		const auto smooth = [](const float value) { return value * value * (3.0f - 2.0f * value); };
+		const double clearance = static_cast<double>(ankle.y) - groundTarget.y;
+		const float proximity = static_cast<float>(std::clamp(1.0 - clearance / fadeDistance, 0.0, 1.0));
+		const float facing = std::clamp((std::min)(animatedUp.y, animatedUp.Dot(groundNormal)) * 2.0f, 0.0f, 1.0f);
+		weight = smooth(proximity) * smooth(facing);
+		return true;
+	}
 
-    bool solveFootIK(const ozz::animation::Skeleton& skeleton,
-        const std::span<const FootIKTarget> targets, const Vector3& pelvisOffset,
-        const std::span<ozz::math::SoaTransform> locals, const std::span<ozz::math::Float4x4> models,
-        const Vector3& modelUp)
-    {
-        if (!finite(pelvisOffset) || !unit(modelUp)
-            || locals.size() < static_cast<std::size_t>(skeleton.num_soa_joints())
-            || models.size() < static_cast<std::size_t>(skeleton.num_joints())
-            || !validateFootIKTargets(skeleton, targets))
-        {
-            LOG_ERROR("[FootIK] Cannot solve an invalid pose.");
-            return false;
-        }
-        ozz::animation::LocalToModelJob localToModel;
-        localToModel.skeleton = &skeleton;
-        localToModel.input = ozz::span<const ozz::math::SoaTransform>(locals.data(), locals.size());
-        localToModel.output = ozz::span<ozz::math::Float4x4>(models.data(), models.size());
-        const auto rebuild = [&]()
-        {
-            if (!localToModel.Run())
-            {
-                LOG_ERROR("[FootIK] LocalToModelJob failed.");
-                return false;
-            }
-            for (int joint = 0; joint < skeleton.num_joints(); ++joint)
-                for (const auto column : models[static_cast<std::size_t>(joint)].cols)
-                    if (!ozz::math::AreAllTrue(ozz::math::CmpLe(ozz::math::Abs(column),
-                        ozz::math::simd_float4::Load1((std::numeric_limits<float>::max)()))))
-                    {
-                        LOG_ERROR("[FootIK] Pose contains a nonfinite joint transform.");
-                        return false;
-                    }
-            return true;
-        };
-        const auto parents = skeleton.joint_parents();
-        for (int joint = 0; joint < skeleton.num_joints(); ++joint)
-        {
-            if (parents[static_cast<std::size_t>(joint)] != ozz::animation::Skeleton::kNoParent)
-                continue;
-            auto& translation = locals[static_cast<std::size_t>(joint / 4)].translation;
-            ozz::math::SimdFloat4 values[4];
-            ozz::math::Transpose3x4(&translation.x, values);
-            values[joint % 4] = values[joint % 4] + simd(pelvisOffset);
-            ozz::math::Transpose4x3(values, &translation.x);
-        }
-        if (!rebuild())
-            return false;
-        for (const auto& target : targets)
-        {
-            if (target.weight == 0.0f && (!target.minimumPosition || target.minimumWeight == 0.0f))
-                continue;
-            for (const int joint : { target.hip, target.knee, target.ankle })
-            {
-                ozz::math::SimdInt4 invertible;
-                static_cast<void>(ozz::math::Invert(models[joint], &invertible));
-                if (!ozz::math::AreAllTrue1(invertible))
-                {
-                    LOG_ERROR("[FootIK] IK requires nonsingular leg joint transforms.");
-                    return false;
-                }
-            }
-            if (ozz::math::GetX(ozz::math::Length3Sqr(models[target.knee].cols[3] - models[target.hip].cols[3])) == 0.0f
-                || ozz::math::GetX(ozz::math::Length3Sqr(models[target.ankle].cols[3] - models[target.knee].cols[3])) == 0.0f)
-            {
-                LOG_ERROR("[FootIK] IK requires two nonzero-length bones.");
-                return false;
-            }
-            const auto originalForward = ozz::math::TransformVector(models[target.ankle], simd(target.footForward));
-            const auto originalUp = ozz::math::TransformVector(models[target.ankle], simd(target.footUp));
-            ozz::animation::IKTwoBoneJob leg;
-            leg.target = simd(target.position);
-            leg.mid_axis = simd(target.kneeAxis);
-            const int poleJoint = target.poleJoint.value_or(target.knee);
-            leg.pole_vector = poleJoint >= 0
-                ? ozz::math::TransformVector(models[poleJoint], simd(target.poleAxis)) : simd(target.poleAxis);
-            leg.weight = target.weight;
-            leg.soften = target.soften;
-            leg.start_joint = &models[target.hip];
-            leg.mid_joint = &models[target.knee];
-            leg.end_joint = &models[target.ankle];
-            ozz::math::SimdQuaternion hipCorrection;
-            ozz::math::SimdQuaternion kneeCorrection;
-            leg.start_joint_correction = &hipCorrection;
-            leg.mid_joint_correction = &kneeCorrection;
-            const auto applyLeg = [&]()
-            {
-                if (!leg.Run())
-                {
-                    LOG_ERROR("[FootIK] IKTwoBoneJob failed.");
-                    return false;
-                }
-                multiplyRotation(target.hip, hipCorrection, locals);
-                multiplyRotation(target.knee, kneeCorrection, locals);
-                return rebuild();
-            };
-            bool corrected = false;
-            if (target.weight > 0.0f)
-            {
-                if (!applyLeg())
-                    return false;
-                corrected = true;
-            }
-            if (target.minimumPosition && target.minimumWeight > 0.0f)
-            {
-                const Vector3 position = vector(models[target.ankle].cols[3]);
-                const float correction = modelUp.Dot(*target.minimumPosition - position);
-                if (correction > 0.0f)
-                {
-                    leg.target = simd(position + modelUp * correction);
-                    leg.weight = target.minimumWeight;
-                    leg.soften = 1.0f;
-                    if (!applyLeg())
-                        return false;
-                    corrected = true;
-                }
-            }
-            if (!corrected || !target.alignFoot)
-                continue;
-            ozz::animation::IKAimJob ankle;
-            ankle.joint = &models[target.ankle];
-            ankle.forward = simd(target.footUp);
-            ankle.up = simd(target.footForward);
-            const auto normal = simd(target.normal);
-            Vector3 animatedUp = vector(originalUp);
-            if (!normalize(animatedUp))
-            {
-                LOG_ERROR("[FootIK] Cannot recover a finite, nonzero animated foot-up direction.");
-                return false;
-            }
-            // Blend the two swings separately; a combined 180-degree correction flips its weighted rotation path.
-            const auto upright = simd(modelUp);
-            const auto partialRotation = [&target](const ozz::math::SimdQuaternion rotation)
-            {
-                return ozz::math::Normalize(ozz::math::SimdQuaternion{
-                    ozz::math::Lerp(ozz::math::SimdQuaternion::identity().xyzw, rotation.xyzw,
-                        ozz::math::simd_float4::Load1(target.weight)) });
-            };
-            const auto recoverHeading = partialRotation(
-                ozz::math::SimdQuaternion::FromUnitVectors(simd(animatedUp), upright));
-            const auto tiltToGround = partialRotation(
-                ozz::math::SimdQuaternion::FromUnitVectors(upright, normal));
-            const auto transport = [&recoverHeading, &tiltToGround](const ozz::math::SimdFloat4 direction)
-            {
-                return vector(ozz::math::TransformVector(tiltToGround,
-                    ozz::math::TransformVector(recoverHeading, direction)));
-            };
-            Vector3 desiredUp = transport(simd(animatedUp));
-            Vector3 heading = transport(originalForward);
-            if (!normalize(desiredUp))
-            {
-                LOG_ERROR("[FootIK] Cannot recover a finite, nonzero target foot-up direction.");
-                return false;
-            }
-            heading -= desiredUp * desiredUp.Dot(heading);
-            if (!normalize(heading))
-            {
-                LOG_ERROR("[FootIK] Cannot recover a finite, nonzero foot heading.");
-                return false;
-            }
-            ankle.target = models[target.ankle].cols[3] + simd(desiredUp);
-            ankle.pole_vector = simd(heading);
-            ankle.weight = 1.0f;
-            ozz::math::SimdQuaternion ankleCorrection;
-            ankle.joint_correction = &ankleCorrection;
-            if (!ankle.Run())
-            {
-                LOG_ERROR("[FootIK] IKAimJob failed.");
-                return false;
-            }
-            multiplyRotation(target.ankle, ankleCorrection, locals);
-            if (!rebuild())
-                return false;
-        }
-        return true;
-    }
+	bool solveFootIK(const ozz::animation::Skeleton& skeleton,
+		const std::span<const FootIKTarget> targets, const Vector3& pelvisOffset,
+		const std::span<ozz::math::SoaTransform> locals, const std::span<ozz::math::Float4x4> models,
+		const Vector3& modelUp)
+	{
+		if (!finite(pelvisOffset) || !unit(modelUp)
+			|| locals.size() < static_cast<std::size_t>(skeleton.num_soa_joints())
+			|| models.size() < static_cast<std::size_t>(skeleton.num_joints())
+			|| !validateFootIKTargets(skeleton, targets))
+		{
+			LOG_ERROR("[FootIK] Cannot solve an invalid pose.");
+			return false;
+		}
+		ozz::animation::LocalToModelJob localToModel;
+		localToModel.skeleton = &skeleton;
+		localToModel.input = ozz::span<const ozz::math::SoaTransform>(locals.data(), locals.size());
+		localToModel.output = ozz::span<ozz::math::Float4x4>(models.data(), models.size());
+		const auto rebuild = [&]()
+			{
+				if (!localToModel.Run())
+				{
+					LOG_ERROR("[FootIK] LocalToModelJob failed.");
+					return false;
+				}
+				for (int joint = 0; joint < skeleton.num_joints(); ++joint)
+					for (const auto column : models[static_cast<std::size_t>(joint)].cols)
+						if (!ozz::math::AreAllTrue(ozz::math::CmpLe(ozz::math::Abs(column),
+							ozz::math::simd_float4::Load1((std::numeric_limits<float>::max)()))))
+						{
+							LOG_ERROR("[FootIK] Pose contains a nonfinite joint transform.");
+							return false;
+						}
+				return true;
+			};
+		const auto parents = skeleton.joint_parents();
+		for (int joint = 0; joint < skeleton.num_joints(); ++joint)
+		{
+			if (parents[static_cast<std::size_t>(joint)] != ozz::animation::Skeleton::kNoParent)
+				continue;
+			auto& translation = locals[static_cast<std::size_t>(joint / 4)].translation;
+			ozz::math::SimdFloat4 values[4];
+			ozz::math::Transpose3x4(&translation.x, values);
+			values[joint % 4] = values[joint % 4] + simd(pelvisOffset);
+			ozz::math::Transpose4x3(values, &translation.x);
+		}
+		if (!rebuild())
+			return false;
+		for (const auto& target : targets)
+		{
+			if (target.weight == 0.0f && (!target.minimumPosition || target.minimumWeight == 0.0f))
+				continue;
+			for (const int joint : { target.hip, target.knee, target.ankle })
+			{
+				ozz::math::SimdInt4 invertible;
+				static_cast<void>(ozz::math::Invert(models[joint], &invertible));
+				if (!ozz::math::AreAllTrue1(invertible))
+				{
+					LOG_ERROR("[FootIK] IK requires nonsingular leg joint transforms.");
+					return false;
+				}
+			}
+			if (ozz::math::GetX(ozz::math::Length3Sqr(models[target.knee].cols[3] - models[target.hip].cols[3])) == 0.0f
+				|| ozz::math::GetX(ozz::math::Length3Sqr(models[target.ankle].cols[3] - models[target.knee].cols[3])) == 0.0f)
+			{
+				LOG_ERROR("[FootIK] IK requires two nonzero-length bones.");
+				return false;
+			}
+			const auto originalForward = ozz::math::TransformVector(models[target.ankle], simd(target.footForward));
+			const auto originalUp = ozz::math::TransformVector(models[target.ankle], simd(target.footUp));
+			ozz::animation::IKTwoBoneJob leg;
+			leg.target = simd(target.position);
+			leg.mid_axis = simd(target.kneeAxis);
+			const int poleJoint = target.poleJoint.value_or(target.knee);
+			leg.pole_vector = poleJoint >= 0
+				? ozz::math::TransformVector(models[poleJoint], simd(target.poleAxis)) : simd(target.poleAxis);
+			leg.weight = target.weight;
+			leg.soften = target.soften;
+			leg.start_joint = &models[target.hip];
+			leg.mid_joint = &models[target.knee];
+			leg.end_joint = &models[target.ankle];
+			ozz::math::SimdQuaternion hipCorrection;
+			ozz::math::SimdQuaternion kneeCorrection;
+			leg.start_joint_correction = &hipCorrection;
+			leg.mid_joint_correction = &kneeCorrection;
+			const auto applyLeg = [&]()
+				{
+					if (!leg.Run())
+					{
+						LOG_ERROR("[FootIK] IKTwoBoneJob failed.");
+						return false;
+					}
+					multiplyRotation(target.hip, hipCorrection, locals);
+					multiplyRotation(target.knee, kneeCorrection, locals);
+					return rebuild();
+				};
+			bool corrected = false;
+			if (target.weight > 0.0f)
+			{
+				if (!applyLeg())
+					return false;
+				corrected = true;
+			}
+			if (target.minimumPosition && target.minimumWeight > 0.0f)
+			{
+				const Vector3 position = vector(models[target.ankle].cols[3]);
+				const float correction = modelUp.Dot(*target.minimumPosition - position);
+				if (correction > 0.0f)
+				{
+					leg.target = simd(position + modelUp * correction);
+					leg.weight = target.minimumWeight;
+					leg.soften = 1.0f;
+					if (!applyLeg())
+						return false;
+					corrected = true;
+				}
+			}
+			if (!corrected || !target.alignFoot)
+				continue;
+			ozz::animation::IKAimJob ankle;
+			ankle.joint = &models[target.ankle];
+			ankle.forward = simd(target.footUp);
+			ankle.up = simd(target.footForward);
+			const auto normal = simd(target.normal);
+			Vector3 animatedUp = vector(originalUp);
+			if (!normalize(animatedUp))
+			{
+				LOG_ERROR("[FootIK] Cannot recover a finite, nonzero animated foot-up direction.");
+				return false;
+			}
+			// Blend the two swings separately; a combined 180-degree correction flips its weighted rotation path.
+			const auto upright = simd(modelUp);
+			const auto partialRotation = [&target](const ozz::math::SimdQuaternion rotation)
+				{
+					return ozz::math::Normalize(ozz::math::SimdQuaternion{
+						ozz::math::Lerp(ozz::math::SimdQuaternion::identity().xyzw, rotation.xyzw,
+							ozz::math::simd_float4::Load1(target.weight)) });
+				};
+			const auto recoverHeading = partialRotation(
+				ozz::math::SimdQuaternion::FromUnitVectors(simd(animatedUp), upright));
+			const auto tiltToGround = partialRotation(
+				ozz::math::SimdQuaternion::FromUnitVectors(upright, normal));
+			const auto transport = [&recoverHeading, &tiltToGround](const ozz::math::SimdFloat4 direction)
+				{
+					return vector(ozz::math::TransformVector(tiltToGround,
+						ozz::math::TransformVector(recoverHeading, direction)));
+				};
+			Vector3 desiredUp = transport(simd(animatedUp));
+			Vector3 heading = transport(originalForward);
+			if (!normalize(desiredUp))
+			{
+				LOG_ERROR("[FootIK] Cannot recover a finite, nonzero target foot-up direction.");
+				return false;
+			}
+			heading -= desiredUp * desiredUp.Dot(heading);
+			if (!normalize(heading))
+			{
+				LOG_ERROR("[FootIK] Cannot recover a finite, nonzero foot heading.");
+				return false;
+			}
+			ankle.target = models[target.ankle].cols[3] + simd(desiredUp);
+			ankle.pole_vector = simd(heading);
+			ankle.weight = 1.0f;
+			ozz::math::SimdQuaternion ankleCorrection;
+			ankle.joint_correction = &ankleCorrection;
+			if (!ankle.Run())
+			{
+				LOG_ERROR("[FootIK] IKAimJob failed.");
+				return false;
+			}
+			multiplyRotation(target.ankle, ankleCorrection, locals);
+			if (!rebuild())
+				return false;
+		}
+		return true;
+	}
 }

@@ -7,302 +7,302 @@
 
 namespace Engine
 {
-    /**
-     * @brief 文字列
-     * 短い文字列は内部バッファへ格納し、長い場合のみ標準ヒープから確保する
-     * @thread_safety Not thread-safe. Access must be synchronized externally.
-     */
-    class String
-    {
-    public:
+	/**
+	 * @brief 文字列
+	 * 短い文字列は内部バッファへ格納し、長い場合のみ標準ヒープから確保する
+	 * @thread_safety Not thread-safe. Access must be synchronized externally.
+	 */
+	class String
+	{
+	public:
 
-        //! 内部バッファへ収まる最大文字数（終端文字を除く）
-        static constexpr size_t INLINE_CAPACITY = 31;
+		//! 内部バッファへ収まる最大文字数（終端文字を除く）
+		static constexpr size_t INLINE_CAPACITY = 31;
 
-        //! 見つからなかったことを表す位置
-        static constexpr size_t NPOS = ~static_cast<size_t>(0);
+		//! 見つからなかったことを表す位置
+		static constexpr size_t NPOS = ~static_cast<size_t>(0);
 
-        String();
-        String(const char* text);
-        String(const char* text, size_t size);
-        String(std::string_view text);
-        String(const String& other);
-        String(String&& other) noexcept;
-        ~String();
+		String();
+		String(const char* text);
+		String(const char* text, size_t size);
+		String(std::string_view text);
+		String(const String& other);
+		String(String&& other) noexcept;
+		~String();
 
-        String& operator=(const String& other);
-        String& operator=(String&& other) noexcept;
-        String& operator=(const char* text);
+		String& operator=(const String& other);
+		String& operator=(String&& other) noexcept;
+		String& operator=(const char* text);
 
-        /**
-         * @brief 書式指定で文字列を生成する
-         * @param format フォーマット文字列
-         * @param args フォーマット引数
-         * @return String 生成した文字列
-         */
-        template <class... Args>
-        static String format(spdlog::format_string_t<Args...> format, Args&&... args)
-        {
-            const std::string result = spdlog::fmt_lib::format(format, std::forward<Args>(args)...);
-            return String(result.data(), result.size());
-        }
+		/**
+		 * @brief 書式指定で文字列を生成する
+		 * @param format フォーマット文字列
+		 * @param args フォーマット引数
+		 * @return String 生成した文字列
+		 */
+		template <class... Args>
+		static String format(spdlog::format_string_t<Args...> format, Args&&... args)
+		{
+			const std::string result = spdlog::fmt_lib::format(format, std::forward<Args>(args)...);
+			return String(result.data(), result.size());
+		}
 
-        /**
-         * @brief ワイド文字列から生成する（UTF-8へ変換する）
-         * @param text 変換元の文字列
-         * @return String 生成した文字列
-         */
-        static String fromWide(const wchar_t* text);
+		/**
+		 * @brief ワイド文字列から生成する（UTF-8へ変換する）
+		 * @param text 変換元の文字列
+		 * @return String 生成した文字列
+		 */
+		static String fromWide(const wchar_t* text);
 
-        /**
-         * @brief ワイド文字列へ変換する（UTF-8から変換する）
-         * @return std::wstring 変換後の文字列
-         */
-        std::wstring toWide() const;
+		/**
+		 * @brief ワイド文字列へ変換する（UTF-8から変換する）
+		 * @return std::wstring 変換後の文字列
+		 */
+		std::wstring toWide() const;
 
-        /**
-         * @brief 容量を確保する
-         * @param capacity 確保する文字数（終端文字を除く）
-         */
-        void reserve(size_t capacity);
+		/**
+		 * @brief 容量を確保する
+		 * @param capacity 確保する文字数（終端文字を除く）
+		 */
+		void reserve(size_t capacity);
 
-        /**
-         * @brief 文字数を変更する
-         * @param size 新しい文字数
-         * @param fill 増えた分を埋める文字
-         */
-        void resize(size_t size, char fill = ' ');
+		/**
+		 * @brief 文字数を変更する
+		 * @param size 新しい文字数
+		 * @param fill 増えた分を埋める文字
+		 */
+		void resize(size_t size, char fill = ' ');
 
-        /**
-         * @brief 内容を空にする（容量は維持する）
-         */
-        void clear();
+		/**
+		 * @brief 内容を空にする（容量は維持する）
+		 */
+		void clear();
 
-        /**
-         * @brief 文字列を末尾へ追加する
-         * @param text 追加する文字列
-         * @param size 追加する文字数
-         */
-        void append(const char* text, size_t size);
+		/**
+		 * @brief 文字列を末尾へ追加する
+		 * @param text 追加する文字列
+		 * @param size 追加する文字数
+		 */
+		void append(const char* text, size_t size);
 
-        /**
-         * @brief 文字列を末尾へ追加する
-         * @param text 追加する文字列
-         */
-        void append(std::string_view text) { append(text.data(), text.size()); }
-        /** @brief Appends a null-terminated string; nullptr is treated as empty. */
-        void append(const char* text) { append(text, textLength(text)); }
-        void append(const String& text) { append(text.c_str(), text.size()); }
-        void append(char character) { append(&character, 1); }
+		/**
+		 * @brief 文字列を末尾へ追加する
+		 * @param text 追加する文字列
+		 */
+		void append(std::string_view text) { append(text.data(), text.size()); }
+		/** @brief Appends a null-terminated string; nullptr is treated as empty. */
+		void append(const char* text) { append(text, textLength(text)); }
+		void append(const String& text) { append(text.c_str(), text.size()); }
+		void append(char character) { append(&character, 1); }
 
-        String& operator+=(const char* text) { append(text, textLength(text)); return *this; }
-        String& operator+=(std::string_view text) { append(text); return *this; }
-        String& operator+=(const String& text) { append(text); return *this; }
-        String& operator+=(char character) { append(character); return *this; }
+		String& operator+=(const char* text) { append(text, textLength(text)); return *this; }
+		String& operator+=(std::string_view text) { append(text); return *this; }
+		String& operator+=(const String& text) { append(text); return *this; }
+		String& operator+=(char character) { append(character); return *this; }
 
-        /**
-         * @brief 部分文字列を取り出す
-         * @param offset 開始位置
-         * @param count 文字数
-         * @return String 取り出した文字列
-         */
-        String substring(size_t offset, size_t count = NPOS) const;
+		/**
+		 * @brief 部分文字列を取り出す
+		 * @param offset 開始位置
+		 * @param count 文字数
+		 * @return String 取り出した文字列
+		 */
+		String substring(size_t offset, size_t count = NPOS) const;
 
-        /**
-         * @brief 文字列を検索する
-         * @param text 探す文字列
-         * @param offset 検索の開始位置
-         * @return size_t 見つかった位置。見つからなければNPOS
-         */
-        size_t find(std::string_view text, size_t offset = 0) const;
+		/**
+		 * @brief 文字列を検索する
+		 * @param text 探す文字列
+		 * @param offset 検索の開始位置
+		 * @return size_t 見つかった位置。見つからなければNPOS
+		 */
+		size_t find(std::string_view text, size_t offset = 0) const;
 
-        /**
-         * @brief 文字を検索する
-         * @param character 探す文字
-         * @param offset 検索の開始位置
-         * @return size_t 見つかった位置。見つからなければNPOS
-         */
-        size_t find(char character, size_t offset = 0) const;
+		/**
+		 * @brief 文字を検索する
+		 * @param character 探す文字
+		 * @param offset 検索の開始位置
+		 * @return size_t 見つかった位置。見つからなければNPOS
+		 */
+		size_t find(char character, size_t offset = 0) const;
 
-        /**
-         * @brief 文字列が指定の文字列で始まるかを判定する
-         * @param text 判定する文字列
-         * @return bool 始まる場合はtrue
-         */
-        bool startsWith(std::string_view text) const;
+		/**
+		 * @brief 文字列が指定の文字列で始まるかを判定する
+		 * @param text 判定する文字列
+		 * @return bool 始まる場合はtrue
+		 */
+		bool startsWith(std::string_view text) const;
 
-        /**
-         * @brief 文字列が指定の文字列で終わるかを判定する
-         * @param text 判定する文字列
-         * @return bool 終わる場合はtrue
-         */
-        bool endsWith(std::string_view text) const;
+		/**
+		 * @brief 文字列が指定の文字列で終わるかを判定する
+		 * @param text 判定する文字列
+		 * @return bool 終わる場合はtrue
+		 */
+		bool endsWith(std::string_view text) const;
 
-        /**
-         * @brief 文字列が指定の文字列を含むかを判定する
-         * @param text 判定する文字列
-         * @return bool 含む場合はtrue
-         */
-        bool contains(std::string_view text) const { return find(text) != NPOS; }
+		/**
+		 * @brief 文字列が指定の文字列を含むかを判定する
+		 * @param text 判定する文字列
+		 * @return bool 含む場合はtrue
+		 */
+		bool contains(std::string_view text) const { return find(text) != NPOS; }
 
-        /**
-         * @brief 前後の空白を取り除いた文字列を返す
-         * @return String 取り除いた文字列
-         */
-        String trimmed() const;
+		/**
+		 * @brief 前後の空白を取り除いた文字列を返す
+		 * @return String 取り除いた文字列
+		 */
+		String trimmed() const;
 
-        /**
-         * @brief 英字を大文字に変換した文字列を返す
-         * @return String 変換後の文字列
-         */
-        String toUpper() const;
+		/**
+		 * @brief 英字を大文字に変換した文字列を返す
+		 * @return String 変換後の文字列
+		 */
+		String toUpper() const;
 
-        /**
-         * @brief 英字を小文字に変換した文字列を返す
-         * @return String 変換後の文字列
-         */
-        String toLower() const;
+		/**
+		 * @brief 英字を小文字に変換した文字列を返す
+		 * @return String 変換後の文字列
+		 */
+		String toLower() const;
 
-        /**
-         * @brief null終端文字列への非所有ポインタを返す
-         * @return const char* 文字列の先頭のポインタ
-         */
-        const char* c_str() const { return m_data; }
+		/**
+		 * @brief null終端文字列への非所有ポインタを返す
+		 * @return const char* 文字列の先頭のポインタ
+		 */
+		const char* c_str() const { return m_data; }
 
-        /**
-         * @brief 文字列の先頭のポインタを返す
-         * @return char* 文字列の先頭のポインタ
-         */
-        char* data() { return m_data; }
-        const char* data() const { return m_data; }
+		/**
+		 * @brief 文字列の先頭のポインタを返す
+		 * @return char* 文字列の先頭のポインタ
+		 */
+		char* data() { return m_data; }
+		const char* data() const { return m_data; }
 
-        /**
-         * @brief 文字数を返す
-         * @return size_t 文字数
-         */
-        size_t size() const { return m_size; }
+		/**
+		 * @brief 文字数を返す
+		 * @return size_t 文字数
+		 */
+		size_t size() const { return m_size; }
 
-        /**
-         * @brief 文字数を返す（終端文字を除く）
-         * @return size_t 文字数
-         */
-        size_t length() const { return m_size; }
+		/**
+		 * @brief 文字数を返す（終端文字を除く）
+		 * @return size_t 文字数
+		 */
+		size_t length() const { return m_size; }
 
-        /**
-         * @brief 確保済みの容量を返す（終端文字を除く）
-         * @return size_t 確保済みの容量
-         */
-        size_t capacity() const { return m_capacity; }
+		/**
+		 * @brief 確保済みの容量を返す（終端文字を除く）
+		 * @return size_t 確保済みの容量
+		 */
+		size_t capacity() const { return m_capacity; }
 
-        /**
-         * @brief 文字列が空かを判定する
-         * @return bool 空の場合はtrue
-         */
-        bool isEmpty() const { return m_size == 0; }
+		/**
+		 * @brief 文字列が空かを判定する
+		 * @return bool 空の場合はtrue
+		 */
+		bool isEmpty() const { return m_size == 0; }
 
-        /**
-         * @brief 文字列のインデックスでアクセスする
-         * @param index インデックス
-         * @return char& 文字への参照
-         */
-        char& operator[](size_t index) { GE_ASSERT(index < m_size); return m_data[index]; }
-        const char& operator[](size_t index) const { GE_ASSERT(index < m_size); return m_data[index]; }
+		/**
+		 * @brief 文字列のインデックスでアクセスする
+		 * @param index インデックス
+		 * @return char& 文字への参照
+		 */
+		char& operator[](size_t index) { GE_ASSERT(index < m_size); return m_data[index]; }
+		const char& operator[](size_t index) const { GE_ASSERT(index < m_size); return m_data[index]; }
 
-        /**
-         * @brief std::string_viewに変換する
-         * @return std::string_view 変換後の文字列
-         */
-        std::string_view view() const { return std::string_view(m_data, m_size); }
-        operator std::string_view() const { return view(); }
+		/**
+		 * @brief std::string_viewに変換する
+		 * @return std::string_view 変換後の文字列
+		 */
+		std::string_view view() const { return std::string_view(m_data, m_size); }
+		operator std::string_view() const { return view(); }
 
-        /**
-         * @brief 文字列の先頭と末尾のイテレータを返す
-         * @return char* 文字列の先頭と末尾のイテレータ
-         */
-        char* begin() { return m_data; }
-        const char* begin() const { return m_data; }
+		/**
+		 * @brief 文字列の先頭と末尾のイテレータを返す
+		 * @return char* 文字列の先頭と末尾のイテレータ
+		 */
+		char* begin() { return m_data; }
+		const char* begin() const { return m_data; }
 
-        /**
-         * @brief 文字列の末尾のイテレータを返す
-         * @return char* 文字列の末尾のイテレータ
-         */
-        char* end() { return m_data + m_size; }
-        const char* end() const { return m_data + m_size; }
+		/**
+		 * @brief 文字列の末尾のイテレータを返す
+		 * @return char* 文字列の末尾のイテレータ
+		 */
+		char* end() { return m_data + m_size; }
+		const char* end() const { return m_data + m_size; }
 
-        bool operator==(const String& other) const { return view() == other.view(); }
-        bool operator!=(const String& other) const { return !(*this == other); }
-        bool operator<(const String& other) const { return view() < other.view(); }
-        bool operator==(std::string_view other) const { return view() == other; }
-        bool operator!=(std::string_view other) const { return view() != other; }
-        bool operator==(const char* other) const { return view() == std::string_view(other != nullptr ? other : ""); }
-        bool operator!=(const char* other) const { return !(*this == other); }
+		bool operator==(const String& other) const { return view() == other.view(); }
+		bool operator!=(const String& other) const { return !(*this == other); }
+		bool operator<(const String& other) const { return view() < other.view(); }
+		bool operator==(std::string_view other) const { return view() == other; }
+		bool operator!=(std::string_view other) const { return view() != other; }
+		bool operator==(const char* other) const { return view() == std::string_view(other != nullptr ? other : ""); }
+		bool operator!=(const char* other) const { return !(*this == other); }
 
-    private:
+	private:
 
-        /**
-         * @brief null終端文字列の長さを求める
-         * @param text 対象の文字列
-         * @return size_t 文字数
-         */
-        static size_t textLength(const char* text) { return text != nullptr ? std::strlen(text) : 0; }
+		/**
+		 * @brief null終端文字列の長さを求める
+		 * @param text 対象の文字列
+		 * @return size_t 文字数
+		 */
+		static size_t textLength(const char* text) { return text != nullptr ? std::strlen(text) : 0; }
 
-        /**
-         * @brief 内部バッファを使用しているかを取得する
-         * @return bool 内部バッファならtrue
-         */
-        bool isInline() const { return m_data == m_inline; }
+		/**
+		 * @brief 内部バッファを使用しているかを取得する
+		 * @return bool 内部バッファならtrue
+		 */
+		bool isInline() const { return m_data == m_inline; }
 
-        /**
-         * @brief 指定された文字列をコピーする
-         */
-        void assign(const char* text, size_t size);
+		/**
+		 * @brief 指定された文字列をコピーする
+		 */
+		void assign(const char* text, size_t size);
 
-        bool validateSource(const char* text, size_t size) const;
+		bool validateSource(const char* text, size_t size) const;
 
-        /**
-         * @brief ヒープから確保したメモリを解放する
-         */
-        void releaseStorage();
+		/**
+		 * @brief ヒープから確保したメモリを解放する
+		 */
+		void releaseStorage();
 
-        std::unique_ptr<char[]> m_storage;    //!< 長い文字列のヒープ領域を所有する
-        char* m_data;                         //!< 内部バッファかヒープ領域への非所有参照
-        size_t m_size;                        //!< 文字数
-        size_t m_capacity;                    //!< 確保済みの容量（終端文字を除く）
-        char   m_inline[INLINE_CAPACITY + 1]; //!< 短い文字列用の内部バッファ
-    };
+		std::unique_ptr<char[]> m_storage;    //!< 長い文字列のヒープ領域を所有する
+		char* m_data;                         //!< 内部バッファかヒープ領域への非所有参照
+		size_t m_size;                        //!< 文字数
+		size_t m_capacity;                    //!< 確保済みの容量（終端文字を除く）
+		char   m_inline[INLINE_CAPACITY + 1]; //!< 短い文字列用の内部バッファ
+	};
 
-    /**
-     * @brief Stringとstd::string_viewの連結演算子
-     * @param left 左辺のString
-     * @param right 右辺のstd::string_view
-     * @return String 連結した文字列
-     */
-    inline String operator+(const String& left, std::string_view right)
-    {
-        String result(left);
-        result.append(right);
-        return result;
-    }
+	/**
+	 * @brief Stringとstd::string_viewの連結演算子
+	 * @param left 左辺のString
+	 * @param right 右辺のstd::string_view
+	 * @return String 連結した文字列
+	 */
+	inline String operator+(const String& left, std::string_view right)
+	{
+		String result(left);
+		result.append(right);
+		return result;
+	}
 
-    /**
-     * @brief Stringとconst char*の連結演算子
-     * @param left 左辺のString
-     * @param right 右辺のconst char*
-     * @return String 連結した文字列
-     */
-    inline String operator+(const String& left, const char* right)
-    {
-        String result(left);
-        result += right;
-        return result;
-    }
+	/**
+	 * @brief Stringとconst char*の連結演算子
+	 * @param left 左辺のString
+	 * @param right 右辺のconst char*
+	 * @return String 連結した文字列
+	 */
+	inline String operator+(const String& left, const char* right)
+	{
+		String result(left);
+		result += right;
+		return result;
+	}
 
-    /**
-     * @brief Stringのハッシュ関数
-     */
-    template <>
-    struct Hash<String>
-    {
-        uint64_t operator()(const String& value) const { return hashString(value.data(), value.size()); }
-    };
+	/**
+	 * @brief Stringのハッシュ関数
+	 */
+	template <>
+	struct Hash<String>
+	{
+		uint64_t operator()(const String& value) const { return hashString(value.data(), value.size()); }
+	};
 } // namespace Engine

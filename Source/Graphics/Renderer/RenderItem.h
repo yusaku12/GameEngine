@@ -9,65 +9,65 @@
 
 namespace Engine
 {
-    class DX12UploadBuffer;
-    struct MaterialAsset;
+	class DX12UploadBuffer;
+	struct MaterialAsset;
 
-    /**
-     * @brief RenderItemが描画されるパス。
-     */
-    enum class RenderPassType : std::uint8_t
-    {
-        DepthOnly,   //!< Depth Pre-Pass
-        Shadow,      //!< First directional shadow cascade
-        Shadow1,     //!< Second directional shadow cascade
-        Shadow2,     //!< Third directional shadow cascade
-        Opaque,      //!< Opaque Pass
-        AlphaTest,   //!< Alpha Test Pass
-        Transparent, //!< Transparent Pass
-    };
+	/**
+	 * @brief RenderItemが描画されるパス。
+	 */
+	enum class RenderPassType : std::uint8_t
+	{
+		DepthOnly,   //!< Depth Pre-Pass
+		Shadow,      //!< First directional shadow cascade
+		Shadow1,     //!< Second directional shadow cascade
+		Shadow2,     //!< Third directional shadow cascade
+		Opaque,      //!< Opaque Pass
+		AlphaTest,   //!< Alpha Test Pass
+		Transparent, //!< Transparent Pass
+	};
 
-    /** @brief Whether a pass renders a directional shadow cascade. */
-    constexpr bool isShadowPass(const RenderPassType pass) noexcept
-    {
-        return pass >= RenderPassType::Shadow && pass <= RenderPassType::Shadow2;
-    }
+	/** @brief Whether a pass renders a directional shadow cascade. */
+	constexpr bool isShadowPass(const RenderPassType pass) noexcept
+	{
+		return pass >= RenderPassType::Shadow && pass <= RenderPassType::Shadow2;
+	}
 
-    /** @brief Returns the cascade index of a shadow pass. */
-    constexpr std::size_t shadowCascadeIndex(const RenderPassType pass) noexcept
-    {
-        return static_cast<std::size_t>(pass) - static_cast<std::size_t>(RenderPassType::Shadow);
-    }
+	/** @brief Returns the cascade index of a shadow pass. */
+	constexpr std::size_t shadowCascadeIndex(const RenderPassType pass) noexcept
+	{
+		return static_cast<std::size_t>(pass) - static_cast<std::size_t>(RenderPassType::Shadow);
+	}
 
-    /**
-     * @brief Rendererが処理する一時的なモデル描画データ。
-     * @details GPUリソースを所有せず、1フレーム内だけ有効な参照と描画状態を保持する。
-     */
-    struct RenderItem
-    {
-        const D3D12_VERTEX_BUFFER_VIEW* vertexBuffer = nullptr;         //!< 非所有の頂点Buffer View
-        const D3D12_INDEX_BUFFER_VIEW* indexBuffer = nullptr;           //!< 非所有のIndex Buffer View
-        Matrix worldMatrix = Matrix::Identity;                          //!< ObjectのWorld行列
-        AABB worldBounds{};                                             //!< Culling用World Bounds
-        std::uint32_t indexStart = 0;                                   //!< Index Buffer内の開始位置
-        std::uint32_t indexCount = 0;                                   //!< 描画するIndex数
-        std::int32_t baseVertex = 0;                                    //!< 頂点Indexの基準位置
-        std::uint32_t objectID = 0;                                     //!< Object識別子
-        std::uint32_t pipelineID = 0;                                   //!< PSO識別子
-        ShaderVariantID shaderVariantID = 0;                            //!< 解決済みShader Variant識別子
-        MaterialHandle material;                                        //!< 全Model間で一意なMaterial識別子
-        std::shared_ptr<const MaterialAsset> materialSnapshot;           //!< Optional immutable procedural material.
-        MaterialSurfaceType surfaceType = MaterialSurfaceType::Opaque;  //!< 明示的なSurface分類
-        MaterialPropertyBlock materialProperties;                       //!< Draw単位の数値Parameter Override
-        std::uint32_t textureID = 0;                                    //!< 主Texture識別子
-        bool hasSkinWeights = false;                                    //!< メッシュがBone Weightを含むか
-        std::shared_ptr<const SkinningPaletteSnapshot> skinningPalette; //!< Animation済みPalette Snapshot
-        const DX12UploadBuffer* bonePaletteBuffer = nullptr;            //!< Bind PoseまたはAnimation済みBone行列Buffer
-        std::uint32_t meshID = 0;                                       //!< Mesh識別子
-        float cameraDepth = 0.0f;                                       //!< Transparent sort用Camera視線方向深度
-        RenderPassType pass = RenderPassType::Opaque;                   //!< 描画Pass
-        bool animationBoundsValid = false;                             //!< 現在のSkinning Paletteを包含するBoundsを算出済みか
+	/**
+	 * @brief Rendererが処理する一時的なモデル描画データ。
+	 * @details GPUリソースを所有せず、1フレーム内だけ有効な参照と描画状態を保持する。
+	 */
+	struct RenderItem
+	{
+		const D3D12_VERTEX_BUFFER_VIEW* vertexBuffer = nullptr;         //!< 非所有の頂点Buffer View
+		const D3D12_INDEX_BUFFER_VIEW* indexBuffer = nullptr;           //!< 非所有のIndex Buffer View
+		Matrix worldMatrix = Matrix::Identity;                          //!< ObjectのWorld行列
+		AABB worldBounds{};                                             //!< Culling用World Bounds
+		std::uint32_t indexStart = 0;                                   //!< Index Buffer内の開始位置
+		std::uint32_t indexCount = 0;                                   //!< 描画するIndex数
+		std::int32_t baseVertex = 0;                                    //!< 頂点Indexの基準位置
+		std::uint32_t objectID = 0;                                     //!< Object識別子
+		std::uint32_t pipelineID = 0;                                   //!< PSO識別子
+		ShaderVariantID shaderVariantID = 0;                            //!< 解決済みShader Variant識別子
+		MaterialHandle material;                                        //!< 全Model間で一意なMaterial識別子
+		std::shared_ptr<const MaterialAsset> materialSnapshot;           //!< Optional immutable procedural material.
+		MaterialSurfaceType surfaceType = MaterialSurfaceType::Opaque;  //!< 明示的なSurface分類
+		MaterialPropertyBlock materialProperties;                       //!< Draw単位の数値Parameter Override
+		std::uint32_t textureID = 0;                                    //!< 主Texture識別子
+		bool hasSkinWeights = false;                                    //!< メッシュがBone Weightを含むか
+		std::shared_ptr<const SkinningPaletteSnapshot> skinningPalette; //!< Animation済みPalette Snapshot
+		const DX12UploadBuffer* bonePaletteBuffer = nullptr;            //!< Bind PoseまたはAnimation済みBone行列Buffer
+		std::uint32_t meshID = 0;                                       //!< Mesh識別子
+		float cameraDepth = 0.0f;                                       //!< Transparent sort用Camera視線方向深度
+		RenderPassType pass = RenderPassType::Opaque;                   //!< 描画Pass
+		bool animationBoundsValid = false;                             //!< 現在のSkinning Paletteを包含するBoundsを算出済みか
 
-        /** @brief Static Boundsまたは検証済みPose Boundsをカリングに使用できるか。 @return 使用可能時true。 */
-        bool hasCullableBounds() const noexcept { return skinningPalette == nullptr || animationBoundsValid; }
-    };
+		/** @brief Static Boundsまたは検証済みPose Boundsをカリングに使用できるか。 @return 使用可能時true。 */
+		bool hasCullableBounds() const noexcept { return skinningPalette == nullptr || animationBoundsValid; }
+	};
 } // namespace Engine

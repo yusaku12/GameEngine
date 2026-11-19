@@ -15,771 +15,771 @@
 
 namespace Engine::Serialization
 {
-    namespace
-    {
-        Vec2 toFlat(const Vector2& value) { return Vec2(value.x, value.y); }
-        Vec3 toFlat(const Vector3& value) { return Vec3(value.x, value.y, value.z); }
-        Vec4 toFlat(const Vector4& value) { return Vec4(value.x, value.y, value.z, value.w); }
-        AssetGuid toFlat(const AssetGUID& value) { return AssetGuid(value.high, value.low); }
+	namespace
+	{
+		Vec2 toFlat(const Vector2& value) { return Vec2(value.x, value.y); }
+		Vec3 toFlat(const Vector3& value) { return Vec3(value.x, value.y, value.z); }
+		Vec4 toFlat(const Vector4& value) { return Vec4(value.x, value.y, value.z, value.w); }
+		AssetGuid toFlat(const AssetGUID& value) { return AssetGuid(value.high, value.low); }
 
-        Vector3 toEngine(const Vec3* value);
-        Vector4 toEngine(const Vec4* value);
-        AssetGUID toEngine(const AssetGuid* value);
-        bool isFinite(const Vector3& value) noexcept;
-        bool isFinite(const Vector4& value) noexcept;
+		Vector3 toEngine(const Vec3* value);
+		Vector4 toEngine(const Vec4* value);
+		AssetGUID toEngine(const AssetGuid* value);
+		bool isFinite(const Vector3& value) noexcept;
+		bool isFinite(const Vector4& value) noexcept;
 
-        constexpr std::array LEGACY_TEXTURE_PATH_MEMBERS = {
-            &Engine::MaterialTexturePaths::baseColor, &Engine::MaterialTexturePaths::normal,
-            &Engine::MaterialTexturePaths::metallic, &Engine::MaterialTexturePaths::roughness,
-            &Engine::MaterialTexturePaths::metallicRoughness, &Engine::MaterialTexturePaths::ambientOcclusion,
-            &Engine::MaterialTexturePaths::emissive, &Engine::MaterialTexturePaths::opacity,
-        };
+		constexpr std::array LEGACY_TEXTURE_PATH_MEMBERS = {
+			&Engine::MaterialTexturePaths::baseColor, &Engine::MaterialTexturePaths::normal,
+			&Engine::MaterialTexturePaths::metallic, &Engine::MaterialTexturePaths::roughness,
+			&Engine::MaterialTexturePaths::metallicRoughness, &Engine::MaterialTexturePaths::ambientOcclusion,
+			&Engine::MaterialTexturePaths::emissive, &Engine::MaterialTexturePaths::opacity,
+		};
 
-        flatbuffers::Offset<MaterialAssetData> createEmbeddedMaterial(flatbuffers::FlatBufferBuilder& builder,
-            const Engine::MaterialAsset& material, const std::filesystem::path& sourcePath,
-            const std::filesystem::path& destinationPath)
-        {
-            flatbuffers::Offset<TerrainMaterialData> terrain;
-            if (material.terrain)
-            {
-                auto resolved = *material.terrain;
-                if (material.renderState.surfaceType != Engine::MaterialSurfaceType::Opaque
-                    || !resolveTerrainMaterialTextures(resolved, sourcePath)
-                    || !writeTerrainMaterial(builder, resolved, terrain, destinationPath))
-                {
-                    LOG_ERROR("[ModelSerializer] Invalid embedded terrain material.");
-                    return {};
-                }
-            }
-            const AssetGuid guid = toFlat(material.guid);
-            const AssetGuid shaderGuid = toFlat(material.shaderGuid);
-            const AssetGuid baseColorTexture = toFlat(material.textures.baseColor);
-            const AssetGuid normalTexture = toFlat(material.textures.normal);
-            const AssetGuid metallicRoughnessTexture = toFlat(material.textures.metallicRoughness);
-            const AssetGuid ambientOcclusionTexture = toFlat(material.textures.ambientOcclusion);
-            const AssetGuid emissiveTexture = toFlat(material.textures.emissive);
-            const Vec4 baseColor = toFlat(material.baseColor);
-            const Vec3 emissiveColor = toFlat(material.emissiveColor);
-            const auto renderState = CreateMaterialRenderState(builder,
-                static_cast<Engine::Serialization::MaterialSurfaceType>(material.renderState.surfaceType),
-                static_cast<Engine::Serialization::MaterialCullMode>(material.renderState.cullMode),
-                static_cast<Engine::Serialization::MaterialDepthTest>(material.renderState.depthTest),
-                static_cast<Engine::Serialization::MaterialBlendMode>(material.renderState.blendMode),
-                material.renderState.depthWrite, material.renderState.renderQueueOffset);
-            const auto textures = CreateMaterialTextureReferences(builder, &baseColorTexture, &normalTexture,
-                &metallicRoughnessTexture, &ambientOcclusionTexture, &emissiveTexture,
-                builder.CreateString(material.textures.baseColorPath.generic_string()),
-                builder.CreateString(material.textures.normalPath.generic_string()),
-                builder.CreateString(material.textures.metallicRoughnessPath.generic_string()),
-                builder.CreateString(material.textures.ambientOcclusionPath.generic_string()),
-                builder.CreateString(material.textures.emissivePath.generic_string()));
-            return CreateMaterialAssetData(builder, &guid, builder.CreateString(material.name), &shaderGuid,
-                renderState, &baseColor, material.metallic, material.roughness, &emissiveColor,
-                material.emissiveIntensity, material.normalScale, material.occlusionStrength,
-                material.alphaCutoff, textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS, terrain,
-                material.specular);
-        }
+		flatbuffers::Offset<MaterialAssetData> createEmbeddedMaterial(flatbuffers::FlatBufferBuilder& builder,
+			const Engine::MaterialAsset& material, const std::filesystem::path& sourcePath,
+			const std::filesystem::path& destinationPath)
+		{
+			flatbuffers::Offset<TerrainMaterialData> terrain;
+			if (material.terrain)
+			{
+				auto resolved = *material.terrain;
+				if (material.renderState.surfaceType != Engine::MaterialSurfaceType::Opaque
+					|| !resolveTerrainMaterialTextures(resolved, sourcePath)
+					|| !writeTerrainMaterial(builder, resolved, terrain, destinationPath))
+				{
+					LOG_ERROR("[ModelSerializer] Invalid embedded terrain material.");
+					return {};
+				}
+			}
+			const AssetGuid guid = toFlat(material.guid);
+			const AssetGuid shaderGuid = toFlat(material.shaderGuid);
+			const AssetGuid baseColorTexture = toFlat(material.textures.baseColor);
+			const AssetGuid normalTexture = toFlat(material.textures.normal);
+			const AssetGuid metallicRoughnessTexture = toFlat(material.textures.metallicRoughness);
+			const AssetGuid ambientOcclusionTexture = toFlat(material.textures.ambientOcclusion);
+			const AssetGuid emissiveTexture = toFlat(material.textures.emissive);
+			const Vec4 baseColor = toFlat(material.baseColor);
+			const Vec3 emissiveColor = toFlat(material.emissiveColor);
+			const auto renderState = CreateMaterialRenderState(builder,
+				static_cast<Engine::Serialization::MaterialSurfaceType>(material.renderState.surfaceType),
+				static_cast<Engine::Serialization::MaterialCullMode>(material.renderState.cullMode),
+				static_cast<Engine::Serialization::MaterialDepthTest>(material.renderState.depthTest),
+				static_cast<Engine::Serialization::MaterialBlendMode>(material.renderState.blendMode),
+				material.renderState.depthWrite, material.renderState.renderQueueOffset);
+			const auto textures = CreateMaterialTextureReferences(builder, &baseColorTexture, &normalTexture,
+				&metallicRoughnessTexture, &ambientOcclusionTexture, &emissiveTexture,
+				builder.CreateString(material.textures.baseColorPath.generic_string()),
+				builder.CreateString(material.textures.normalPath.generic_string()),
+				builder.CreateString(material.textures.metallicRoughnessPath.generic_string()),
+				builder.CreateString(material.textures.ambientOcclusionPath.generic_string()),
+				builder.CreateString(material.textures.emissivePath.generic_string()));
+			return CreateMaterialAssetData(builder, &guid, builder.CreateString(material.name), &shaderGuid,
+				renderState, &baseColor, material.metallic, material.roughness, &emissiveColor,
+				material.emissiveIntensity, material.normalScale, material.occlusionStrength,
+				material.alphaCutoff, textures, 0, material.shaderKeywords & VALID_MATERIAL_KEYWORDS, terrain,
+				material.specular);
+		}
 
-        bool readEmbeddedMaterial(const MaterialAssetData* source, Engine::MaterialAsset& material,
-            const std::filesystem::path& owner)
-        {
-            if (source == nullptr || source->guid() == nullptr)
-                return false;
-            material = Engine::MaterialAsset{};
-            if (!toEngine(source->guid()).isValid())
-                return true;
-            if (source->name() == nullptr
-                || source->render_state() == nullptr || source->base_color() == nullptr
-                || source->emissive_color() == nullptr || source->textures() == nullptr
-                || !std::isfinite(source->metallic()) || !std::isfinite(source->roughness())
-                || !std::isfinite(source->specular())
-                || !std::isfinite(source->emissive_intensity()) || !std::isfinite(source->normal_scale())
-                || !std::isfinite(source->occlusion_strength()) || !std::isfinite(source->alpha_cutoff()))
-                return false;
-            const Vector4 baseColor = toEngine(source->base_color());
-            const Vector3 emissiveColor = toEngine(source->emissive_color());
-            if (!isFinite(baseColor) || !isFinite(emissiveColor))
-                return false;
-            const MaterialRenderState* renderState = source->render_state();
-            if (renderState->surface_type() > Engine::Serialization::MaterialSurfaceType_Transparent
-                || renderState->cull_mode() > Engine::Serialization::MaterialCullMode_Back
-                || renderState->depth_test() > Engine::Serialization::MaterialDepthTest_Always
-                || renderState->blend_mode() > Engine::Serialization::MaterialBlendMode_Additive
-                || (source->keyword_mask() & ~VALID_MATERIAL_KEYWORDS) != 0)
-                return false;
+		bool readEmbeddedMaterial(const MaterialAssetData* source, Engine::MaterialAsset& material,
+			const std::filesystem::path& owner)
+		{
+			if (source == nullptr || source->guid() == nullptr)
+				return false;
+			material = Engine::MaterialAsset{};
+			if (!toEngine(source->guid()).isValid())
+				return true;
+			if (source->name() == nullptr
+				|| source->render_state() == nullptr || source->base_color() == nullptr
+				|| source->emissive_color() == nullptr || source->textures() == nullptr
+				|| !std::isfinite(source->metallic()) || !std::isfinite(source->roughness())
+				|| !std::isfinite(source->specular())
+				|| !std::isfinite(source->emissive_intensity()) || !std::isfinite(source->normal_scale())
+				|| !std::isfinite(source->occlusion_strength()) || !std::isfinite(source->alpha_cutoff()))
+				return false;
+			const Vector4 baseColor = toEngine(source->base_color());
+			const Vector3 emissiveColor = toEngine(source->emissive_color());
+			if (!isFinite(baseColor) || !isFinite(emissiveColor))
+				return false;
+			const MaterialRenderState* renderState = source->render_state();
+			if (renderState->surface_type() > Engine::Serialization::MaterialSurfaceType_Transparent
+				|| renderState->cull_mode() > Engine::Serialization::MaterialCullMode_Back
+				|| renderState->depth_test() > Engine::Serialization::MaterialDepthTest_Always
+				|| renderState->blend_mode() > Engine::Serialization::MaterialBlendMode_Additive
+				|| (source->keyword_mask() & ~VALID_MATERIAL_KEYWORDS) != 0)
+				return false;
 
-            material.guid = toEngine(source->guid());
-            if (!material.guid.isValid())
-                return false;
-            material.name = source->name()->str();
-            material.shaderGuid = toEngine(source->shader_guid());
-            material.renderState.surfaceType = static_cast<Engine::MaterialSurfaceType>(renderState->surface_type());
-            material.renderState.cullMode = static_cast<Engine::MaterialCullMode>(renderState->cull_mode());
-            material.renderState.depthTest = static_cast<Engine::MaterialDepthTest>(renderState->depth_test());
-            material.renderState.blendMode = static_cast<Engine::MaterialBlendMode>(renderState->blend_mode());
-            material.renderState.depthWrite = renderState->depth_write();
-            material.renderState.renderQueueOffset = renderState->render_queue_offset();
-            material.baseColor = baseColor;
-            material.metallic = source->metallic();
-            material.roughness = source->roughness();
-            material.specular = source->specular();
-            material.emissiveColor = emissiveColor;
-            material.emissiveIntensity = source->emissive_intensity();
-            material.normalScale = source->normal_scale();
-            material.occlusionStrength = source->occlusion_strength();
-            material.alphaCutoff = source->alpha_cutoff();
-            const MaterialTextureReferences* textures = source->textures();
-            material.textures.baseColor = toEngine(textures->base_color());
-            material.textures.normal = toEngine(textures->normal());
-            material.textures.metallicRoughness = toEngine(textures->metallic_roughness());
-            material.textures.ambientOcclusion = toEngine(textures->ambient_occlusion());
-            material.textures.emissive = toEngine(textures->emissive());
-            material.textures.baseColorPath = textures->base_color_path() != nullptr ? textures->base_color_path()->str() : "";
-            material.textures.normalPath = textures->normal_path() != nullptr ? textures->normal_path()->str() : "";
-            material.textures.metallicRoughnessPath = textures->metallic_roughness_path() != nullptr
-                ? textures->metallic_roughness_path()->str() : "";
-            material.textures.ambientOcclusionPath = textures->ambient_occlusion_path() != nullptr
-                ? textures->ambient_occlusion_path()->str() : "";
-            material.textures.emissivePath = textures->emissive_path() != nullptr ? textures->emissive_path()->str() : "";
-            material.shaderKeywords = source->keyword_mask();
-            if (source->terrain())
-            {
-                material.terrain.emplace();
-                if (material.renderState.surfaceType != Engine::MaterialSurfaceType::Opaque
-                    || !readTerrainMaterial(source->terrain(), *material.terrain, owner))
-                {
-                    LOG_ERROR("[ModelSerializer] Invalid embedded terrain material.");
-                    return false;
-                }
-            }
-            return true;
-        }
+			material.guid = toEngine(source->guid());
+			if (!material.guid.isValid())
+				return false;
+			material.name = source->name()->str();
+			material.shaderGuid = toEngine(source->shader_guid());
+			material.renderState.surfaceType = static_cast<Engine::MaterialSurfaceType>(renderState->surface_type());
+			material.renderState.cullMode = static_cast<Engine::MaterialCullMode>(renderState->cull_mode());
+			material.renderState.depthTest = static_cast<Engine::MaterialDepthTest>(renderState->depth_test());
+			material.renderState.blendMode = static_cast<Engine::MaterialBlendMode>(renderState->blend_mode());
+			material.renderState.depthWrite = renderState->depth_write();
+			material.renderState.renderQueueOffset = renderState->render_queue_offset();
+			material.baseColor = baseColor;
+			material.metallic = source->metallic();
+			material.roughness = source->roughness();
+			material.specular = source->specular();
+			material.emissiveColor = emissiveColor;
+			material.emissiveIntensity = source->emissive_intensity();
+			material.normalScale = source->normal_scale();
+			material.occlusionStrength = source->occlusion_strength();
+			material.alphaCutoff = source->alpha_cutoff();
+			const MaterialTextureReferences* textures = source->textures();
+			material.textures.baseColor = toEngine(textures->base_color());
+			material.textures.normal = toEngine(textures->normal());
+			material.textures.metallicRoughness = toEngine(textures->metallic_roughness());
+			material.textures.ambientOcclusion = toEngine(textures->ambient_occlusion());
+			material.textures.emissive = toEngine(textures->emissive());
+			material.textures.baseColorPath = textures->base_color_path() != nullptr ? textures->base_color_path()->str() : "";
+			material.textures.normalPath = textures->normal_path() != nullptr ? textures->normal_path()->str() : "";
+			material.textures.metallicRoughnessPath = textures->metallic_roughness_path() != nullptr
+				? textures->metallic_roughness_path()->str() : "";
+			material.textures.ambientOcclusionPath = textures->ambient_occlusion_path() != nullptr
+				? textures->ambient_occlusion_path()->str() : "";
+			material.textures.emissivePath = textures->emissive_path() != nullptr ? textures->emissive_path()->str() : "";
+			material.shaderKeywords = source->keyword_mask();
+			if (source->terrain())
+			{
+				material.terrain.emplace();
+				if (material.renderState.surfaceType != Engine::MaterialSurfaceType::Opaque
+					|| !readTerrainMaterial(source->terrain(), *material.terrain, owner))
+				{
+					LOG_ERROR("[ModelSerializer] Invalid embedded terrain material.");
+					return false;
+				}
+			}
+			return true;
+		}
 
-        Vector2 toEngine(const Vec2* value) { return value ? Vector2(value->x(), value->y()) : Vector2::Zero; }
-        Vector3 toEngine(const Vec3* value) { return value ? Vector3(value->x(), value->y(), value->z()) : Vector3::Zero; }
-        Vector4 toEngine(const Vec4* value) { return value ? Vector4(value->x(), value->y(), value->z(), value->w()) : Vector4::Zero; }
-        AssetGUID toEngine(const AssetGuid* value) { return value ? AssetGUID{ value->high(), value->low() } : AssetGUID{}; }
+		Vector2 toEngine(const Vec2* value) { return value ? Vector2(value->x(), value->y()) : Vector2::Zero; }
+		Vector3 toEngine(const Vec3* value) { return value ? Vector3(value->x(), value->y(), value->z()) : Vector3::Zero; }
+		Vector4 toEngine(const Vec4* value) { return value ? Vector4(value->x(), value->y(), value->z(), value->w()) : Vector4::Zero; }
+		AssetGUID toEngine(const AssetGuid* value) { return value ? AssetGUID{ value->high(), value->low() } : AssetGUID{}; }
 
-        bool isFinite(const Vector2& value) noexcept
-        {
-            return std::isfinite(value.x) && std::isfinite(value.y);
-        }
+		bool isFinite(const Vector2& value) noexcept
+		{
+			return std::isfinite(value.x) && std::isfinite(value.y);
+		}
 
-        bool isFinite(const Vector3& value) noexcept
-        {
-            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
-        }
+		bool isFinite(const Vector3& value) noexcept
+		{
+			return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+		}
 
-        bool isFinite(const Vector4& value) noexcept
-        {
-            return std::isfinite(value.x) && std::isfinite(value.y)
-                && std::isfinite(value.z) && std::isfinite(value.w);
-        }
+		bool isFinite(const Vector4& value) noexcept
+		{
+			return std::isfinite(value.x) && std::isfinite(value.y)
+				&& std::isfinite(value.z) && std::isfinite(value.w);
+		}
 
-        bool isValidRotation(const Quaternion& value) noexcept
-        {
-            const float lengthSquared = value.x * value.x + value.y * value.y
-                + value.z * value.z + value.w * value.w;
-            return std::isfinite(lengthSquared) && lengthSquared > std::numeric_limits<float>::epsilon();
-        }
+		bool isValidRotation(const Quaternion& value) noexcept
+		{
+			const float lengthSquared = value.x * value.x + value.y * value.y
+				+ value.z * value.z + value.w * value.w;
+			return std::isfinite(lengthSquared) && lengthSquared > std::numeric_limits<float>::epsilon();
+		}
 
-        bool isValidKeyTime(const float time, const float previousTime, const float duration) noexcept
-        {
-            return std::isfinite(time) && time >= 0.0f && time <= duration && time > previousTime;
-        }
+		bool isValidKeyTime(const float time, const float previousTime, const float duration) noexcept
+		{
+			return std::isfinite(time) && time >= 0.0f && time <= duration && time > previousTime;
+		}
 
-        flatbuffers::Offset<Bounds> createBounds(flatbuffers::FlatBufferBuilder& builder, const AABB& box, const BoundingSphere& sphere)
-        {
-            const Vec3 boxCenter = toFlat(Vector3(box.Center));
-            const Vec3 boxExtents = toFlat(Vector3(box.Extents));
-            const Vec3 sphereCenter = toFlat(Vector3(sphere.Center));
-            return CreateBounds(builder, &boxCenter, &boxExtents, &sphereCenter, sphere.Radius);
-        }
+		flatbuffers::Offset<Bounds> createBounds(flatbuffers::FlatBufferBuilder& builder, const AABB& box, const BoundingSphere& sphere)
+		{
+			const Vec3 boxCenter = toFlat(Vector3(box.Center));
+			const Vec3 boxExtents = toFlat(Vector3(box.Extents));
+			const Vec3 sphereCenter = toFlat(Vector3(sphere.Center));
+			return CreateBounds(builder, &boxCenter, &boxExtents, &sphereCenter, sphere.Radius);
+		}
 
-        flatbuffers::Offset<flatbuffers::Vector<float>> createMatrix(flatbuffers::FlatBufferBuilder& builder, const Matrix& matrix)
-        {
-            return builder.CreateVector(&matrix._11, 16);
-        }
+		flatbuffers::Offset<flatbuffers::Vector<float>> createMatrix(flatbuffers::FlatBufferBuilder& builder, const Matrix& matrix)
+		{
+			return builder.CreateVector(&matrix._11, 16);
+		}
 
-        bool readMatrix(const flatbuffers::Vector<float>* values, Matrix& matrix)
-        {
-            if (values == nullptr || values->size() != 16)
-                return false;
-            for (const float value : *values)
-                if (!std::isfinite(value))
-                    return false;
-            matrix = Matrix(
-                values->Get(0), values->Get(1), values->Get(2), values->Get(3),
-                values->Get(4), values->Get(5), values->Get(6), values->Get(7),
-                values->Get(8), values->Get(9), values->Get(10), values->Get(11),
-                values->Get(12), values->Get(13), values->Get(14), values->Get(15));
-            return true;
-        }
+		bool readMatrix(const flatbuffers::Vector<float>* values, Matrix& matrix)
+		{
+			if (values == nullptr || values->size() != 16)
+				return false;
+			for (const float value : *values)
+				if (!std::isfinite(value))
+					return false;
+			matrix = Matrix(
+				values->Get(0), values->Get(1), values->Get(2), values->Get(3),
+				values->Get(4), values->Get(5), values->Get(6), values->Get(7),
+				values->Get(8), values->Get(9), values->Get(10), values->Get(11),
+				values->Get(12), values->Get(13), values->Get(14), values->Get(15));
+			return true;
+		}
 
-        flatbuffers::Offset<MaterialTexturePaths> createTexturePaths(flatbuffers::FlatBufferBuilder& builder, const Engine::MaterialTexturePaths& paths)
-        {
-            return CreateMaterialTexturePaths(builder,
-                builder.CreateString(paths.baseColor), builder.CreateString(paths.normal),
-                builder.CreateString(paths.metallic), builder.CreateString(paths.roughness),
-                builder.CreateString(paths.metallicRoughness), builder.CreateString(paths.ambientOcclusion),
-                builder.CreateString(paths.emissive), builder.CreateString(paths.opacity));
-        }
+		flatbuffers::Offset<MaterialTexturePaths> createTexturePaths(flatbuffers::FlatBufferBuilder& builder, const Engine::MaterialTexturePaths& paths)
+		{
+			return CreateMaterialTexturePaths(builder,
+				builder.CreateString(paths.baseColor), builder.CreateString(paths.normal),
+				builder.CreateString(paths.metallic), builder.CreateString(paths.roughness),
+				builder.CreateString(paths.metallicRoughness), builder.CreateString(paths.ambientOcclusion),
+				builder.CreateString(paths.emissive), builder.CreateString(paths.opacity));
+		}
 
-        flatbuffers::Offset<Material> createMaterial(flatbuffers::FlatBufferBuilder& builder, const MaterialResource& material)
-        {
-            const Vec4 baseColor = toFlat(material.baseColor);
-            const Vec3 emissive = toFlat(material.emissive);
-            return CreateMaterial(builder, builder.CreateString(material.name), &baseColor,
-                material.metallic, material.roughness, &emissive, material.opacity,
-                createTexturePaths(builder, material.textures));
-        }
+		flatbuffers::Offset<Material> createMaterial(flatbuffers::FlatBufferBuilder& builder, const MaterialResource& material)
+		{
+			const Vec4 baseColor = toFlat(material.baseColor);
+			const Vec3 emissive = toFlat(material.emissive);
+			return CreateMaterial(builder, builder.CreateString(material.name), &baseColor,
+				material.metallic, material.roughness, &emissive, material.opacity,
+				createTexturePaths(builder, material.textures));
+		}
 
-        flatbuffers::Offset<ModelMaterialSlot> createMaterialSlot(flatbuffers::FlatBufferBuilder& builder,
-            const Engine::ModelMaterialSlot& slot)
-        {
-            const AssetGuid materialGuid = toFlat(slot.defaultMaterialGuid);
-            return CreateModelMaterialSlot(builder, builder.CreateString(slot.name), &materialGuid,
-                builder.CreateString(slot.defaultMaterialPath.generic_string()));
-        }
+		flatbuffers::Offset<ModelMaterialSlot> createMaterialSlot(flatbuffers::FlatBufferBuilder& builder,
+			const Engine::ModelMaterialSlot& slot)
+		{
+			const AssetGuid materialGuid = toFlat(slot.defaultMaterialGuid);
+			return CreateModelMaterialSlot(builder, builder.CreateString(slot.name), &materialGuid,
+				builder.CreateString(slot.defaultMaterialPath.generic_string()));
+		}
 
-        flatbuffers::Offset<ModelVertex> createVertex(flatbuffers::FlatBufferBuilder& builder, const Engine::ModelVertex& vertex)
-        {
-            const Vec3 position = toFlat(vertex.position);
-            const Vec3 normal = toFlat(vertex.normal);
-            const Vec3 tangent = toFlat(vertex.tangent);
-            const Vec3 bitangent = toFlat(vertex.bitangent);
-            const Vec2 texCoord = toFlat(vertex.texCoord);
-            const Vec4 color = toFlat(vertex.color);
-            const Vec4 weights = toFlat(vertex.boneWeights);
-            return CreateModelVertex(builder, &position, &normal, &tangent, &bitangent, &texCoord, &color,
-                builder.CreateVector(vertex.boneIndices.data(), vertex.boneIndices.size()), &weights);
-        }
+		flatbuffers::Offset<ModelVertex> createVertex(flatbuffers::FlatBufferBuilder& builder, const Engine::ModelVertex& vertex)
+		{
+			const Vec3 position = toFlat(vertex.position);
+			const Vec3 normal = toFlat(vertex.normal);
+			const Vec3 tangent = toFlat(vertex.tangent);
+			const Vec3 bitangent = toFlat(vertex.bitangent);
+			const Vec2 texCoord = toFlat(vertex.texCoord);
+			const Vec4 color = toFlat(vertex.color);
+			const Vec4 weights = toFlat(vertex.boneWeights);
+			return CreateModelVertex(builder, &position, &normal, &tangent, &bitangent, &texCoord, &color,
+				builder.CreateVector(vertex.boneIndices.data(), vertex.boneIndices.size()), &weights);
+		}
 
-        flatbuffers::Offset<Mesh> createMesh(flatbuffers::FlatBufferBuilder& builder, const Engine::MeshResource& mesh)
-        {
-            std::vector<flatbuffers::Offset<ModelVertex>> vertices;
-            vertices.reserve(mesh.vertices.size());
-            for (const Engine::ModelVertex& vertex : mesh.vertices)
-                vertices.push_back(createVertex(builder, vertex));
+		flatbuffers::Offset<Mesh> createMesh(flatbuffers::FlatBufferBuilder& builder, const Engine::MeshResource& mesh)
+		{
+			std::vector<flatbuffers::Offset<ModelVertex>> vertices;
+			vertices.reserve(mesh.vertices.size());
+			for (const Engine::ModelVertex& vertex : mesh.vertices)
+				vertices.push_back(createVertex(builder, vertex));
 
-            std::vector<flatbuffers::Offset<SubMesh>> subMeshes;
-            subMeshes.reserve(mesh.subMeshes.size());
-            for (const SubMeshResource& subMesh : mesh.subMeshes)
-                subMeshes.push_back(CreateSubMesh(builder, subMesh.indexStart, subMesh.indexCount, subMesh.materialIndex));
+			std::vector<flatbuffers::Offset<SubMesh>> subMeshes;
+			subMeshes.reserve(mesh.subMeshes.size());
+			for (const SubMeshResource& subMesh : mesh.subMeshes)
+				subMeshes.push_back(CreateSubMesh(builder, subMesh.indexStart, subMesh.indexCount, subMesh.materialIndex));
 
-            return CreateMesh(builder, builder.CreateString(mesh.name), builder.CreateVector(vertices),
-                builder.CreateVector(mesh.indices), builder.CreateVector(subMeshes),
-                createBounds(builder, mesh.boundingBox, mesh.boundingSphere), mesh.verticesInModelSpace);
-        }
+			return CreateMesh(builder, builder.CreateString(mesh.name), builder.CreateVector(vertices),
+				builder.CreateVector(mesh.indices), builder.CreateVector(subMeshes),
+				createBounds(builder, mesh.boundingBox, mesh.boundingSphere), mesh.verticesInModelSpace);
+		}
 
-        flatbuffers::Offset<Bone> createBone(flatbuffers::FlatBufferBuilder& builder, const Engine::Bone& bone)
-        {
-            return CreateBone(builder, bone.index, builder.CreateString(bone.name), bone.parentIndex,
-                createMatrix(builder, bone.inverseBindPose), createMatrix(builder, bone.localBindTransform));
-        }
+		flatbuffers::Offset<Bone> createBone(flatbuffers::FlatBufferBuilder& builder, const Engine::Bone& bone)
+		{
+			return CreateBone(builder, bone.index, builder.CreateString(bone.name), bone.parentIndex,
+				createMatrix(builder, bone.inverseBindPose), createMatrix(builder, bone.localBindTransform));
+		}
 
-        flatbuffers::Offset<Skeleton> createSkeleton(flatbuffers::FlatBufferBuilder& builder, const Engine::SkeletonResource& skeleton)
-        {
-            std::vector<flatbuffers::Offset<Bone>> bones;
-            bones.reserve(skeleton.bones.size());
-            for (const Engine::Bone& bone : skeleton.bones)
-                bones.push_back(createBone(builder, bone));
-            return CreateSkeleton(builder, builder.CreateVector(bones));
-        }
+		flatbuffers::Offset<Skeleton> createSkeleton(flatbuffers::FlatBufferBuilder& builder, const Engine::SkeletonResource& skeleton)
+		{
+			std::vector<flatbuffers::Offset<Bone>> bones;
+			bones.reserve(skeleton.bones.size());
+			for (const Engine::Bone& bone : skeleton.bones)
+				bones.push_back(createBone(builder, bone));
+			return CreateSkeleton(builder, builder.CreateVector(bones));
+		}
 
-        flatbuffers::Offset<ModelNode> createNode(flatbuffers::FlatBufferBuilder& builder, const Engine::ModelNode& node)
-        {
-            return CreateModelNode(builder, builder.CreateString(node.name), node.parentIndex,
-                createMatrix(builder, node.localTransform), builder.CreateVector(node.children), builder.CreateVector(node.meshIndices));
-        }
+		flatbuffers::Offset<ModelNode> createNode(flatbuffers::FlatBufferBuilder& builder, const Engine::ModelNode& node)
+		{
+			return CreateModelNode(builder, builder.CreateString(node.name), node.parentIndex,
+				createMatrix(builder, node.localTransform), builder.CreateVector(node.children), builder.CreateVector(node.meshIndices));
+		}
 
-        flatbuffers::Offset<Animation> createAnimation(flatbuffers::FlatBufferBuilder& builder, const Engine::AnimationResource& animation)
-        {
-            std::vector<flatbuffers::Offset<AnimationChannel>> channels;
-            channels.reserve(animation.channels.size());
-            for (const Engine::AnimationChannel& channel : animation.channels) {
-                std::vector<flatbuffers::Offset<PositionKey>> positions;
-                positions.reserve(channel.positions.size());
-                for (const AnimationKeyPosition& key : channel.positions) {
-                    const Vec3 value = toFlat(key.value);
-                    positions.push_back(CreatePositionKey(builder, &value, key.time));
-                }
-                std::vector<flatbuffers::Offset<RotationKey>> rotations;
-                rotations.reserve(channel.rotations.size());
-                for (const AnimationKeyRotation& key : channel.rotations) {
-                    const Vec4 value = toFlat(Vector4(key.value.x, key.value.y, key.value.z, key.value.w));
-                    rotations.push_back(CreateRotationKey(builder, &value, key.time));
-                }
-                std::vector<flatbuffers::Offset<ScaleKey>> scales;
-                scales.reserve(channel.scales.size());
-                for (const AnimationKeyScale& key : channel.scales) {
-                    const Vec3 value = toFlat(key.value);
-                    scales.push_back(CreateScaleKey(builder, &value, key.time));
-                }
-                channels.push_back(CreateAnimationChannel(builder, builder.CreateString(channel.nodeName),
-                    builder.CreateVector(positions), builder.CreateVector(rotations), builder.CreateVector(scales)));
-            }
-            return CreateAnimation(builder, builder.CreateString(animation.name), animation.duration,
-                animation.ticksPerSecond, builder.CreateVector(channels));
-        }
+		flatbuffers::Offset<Animation> createAnimation(flatbuffers::FlatBufferBuilder& builder, const Engine::AnimationResource& animation)
+		{
+			std::vector<flatbuffers::Offset<AnimationChannel>> channels;
+			channels.reserve(animation.channels.size());
+			for (const Engine::AnimationChannel& channel : animation.channels) {
+				std::vector<flatbuffers::Offset<PositionKey>> positions;
+				positions.reserve(channel.positions.size());
+				for (const AnimationKeyPosition& key : channel.positions) {
+					const Vec3 value = toFlat(key.value);
+					positions.push_back(CreatePositionKey(builder, &value, key.time));
+				}
+				std::vector<flatbuffers::Offset<RotationKey>> rotations;
+				rotations.reserve(channel.rotations.size());
+				for (const AnimationKeyRotation& key : channel.rotations) {
+					const Vec4 value = toFlat(Vector4(key.value.x, key.value.y, key.value.z, key.value.w));
+					rotations.push_back(CreateRotationKey(builder, &value, key.time));
+				}
+				std::vector<flatbuffers::Offset<ScaleKey>> scales;
+				scales.reserve(channel.scales.size());
+				for (const AnimationKeyScale& key : channel.scales) {
+					const Vec3 value = toFlat(key.value);
+					scales.push_back(CreateScaleKey(builder, &value, key.time));
+				}
+				channels.push_back(CreateAnimationChannel(builder, builder.CreateString(channel.nodeName),
+					builder.CreateVector(positions), builder.CreateVector(rotations), builder.CreateVector(scales)));
+			}
+			return CreateAnimation(builder, builder.CreateString(animation.name), animation.duration,
+				animation.ticksPerSecond, builder.CreateVector(channels));
+		}
 
-        bool readBounds(const Bounds* bounds, AABB& box, BoundingSphere& sphere)
-        {
-            if (bounds == nullptr)
-                return false;
-            box.Center = toEngine(bounds->box_center());
-            box.Extents = toEngine(bounds->box_extents());
-            sphere.Center = toEngine(bounds->sphere_center());
-            sphere.Radius = bounds->sphere_radius();
-            return isFinite(Vector3(box.Center)) && isFinite(Vector3(box.Extents))
-                && isFinite(Vector3(sphere.Center)) && std::isfinite(sphere.Radius)
-                && box.Extents.x >= 0.0f && box.Extents.y >= 0.0f && box.Extents.z >= 0.0f
-                && sphere.Radius >= 0.0f;
-        }
+		bool readBounds(const Bounds* bounds, AABB& box, BoundingSphere& sphere)
+		{
+			if (bounds == nullptr)
+				return false;
+			box.Center = toEngine(bounds->box_center());
+			box.Extents = toEngine(bounds->box_extents());
+			sphere.Center = toEngine(bounds->sphere_center());
+			sphere.Radius = bounds->sphere_radius();
+			return isFinite(Vector3(box.Center)) && isFinite(Vector3(box.Extents))
+				&& isFinite(Vector3(sphere.Center)) && std::isfinite(sphere.Radius)
+				&& box.Extents.x >= 0.0f && box.Extents.y >= 0.0f && box.Extents.z >= 0.0f
+				&& sphere.Radius >= 0.0f;
+		}
 
-        bool readMesh(const Mesh* source, MeshResource& mesh)
-        {
-            if (source == nullptr || source->name() == nullptr || !readBounds(source->bounds(), mesh.boundingBox, mesh.boundingSphere))
-                return false;
-            mesh.name = source->name()->str();
-            mesh.verticesInModelSpace = source->vertices_in_model_space();
-            if (const auto* indices = source->indices())
-                mesh.indices.assign(indices->begin(), indices->end());
-            if (const auto* subMeshes = source->sub_meshes()) {
-                mesh.subMeshes.reserve(subMeshes->size());
-                for (const SubMesh* subMesh : *subMeshes) {
-                    if (subMesh == nullptr)
-                        return false;
-                    mesh.subMeshes.push_back({ subMesh->index_start(), subMesh->index_count(), subMesh->material_index() });
-                }
-            }
-            if (const auto* vertices = source->vertices()) {
-                mesh.vertices.reserve(vertices->size());
-                for (const ModelVertex* sourceVertex : *vertices) {
-                    if (sourceVertex == nullptr || sourceVertex->bone_indices() == nullptr)
-                        return false;
-                    Engine::ModelVertex vertex;
-                    vertex.position = toEngine(sourceVertex->position());
-                    vertex.normal = toEngine(sourceVertex->normal());
-                    vertex.tangent = toEngine(sourceVertex->tangent());
-                    vertex.bitangent = toEngine(sourceVertex->bitangent());
-                    vertex.texCoord = toEngine(sourceVertex->tex_coord());
-                    vertex.color = toEngine(sourceVertex->color());
-                    vertex.boneWeights = toEngine(sourceVertex->bone_weights());
-                    const float totalBoneWeight = vertex.boneWeights.x + vertex.boneWeights.y
-                        + vertex.boneWeights.z + vertex.boneWeights.w;
-                    if (sourceVertex->bone_indices()->size() != vertex.boneIndices.size())
-                        return false;
-                    std::copy(sourceVertex->bone_indices()->begin(), sourceVertex->bone_indices()->end(), vertex.boneIndices.begin());
-                    if (!isFinite(vertex.position) || !isFinite(vertex.normal)
-                        || !isFinite(vertex.tangent) || !isFinite(vertex.bitangent)
-                        || !isFinite(vertex.texCoord) || !isFinite(vertex.color)
-                        || !isFinite(vertex.boneWeights)
-                        || !std::isfinite(totalBoneWeight)
-                        || vertex.boneWeights.x < 0.0f || vertex.boneWeights.y < 0.0f
-                        || vertex.boneWeights.z < 0.0f || vertex.boneWeights.w < 0.0f
-                        || std::any_of(vertex.boneIndices.begin(), vertex.boneIndices.end(),
-                            [](const std::uint16_t boneIndex) { return boneIndex >= MAX_SKINNING_BONES; }))
-                        return false;
-                    mesh.vertices.push_back(vertex);
-                }
-            }
-            for (const std::uint32_t index : mesh.indices)
-                if (index >= mesh.vertices.size())
-                    return false;
-            return true;
-        }
+		bool readMesh(const Mesh* source, MeshResource& mesh)
+		{
+			if (source == nullptr || source->name() == nullptr || !readBounds(source->bounds(), mesh.boundingBox, mesh.boundingSphere))
+				return false;
+			mesh.name = source->name()->str();
+			mesh.verticesInModelSpace = source->vertices_in_model_space();
+			if (const auto* indices = source->indices())
+				mesh.indices.assign(indices->begin(), indices->end());
+			if (const auto* subMeshes = source->sub_meshes()) {
+				mesh.subMeshes.reserve(subMeshes->size());
+				for (const SubMesh* subMesh : *subMeshes) {
+					if (subMesh == nullptr)
+						return false;
+					mesh.subMeshes.push_back({ subMesh->index_start(), subMesh->index_count(), subMesh->material_index() });
+				}
+			}
+			if (const auto* vertices = source->vertices()) {
+				mesh.vertices.reserve(vertices->size());
+				for (const ModelVertex* sourceVertex : *vertices) {
+					if (sourceVertex == nullptr || sourceVertex->bone_indices() == nullptr)
+						return false;
+					Engine::ModelVertex vertex;
+					vertex.position = toEngine(sourceVertex->position());
+					vertex.normal = toEngine(sourceVertex->normal());
+					vertex.tangent = toEngine(sourceVertex->tangent());
+					vertex.bitangent = toEngine(sourceVertex->bitangent());
+					vertex.texCoord = toEngine(sourceVertex->tex_coord());
+					vertex.color = toEngine(sourceVertex->color());
+					vertex.boneWeights = toEngine(sourceVertex->bone_weights());
+					const float totalBoneWeight = vertex.boneWeights.x + vertex.boneWeights.y
+						+ vertex.boneWeights.z + vertex.boneWeights.w;
+					if (sourceVertex->bone_indices()->size() != vertex.boneIndices.size())
+						return false;
+					std::copy(sourceVertex->bone_indices()->begin(), sourceVertex->bone_indices()->end(), vertex.boneIndices.begin());
+					if (!isFinite(vertex.position) || !isFinite(vertex.normal)
+						|| !isFinite(vertex.tangent) || !isFinite(vertex.bitangent)
+						|| !isFinite(vertex.texCoord) || !isFinite(vertex.color)
+						|| !isFinite(vertex.boneWeights)
+						|| !std::isfinite(totalBoneWeight)
+						|| vertex.boneWeights.x < 0.0f || vertex.boneWeights.y < 0.0f
+						|| vertex.boneWeights.z < 0.0f || vertex.boneWeights.w < 0.0f
+						|| std::any_of(vertex.boneIndices.begin(), vertex.boneIndices.end(),
+							[](const std::uint16_t boneIndex) { return boneIndex >= MAX_SKINNING_BONES; }))
+						return false;
+					mesh.vertices.push_back(vertex);
+				}
+			}
+			for (const std::uint32_t index : mesh.indices)
+				if (index >= mesh.vertices.size())
+					return false;
+			return true;
+		}
 
-        bool readSkeleton(const Skeleton* source, SkeletonResource& skeleton)
-        {
-            if (source == nullptr || source->bones() == nullptr || source->bones()->size() == 0
-                || source->bones()->size() > MAX_SKINNING_BONES)
-                return false;
-            skeleton.bones.reserve(source->bones()->size());
-            for (std::size_t index = 0; index < source->bones()->size(); ++index) {
-                const Bone* sourceBone = source->bones()->Get(static_cast<flatbuffers::uoffset_t>(index));
-                if (sourceBone == nullptr || sourceBone->name() == nullptr
-                    || sourceBone->index() != index || sourceBone->name()->size() == 0
-                    || sourceBone->parent_index() < -1
-                    || sourceBone->parent_index() >= static_cast<std::int32_t>(index))
-                    return false;
-                Engine::Bone bone;
-                bone.index = sourceBone->index();
-                bone.name = sourceBone->name()->str();
-                bone.parentIndex = sourceBone->parent_index();
-                if (!readMatrix(sourceBone->inverse_bind_pose(), bone.inverseBindPose) ||
-                    !readMatrix(sourceBone->local_bind_transform(), bone.localBindTransform))
-                    return false;
-                if (!skeleton.boneMap.emplace(bone.name, bone.index).second)
-                    return false;
-                skeleton.bones.push_back(std::move(bone));
-            }
-            return true;
-        }
+		bool readSkeleton(const Skeleton* source, SkeletonResource& skeleton)
+		{
+			if (source == nullptr || source->bones() == nullptr || source->bones()->size() == 0
+				|| source->bones()->size() > MAX_SKINNING_BONES)
+				return false;
+			skeleton.bones.reserve(source->bones()->size());
+			for (std::size_t index = 0; index < source->bones()->size(); ++index) {
+				const Bone* sourceBone = source->bones()->Get(static_cast<flatbuffers::uoffset_t>(index));
+				if (sourceBone == nullptr || sourceBone->name() == nullptr
+					|| sourceBone->index() != index || sourceBone->name()->size() == 0
+					|| sourceBone->parent_index() < -1
+					|| sourceBone->parent_index() >= static_cast<std::int32_t>(index))
+					return false;
+				Engine::Bone bone;
+				bone.index = sourceBone->index();
+				bone.name = sourceBone->name()->str();
+				bone.parentIndex = sourceBone->parent_index();
+				if (!readMatrix(sourceBone->inverse_bind_pose(), bone.inverseBindPose) ||
+					!readMatrix(sourceBone->local_bind_transform(), bone.localBindTransform))
+					return false;
+				if (!skeleton.boneMap.emplace(bone.name, bone.index).second)
+					return false;
+				skeleton.bones.push_back(std::move(bone));
+			}
+			return true;
+		}
 
-        bool readNode(const ::Engine::Serialization::ModelNode* source, ::Engine::ModelNode& node)
-        {
-            if (source == nullptr || source->name() == nullptr || !readMatrix(source->local_transform(), node.localTransform))
-                return false;
-            node.name = source->name()->str();
-            node.parentIndex = source->parent_index();
-            if (const auto* children = source->children())
-                node.children.assign(children->begin(), children->end());
-            if (const auto* meshIndices = source->mesh_indices())
-                node.meshIndices.assign(meshIndices->begin(), meshIndices->end());
-            return true;
-        }
+		bool readNode(const ::Engine::Serialization::ModelNode* source, ::Engine::ModelNode& node)
+		{
+			if (source == nullptr || source->name() == nullptr || !readMatrix(source->local_transform(), node.localTransform))
+				return false;
+			node.name = source->name()->str();
+			node.parentIndex = source->parent_index();
+			if (const auto* children = source->children())
+				node.children.assign(children->begin(), children->end());
+			if (const auto* meshIndices = source->mesh_indices())
+				node.meshIndices.assign(meshIndices->begin(), meshIndices->end());
+			return true;
+		}
 
-        bool validateNodeHierarchy(const std::vector<Engine::ModelNode>& nodes, const std::size_t meshCount)
-        {
-            if (nodes.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
-                return false;
+		bool validateNodeHierarchy(const std::vector<Engine::ModelNode>& nodes, const std::size_t meshCount)
+		{
+			if (nodes.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
+				return false;
 
-            std::vector<std::uint8_t> childOccurrences(nodes.size(), 0);
-            for (std::size_t index = 0; index < nodes.size(); ++index)
-            {
-                const Engine::ModelNode& node = nodes[index];
-                if (node.parentIndex < -1 || node.parentIndex >= static_cast<std::int32_t>(index))
-                    return false;
+			std::vector<std::uint8_t> childOccurrences(nodes.size(), 0);
+			for (std::size_t index = 0; index < nodes.size(); ++index)
+			{
+				const Engine::ModelNode& node = nodes[index];
+				if (node.parentIndex < -1 || node.parentIndex >= static_cast<std::int32_t>(index))
+					return false;
 
-                for (const std::uint32_t child : node.children)
-                {
-                    if (child <= index || child >= nodes.size()
-                        || nodes[child].parentIndex != static_cast<std::int32_t>(index)
-                        || childOccurrences[child] != 0)
-                        return false;
-                    childOccurrences[child] = 1;
-                }
+				for (const std::uint32_t child : node.children)
+				{
+					if (child <= index || child >= nodes.size()
+						|| nodes[child].parentIndex != static_cast<std::int32_t>(index)
+						|| childOccurrences[child] != 0)
+						return false;
+					childOccurrences[child] = 1;
+				}
 
-                for (const std::uint32_t meshIndex : node.meshIndices)
-                    if (meshIndex >= meshCount)
-                        return false;
-            }
+				for (const std::uint32_t meshIndex : node.meshIndices)
+					if (meshIndex >= meshCount)
+						return false;
+			}
 
-            for (std::size_t index = 0; index < nodes.size(); ++index)
-                if ((nodes[index].parentIndex == -1) != (childOccurrences[index] == 0))
-                    return false;
+			for (std::size_t index = 0; index < nodes.size(); ++index)
+				if ((nodes[index].parentIndex == -1) != (childOccurrences[index] == 0))
+					return false;
 
-            return true;
-        }
+			return true;
+		}
 
-        bool readAnimation(const Animation* source, AnimationResource& animation)
-        {
-            if (source == nullptr || source->name() == nullptr)
-                return false;
-            animation.name = source->name()->str();
-            animation.duration = source->duration();
-            animation.ticksPerSecond = source->ticks_per_second();
-            if (!std::isfinite(animation.duration) || animation.duration <= 0.0f
-                || !std::isfinite(animation.ticksPerSecond) || animation.ticksPerSecond <= 0.0f)
-                return false;
-            if (const auto* channels = source->channels()) {
-                animation.channels.reserve(channels->size());
-                for (const AnimationChannel* sourceChannel : *channels) {
-                    if (sourceChannel == nullptr || sourceChannel->node_name() == nullptr
-                        || sourceChannel->node_name()->size() == 0)
-                        return false;
-                    Engine::AnimationChannel channel;
-                    channel.nodeName = sourceChannel->node_name()->str();
-                    if (const auto* positions = sourceChannel->positions()) {
-                        float previousTime = -1.0f;
-                        for (const PositionKey* sourceKey : *positions) {
-                            if (sourceKey == nullptr)
-                                return false;
-                            const Vector3 value = toEngine(sourceKey->value());
-                            const float time = sourceKey->time();
-                            if (!isFinite(value) || !isValidKeyTime(time, previousTime, animation.duration))
-                                return false;
-                            channel.positions.push_back({ value, time });
-                            previousTime = time;
-                        }
-                    }
-                    if (const auto* rotations = sourceChannel->rotations()) {
-                        float previousTime = -1.0f;
-                        for (const RotationKey* sourceKey : *rotations) {
-                            if (sourceKey == nullptr)
-                                return false;
-                            const Vector4 value = toEngine(sourceKey->value());
-                            const Quaternion rotation(value.x, value.y, value.z, value.w);
-                            const float time = sourceKey->time();
-                            if (!isFinite(value) || !isValidRotation(rotation)
-                                || !isValidKeyTime(time, previousTime, animation.duration))
-                                return false;
-                            channel.rotations.push_back({ rotation, time });
-                            previousTime = time;
-                        }
-                    }
-                    if (const auto* scales = sourceChannel->scales()) {
-                        float previousTime = -1.0f;
-                        for (const ScaleKey* sourceKey : *scales) {
-                            if (sourceKey == nullptr)
-                                return false;
-                            const Vector3 value = toEngine(sourceKey->value());
-                            const float time = sourceKey->time();
-                            if (!isFinite(value) || !isValidKeyTime(time, previousTime, animation.duration))
-                                return false;
-                            channel.scales.push_back({ value, time });
-                            previousTime = time;
-                        }
-                    }
-                    animation.channels.push_back(std::move(channel));
-                }
-            }
-            return true;
-        }
-    }
+		bool readAnimation(const Animation* source, AnimationResource& animation)
+		{
+			if (source == nullptr || source->name() == nullptr)
+				return false;
+			animation.name = source->name()->str();
+			animation.duration = source->duration();
+			animation.ticksPerSecond = source->ticks_per_second();
+			if (!std::isfinite(animation.duration) || animation.duration <= 0.0f
+				|| !std::isfinite(animation.ticksPerSecond) || animation.ticksPerSecond <= 0.0f)
+				return false;
+			if (const auto* channels = source->channels()) {
+				animation.channels.reserve(channels->size());
+				for (const AnimationChannel* sourceChannel : *channels) {
+					if (sourceChannel == nullptr || sourceChannel->node_name() == nullptr
+						|| sourceChannel->node_name()->size() == 0)
+						return false;
+					Engine::AnimationChannel channel;
+					channel.nodeName = sourceChannel->node_name()->str();
+					if (const auto* positions = sourceChannel->positions()) {
+						float previousTime = -1.0f;
+						for (const PositionKey* sourceKey : *positions) {
+							if (sourceKey == nullptr)
+								return false;
+							const Vector3 value = toEngine(sourceKey->value());
+							const float time = sourceKey->time();
+							if (!isFinite(value) || !isValidKeyTime(time, previousTime, animation.duration))
+								return false;
+							channel.positions.push_back({ value, time });
+							previousTime = time;
+						}
+					}
+					if (const auto* rotations = sourceChannel->rotations()) {
+						float previousTime = -1.0f;
+						for (const RotationKey* sourceKey : *rotations) {
+							if (sourceKey == nullptr)
+								return false;
+							const Vector4 value = toEngine(sourceKey->value());
+							const Quaternion rotation(value.x, value.y, value.z, value.w);
+							const float time = sourceKey->time();
+							if (!isFinite(value) || !isValidRotation(rotation)
+								|| !isValidKeyTime(time, previousTime, animation.duration))
+								return false;
+							channel.rotations.push_back({ rotation, time });
+							previousTime = time;
+						}
+					}
+					if (const auto* scales = sourceChannel->scales()) {
+						float previousTime = -1.0f;
+						for (const ScaleKey* sourceKey : *scales) {
+							if (sourceKey == nullptr)
+								return false;
+							const Vector3 value = toEngine(sourceKey->value());
+							const float time = sourceKey->time();
+							if (!isFinite(value) || !isValidKeyTime(time, previousTime, animation.duration))
+								return false;
+							channel.scales.push_back({ value, time });
+							previousTime = time;
+						}
+					}
+					animation.channels.push_back(std::move(channel));
+				}
+			}
+			return true;
+		}
+	}
 
-    bool ModelSerializer::save(const std::filesystem::path& path, const ModelResource& model) const
-    {
-        flatbuffers::FlatBufferBuilder builder(1024);
-        const auto header = CreateFileHeader(builder, CURRENT_SCHEMA_VERSION, CURRENT_MODEL_VERSION, 0);
-        std::vector<flatbuffers::Offset<Mesh>> meshes;
-        meshes.reserve(model.meshes.size());
-        for (const MeshResource& mesh : model.meshes)
-            meshes.push_back(createMesh(builder, mesh));
-        bool hasCompleteMaterialBundle = model.materialSlots.size() >= model.materials.size()
-            && model.embeddedMaterials.size() == model.materialSlots.size();
-        for (std::size_t index = 0; hasCompleteMaterialBundle && index < model.materialSlots.size(); ++index)
-            hasCompleteMaterialBundle = model.embeddedMaterials[index].guid.isValid()
-            || !model.materialSlots[index].defaultMaterialPath.empty();
-        std::vector<flatbuffers::Offset<Material>> materials;
-        if (!hasCompleteMaterialBundle)
-        {
-            materials.reserve(model.materials.size());
-            for (const MaterialResource& material : model.materials)
-            {
-                MaterialResource relativeMaterial = material;
-                for (const auto member : LEGACY_TEXTURE_PATH_MEMBERS)
-                {
-                    std::filesystem::path relative;
-                    if (!relativizeAssetReference(material.textures.*member, model.sourcePath, path, relative))
-                        return false;
-                    relativeMaterial.textures.*member = relative.generic_string();
-                }
-                materials.push_back(createMaterial(builder, relativeMaterial));
-            }
-        }
-        std::vector<flatbuffers::Offset<ModelMaterialSlot>> materialSlots;
-        materialSlots.reserve(model.materialSlots.size());
-        for (const Engine::ModelMaterialSlot& slot : model.materialSlots)
-        {
-            Engine::ModelMaterialSlot relativeSlot = slot;
-            if (!relativizeAssetReference(slot.defaultMaterialPath, model.sourcePath, path,
-                relativeSlot.defaultMaterialPath))
-                return false;
-            materialSlots.push_back(createMaterialSlot(builder, relativeSlot));
-        }
-        std::vector<flatbuffers::Offset<Animation>> animations;
-        animations.reserve(model.animations.size());
-        for (const AnimationResource& animation : model.animations)
-            animations.push_back(createAnimation(builder, animation));
-        std::vector<flatbuffers::Offset<ModelNode>> nodes;
-        nodes.reserve(model.nodes.size());
-        for (const ::Engine::ModelNode& node : model.nodes)
-            nodes.push_back(createNode(builder, node));
+	bool ModelSerializer::save(const std::filesystem::path& path, const ModelResource& model) const
+	{
+		flatbuffers::FlatBufferBuilder builder(1024);
+		const auto header = CreateFileHeader(builder, CURRENT_SCHEMA_VERSION, CURRENT_MODEL_VERSION, 0);
+		std::vector<flatbuffers::Offset<Mesh>> meshes;
+		meshes.reserve(model.meshes.size());
+		for (const MeshResource& mesh : model.meshes)
+			meshes.push_back(createMesh(builder, mesh));
+		bool hasCompleteMaterialBundle = model.materialSlots.size() >= model.materials.size()
+			&& model.embeddedMaterials.size() == model.materialSlots.size();
+		for (std::size_t index = 0; hasCompleteMaterialBundle && index < model.materialSlots.size(); ++index)
+			hasCompleteMaterialBundle = model.embeddedMaterials[index].guid.isValid()
+			|| !model.materialSlots[index].defaultMaterialPath.empty();
+		std::vector<flatbuffers::Offset<Material>> materials;
+		if (!hasCompleteMaterialBundle)
+		{
+			materials.reserve(model.materials.size());
+			for (const MaterialResource& material : model.materials)
+			{
+				MaterialResource relativeMaterial = material;
+				for (const auto member : LEGACY_TEXTURE_PATH_MEMBERS)
+				{
+					std::filesystem::path relative;
+					if (!relativizeAssetReference(material.textures.*member, model.sourcePath, path, relative))
+						return false;
+					relativeMaterial.textures.*member = relative.generic_string();
+				}
+				materials.push_back(createMaterial(builder, relativeMaterial));
+			}
+		}
+		std::vector<flatbuffers::Offset<ModelMaterialSlot>> materialSlots;
+		materialSlots.reserve(model.materialSlots.size());
+		for (const Engine::ModelMaterialSlot& slot : model.materialSlots)
+		{
+			Engine::ModelMaterialSlot relativeSlot = slot;
+			if (!relativizeAssetReference(slot.defaultMaterialPath, model.sourcePath, path,
+				relativeSlot.defaultMaterialPath))
+				return false;
+			materialSlots.push_back(createMaterialSlot(builder, relativeSlot));
+		}
+		std::vector<flatbuffers::Offset<Animation>> animations;
+		animations.reserve(model.animations.size());
+		for (const AnimationResource& animation : model.animations)
+			animations.push_back(createAnimation(builder, animation));
+		std::vector<flatbuffers::Offset<ModelNode>> nodes;
+		nodes.reserve(model.nodes.size());
+		for (const ::Engine::ModelNode& node : model.nodes)
+			nodes.push_back(createNode(builder, node));
 
-        const AssetGuid skeletonAssetGuid = toFlat(model.skeletonAssetGuid);
-        std::vector<AssetGuid> animationClipGuids;
-        animationClipGuids.reserve(model.animationClipGuids.size());
-        for (const AssetGUID& guid : model.animationClipGuids)
-            animationClipGuids.push_back(toFlat(guid));
-        std::vector<flatbuffers::Offset<flatbuffers::String>> animationClipPaths;
-        animationClipPaths.reserve(model.animationClipPaths.size());
-        for (const std::filesystem::path& clipPath : model.animationClipPaths)
-        {
-            std::filesystem::path relative;
-            if (!relativizeAssetReference(clipPath, model.sourcePath, path, relative))
-                return false;
-            animationClipPaths.push_back(builder.CreateString(relative.generic_string()));
-        }
-        std::vector<flatbuffers::Offset<MaterialAssetData>> embeddedMaterials;
-        embeddedMaterials.reserve(model.embeddedMaterials.size());
-        for (const Engine::MaterialAsset& material : model.embeddedMaterials)
-        {
-            Engine::MaterialAsset relativeMaterial = material;
-            if (!relativizeTextureReferences(relativeMaterial.textures, model.sourcePath, path))
-                return false;
-            const auto embedded = createEmbeddedMaterial(builder, relativeMaterial, model.sourcePath, path);
-            if (embedded.IsNull())
-                return false;
-            embeddedMaterials.push_back(embedded);
-        }
+		const AssetGuid skeletonAssetGuid = toFlat(model.skeletonAssetGuid);
+		std::vector<AssetGuid> animationClipGuids;
+		animationClipGuids.reserve(model.animationClipGuids.size());
+		for (const AssetGUID& guid : model.animationClipGuids)
+			animationClipGuids.push_back(toFlat(guid));
+		std::vector<flatbuffers::Offset<flatbuffers::String>> animationClipPaths;
+		animationClipPaths.reserve(model.animationClipPaths.size());
+		for (const std::filesystem::path& clipPath : model.animationClipPaths)
+		{
+			std::filesystem::path relative;
+			if (!relativizeAssetReference(clipPath, model.sourcePath, path, relative))
+				return false;
+			animationClipPaths.push_back(builder.CreateString(relative.generic_string()));
+		}
+		std::vector<flatbuffers::Offset<MaterialAssetData>> embeddedMaterials;
+		embeddedMaterials.reserve(model.embeddedMaterials.size());
+		for (const Engine::MaterialAsset& material : model.embeddedMaterials)
+		{
+			Engine::MaterialAsset relativeMaterial = material;
+			if (!relativizeTextureReferences(relativeMaterial.textures, model.sourcePath, path))
+				return false;
+			const auto embedded = createEmbeddedMaterial(builder, relativeMaterial, model.sourcePath, path);
+			if (embedded.IsNull())
+				return false;
+			embeddedMaterials.push_back(embedded);
+		}
 
-        const auto root = CreateModelFile(builder, header, builder.CreateVector(meshes), builder.CreateVector(materials),
-            model.skeleton ? createSkeleton(builder, *model.skeleton) : 0, builder.CreateVector(animations),
-            builder.CreateVector(nodes), createBounds(builder, model.boundingBox, model.boundingSphere),
-            builder.CreateString(path.filename().generic_string()), builder.CreateVector(materialSlots),
-            &skeletonAssetGuid, builder.CreateVectorOfStructs(animationClipGuids),
-            builder.CreateVector(animationClipPaths), builder.CreateVector(embeddedMaterials));
-        FinishModelFileBuffer(builder, root);
-        return FlatBufferWriter{}.saveAtomic(path, std::span<const std::uint8_t>(builder.GetBufferPointer(), builder.GetSize()));
-    }
+		const auto root = CreateModelFile(builder, header, builder.CreateVector(meshes), builder.CreateVector(materials),
+			model.skeleton ? createSkeleton(builder, *model.skeleton) : 0, builder.CreateVector(animations),
+			builder.CreateVector(nodes), createBounds(builder, model.boundingBox, model.boundingSphere),
+			builder.CreateString(path.filename().generic_string()), builder.CreateVector(materialSlots),
+			&skeletonAssetGuid, builder.CreateVectorOfStructs(animationClipGuids),
+			builder.CreateVector(animationClipPaths), builder.CreateVector(embeddedMaterials));
+		FinishModelFileBuffer(builder, root);
+		return FlatBufferWriter{}.saveAtomic(path, std::span<const std::uint8_t>(builder.GetBufferPointer(), builder.GetSize()));
+	}
 
-    bool ModelSerializer::load(const std::filesystem::path& path, ModelResource& destination) const
-    {
-        FlatBufferReader reader;
-        if (!reader.open(path))
-            return false;
-        if (!reader.hasIdentifier("MODL")) {
-            LOG_ERROR("FlatBuffers model has an invalid file identifier: {}", path.string());
-            return false;
-        }
-        flatbuffers::Verifier verifier(reader.data(), reader.size());
-        if (!VerifyModelFileBuffer(verifier)) {
-            LOG_ERROR("FlatBuffers model verification failed: {}", path.string());
-            return false;
-        }
-        const ModelFile* source = GetModelFile(reader.data());
-        if (source == nullptr || source->header() == nullptr || source->header()->schema_version() != CURRENT_SCHEMA_VERSION ||
-            source->header()->asset_version() < MINIMUM_SUPPORTED_MODEL_VERSION || source->header()->asset_version() > CURRENT_MODEL_VERSION ||
-            source->bounds() == nullptr) {
-            LOG_ERROR("Unsupported or invalid model version: {}", path.string());
-            return false;
-        }
-        ModelResource model;
-        if (!readBounds(source->bounds(), model.boundingBox, model.boundingSphere))
-            return false;
-        model.sourcePath = source->source_path() ? std::filesystem::path(source->source_path()->str()) : std::filesystem::path{};
-        if (source->skeleton_asset_guid() != nullptr)
-            model.skeletonAssetGuid = toEngine(source->skeleton_asset_guid());
-        if (const auto* clipGuids = source->animation_clip_guids())
-            for (const AssetGuid* guid : *clipGuids)
-                model.animationClipGuids.push_back(toEngine(guid));
-        if (const auto* clipPaths = source->animation_clip_paths())
-        {
-            model.animationClipPaths.reserve(clipPaths->size());
-            for (const flatbuffers::String* clipPath : *clipPaths)
-            {
-                if (clipPath == nullptr)
-                    return false;
-                model.animationClipPaths.emplace_back(clipPath->str());
-            }
-        }
-        if (const auto* meshes = source->meshes()) {
-            model.meshes.reserve(meshes->size());
-            for (const Mesh* mesh : *meshes) {
-                model.meshes.emplace_back();
-                if (!readMesh(mesh, model.meshes.back()))
-                    return false;
-            }
-        }
-        if (const auto* materials = source->materials()) {
-            for (const Material* sourceMaterial : *materials) {
-                if (sourceMaterial == nullptr || sourceMaterial->name() == nullptr)
-                    return false;
-                MaterialResource material;
-                material.name = sourceMaterial->name()->str();
-                material.baseColor = toEngine(sourceMaterial->base_color());
-                material.emissive = toEngine(sourceMaterial->emissive());
-                material.metallic = sourceMaterial->metallic();
-                material.roughness = sourceMaterial->roughness();
-                material.opacity = sourceMaterial->opacity();
-                if (!isFinite(material.baseColor) || !isFinite(material.emissive)
-                    || !std::isfinite(material.metallic) || !std::isfinite(material.roughness)
-                    || !std::isfinite(material.opacity))
-                    return false;
-                const MaterialTexturePaths* textures = sourceMaterial->textures();
-                if (textures != nullptr) {
-                    material.textures.baseColor = textures->base_color() ? textures->base_color()->str() : "";
-                    material.textures.normal = textures->normal() ? textures->normal()->str() : "";
-                    material.textures.metallic = textures->metallic() ? textures->metallic()->str() : "";
-                    material.textures.roughness = textures->roughness() ? textures->roughness()->str() : "";
-                    material.textures.metallicRoughness = textures->metallic_roughness() ? textures->metallic_roughness()->str() : "";
-                    material.textures.ambientOcclusion = textures->ambient_occlusion() ? textures->ambient_occlusion()->str() : "";
-                    material.textures.emissive = textures->emissive() ? textures->emissive()->str() : "";
-                    material.textures.opacity = textures->opacity() ? textures->opacity()->str() : "";
-                }
-                model.materials.push_back(std::move(material));
-            }
-        }
-        if (const auto* materialSlots = source->material_slots()) {
-            model.materialSlots.reserve(materialSlots->size());
-            for (const ModelMaterialSlot* sourceSlot : *materialSlots) {
-                if (sourceSlot == nullptr || sourceSlot->name() == nullptr)
-                    return false;
-                model.materialSlots.push_back({ sourceSlot->name()->str(), toEngine(sourceSlot->default_material_guid()),
-                    sourceSlot->default_material_path() != nullptr
-                        ? std::filesystem::path(sourceSlot->default_material_path()->str()) : std::filesystem::path{} });
-            }
-        }
-        if (const auto* embeddedMaterials = source->embedded_materials())
-        {
-            model.embeddedMaterials.reserve(embeddedMaterials->size());
-            for (const MaterialAssetData* embeddedMaterial : *embeddedMaterials)
-            {
-                model.embeddedMaterials.emplace_back();
-                if (!readEmbeddedMaterial(embeddedMaterial, model.embeddedMaterials.back(), path))
-                    return false;
-            }
-        }
-        if (source->skeleton() != nullptr) {
-            model.skeleton.emplace();
-            if (!readSkeleton(source->skeleton(), *model.skeleton))
-                return false;
-        }
-        if (const auto* animations = source->animations()) {
-            model.animations.reserve(animations->size());
-            for (const Animation* animation : *animations) {
-                model.animations.emplace_back();
-                if (!readAnimation(animation, model.animations.back()))
-                    return false;
-            }
-        }
-        if (const auto* nodes = source->nodes()) {
-            model.nodes.reserve(nodes->size());
-            for (const ::Engine::Serialization::ModelNode* node : *nodes) {
-                model.nodes.emplace_back();
-                if (!readNode(node, model.nodes.back()))
-                    return false;
-            }
-        }
-        for (const MeshResource& mesh : model.meshes) {
-            for (const SubMeshResource& subMesh : mesh.subMeshes) {
-                const std::size_t materialCount = std::max(model.materials.size(), model.materialSlots.size());
-                const std::size_t indexStart = subMesh.indexStart;
-                if (subMesh.materialIndex >= materialCount || indexStart > mesh.indices.size()
-                    || subMesh.indexCount > mesh.indices.size() - indexStart
-                    || subMesh.indexCount % 3 != 0)
-                    return false;
-            }
-        }
-        if ((!model.embeddedMaterials.empty() && model.embeddedMaterials.size() != model.materialSlots.size())
-            || (!model.animationClipPaths.empty() && model.animationClipPaths.size() != model.animationClipGuids.size()))
-            return false;
-        if (!validateNodeHierarchy(model.nodes, model.meshes.size()))
-            return false;
-        for (const MeshResource& mesh : model.meshes)
-        {
-            if (model.skeleton.has_value())
-            {
-                for (const Engine::ModelVertex& vertex : mesh.vertices)
-                    for (const std::uint16_t boneIndex : vertex.boneIndices)
-                        if (boneIndex >= model.skeleton->bones.size())
-                            return false;
-            }
-        }
-        for (MaterialResource& material : model.materials)
-        {
-            for (const auto member : LEGACY_TEXTURE_PATH_MEMBERS)
-            {
-                std::filesystem::path resolved;
-                if (!resolveAssetReference(material.textures.*member, path, resolved))
-                    return false;
-                material.textures.*member = resolved.string();
-            }
-        }
-        for (Engine::MaterialAsset& material : model.embeddedMaterials)
-            if (!resolveTextureReferences(material.textures, path))
-                return false;
-        for (Engine::ModelMaterialSlot& slot : model.materialSlots)
-            if (!resolveAssetReference(slot.defaultMaterialPath, path, slot.defaultMaterialPath))
-                return false;
-        for (std::filesystem::path& clipPath : model.animationClipPaths)
-            if (!resolveAssetReference(clipPath, path, clipPath))
-                return false;
-        if (!resolveAssetReference(path, {}, model.sourcePath))
-            return false;
-        destination = std::move(model);
-        return true;
-    }
+	bool ModelSerializer::load(const std::filesystem::path& path, ModelResource& destination) const
+	{
+		FlatBufferReader reader;
+		if (!reader.open(path))
+			return false;
+		if (!reader.hasIdentifier("MODL")) {
+			LOG_ERROR("FlatBuffers model has an invalid file identifier: {}", path.string());
+			return false;
+		}
+		flatbuffers::Verifier verifier(reader.data(), reader.size());
+		if (!VerifyModelFileBuffer(verifier)) {
+			LOG_ERROR("FlatBuffers model verification failed: {}", path.string());
+			return false;
+		}
+		const ModelFile* source = GetModelFile(reader.data());
+		if (source == nullptr || source->header() == nullptr || source->header()->schema_version() != CURRENT_SCHEMA_VERSION ||
+			source->header()->asset_version() < MINIMUM_SUPPORTED_MODEL_VERSION || source->header()->asset_version() > CURRENT_MODEL_VERSION ||
+			source->bounds() == nullptr) {
+			LOG_ERROR("Unsupported or invalid model version: {}", path.string());
+			return false;
+		}
+		ModelResource model;
+		if (!readBounds(source->bounds(), model.boundingBox, model.boundingSphere))
+			return false;
+		model.sourcePath = source->source_path() ? std::filesystem::path(source->source_path()->str()) : std::filesystem::path{};
+		if (source->skeleton_asset_guid() != nullptr)
+			model.skeletonAssetGuid = toEngine(source->skeleton_asset_guid());
+		if (const auto* clipGuids = source->animation_clip_guids())
+			for (const AssetGuid* guid : *clipGuids)
+				model.animationClipGuids.push_back(toEngine(guid));
+		if (const auto* clipPaths = source->animation_clip_paths())
+		{
+			model.animationClipPaths.reserve(clipPaths->size());
+			for (const flatbuffers::String* clipPath : *clipPaths)
+			{
+				if (clipPath == nullptr)
+					return false;
+				model.animationClipPaths.emplace_back(clipPath->str());
+			}
+		}
+		if (const auto* meshes = source->meshes()) {
+			model.meshes.reserve(meshes->size());
+			for (const Mesh* mesh : *meshes) {
+				model.meshes.emplace_back();
+				if (!readMesh(mesh, model.meshes.back()))
+					return false;
+			}
+		}
+		if (const auto* materials = source->materials()) {
+			for (const Material* sourceMaterial : *materials) {
+				if (sourceMaterial == nullptr || sourceMaterial->name() == nullptr)
+					return false;
+				MaterialResource material;
+				material.name = sourceMaterial->name()->str();
+				material.baseColor = toEngine(sourceMaterial->base_color());
+				material.emissive = toEngine(sourceMaterial->emissive());
+				material.metallic = sourceMaterial->metallic();
+				material.roughness = sourceMaterial->roughness();
+				material.opacity = sourceMaterial->opacity();
+				if (!isFinite(material.baseColor) || !isFinite(material.emissive)
+					|| !std::isfinite(material.metallic) || !std::isfinite(material.roughness)
+					|| !std::isfinite(material.opacity))
+					return false;
+				const MaterialTexturePaths* textures = sourceMaterial->textures();
+				if (textures != nullptr) {
+					material.textures.baseColor = textures->base_color() ? textures->base_color()->str() : "";
+					material.textures.normal = textures->normal() ? textures->normal()->str() : "";
+					material.textures.metallic = textures->metallic() ? textures->metallic()->str() : "";
+					material.textures.roughness = textures->roughness() ? textures->roughness()->str() : "";
+					material.textures.metallicRoughness = textures->metallic_roughness() ? textures->metallic_roughness()->str() : "";
+					material.textures.ambientOcclusion = textures->ambient_occlusion() ? textures->ambient_occlusion()->str() : "";
+					material.textures.emissive = textures->emissive() ? textures->emissive()->str() : "";
+					material.textures.opacity = textures->opacity() ? textures->opacity()->str() : "";
+				}
+				model.materials.push_back(std::move(material));
+			}
+		}
+		if (const auto* materialSlots = source->material_slots()) {
+			model.materialSlots.reserve(materialSlots->size());
+			for (const ModelMaterialSlot* sourceSlot : *materialSlots) {
+				if (sourceSlot == nullptr || sourceSlot->name() == nullptr)
+					return false;
+				model.materialSlots.push_back({ sourceSlot->name()->str(), toEngine(sourceSlot->default_material_guid()),
+					sourceSlot->default_material_path() != nullptr
+						? std::filesystem::path(sourceSlot->default_material_path()->str()) : std::filesystem::path{} });
+			}
+		}
+		if (const auto* embeddedMaterials = source->embedded_materials())
+		{
+			model.embeddedMaterials.reserve(embeddedMaterials->size());
+			for (const MaterialAssetData* embeddedMaterial : *embeddedMaterials)
+			{
+				model.embeddedMaterials.emplace_back();
+				if (!readEmbeddedMaterial(embeddedMaterial, model.embeddedMaterials.back(), path))
+					return false;
+			}
+		}
+		if (source->skeleton() != nullptr) {
+			model.skeleton.emplace();
+			if (!readSkeleton(source->skeleton(), *model.skeleton))
+				return false;
+		}
+		if (const auto* animations = source->animations()) {
+			model.animations.reserve(animations->size());
+			for (const Animation* animation : *animations) {
+				model.animations.emplace_back();
+				if (!readAnimation(animation, model.animations.back()))
+					return false;
+			}
+		}
+		if (const auto* nodes = source->nodes()) {
+			model.nodes.reserve(nodes->size());
+			for (const ::Engine::Serialization::ModelNode* node : *nodes) {
+				model.nodes.emplace_back();
+				if (!readNode(node, model.nodes.back()))
+					return false;
+			}
+		}
+		for (const MeshResource& mesh : model.meshes) {
+			for (const SubMeshResource& subMesh : mesh.subMeshes) {
+				const std::size_t materialCount = std::max(model.materials.size(), model.materialSlots.size());
+				const std::size_t indexStart = subMesh.indexStart;
+				if (subMesh.materialIndex >= materialCount || indexStart > mesh.indices.size()
+					|| subMesh.indexCount > mesh.indices.size() - indexStart
+					|| subMesh.indexCount % 3 != 0)
+					return false;
+			}
+		}
+		if ((!model.embeddedMaterials.empty() && model.embeddedMaterials.size() != model.materialSlots.size())
+			|| (!model.animationClipPaths.empty() && model.animationClipPaths.size() != model.animationClipGuids.size()))
+			return false;
+		if (!validateNodeHierarchy(model.nodes, model.meshes.size()))
+			return false;
+		for (const MeshResource& mesh : model.meshes)
+		{
+			if (model.skeleton.has_value())
+			{
+				for (const Engine::ModelVertex& vertex : mesh.vertices)
+					for (const std::uint16_t boneIndex : vertex.boneIndices)
+						if (boneIndex >= model.skeleton->bones.size())
+							return false;
+			}
+		}
+		for (MaterialResource& material : model.materials)
+		{
+			for (const auto member : LEGACY_TEXTURE_PATH_MEMBERS)
+			{
+				std::filesystem::path resolved;
+				if (!resolveAssetReference(material.textures.*member, path, resolved))
+					return false;
+				material.textures.*member = resolved.string();
+			}
+		}
+		for (Engine::MaterialAsset& material : model.embeddedMaterials)
+			if (!resolveTextureReferences(material.textures, path))
+				return false;
+		for (Engine::ModelMaterialSlot& slot : model.materialSlots)
+			if (!resolveAssetReference(slot.defaultMaterialPath, path, slot.defaultMaterialPath))
+				return false;
+		for (std::filesystem::path& clipPath : model.animationClipPaths)
+			if (!resolveAssetReference(clipPath, path, clipPath))
+				return false;
+		if (!resolveAssetReference(path, {}, model.sourcePath))
+			return false;
+		destination = std::move(model);
+		return true;
+	}
 }

@@ -6,127 +6,127 @@
 
 namespace Engine
 {
-    class DX12CommandList;
-    class DX12Shader;
+	class DX12CommandList;
+	class DX12Shader;
 
-    /**
-     * @brief Graphics Pipeline State の作成設定
-     */
-    struct DX12GraphicsPipelineConfig
-    {
-        const DX12Shader* vertexShader = nullptr;                                                 //!< Vertex Shader
-        const DX12Shader* pixelShader = nullptr;                                                  //!< Pixel Shader
-        std::span<const D3D12_INPUT_ELEMENT_DESC> inputLayout;                                    //!< Vertex Input Layout
-        std::span<const D3D12_ROOT_PARAMETER> rootParameters;                                     //!< Root Signature Parameter
-        std::span<const D3D12_STATIC_SAMPLER_DESC> staticSamplers;                                //!< Static Sampler
-        DXGI_FORMAT renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM;                              //!< Render Target Format
-        std::span<const DXGI_FORMAT> renderTargetFormats;                                        //!< Multiple Render Target Formats
-        DXGI_FORMAT depthStencilFormat = DXGI_FORMAT_UNKNOWN;                                     //!< Depth Stencil Format
-        D3D12_PRIMITIVE_TOPOLOGY_TYPE primitiveTopology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; //!< Primitive Topology 種別
-        D3D12_COMPARISON_FUNC depthComparison = D3D12_COMPARISON_FUNC_LESS;                       //!< 深度比較関数
-        bool enableAlphaBlend = false;                                                            //!< SrcAlphaによる透過Blendを有効にするか
-        bool enableAdditiveBlend = false;                                                         //!< SrcAlphaを加算し、出力先Alphaを保持するか
-        bool overrideBlend = false;                                                              //!< 明示的なBlend設定を使用するか
-        D3D12_RENDER_TARGET_BLEND_DESC blendOverride{};                                          //!< 明示的なBlend設定
-        bool enableDepthWrite = true;                                                             //!< Depth Bufferへの書き込みを有効にするか
-        D3D12_CULL_MODE cullMode = D3D12_CULL_MODE_BACK;                                          //!< Rasterizerの面Culling設定
-    };
+	/**
+	 * @brief Graphics Pipeline State の作成設定
+	 */
+	struct DX12GraphicsPipelineConfig
+	{
+		const DX12Shader* vertexShader = nullptr;                                                 //!< Vertex Shader
+		const DX12Shader* pixelShader = nullptr;                                                  //!< Pixel Shader
+		std::span<const D3D12_INPUT_ELEMENT_DESC> inputLayout;                                    //!< Vertex Input Layout
+		std::span<const D3D12_ROOT_PARAMETER> rootParameters;                                     //!< Root Signature Parameter
+		std::span<const D3D12_STATIC_SAMPLER_DESC> staticSamplers;                                //!< Static Sampler
+		DXGI_FORMAT renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM;                              //!< Render Target Format
+		std::span<const DXGI_FORMAT> renderTargetFormats;                                        //!< Multiple Render Target Formats
+		DXGI_FORMAT depthStencilFormat = DXGI_FORMAT_UNKNOWN;                                     //!< Depth Stencil Format
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE primitiveTopology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; //!< Primitive Topology 種別
+		D3D12_COMPARISON_FUNC depthComparison = D3D12_COMPARISON_FUNC_LESS;                       //!< 深度比較関数
+		bool enableAlphaBlend = false;                                                            //!< SrcAlphaによる透過Blendを有効にするか
+		bool enableAdditiveBlend = false;                                                         //!< SrcAlphaを加算し、出力先Alphaを保持するか
+		bool overrideBlend = false;                                                              //!< 明示的なBlend設定を使用するか
+		D3D12_RENDER_TARGET_BLEND_DESC blendOverride{};                                          //!< 明示的なBlend設定
+		bool enableDepthWrite = true;                                                             //!< Depth Bufferへの書き込みを有効にするか
+		D3D12_CULL_MODE cullMode = D3D12_CULL_MODE_BACK;                                          //!< Rasterizerの面Culling設定
+	};
 
-    /**
-     * @brief Root Signature と Graphics Pipeline State をキャッシュするクラス
-     * @details 初期化後は PSO を再作成せず、記録中の Command List へ bind する。
-     * @thread_safety initialize/finalize/swap require external synchronization. After initialization,
-     * bind may run concurrently on distinct Command Lists while the Pipeline remains immutable.
-     */
-    class DX12GraphicsPipeline
-    {
-    public:
+	/**
+	 * @brief Root Signature と Graphics Pipeline State をキャッシュするクラス
+	 * @details 初期化後は PSO を再作成せず、記録中の Command List へ bind する。
+	 * @thread_safety initialize/finalize/swap require external synchronization. After initialization,
+	 * bind may run concurrently on distinct Command Lists while the Pipeline remains immutable.
+	 */
+	class DX12GraphicsPipeline
+	{
+	public:
 
-        DX12GraphicsPipeline() = default;
-        ~DX12GraphicsPipeline() = default;
+		DX12GraphicsPipeline() = default;
+		~DX12GraphicsPipeline() = default;
 
-        GE_DISABLE_COPY_AND_MOVE(DX12GraphicsPipeline);
+		GE_DISABLE_COPY_AND_MOVE(DX12GraphicsPipeline);
 
-        /**
-         * @brief 空の Root Signature と Graphics PSO を作成する
-         * @param device PSO を作成するデバイス
-         * @param config Shader、Input Layout、Render Target Format の設定
-         * @return 作成に成功した場合は true
-         */
-        bool initialize(ID3D12Device& device, const DX12GraphicsPipelineConfig& config);
+		/**
+		 * @brief 空の Root Signature と Graphics PSO を作成する
+		 * @param device PSO を作成するデバイス
+		 * @param config Shader、Input Layout、Render Target Format の設定
+		 * @return 作成に成功した場合は true
+		 */
+		bool initialize(ID3D12Device& device, const DX12GraphicsPipelineConfig& config);
 
-        /**
-         * @brief Root Signature と PSO を解放する
-         * @warning GPU が Pipeline State を使用していないことを Fence で確認してから呼び出すこと
-         */
-        void finalize();
+		/**
+		 * @brief Root Signature と PSO を解放する
+		 * @warning GPU が Pipeline State を使用していないことを Fence で確認してから呼び出すこと
+		 */
+		void finalize();
 
-        /**
-         * @brief 記録中の Command List に Root Signature と PSO を設定する
-         * @param commandList 設定先の Command List
-         * @return 設定に成功した場合は true
-         */
-        bool bind(DX12CommandList& commandList) const;
+		/**
+		 * @brief 記録中の Command List に Root Signature と PSO を設定する
+		 * @param commandList 設定先の Command List
+		 * @return 設定に成功した場合は true
+		 */
+		bool bind(DX12CommandList& commandList) const;
 
-        /**
-         * @brief GPU PipelineとRoot Signatureを交換する。
-         * @param other 交換する相手の DX12GraphicsPipeline
-         */
-        void swap(DX12GraphicsPipeline& other) noexcept;
+		/**
+		 * @brief GPU PipelineとRoot Signatureを交換する。
+		 * @param other 交換する相手の DX12GraphicsPipeline
+		 */
+		void swap(DX12GraphicsPipeline& other) noexcept;
 
-        /**
-         * @brief Graphics PSO を取得する
-         * @return 非所有の PSO 参照。未初期化時は nullptr
-         */
-        ID3D12PipelineState* get() const noexcept { return m_pipelineState.Get(); }
-        /** @brief Returns the root signature for indirect command signature creation. */
-        ID3D12RootSignature* getRootSignature() const noexcept { return m_rootSignature.Get(); }
+		/**
+		 * @brief Graphics PSO を取得する
+		 * @return 非所有の PSO 参照。未初期化時は nullptr
+		 */
+		ID3D12PipelineState* get() const noexcept { return m_pipelineState.Get(); }
+		/** @brief Returns the root signature for indirect command signature creation. */
+		ID3D12RootSignature* getRootSignature() const noexcept { return m_rootSignature.Get(); }
 
-    private:
+	private:
 
-        Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature; //!< Root Signature
-        Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState; //!< キャッシュ済み Graphics PSO
-    };
-    /**
-     * @brief Compute Shader用のRoot SignatureとPSOを所有する。
-     * @thread_safety Mutation requires external synchronization. bind supports distinct Command Lists concurrently.
-     */
-    class DX12ComputePipeline
-    {
-    public:
-        GE_DISABLE_COPY_AND_MOVE(DX12ComputePipeline);
-        DX12ComputePipeline() = default;
+		Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature; //!< Root Signature
+		Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState; //!< キャッシュ済み Graphics PSO
+	};
+	/**
+	 * @brief Compute Shader用のRoot SignatureとPSOを所有する。
+	 * @thread_safety Mutation requires external synchronization. bind supports distinct Command Lists concurrently.
+	 */
+	class DX12ComputePipeline
+	{
+	public:
+		GE_DISABLE_COPY_AND_MOVE(DX12ComputePipeline);
+		DX12ComputePipeline() = default;
 
-        /**
-         * @brief コンパイル済みCompute ShaderからPipelineを作成する。
-         * @param device 作成先Device。
-         * @param shader Compute Shader。
-         * @param parameters Root SignatureのParameter。
-         * @param staticSamplers Root SignatureのStatic Sampler。
-         * @return 作成成功時true。
-         */
-        bool initialize(ID3D12Device& device, const DX12Shader& shader,
-            std::span<const D3D12_ROOT_PARAMETER> parameters,
-            std::span<const D3D12_STATIC_SAMPLER_DESC> staticSamplers = {});
+		/**
+		 * @brief コンパイル済みCompute ShaderからPipelineを作成する。
+		 * @param device 作成先Device。
+		 * @param shader Compute Shader。
+		 * @param parameters Root SignatureのParameter。
+		 * @param staticSamplers Root SignatureのStatic Sampler。
+		 * @return 作成成功時true。
+		 */
+		bool initialize(ID3D12Device& device, const DX12Shader& shader,
+			std::span<const D3D12_ROOT_PARAMETER> parameters,
+			std::span<const D3D12_STATIC_SAMPLER_DESC> staticSamplers = {});
 
-        /** @brief GPU使用完了後にPipelineを解放する。 */
-        void finalize();
+		/** @brief GPU使用完了後にPipelineを解放する。 */
+		void finalize();
 
-        /**
-         * @brief 記録中Command ListにPipelineを設定する。
-         * @param commandList 設定先。
-         * @return 設定成功時true。
-         */
-        bool bind(DX12CommandList& commandList) const;
+		/**
+		 * @brief 記録中Command ListにPipelineを設定する。
+		 * @param commandList 設定先。
+		 * @return 設定成功時true。
+		 */
+		bool bind(DX12CommandList& commandList) const;
 
-        /**
-         * @brief Pipelineの所有Resourceを交換する。
-         * @param other 交換先。
-         */
-        void swap(DX12ComputePipeline& other) noexcept;
+		/**
+		 * @brief Pipelineの所有Resourceを交換する。
+		 * @param other 交換先。
+		 */
+		void swap(DX12ComputePipeline& other) noexcept;
 
-    private:
-        Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
-        Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState;
-    };
+	private:
+		Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
+		Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState;
+	};
 } // namespace Engine

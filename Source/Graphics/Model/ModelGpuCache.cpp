@@ -9,239 +9,239 @@
 
 namespace Engine
 {
-    ModelGpuCache::~ModelGpuCache()
-    {
-        finalize();
-    }
+	ModelGpuCache::~ModelGpuCache()
+	{
+		finalize();
+	}
 
-    bool ModelGpuCache::initialize(DX12Device& device, DX12Fence& fence) noexcept
-    {
-        if (device.get() == nullptr)
-            return false;
-        if (!finalize())
-            return false;
-        m_device = &device;
-        m_fence = &fence;
-        return true;
-    }
+	bool ModelGpuCache::initialize(DX12Device& device, DX12Fence& fence) noexcept
+	{
+		if (device.get() == nullptr)
+			return false;
+		if (!finalize())
+			return false;
+		m_device = &device;
+		m_fence = &fence;
+		return true;
+	}
 
-    bool ModelGpuCache::finalize()
-    {
-        bool succeeded = true;
-        for (auto& [key, resource] : m_resources)
-        {
-            GE_UNUSED(key);
-            succeeded = resource->bonePaletteBuffer.finalize() && succeeded;
-            for (const std::unique_ptr<ModelGpuMesh>& mesh : resource->meshes)
-            {
-                if (mesh == nullptr)
-                    continue;
-                succeeded = mesh->indexBuffer.finalize() && succeeded;
-                succeeded = mesh->vertexBuffer.finalize() && succeeded;
-            }
-        }
-        if (!succeeded)
-        {
-            LOG_ERROR("[ModelGpuCache] GPU使用完了を確認できないためCacheのFinalizeを中止します");
-            return false;
-        }
+	bool ModelGpuCache::finalize()
+	{
+		bool succeeded = true;
+		for (auto& [key, resource] : m_resources)
+		{
+			GE_UNUSED(key);
+			succeeded = resource->bonePaletteBuffer.finalize() && succeeded;
+			for (const std::unique_ptr<ModelGpuMesh>& mesh : resource->meshes)
+			{
+				if (mesh == nullptr)
+					continue;
+				succeeded = mesh->indexBuffer.finalize() && succeeded;
+				succeeded = mesh->vertexBuffer.finalize() && succeeded;
+			}
+		}
+		if (!succeeded)
+		{
+			LOG_ERROR("[ModelGpuCache] GPU使用完了を確認できないためCacheのFinalizeを中止します");
+			return false;
+		}
 
-        m_resources.clear();
-        m_device = nullptr;
-        m_fence = nullptr;
-        return true;
-    }
+		m_resources.clear();
+		m_device = nullptr;
+		m_fence = nullptr;
+		return true;
+	}
 
-    ModelGpuResource* ModelGpuCache::getOrCreate(const ModelHandle handle, std::shared_ptr<const ModelResource> snapshot)
-    {
-        if (m_device == nullptr || m_fence == nullptr || !handle.isValid())
-            return nullptr;
-        const std::uint64_t key = makeKey(handle);
-        if (const auto found = m_resources.find(key); found != m_resources.end())
-            return found->second.get();
+	ModelGpuResource* ModelGpuCache::getOrCreate(const ModelHandle handle, std::shared_ptr<const ModelResource> snapshot)
+	{
+		if (m_device == nullptr || m_fence == nullptr || !handle.isValid())
+			return nullptr;
+		const std::uint64_t key = makeKey(handle);
+		if (const auto found = m_resources.find(key); found != m_resources.end())
+			return found->second.get();
 
-        try
-        {
-            if (snapshot == nullptr)
-                snapshot = ModelManager::instance().get(handle);
-            std::unique_ptr<ModelGpuResource> resource = createResource(handle, std::move(snapshot));
-            if (resource == nullptr)
-                return nullptr;
+		try
+		{
+			if (snapshot == nullptr)
+				snapshot = ModelManager::instance().get(handle);
+			std::unique_ptr<ModelGpuResource> resource = createResource(handle, std::move(snapshot));
+			if (resource == nullptr)
+				return nullptr;
 
-            const auto [entry, inserted] = m_resources.emplace(key, std::move(resource));
-            if (!inserted)
-            {
-                LOG_ERROR("[ModelGpuCache] Model {}:{} was inserted into the cache during resource creation.",
-                    handle.index, handle.generation);
-                return entry->second.get();
-            }
-            return entry->second.get();
-        }
-        catch (const std::bad_alloc&)
-        {
-            LOG_ERROR("[ModelGpuCache] Failed to allocate GPU cache data for Model {}:{}.",
-                handle.index, handle.generation);
-            return nullptr;
-        }
-        catch (const std::length_error&)
-        {
-            LOG_ERROR("[ModelGpuCache] GPU cache capacity is exhausted for Model {}:{}.",
-                handle.index, handle.generation);
-            return nullptr;
-        }
-    }
+			const auto [entry, inserted] = m_resources.emplace(key, std::move(resource));
+			if (!inserted)
+			{
+				LOG_ERROR("[ModelGpuCache] Model {}:{} was inserted into the cache during resource creation.",
+					handle.index, handle.generation);
+				return entry->second.get();
+			}
+			return entry->second.get();
+		}
+		catch (const std::bad_alloc&)
+		{
+			LOG_ERROR("[ModelGpuCache] Failed to allocate GPU cache data for Model {}:{}.",
+				handle.index, handle.generation);
+			return nullptr;
+		}
+		catch (const std::length_error&)
+		{
+			LOG_ERROR("[ModelGpuCache] GPU cache capacity is exhausted for Model {}:{}.",
+				handle.index, handle.generation);
+			return nullptr;
+		}
+	}
 
-    bool ModelGpuCache::markUsed(const ModelHandle handle, const std::uint64_t fenceValue)
-    {
-        const auto found = m_resources.find(makeKey(handle));
-        if (found == m_resources.end())
-            return false;
+	bool ModelGpuCache::markUsed(const ModelHandle handle, const std::uint64_t fenceValue)
+	{
+		const auto found = m_resources.find(makeKey(handle));
+		if (found == m_resources.end())
+			return false;
 
-        found->second->lastUsedFenceValue = fenceValue;
-        bool succeeded = true;
-        succeeded = found->second->bonePaletteBuffer.markUsed(fenceValue) && succeeded;
-        for (const std::unique_ptr<ModelGpuMesh>& mesh : found->second->meshes)
-        {
-            if (mesh == nullptr)
-                continue;
-            succeeded = mesh->vertexBuffer.markUsed(fenceValue) && succeeded;
-            succeeded = mesh->indexBuffer.markUsed(fenceValue) && succeeded;
-        }
-        return succeeded;
-    }
+		found->second->lastUsedFenceValue = fenceValue;
+		bool succeeded = true;
+		succeeded = found->second->bonePaletteBuffer.markUsed(fenceValue) && succeeded;
+		for (const std::unique_ptr<ModelGpuMesh>& mesh : found->second->meshes)
+		{
+			if (mesh == nullptr)
+				continue;
+			succeeded = mesh->vertexBuffer.markUsed(fenceValue) && succeeded;
+			succeeded = mesh->indexBuffer.markUsed(fenceValue) && succeeded;
+		}
+		return succeeded;
+	}
 
-    void ModelGpuCache::collectGarbage()
-    {
-        if (m_fence == nullptr)
-            return;
+	void ModelGpuCache::collectGarbage()
+	{
+		if (m_fence == nullptr)
+			return;
 
-        for (auto iterator = m_resources.begin(); iterator != m_resources.end();)
-        {
-            ModelGpuResource& resource = *iterator->second;
-            const bool unloaded = ModelManager::instance().get(resource.handle) == nullptr;
-            const bool gpuComplete = resource.lastUsedFenceValue == 0
-                || m_fence->isComplete(resource.lastUsedFenceValue);
-            if (unloaded && gpuComplete)
-            {
-                bool finalized = resource.bonePaletteBuffer.finalize();
-                for (const std::unique_ptr<ModelGpuMesh>& mesh : resource.meshes)
-                {
-                    if (mesh == nullptr)
-                        continue;
-                    finalized = mesh->indexBuffer.finalize() && finalized;
-                    finalized = mesh->vertexBuffer.finalize() && finalized;
-                }
-                if (!finalized)
-                {
-                    LOG_ERROR("[ModelGpuCache] Failed to finalize an unloaded model resource.");
-                    ++iterator;
-                    continue;
-                }
-                iterator = m_resources.erase(iterator);
-            }
-            else
-            {
-                ++iterator;
-            }
-        }
-    }
+		for (auto iterator = m_resources.begin(); iterator != m_resources.end();)
+		{
+			ModelGpuResource& resource = *iterator->second;
+			const bool unloaded = ModelManager::instance().get(resource.handle) == nullptr;
+			const bool gpuComplete = resource.lastUsedFenceValue == 0
+				|| m_fence->isComplete(resource.lastUsedFenceValue);
+			if (unloaded && gpuComplete)
+			{
+				bool finalized = resource.bonePaletteBuffer.finalize();
+				for (const std::unique_ptr<ModelGpuMesh>& mesh : resource.meshes)
+				{
+					if (mesh == nullptr)
+						continue;
+					finalized = mesh->indexBuffer.finalize() && finalized;
+					finalized = mesh->vertexBuffer.finalize() && finalized;
+				}
+				if (!finalized)
+				{
+					LOG_ERROR("[ModelGpuCache] Failed to finalize an unloaded model resource.");
+					++iterator;
+					continue;
+				}
+				iterator = m_resources.erase(iterator);
+			}
+			else
+			{
+				++iterator;
+			}
+		}
+	}
 
-    std::uint64_t ModelGpuCache::makeKey(const ModelHandle handle) noexcept
-    {
-        return (static_cast<std::uint64_t>(handle.generation) << 32) | handle.index;
-    }
+	std::uint64_t ModelGpuCache::makeKey(const ModelHandle handle) noexcept
+	{
+		return (static_cast<std::uint64_t>(handle.generation) << 32) | handle.index;
+	}
 
-    std::unique_ptr<ModelGpuResource> ModelGpuCache::createResource(const ModelHandle handle,
-        std::shared_ptr<const ModelResource> source)
-    {
-        if (source == nullptr)
-            return nullptr;
+	std::unique_ptr<ModelGpuResource> ModelGpuCache::createResource(const ModelHandle handle,
+		std::shared_ptr<const ModelResource> source)
+	{
+		if (source == nullptr)
+			return nullptr;
 
-        auto resource = std::make_unique<ModelGpuResource>();
-        resource->handle = handle;
-        resource->source = std::move(source);
-        std::vector<Matrix> nodeTransforms(resource->source->nodes.size(), Matrix::Identity);
-        for (std::size_t nodeIndex = 0; nodeIndex < resource->source->nodes.size(); ++nodeIndex)
-        {
-            const ModelNode& node = resource->source->nodes[nodeIndex];
-            nodeTransforms[nodeIndex] = node.localTransform;
-            if (node.parentIndex >= 0 && static_cast<std::size_t>(node.parentIndex) < nodeIndex)
-                nodeTransforms[nodeIndex] *= nodeTransforms[static_cast<std::size_t>(node.parentIndex)];
-        }
+		auto resource = std::make_unique<ModelGpuResource>();
+		resource->handle = handle;
+		resource->source = std::move(source);
+		std::vector<Matrix> nodeTransforms(resource->source->nodes.size(), Matrix::Identity);
+		for (std::size_t nodeIndex = 0; nodeIndex < resource->source->nodes.size(); ++nodeIndex)
+		{
+			const ModelNode& node = resource->source->nodes[nodeIndex];
+			nodeTransforms[nodeIndex] = node.localTransform;
+			if (node.parentIndex >= 0 && static_cast<std::size_t>(node.parentIndex) < nodeIndex)
+				nodeTransforms[nodeIndex] *= nodeTransforms[static_cast<std::size_t>(node.parentIndex)];
+		}
 
-        SkinningPaletteConstants bonePalette;
-        bonePalette.boneMatrices.fill(Matrix::Identity);
-        bonePalette.boneNormalMatrices.fill(Matrix::Identity);
-        bonePalette.previousBoneMatrices.fill(Matrix::Identity);
-        if (!resource->bonePaletteBuffer.initialize(*m_device->get(), *m_fence, sizeof(bonePalette))
-            || !resource->bonePaletteBuffer.write(std::as_bytes(std::span{ &bonePalette, 1 })))
-        {
-            LOG_ERROR("[ModelGpuCache] Bone Palette Bufferの作成に失敗しました");
-            return nullptr;
-        }
-        resource->meshes.reserve(resource->source->meshes.size());
-        for (const MeshResource& sourceMesh : resource->source->meshes)
-        {
-            if (sourceMesh.vertices.empty() || sourceMesh.indices.empty())
-            {
-                LOG_WARNING("[ModelGpuCache] 空のMeshをスキップします: {}", sourceMesh.name);
-                resource->meshes.push_back(nullptr);
-                continue;
-            }
+		SkinningPaletteConstants bonePalette;
+		bonePalette.boneMatrices.fill(Matrix::Identity);
+		bonePalette.boneNormalMatrices.fill(Matrix::Identity);
+		bonePalette.previousBoneMatrices.fill(Matrix::Identity);
+		if (!resource->bonePaletteBuffer.initialize(*m_device->get(), *m_fence, sizeof(bonePalette))
+			|| !resource->bonePaletteBuffer.write(std::as_bytes(std::span{ &bonePalette, 1 })))
+		{
+			LOG_ERROR("[ModelGpuCache] Bone Palette Bufferの作成に失敗しました");
+			return nullptr;
+		}
+		resource->meshes.reserve(resource->source->meshes.size());
+		for (const MeshResource& sourceMesh : resource->source->meshes)
+		{
+			if (sourceMesh.vertices.empty() || sourceMesh.indices.empty())
+			{
+				LOG_WARNING("[ModelGpuCache] 空のMeshをスキップします: {}", sourceMesh.name);
+				resource->meshes.push_back(nullptr);
+				continue;
+			}
 
-            const std::span<const ModelVertex> vertices = sourceMesh.vertices;
-            const std::span<const std::uint32_t> indices = sourceMesh.indices;
-            const std::size_t vertexBufferSize = std::as_bytes(vertices).size();
-            const std::size_t indexBufferSize = std::as_bytes(indices).size();
-            if (sourceMesh.indices.size() > (std::numeric_limits<UINT>::max)()
-                || vertexBufferSize > (std::numeric_limits<UINT>::max)()
-                || indexBufferSize > (std::numeric_limits<UINT>::max)())
-            {
-                LOG_ERROR("[ModelGpuCache] Mesh exceeds DirectX 12 buffer view limits: {}", sourceMesh.name);
-                return nullptr;
-            }
+			const std::span<const ModelVertex> vertices = sourceMesh.vertices;
+			const std::span<const std::uint32_t> indices = sourceMesh.indices;
+			const std::size_t vertexBufferSize = std::as_bytes(vertices).size();
+			const std::size_t indexBufferSize = std::as_bytes(indices).size();
+			if (sourceMesh.indices.size() > (std::numeric_limits<UINT>::max)()
+				|| vertexBufferSize > (std::numeric_limits<UINT>::max)()
+				|| indexBufferSize > (std::numeric_limits<UINT>::max)())
+			{
+				LOG_ERROR("[ModelGpuCache] Mesh exceeds DirectX 12 buffer view limits: {}", sourceMesh.name);
+				return nullptr;
+			}
 
-            auto mesh = std::make_unique<ModelGpuMesh>();
-            mesh->hasSkinWeights = std::any_of(vertices.begin(), vertices.end(), [](const ModelVertex& vertex)
-                {
-                    return vertex.boneWeights.x != 0.0f || vertex.boneWeights.y != 0.0f
-                        || vertex.boneWeights.z != 0.0f || vertex.boneWeights.w != 0.0f;
-                });
-            if (!mesh->skinningBounds.initialize(vertices))
-                LOG_WARNING("[ModelGpuCache] Animated bounds unavailable for mesh '{}'; animated culling will be bypassed.",
-                    sourceMesh.name);
-            if (!mesh->vertexBuffer.initialize(*m_device->get(), *m_fence, vertexBufferSize)
-                || !mesh->indexBuffer.initialize(*m_device->get(), *m_fence, indexBufferSize)
-                || !mesh->vertexBuffer.write(std::as_bytes(vertices))
-                || !mesh->indexBuffer.write(std::as_bytes(indices)))
-            {
-                LOG_ERROR("[ModelGpuCache] MeshのGPU Uploadに失敗しました: {}", sourceMesh.name);
-                return nullptr;
-            }
+			auto mesh = std::make_unique<ModelGpuMesh>();
+			mesh->hasSkinWeights = std::any_of(vertices.begin(), vertices.end(), [](const ModelVertex& vertex)
+				{
+					return vertex.boneWeights.x != 0.0f || vertex.boneWeights.y != 0.0f
+						|| vertex.boneWeights.z != 0.0f || vertex.boneWeights.w != 0.0f;
+				});
+			if (!mesh->skinningBounds.initialize(vertices))
+				LOG_WARNING("[ModelGpuCache] Animated bounds unavailable for mesh '{}'; animated culling will be bypassed.",
+					sourceMesh.name);
+			if (!mesh->vertexBuffer.initialize(*m_device->get(), *m_fence, vertexBufferSize)
+				|| !mesh->indexBuffer.initialize(*m_device->get(), *m_fence, indexBufferSize)
+				|| !mesh->vertexBuffer.write(std::as_bytes(vertices))
+				|| !mesh->indexBuffer.write(std::as_bytes(indices)))
+			{
+				LOG_ERROR("[ModelGpuCache] MeshのGPU Uploadに失敗しました: {}", sourceMesh.name);
+				return nullptr;
+			}
 
-            mesh->vertexBufferView = {
-                .BufferLocation = mesh->vertexBuffer.getGpuVirtualAddress(),
-                .SizeInBytes = static_cast<UINT>(mesh->vertexBuffer.getSize()),
-                .StrideInBytes = sizeof(ModelVertex),
-            };
-            mesh->indexBufferView = {
-                .BufferLocation = mesh->indexBuffer.getGpuVirtualAddress(),
-                .SizeInBytes = static_cast<UINT>(mesh->indexBuffer.getSize()),
-                .Format = DXGI_FORMAT_R32_UINT,
-            };
-            const std::size_t meshIndex = resource->meshes.size();
-            for (std::size_t nodeIndex = 0; nodeIndex < resource->source->nodes.size(); ++nodeIndex)
-            {
-                const ModelNode& node = resource->source->nodes[nodeIndex];
-                if (std::find(node.meshIndices.begin(), node.meshIndices.end(), meshIndex) != node.meshIndices.end())
-                {
-                    mesh->nodeTransform = sourceMesh.verticesInModelSpace
-                        ? Matrix::Identity : nodeTransforms[nodeIndex];
-                    break;
-                }
-            }
-            resource->meshes.push_back(std::move(mesh));
-        }
-        return resource;
-    }
+			mesh->vertexBufferView = {
+				.BufferLocation = mesh->vertexBuffer.getGpuVirtualAddress(),
+				.SizeInBytes = static_cast<UINT>(mesh->vertexBuffer.getSize()),
+				.StrideInBytes = sizeof(ModelVertex),
+			};
+			mesh->indexBufferView = {
+				.BufferLocation = mesh->indexBuffer.getGpuVirtualAddress(),
+				.SizeInBytes = static_cast<UINT>(mesh->indexBuffer.getSize()),
+				.Format = DXGI_FORMAT_R32_UINT,
+			};
+			const std::size_t meshIndex = resource->meshes.size();
+			for (std::size_t nodeIndex = 0; nodeIndex < resource->source->nodes.size(); ++nodeIndex)
+			{
+				const ModelNode& node = resource->source->nodes[nodeIndex];
+				if (std::find(node.meshIndices.begin(), node.meshIndices.end(), meshIndex) != node.meshIndices.end())
+				{
+					mesh->nodeTransform = sourceMesh.verticesInModelSpace
+						? Matrix::Identity : nodeTransforms[nodeIndex];
+					break;
+				}
+			}
+			resource->meshes.push_back(std::move(mesh));
+		}
+		return resource;
+	}
 } // namespace Engine
