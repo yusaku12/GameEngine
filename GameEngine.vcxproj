@@ -11,6 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\Components\Camera\PlayerCamera.h" />
     <ClInclude Include="Source\Terrain\Data\Heightmap.h" />
     <ClInclude Include="Source\Terrain\Generation\TerrainNoise.h" />
     <ClInclude Include="Source\Terrain\Material\TerrainMaterial.h" />

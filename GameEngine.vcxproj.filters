@@ -1508,6 +1508,7 @@
     <ClInclude Include="Source\UI\RuntimeUI.h">
       <Filter>Source\UI</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Components\Camera\PlayerCamera.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Shaders\ColorOutput.hlsli">
@@ -1681,5 +1682,6 @@
     <None Include="Tools\Shaders\GenerateAcesOutput.cpp">
       <Filter>Tools\Shaders</Filter>
     </None>
+    <None Include="Schemas\FlatBuffers\VolumetricFogComponent.fbs" />
   </ItemGroup>
 </Project>
