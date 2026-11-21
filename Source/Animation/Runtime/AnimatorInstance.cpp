@@ -58,7 +58,6 @@ namespace Engine
 
 		bool rigidPower(Matrix base, const double exponent, Matrix& result)
 		{
-			// Loop counts are computed in double; do not silently truncate an unrepresentable count.
 			if (!std::isfinite(exponent) || std::abs(exponent) > 9007199254740991.0)
 			{
 				LOG_ERROR("[Animator] Root motion loop count exceeds the exact supported range.");
@@ -146,7 +145,6 @@ namespace Engine
 						LOG_ERROR("[Animator] Bone {} has a singular or overflowing bind transform.", bone);
 						return false;
 					}
-			// The inverse of an affine matrix has this exact column; a generic inverse rounds det/det.
 			inverse._14 = 0.0f;
 			inverse._24 = 0.0f;
 			inverse._34 = 0.0f;
@@ -1105,7 +1103,7 @@ namespace Engine
 			Matrix root;
 			if (!rigidTransform(toEngineMatrix(m_modelMatrices[m_rootMotionJoint]), root))
 				return false;
-			// Filter the trajectory, not its frame delta, so pose and extracted motion stay complementary.
+
 			removeMotion = inverseRigidTransform(filterRootMotion(m_inverseRootReference * root, m_rootMotionAxes));
 		}
 		return true;
@@ -1202,8 +1200,7 @@ namespace Engine
 		return !publishSnapshot || publishPose(m_ikModelMatrices);
 	}
 
-	bool AnimatorInstance::applyLookAt(const std::span<const int> chain, const LookAtTarget& target,
-		const Matrix& world, const bool useFootIK)
+	bool AnimatorInstance::applyLookAt(const std::span<const int> chain, const LookAtTarget& target, const Matrix& world, const bool useFootIK)
 	{
 		Matrix removal;
 		Transform transform;

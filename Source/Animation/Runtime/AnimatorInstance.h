@@ -193,37 +193,20 @@ namespace Engine
 		 */
 		std::shared_ptr<const SkinningPaletteSnapshot> getSnapshot() const noexcept { return m_publishedSnapshot; }
 
-		/** @brief Current immutable skeleton definition, or nullptr when unbound. */
 		std::shared_ptr<const SkeletonAsset> getSkeletonAsset() const noexcept { return m_skeleton; }
 
-		/** @brief Publish the uncorrected pose after update with publishSnapshot=false. Exclusive access required. */
 		bool publishCurrentPose() { return publishPose(); }
 
-		/** @brief Read the uncorrected joint position, including root-motion removal, in world space. */
 		bool getJointWorldPosition(int joint, const Matrix& world, Vector3& position) const;
 
-		/**
-		 * @brief Transform a joint-local direction through the uncorrected pose and root-motion removal.
-		 * @return False with a diagnostic for invalid input or a collapsed direction; otherwise write a unit direction.
-		 * @thread_safety Must not run concurrently with instance evaluation.
-		 */
 		bool getJointWorldDirection(int joint, const Vector3& localDirection, const Matrix& world,
 			Vector3& direction) const;
 
-		/**
-		 * @brief Solve visual IK without changing sampled animation or extracted root motion.
-		 * @param targets World-space ankle targets and rig axes.
-		 * @param pelvisOffset World-space visual displacement. Does not move the GameObject.
-		 * @param publishSnapshot Publish immediately unless composing another visual IK pass.
-		 * @thread_safety Must run after animation jobs join, with exclusive instance access.
-		 */
 		bool applyFootIK(std::span<const FootIKTarget> targets, const Vector3& pelvisOffset,
 			const Matrix& world, bool publishSnapshot = true);
 
-		/** @brief Apply LookAt to a temporary pose and retain it only on success. */
-		bool applyLookAt(std::span<const int> chain, const LookAtTarget& target, const Matrix& world,
-			bool useFootIK);
-		/** @brief Publish the latest successful visual IK pose. */
+		bool applyLookAt(std::span<const int> chain, const LookAtTarget& target, const Matrix& world, bool useFootIK);
+
 		bool publishIKPose() { return publishPose(m_ikModelMatrices); }
 
 	private:
@@ -235,11 +218,16 @@ namespace Engine
 		};
 
 		bool sampleRoot(const AnimationClipAsset& clip, float ratio, Matrix& root);
+
 		bool buildRootTrack(const AnimationClipAsset& clip, RootMotionTrack& track);
+
 		bool calculateRootDelta(const AnimationClipAsset& clip, const RootMotionTrack& track,
 			AnimationWrapMode wrapMode, float oldTime, float newTime, double step, Matrix& delta);
+
 		bool publishPose();
+
 		bool publishPose(std::span<const ozz::math::Float4x4> models, bool publishSnapshot = true);
+
 		bool getPoseRemoval(Matrix& removal) const;
 
 		/**
@@ -367,42 +355,42 @@ namespace Engine
 		 */
 		SkinningPaletteSnapshot* acquireSnapshot() noexcept;
 
-		std::shared_ptr<const SkeletonAsset> m_skeleton;                         //!< 再生対象SkeletonAsset。nullptrは未設定状態。
-		std::shared_ptr<const AnimationClipAsset> m_clip;                        //!< 再生対象AnimationClipAsset。nullptrは未設定状態。
-		std::shared_ptr<const AnimatorControllerAsset> m_controller;             //!< 再生対象AnimatorControllerAsset。nullptrは未設定状態。
-		std::vector<RuntimeState> m_states;                                      //!< 再生中のstateのozz runtime評価に必要な情報を保持する。
-		std::vector<RuntimeParameter> m_parameters;                              //!< 再生中のparameterのozz runtime評価に必要な情報を保持する。
-		std::vector<RuntimeTransition> m_transitions;                            //!< 再生中のstate間の遷移を表す。条件判定とBlendingJobの評価に使用する。
-		std::vector<ozz::math::SoaTransform> m_blendedTransforms;                //!< ozz runtimeのBlendingJob用出力バッファ。ozz runtimeが評価したBlended Transformを保持する。
-		std::size_t m_currentStateIndex = 0;                                     //!< 再生中のstateのインデックス。m_states[m_currentStateIndex]が現在再生中のstate。
-		std::size_t m_destinationStateIndex = 0;                                 //!< 遷移先のstateのインデックス。m_states[m_destinationStateIndex]が遷移先のstate。
-		float m_transitionTime = 0.0f;                                           //!< 遷移開始からの経過時間(秒)。ClipのWrap Modeに応じてClampまたはWrapされる。
-		float m_transitionDuration = 0.0f;                                       //!< 遷移時間(秒)。0.0f以下は即時遷移として扱う。
-		bool m_transitioning = false;                                            //!< 遷移中かどうか。trueで遷移中、falseで遷移中ではない。
-		std::unique_ptr<ozz::animation::SamplingJob::Context> m_samplingContext; //!< ozz runtimeのSamplingJob用Context。ozz runtimeが必要とする中間バッファを保持する。
-		std::vector<ozz::math::SoaTransform> m_localTransforms;                  //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
-		std::vector<ozz::math::Float4x4> m_modelMatrices;                        //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。
-		std::vector<ozz::math::SoaTransform> m_ikLocalTransforms;                //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
-		std::vector<ozz::math::Float4x4> m_ikModelMatrices;                      //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。
-		std::vector<ozz::math::SoaTransform> m_lookAtLocalTransforms;            //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
-		std::vector<ozz::math::Float4x4> m_lookAtModelMatrices;                  //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。
-		std::vector<Matrix> m_bindPoseCorrections;                               //!< Import時の逆バインド行列とOzzレスト姿勢の差分補正。
-		std::array<std::shared_ptr<SkinningPaletteSnapshot>, 3> m_snapshotRing;  //!< Ring Bufferとして保持するPalette Snapshot。Game threadが評価中のSnapshotとRender threadが参照中のSnapshotを分離する。
-		std::shared_ptr<const SkinningPaletteSnapshot> m_publishedSnapshot;      //!< Render threadが参照中のPalette Snapshot。Game threadはこのSnapshotを更新しない。
-		std::size_t m_nextSnapshot = 0;                                          //!< Ring Bufferの次に使用するSnapshotのインデックス。Game threadが評価中のSnapshotを指す。
-		float m_time = 0.0f;                                                     //!< 再生中のClip内の現在時刻(秒)。ClipのWrap Modeに応じてClampまたはWrapされる。
-		float m_speed = 1.0f;                                                    //!< 再生速度。1.0fで実時間と同じ速度、2.0fで2倍速、-1.0fで逆再生。
-		AnimationWrapMode m_wrapMode = AnimationWrapMode::Loop;                  //!< 再生中のClipのWrap Mode。ClipのWrap Modeに応じてtimeとloopCountが変化する。
-		std::int64_t m_loopCount = 0;                                            //!< 再生中のClipのLoop回数。ClipのWrap Modeに応じて符号付きで増減する。
-		bool m_playing = false;                                                  //!< 再生中かどうか。trueで再生中、falseで停止中。
-		bool m_rootMotionEnabled = false;                                        //!< Root Motionの有効化。trueで有効、falseで無効。
-		RootMotionAxes m_rootMotionAxes;
-		std::string m_rootMotionJointName;
-		std::size_t m_rootMotionJoint = 0;
-		Matrix m_rootReference = Matrix::Identity;
-		Matrix m_inverseRootReference = Matrix::Identity;
-		Matrix m_rootMotionDelta = Matrix::Identity;
-		RootMotionTrack m_rootTrack;
-		std::unique_ptr<ozz::animation::SamplingJob::Context> m_rootSamplingContext;
+		std::shared_ptr<const SkeletonAsset> m_skeleton;                             //!< 再生対象SkeletonAsset。nullptrは未設定状態。
+		std::shared_ptr<const AnimationClipAsset> m_clip;                            //!< 再生対象AnimationClipAsset。nullptrは未設定状態。
+		std::shared_ptr<const AnimatorControllerAsset> m_controller;                 //!< 再生対象AnimatorControllerAsset。nullptrは未設定状態。
+		std::vector<RuntimeState> m_states;                                          //!< 再生中のstateのozz runtime評価に必要な情報を保持する。
+		std::vector<RuntimeParameter> m_parameters;                                  //!< 再生中のparameterのozz runtime評価に必要な情報を保持する。
+		std::vector<RuntimeTransition> m_transitions;                                //!< 再生中のstate間の遷移を表す。条件判定とBlendingJobの評価に使用する。
+		std::vector<ozz::math::SoaTransform> m_blendedTransforms;                    //!< ozz runtimeのBlendingJob用出力バッファ。ozz runtimeが評価したBlended Transformを保持する。
+		std::size_t m_currentStateIndex = 0;                                         //!< 再生中のstateのインデックス。m_states[m_currentStateIndex]が現在再生中のstate。
+		std::size_t m_destinationStateIndex = 0;                                     //!< 遷移先のstateのインデックス。m_states[m_destinationStateIndex]が遷移先のstate。
+		float m_transitionTime = 0.0f;                                               //!< 遷移開始からの経過時間(秒)。ClipのWrap Modeに応じてClampまたはWrapされる。
+		float m_transitionDuration = 0.0f;                                           //!< 遷移時間(秒)。0.0f以下は即時遷移として扱う。
+		bool m_transitioning = false;                                                //!< 遷移中かどうか。trueで遷移中、falseで遷移中ではない。
+		std::unique_ptr<ozz::animation::SamplingJob::Context> m_samplingContext;     //!< ozz runtimeのSamplingJob用Context。ozz runtimeが必要とする中間バッファを保持する。
+		std::vector<ozz::math::SoaTransform> m_localTransforms;                      //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
+		std::vector<ozz::math::Float4x4> m_modelMatrices;                            //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。
+		std::vector<ozz::math::SoaTransform> m_ikLocalTransforms;                    //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
+		std::vector<ozz::math::Float4x4> m_ikModelMatrices;                          //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。
+		std::vector<ozz::math::SoaTransform> m_lookAtLocalTransforms;                //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したLocal Transformを保持する。
+		std::vector<ozz::math::Float4x4> m_lookAtModelMatrices;                      //!< ozz runtimeのSamplingJob用出力バッファ。ozz runtimeが評価したModel Matrixを保持する。
+		std::vector<Matrix> m_bindPoseCorrections;                                   //!< Import時の逆バインド行列とOzzレスト姿勢の差分補正。
+		std::array<std::shared_ptr<SkinningPaletteSnapshot>, 3> m_snapshotRing;      //!< Ring Bufferとして保持するPalette Snapshot。Game threadが評価中のSnapshotとRender threadが参照中のSnapshotを分離する。
+		std::shared_ptr<const SkinningPaletteSnapshot> m_publishedSnapshot;          //!< Render threadが参照中のPalette Snapshot。Game threadはこのSnapshotを更新しない。
+		std::size_t m_nextSnapshot = 0;                                              //!< Ring Bufferの次に使用するSnapshotのインデックス。Game threadが評価中のSnapshotを指す。
+		float m_time = 0.0f;                                                         //!< 再生中のClip内の現在時刻(秒)。ClipのWrap Modeに応じてClampまたはWrapされる。
+		float m_speed = 1.0f;                                                        //!< 再生速度。1.0fで実時間と同じ速度、2.0fで2倍速、-1.0fで逆再生。
+		AnimationWrapMode m_wrapMode = AnimationWrapMode::Loop;                      //!< 再生中のClipのWrap Mode。ClipのWrap Modeに応じてtimeとloopCountが変化する。
+		std::int64_t m_loopCount = 0;                                                //!< 再生中のClipのLoop回数。ClipのWrap Modeに応じて符号付きで増減する。
+		bool m_playing = false;                                                      //!< 再生中かどうか。trueで再生中、falseで停止中。
+		bool m_rootMotionEnabled = false;                                            //!< Root Motionの有効化。trueで有効、falseで無効。
+		RootMotionAxes m_rootMotionAxes;                                             //!< Root Motionの抽出対象成分。無効な成分はGameObjectへ移さず姿勢に残す。
+		std::string m_rootMotionJointName;                                           //!< Root Motionの抽出対象ボーン名。空文字列は先頭ルートを使用する。
+		std::size_t m_rootMotionJoint = 0;                                           //!< Root Motionの抽出対象ボーンのインデックス。
+		Matrix m_rootReference = Matrix::Identity;                                   //!< Root Motionの参照姿勢。
+		Matrix m_inverseRootReference = Matrix::Identity;                            //!< Root Motionの逆参照姿勢。
+		Matrix m_rootMotionDelta = Matrix::Identity;                                 //!< Root Motionのデルタ変換。
+		RootMotionTrack m_rootTrack;                                                 //!< Root Motionのトラック情報。
+		std::unique_ptr<ozz::animation::SamplingJob::Context> m_rootSamplingContext; //!< Root Motionのozz runtime SamplingJob用Context。ozz runtimeが必要とする中間バッファを保持する。
 	};
 }
